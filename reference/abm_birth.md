@@ -39,7 +39,7 @@ abm_birth(
   keep: a reset age, a mutated trait, a sex drawn at birth. The
   expressions are evaluated in the parent's row, so they can use the
   parent's columns and — when an
-  [`abm_match()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_match.md)
+  [`abm_match()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_match.md)
   is standing — the other parent's, as `partner_<col>`. That is how
   two-parent inheritance is written:
   `inherit = trait ~ (trait + partner_trait) / 2`.
@@ -47,7 +47,7 @@ abm_birth(
 - attach_via:
 
   An
-  [`abm_match()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_match.md)
+  [`abm_match()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_match.md)
   object with `pair = "network"`, used to connect each newborn to an
   existing agent. This is the only way the network grows during a run;
   `from = "random_edge"` gives degree-proportional (preferential)

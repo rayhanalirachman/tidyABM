@@ -1,11 +1,11 @@
 # Remove edges between matched agents
 
 `abm_unlink()` is the mirror of
-[`abm_link()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_link.md):
+[`abm_link()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_link.md):
 it deletes the edge joining each matched pair. Paired with
 `abm_match(pair = "network")` it detaches an agent from one of its
 neighbours, which — followed by a match and an
-[`abm_link()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_link.md)
+[`abm_link()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_link.md)
 — is how you rewire a network.
 
 ## Usage

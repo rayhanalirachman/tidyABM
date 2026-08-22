@@ -26,7 +26,7 @@ An `abm_global` step object.
 ## Details
 
 Unlike the other update steps, `abm_global()` does not need a preceding
-[`abm_match()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_match.md):
+[`abm_match()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_match.md):
 a population-level summary does not depend on who was paired with whom.
 
 ## Examples

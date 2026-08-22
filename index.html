@@ -46,7 +46,7 @@
 <li class="nav-item"><form class="form-inline" role="search">
  <input class="form-control" type="search" name="search-input" id="search-input" autocomplete="off" aria-label="Search site" placeholder="Search for" data-search-index="search.json">
 </form></li>
-<li class="nav-item"><a class="external-link nav-link" href="https://github.com/rayhanalirachman/tidyabm/" aria-label="GitHub"><span class="fa fab fa-github fa-lg"></span></a></li>
+<li class="nav-item"><a class="external-link nav-link" href="https://github.com/rayhanalirachman/tidyABM/" aria-label="GitHub"><span class="fa fab fa-github fa-lg"></span></a></li>
       </ul>
 </div>
 
@@ -64,28 +64,16 @@
 <div class="section level2">
 <h2 id="installation">Installation<a class="anchor" aria-label="anchor" href="#installation"></a>
 </h2>
-<p>tidyABM lives on GitHub. Install it with either of these:</p>
 <div class="sourceCode" id="cb1"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># install.packages("pak")</span></span>
-<span><span class="fu">pak</span><span class="fu">::</span><span class="fu"><a href="https://pak.r-lib.org/reference/pak.html" class="external-link">pak</a></span><span class="op">(</span><span class="st">"rayhanalirachman/tidyabm"</span><span class="op">)</span></span>
-<span></span>
-<span><span class="co"># or</span></span>
-<span><span class="co"># install.packages("remotes")</span></span>
-<span><span class="fu">remotes</span><span class="fu">::</span><span class="fu">install_github</span><span class="op">(</span><span class="st">"rayhanalirachman/tidyabm"</span><span class="op">)</span></span></code></pre></div>
-<p>To get the vignettes as well:</p>
-<div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu">remotes</span><span class="fu">::</span><span class="fu">install_github</span><span class="op">(</span><span class="st">"rayhanalirachman/tidyabm"</span>, build_vignettes <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/utils/vignette.html" class="external-link">vignette</a></span><span class="op">(</span><span class="st">"tidyABM"</span><span class="op">)</span></span></code></pre></div>
-<p>Then:</p>
-<div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://github.com/rayhanalirachman/tidyabm" class="external-link">tidyABM</a></span><span class="op">)</span></span></code></pre></div>
+<span><span class="fu">pak</span><span class="fu">::</span><span class="fu"><a href="https://pak.r-lib.org/reference/pak.html" class="external-link">pak</a></span><span class="op">(</span><span class="st">"rayhanalirachman/tidyABM"</span><span class="op">)</span></span></code></pre></div>
 </div>
 <div class="section level2">
 <h2 id="a-whole-model">A whole model<a class="anchor" aria-label="anchor" href="#a-whole-model"></a>
 </h2>
 <p>Wilensky and Rand’s <em>Simple Economy</em>: 500 agents start with $100 each, and every tick anyone with money gives $1 to someone else. The wealth distribution starts as a spike and ends up exponential — no agent is doing anything clever, and inequality appears anyway.</p>
-<div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://github.com/rayhanalirachman/tidyabm" class="external-link">tidyABM</a></span><span class="op">)</span></span>
+<div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://github.com/rayhanalirachman/tidyABM" class="external-link">tidyABM</a></span><span class="op">)</span></span>
 <span></span>
 <span><span class="va">economy</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/abm_setup.html">abm_setup</a></span><span class="op">(</span>agents <span class="op">=</span> <span class="fu"><a href="reference/abm_agents.html">abm_agents</a></span><span class="op">(</span>n <span class="op">=</span> <span class="fl">500</span>, money <span class="op">=</span> <span class="fl">100</span><span class="op">)</span><span class="op">)</span></span>
 <span></span>
@@ -150,7 +138,7 @@
 </tr>
 <tr>
 <td><code><a href="reference/abm_sequential.html">abm_sequential()</a></code></td>
-<td>updates them one at a time, in shuffled order</td>
+<td>updates them one at a time, in shuffled order or an order you name</td>
 </tr>
 <tr>
 <td><code><a href="reference/abm_neighbours.html">abm_neighbours()</a></code></td>
@@ -178,10 +166,14 @@
 </td>
 <td>adds or removes network edges</td>
 </tr>
+<tr>
+<td><code><a href="reference/abm_repeat.html">abm_repeat()</a></code></td>
+<td>replays a block of steps until a condition holds</td>
+</tr>
 </tbody>
 </table>
 <p>So a two-phase model — play, then imitate — is written flat and in order:</p>
-<div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="reference/abm_go.html">abm_go</a></span><span class="op">(</span></span>
 <span>  <span class="fu"><a href="reference/abm_match.html">abm_match</a></span><span class="op">(</span>pair <span class="op">=</span> <span class="st">"random"</span><span class="op">)</span>,</span>
 <span>  <span class="fu"><a href="reference/abm_rules.html">abm_rules</a></span><span class="op">(</span><span class="va">payoff</span> <span class="op">~</span> <span class="fu"><a href="https://dplyr.tidyverse.org/reference/case-and-replace-when.html" class="external-link">case_when</a></span><span class="op">(</span><span class="va">...</span><span class="op">)</span><span class="op">)</span>,</span>
@@ -193,7 +185,7 @@
 <div class="section level2">
 <h2 id="what-the-matching-modes-give-you">What the matching modes give you<a class="anchor" aria-label="anchor" href="#what-the-matching-modes-give-you"></a>
 </h2>
-<p>After <code>abm_match(pair = ..., size = 2)</code> every rule can see <code>partner_&lt;col&gt;</code> for each of the partner’s columns. With <code>size &gt; 2</code> rules are grouped instead, so <code>sum(contribution)</code> inside a rule means “sum across this agent’s group”.</p>
+<p>After <code>abm_match(pair = ..., size = 2)</code> every rule can see <code>partner_&lt;col&gt;</code> for each of the partner’s columns. With <code>size &gt; 2</code> rules are grouped instead, so <code>sum(contribution)</code> inside a rule means “sum across this agent’s group”. A rule can also be grouped by an ordinary agent column with <code>.by =</code>, which is how a firm, a household or a team becomes a thing the model can add up.</p>
 <table class="table">
 <colgroup>
 <col width="26%">
@@ -223,7 +215,7 @@
 </tr>
 <tr>
 <td><code>"nearest"</code></td>
-<td>the closest agent in the space you name</td>
+<td>the closest agent in the space you name, or the one that minimises a <code>cost</code> you write</td>
 <td>directional</td>
 </tr>
 <tr>
@@ -244,17 +236,17 @@
 <h2 id="status">Status<a class="anchor" aria-label="anchor" href="#status"></a>
 </h2>
 <p>Experimental. The API is shaped by what porting models turns up, and it is still moving.</p>
-<p>Forty-six models are implemented and documented in <a href="../models/README.html"><code>models/</code></a>, each on its own page with its code, the result it reproduces and its source: thirteen the grammar was designed against, three of those rebuilt because the short version does not show what the model is known for, and three rounds of ten ported as stress tests.</p>
-<p>Every feature in the package that is not in the founding thirteen exists because one of those thirty models asked for it — <code><a href="reference/abm_link.html">abm_link()</a></code>, <code><a href="reference/abm_neighbours.html">abm_neighbours()</a></code>, <code><a href="reference/abm_tell.html">abm_tell()</a></code>, the <code>one_of</code> pairing mode, <code>among =</code>, <code>.scope = "population"</code>, clique linking, the Poisson and scale-free and ring networks, and the cascading semantics of <code><a href="reference/abm_sequential.html">abm_sequential()</a></code>. <a href="../models/what-changed.html"><code>models/what-changed.md</code></a> is the history; <a href="../models/open-items.html"><code>models/open-items.md</code></a> is what is still out of reach.</p>
-<p>Several validations are quantitative rather than qualitative. Hawks and Doves matches the analytic evolutionarily stable frequency <code>V/C</code> to three decimals across a twelve-fold range of the cost parameter; the information cascade matches <code>p² / (p² + (1-p)²)</code> at five values of the signal accuracy; Deffuant’s cluster count matches <code>floor(1/(2d))</code> at six values of the threshold; Watts’s cascade window matches its closed-form boundaries at both ends; the Minority Game reproduces the σ²/α curve with its minimum at the reported critical value; and the Naming Game’s two scaling exponents come out at 1.45 and 1.39 against a reported 3/2.</p>
+<p>Fifty-six models are implemented and documented in <a href="../models/README.html"><code>models/</code></a>, each on its own page with its code, the result it reproduces and its source: thirteen the grammar was designed against, three of those rebuilt because the short version does not show what the model is known for, and four rounds of ten ported as stress tests.</p>
+<p>Every feature in the package that is not in the founding thirteen exists because one of those forty models asked for it — <code><a href="reference/abm_link.html">abm_link()</a></code>, <code><a href="reference/abm_neighbours.html">abm_neighbours()</a></code>, <code><a href="reference/abm_tell.html">abm_tell()</a></code>, <code><a href="reference/abm_repeat.html">abm_repeat()</a></code>, the <code>one_of</code> pairing mode, <code>among =</code>, <code>cost =</code>, <code>.by =</code>, <code>.order =</code>, <code>.scope = "population"</code>, clique linking, the Poisson and scale-free and ring networks, and the cascading semantics of <code><a href="reference/abm_sequential.html">abm_sequential()</a></code>. <a href="../models/what-changed.html"><code>models/what-changed.md</code></a> is the history; <a href="../models/open-items.html"><code>models/open-items.md</code></a> is what is still out of reach.</p>
+<p>Several validations are quantitative rather than qualitative. Hawks and Doves matches the analytic evolutionarily stable frequency <code>V/C</code> to three decimals across a twelve-fold range of the cost parameter; the information cascade matches <code>p² / (p² + (1-p)²)</code> at five values of the signal accuracy; Deffuant’s cluster count matches <code>floor(1/(2d))</code> at six values of the threshold; Watts’s cascade window matches its closed-form boundaries at both ends; the Minority Game reproduces the σ²/α curve with its minimum at the reported critical value; and the Naming Game’s two scaling exponents come out at 1.45 and 1.39 against a reported 3/2. The fourth round adds three more: the division of labour settles at δ/α to two decimals whatever the thresholds are, the neutral model’s variant counts land on the Ewens sampling formula across two orders of magnitude in the innovation rate, and deferred acceptance reproduces Pittel’s <code>ln n</code> and <code>n / ln n</code> on the nose at n = 200.</p>
 <p>See <code><a href="articles/tidyABM.html">vignette("tidyABM")</a></code> to get started, <code><a href="articles/models.html">vignette("models")</a></code> for a tour of the grammar, and <code><a href="articles/corrections.html">vignette("corrections")</a></code> for the three models whose short form runs but is wrong.</p>
 </div>
 </div>
   </main><aside class="col-md-3"><div class="links">
 <h2 data-toc-skip>Links</h2>
 <ul class="list-unstyled">
-<li><a href="https://github.com/rayhanalirachman/tidyabm/" class="external-link">Browse source code</a></li>
-<li><a href="https://github.com/rayhanalirachman/tidyabm/issues" class="external-link">Report a bug</a></li>
+<li><a href="https://github.com/rayhanalirachman/tidyABM/" class="external-link">Browse source code</a></li>
+<li><a href="https://github.com/rayhanalirachman/tidyABM/issues" class="external-link">Report a bug</a></li>
 </ul>
 </div>
 
@@ -284,7 +276,6 @@
 <div class="dev-status">
 <h2 data-toc-skip>Dev status</h2>
 <ul class="list-unstyled">
-<li><a href="https://github.com/rayhanalirachman/tidyabm/actions/workflows/R-CMD-check.yaml" class="external-link"><img src="https://github.com/rayhanalirachman/tidyabm/actions/workflows/R-CMD-check.yaml/badge.svg" alt="R-CMD-check"></a></li>
 <li><a href="https://lifecycle.r-lib.org/articles/stages.html#experimental" class="external-link"><img src="https://img.shields.io/badge/lifecycle-experimental-orange.svg" alt="Lifecycle: experimental"></a></li>
 </ul>
 </div>

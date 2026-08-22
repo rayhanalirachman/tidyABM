@@ -6,7 +6,7 @@ library(tidyABM)
 ```
 
 Three of the models in
-[`vignette("models")`](https://rayhanalirachman.github.io/tidyabm/articles/models.md)
+[`vignette("models")`](https://rayhanalirachman.github.io/tidyABM/articles/models.md)
 run correctly and still do not show the behaviour they are famous for.
 That is not a bug in the package or in the translation — it is that the
 short version of each model, the one that fits in a paragraph, leaves
@@ -139,7 +139,7 @@ own.
 **What this exposes about the grammar.** There is no compact way to give
 an agent a *set* of anything. Ten strategies over five lags is seventy
 columns, and only metaprogramming makes that bearable. A future
-[`abm_agents()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_agents.md)
+[`abm_agents()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_agents.md)
 might accept matrix-valued or list-valued columns; until then, build the
 spec with [`do.call()`](https://rdrr.io/r/base/do.call.html).
 

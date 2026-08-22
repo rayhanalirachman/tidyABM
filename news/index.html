@@ -25,7 +25,7 @@
 <li class="active nav-item"><a class="nav-link" href="../news/index.html">Changelog</a></li>
       </ul><ul class="navbar-nav"><li class="nav-item"><form class="form-inline" role="search">
  <input class="form-control" type="search" name="search-input" id="search-input" autocomplete="off" aria-label="Search site" placeholder="Search for" data-search-index="../search.json"></form></li>
-<li class="nav-item"><a class="external-link nav-link" href="https://github.com/rayhanalirachman/tidyabm/" aria-label="GitHub"><span class="fa fab fa-github fa-lg"></span></a></li>
+<li class="nav-item"><a class="external-link nav-link" href="https://github.com/rayhanalirachman/tidyABM/" aria-label="GitHub"><span class="fa fab fa-github fa-lg"></span></a></li>
       </ul></div>
 
 
@@ -35,7 +35,7 @@
   <main id="main" class="col-md-9"><div class="page-header">
 
       <h1>Changelog</h1>
-      <small>Source: <a href="https://github.com/rayhanalirachman/tidyabm/blob/main/NEWS.md" class="external-link"><code>NEWS.md</code></a></small>
+      <small>Source: <a href="https://github.com/rayhanalirachman/tidyABM/blob/main/NEWS.md" class="external-link"><code>NEWS.md</code></a></small>
     </div>
 
     <div class="section level2">
@@ -125,6 +125,28 @@
 <div class="section level3">
 <h3 id="known-model-issues-not-package-issues-0-0-0-9000">Known model issues, not package issues<a class="anchor" aria-label="anchor" href="#known-model-issues-not-package-issues-0-0-0-9000"></a></h3>
 <p>Three of the reference models run correctly and do not reproduce the behaviour they are known for, because the short form of each leaves out the mechanism that produces it: El Farol needs agents that switch between candidate predictors, ethnocentrism needs tag-conditional strategies <em>and</em> local reproduction, and the zakah model needs a risk process or nobody is ever poor. <code><a href="../articles/corrections.html">vignette("corrections")</a></code> diagnoses and fixes all three.</p>
+</div>
+<div class="section level3">
+<h3 id="steps-added-by-the-fourth-round-of-models-part-0-0-0-9000-1">Steps added by the fourth round of models (Part 6)<a class="anchor" aria-label="anchor" href="#steps-added-by-the-fourth-round-of-models-part-0-0-0-9000-1"></a></h3>
+<p>Ten more models — response thresholds and the division of labour, the garbage can model, the emergence of firms, adaptation on a rugged landscape, imitation dynamics of vaccination, bank runs, random copying, image scoring, deferred acceptance and predator–prey without space — were ported as a stress test. Six of them needed something the grammar did not have; four did not.</p>
+<ul><li>
+<code>abm_repeat(..., until =, max =)</code> replays a block of steps inside a tick until a condition holds. A tick was the only loop there was, so a phase that has to run to completion before the next phase starts — an epidemic that burns out before anyone reconsiders vaccinating, a round of proposals that continues until nobody is rejected — could only be written as a fixed number of repetitions, which is either wrong or wasteful. <code>until</code> is evaluated the way an <code><a href="../reference/abm_global.html">abm_global()</a></code> right-hand side is and is checked after each pass, so the block always runs at least once; <code>max</code> is required, because a condition that never becomes true would hang the run. It also answers the <em>no early stopping</em> entry from the other end: a block wrapped in <code><a href="../reference/abm_repeat.html">abm_repeat()</a></code> and run for one tick stops at the model’s absorbing state (models 51 and 55).</li>
+<li>
+<code>abm_match(pair = "nearest", cost = &lt;expression&gt;)</code> replaces the single Euclidean metric with a number the chooser is minimising, evaluated once per (chooser, candidate) pair with the candidate’s columns under their own names and the chooser’s under <code>own_&lt;col&gt;</code> — the convention <code><a href="../reference/abm_neighbours.html">abm_neighbours()</a></code> already used, extended to include <code>.id</code> and <code>.group</code>. <code>NA</code> means the candidate is not acceptable to that chooser. <code>by =</code> is the special case <code>cost = (x - own_x)^2</code>; an energy deficit, a delivered price and a position in a preference list are not distances at all (models 48 and 55).</li>
+<li>
+<code>abm_rules(..., .by = &lt;column&gt;)</code> evaluates rules once per distinct value of an agent column, across the whole population, and writes the result back to every member. It is the third grouping a rule can have, alongside the standing match and the whole population, and it is the only one the agents themselves control: an agent that writes a new value into the <code>.by</code> column has moved to a different group. Firms, households, teams and cohorts are all this shape (model 49).</li>
+<li>
+<code>abm_sequential(..., .order = &lt;expression&gt;)</code> processes agents in a named order rather than a fresh shuffle. The shuffle is right when the order is meant to be arbitrary and wrong when it is part of the model — a queue at a counter, a sequential-service constraint. The same bank-run model under the two orderings gives different answers, which is the point (model 52).</li>
+<li>
+<code>abm_tell(to = &lt;list column&gt;)</code> writes to a <em>set</em> of recipients rather than one, so a sender can address an audience that is neither its partner nor its network neighbourhood — the onlookers who happened to see this interaction, or the problems a choice opportunity has collected (models 48 and 54).</li>
+<li>
+<code>abm_tell(.resolve = "collect")</code> hands the recipient the list of everything it was told and lets its own rule decide what to make of it, which is strictly more general than any fixed collision policy and is the beginning of an answer to <em><code><a href="../reference/abm_tell.html">abm_tell()</a></code> resolves collisions but does not order them</em> (models 48 and 54).</li>
+</ul><p>Two fixes came with them:</p>
+<ul><li>
+<strong>A group of one is a group of one.</strong> <code>sample(x)</code> reinterprets a length-1 numeric <code>x</code> as <code>seq_len(x)</code>, so a matching pool holding a single agent id silently became a pool of <code>.id</code> agents: <code>abm_match(pair = "opposite_group")</code> with four wolves and one sheep paired the sheep with all four, and <code>pair = "one_of"</code> with a single candidate drew partners that did not exist. Every shuffle and every with-replacement draw in the package now goes through helpers that do not have this behaviour. Found by model 56, where the populations routinely cross.</li>
+<li>
+<strong>A global need not be a scalar.</strong> <code><a href="../reference/abm_globals.html">abm_globals()</a></code> assumed every global was a single value and wrote one row per tick; a matrix-valued global — an NK landscape, a payoff table — produced one row per matrix row and a tick column that repeated. Non-scalar globals are now stored in a list column (model 50).</li>
+</ul><p><code><a href="../reference/abm_rules.html">abm_rules()</a></code> on an empty population is now a quiet no-op rather than an error, so a model whose agents all die reports the extinction rather than a message about columns no group has.</p>
 </div>
 </div>
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>

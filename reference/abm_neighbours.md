@@ -5,7 +5,7 @@ neighbourhood instead — how many of my neighbours are infected, what
 fraction of them are flashing, what my neighbours believe on average.
 `abm_neighbours()` writes exactly that: for every agent, an aggregate
 over the agents it is connected to in the model's
-[`abm_network()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_network.md).
+[`abm_network()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_network.md).
 
 ## Usage
 

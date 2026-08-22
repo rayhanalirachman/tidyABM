@@ -1,9 +1,9 @@
 # Run a model
 
 `abm_run()` is the scheduler: it takes a model built by
-[`abm_setup()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_setup.md)
+[`abm_setup()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_setup.md)
 and a behavioural block built by
-[`abm_go()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_go.md),
+[`abm_go()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_go.md),
 replays the block `ticks` times, and records the whole population after
 every tick.
 
@@ -18,7 +18,7 @@ abm_run(model, go, ticks, seed = NULL)
 - model:
 
   An `abm_model` from
-  [`abm_setup()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_setup.md).
+  [`abm_setup()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_setup.md).
 
 - go:
 
@@ -33,7 +33,7 @@ abm_run(model, go, ticks, seed = NULL)
   Optional integer seed for the run. Set locally, so the caller's random
   state is left untouched. See the details above on why a random
   starting population also needs
-  [`abm_setup()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_setup.md)'s
+  [`abm_setup()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_setup.md)'s
   `seed`.
 
 ## Value
@@ -46,10 +46,10 @@ run's globals and final network as attributes.
 The result is one long tibble — `tick`, `.id`, `.group`, then every
 agent column — which is what you want for plotting and summarising. Tick
 0 is the state produced by
-[`abm_setup()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_setup.md),
+[`abm_setup()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_setup.md),
 before any step has run, so a run of `n` ticks returns `n + 1`
 snapshots. Global values are recorded alongside and are available with
-[`abm_globals()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_globals.md).
+[`abm_globals()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_globals.md).
 
 Agent-based models are stochastic, so `seed` is a first-class argument
 rather than something to arrange yourself: it makes the run reproducible
@@ -57,7 +57,7 @@ without touching the global random state.
 
 It fixes the run, though, not the model. If the agents' starting columns
 were drawn at random, they were drawn when
-[`abm_setup()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_setup.md)
+[`abm_setup()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_setup.md)
 was called, and this seed comes too late to affect them. Seed both for
 an experiment that reproduces end to end:
 

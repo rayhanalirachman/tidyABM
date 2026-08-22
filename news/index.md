@@ -5,31 +5,31 @@
 First working version. The package implements the grammar developed
 against thirteen reference models.
 
-- [`abm_agents()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_agents.md),
-  [`abm_network()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_network.md)
+- [`abm_agents()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_agents.md),
+  [`abm_network()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_network.md)
   and
-  [`abm_setup()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_setup.md)
+  [`abm_setup()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_setup.md)
   declare the world.
-- [`abm_go()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_go.md)
+- [`abm_go()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_go.md)
   takes an ordered sequence of steps, dispatched by type and position,
   and validates the sequence once at construction rather than on every
   tick.
-- [`abm_match()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_match.md)
+- [`abm_match()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_match.md)
   supports four pairing modes (`"random"`, `"opposite_group"`,
   `"nearest"`, `"network"`), generalised to groups of `size` where that
   is well defined. Passing an argument a mode does not use is an error.
-- [`abm_rules()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_rules.md)
+- [`abm_rules()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_rules.md)
   updates agents simultaneously;
-  [`abm_sequential()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_sequential.md)
+  [`abm_sequential()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_sequential.md)
   updates them one at a time so that writes to globals are visible
   within the step;
-  [`abm_global()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_global.md)
+  [`abm_global()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_global.md)
   updates population-level values;
-  [`abm_birth()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_birth.md)
+  [`abm_birth()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_birth.md)
   and
-  [`abm_death()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_death.md)
+  [`abm_death()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_death.md)
   change the size of the population.
-- [`abm_run()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_run.md)
+- [`abm_run()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_run.md)
   takes a `seed` and restores the caller’s random state. It seeds the
   run, not the model: a randomly drawn starting population also needs
   `abm_setup(seed =)`, and both are documented together.
@@ -51,25 +51,25 @@ Three points where the implementation departs from the design notes:
 agent it was cloned from, which is the only way to put offspring near
 their kin. It exists because Hammond and Axelrod’s ethnocentrism model
 does not work without it — see
-[`vignette("corrections")`](https://rayhanalirachman.github.io/tidyabm/articles/corrections.md).
+[`vignette("corrections")`](https://rayhanalirachman.github.io/tidyABM/articles/corrections.md).
 
 `abm_birth(when =)` and `abm_death(when =)` conditions are evaluated
 through the same data-masking path as
-[`abm_rules()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_rules.md),
+[`abm_rules()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_rules.md),
 so [`n()`](https://dplyr.tidyverse.org/reference/context.html),
 [`if_else()`](https://dplyr.tidyverse.org/reference/if_else.html) and
 friends mean the same thing in a condition as in a rule.
 
 Two open questions from the design notes are now resolved:
 
-- [`abm_death()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_death.md)
+- [`abm_death()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_death.md)
   prunes the removed agents’ network edges by default
   (`prune_edges = TRUE`), because leaving them would let
   `abm_match(pair = "network")` draw partners that no longer exist.
 - `abm_match(pair = "nearest")` is defined for pairs only.
   Nearest-neighbour groups of three or more overlap, so they cannot
   serve as the grouping for
-  [`abm_rules()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_rules.md).
+  [`abm_rules()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_rules.md).
 
 ### Steps added by the second round of models (Part 3)
 
@@ -79,9 +79,9 @@ Axelrod’s cultural dissemination and PD N-Person Iterated — were ported
 as a stress test. Five of them needed something the grammar did not
 have:
 
-- [`abm_link()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_link.md)
+- [`abm_link()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_link.md)
   and
-  [`abm_unlink()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_unlink.md)
+  [`abm_unlink()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_unlink.md)
   turn a standing pairing into edges, or remove them. Until now a
   network could only grow through `abm_birth(attach_via =)`, so a graph
   process with a fixed population was inexpressible (Giant Component,
@@ -106,7 +106,7 @@ Three consistency fixes came with them:
 
 - `abm_birth(when =)`, `abm_death(when =)` and `cost` see `partner_*`
   and `.role` when a match is standing, as
-  [`abm_rules()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_rules.md)
+  [`abm_rules()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_rules.md)
   always has (Divide the Cake).
 - A match that runs and pairs nobody now supplies `partner_*` columns
   full of `NA` instead of omitting them, so a tick where nobody meets
@@ -123,7 +123,7 @@ Team Assembly, Language Change, epiDEM Basic, the Simple Genetic
 Algorithm and the Bikhchandani–Hirshleifer–Welch information cascade —
 were ported as a second stress test. Three of them needed something new:
 
-- [`abm_neighbours()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_neighbours.md)
+- [`abm_neighbours()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_neighbours.md)
   rules now also see the focal agent’s own columns, prefixed `own_`. A
   neighbourhood aggregate could previously only read the neighbours, so
   a *comparison* — `sum(wealth > own_wealth)`, “how many of my
@@ -132,10 +132,10 @@ were ported as a second stress test. Three of them needed something new:
   chance of being seen against each neighbour’s vengefulness.
 - `abm_network(type = "complete")` joins every pair of agents. That is
   the well-mixed population written as a graph, and it is what lets
-  [`abm_neighbours()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_neighbours.md)
+  [`abm_neighbours()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_neighbours.md)
   mean “over everybody else” in a model with no structure at all
   (Axelrod).
-- [`abm_link()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_link.md)
+- [`abm_link()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_link.md)
   after a match with `size > 2` links the group as a clique rather than
   erroring. A team, a committee or a coalition is a complete subgraph
   (Team Assembly).
@@ -144,13 +144,13 @@ Four idioms came out of the round that needed no code change, and are
 written up in `MODELS.md` because none of them is obvious: drawing a
 resampling index once and indexing every trait by it (a multi-trait
 genome otherwise gets shuffled apart); a `parent` flag that makes
-[`abm_birth()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_birth.md)
+[`abm_birth()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_birth.md)
 repeatable for fertility above one; building steps and rules
 programmatically with [`rep()`](https://rdrr.io/r/base/rep.html),
 [`do.call()`](https://rdrr.io/r/base/do.call.html) and
 [`rlang::new_formula()`](https://rlang.r-lib.org/reference/new_formula.html);
 and feeding
-[`abm_edges()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_edges.md)
+[`abm_edges()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_edges.md)
 of one run into `abm_network(type = "manual")` of the next.
 
 `models/` documents all forty-six models with their code, results and
@@ -180,7 +180,7 @@ Four of them needed something new:
   (`"last"`, `"first"`, `"sum"`, `"mean"`, `"max"`, `"min"`, or
   `"error"`). This closes three separate open items at once — no agent
   could write to another agent,
-  [`abm_neighbours()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_neighbours.md)
+  [`abm_neighbours()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_neighbours.md)
   could read but not write, and the order book was the model the corpus
   could not reach (Sznajd, Gode & Sunder, the beer game).
 - `abm_match(..., among =)` names the agents that may be *picked*, for
@@ -189,7 +189,7 @@ Four of them needed something new:
   apart when choosing is one-way. Without it, `pair = "nearest"` was
   unusable in a model with two agent groups, because a buyer’s nearest
   agent is another buyer (Hotelling).
-- [`abm_network()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_network.md)
+- [`abm_network()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_network.md)
   gained `type = "poisson"` (Erdős–Rényi, mean degree `degree`),
   `type = "scale_free"` (Barabási–Albert) and `type = "ring"` (the
   one-dimensional lattice). `"random"` remains the `degree`-regular
@@ -197,12 +197,12 @@ Four of them needed something new:
   rather than part of the setup: on a regular graph, Watts’s cascade
   never starts (cascades, Sznajd).
 - Rules inside
-  [`abm_sequential()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_sequential.md)
+  [`abm_sequential()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_sequential.md)
   now **cascade** — the second rule sees what the first one wrote, to
   the agent’s own row and to the globals alike. This is what “one agent
   at a time” always implied, and it is what lets an agent draw a quote
   and then decide whether the quote crosses the book, in one step.
-  [`abm_rules()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_rules.md)
+  [`abm_rules()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_rules.md)
   is unchanged and still simultaneous, so the difference between the two
   steps is now exactly the difference between the two update semantics
   (Gode & Sunder).
@@ -211,12 +211,12 @@ Two fixes came with them:
 
 - [`n()`](https://dplyr.tidyverse.org/reference/context.html) works
   inside
-  [`abm_global()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_global.md).
+  [`abm_global()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_global.md).
   Globals were evaluated outside dplyr’s data mask while rules were
   evaluated inside it, so `sum(x) < n() / 2` worked in a rule and failed
   in a global (Minority Game).
 - A rule inside
-  [`abm_sequential()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_sequential.md)
+  [`abm_sequential()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_sequential.md)
   whose target is a global is now routed by the columns on its
   right-hand side, like any other rule. It used to be applied to every
   agent regardless, so a rule written for one group was evaluated in
@@ -226,9 +226,9 @@ Two entries came off *Open items* with no code change at all:
 
 - **List columns already worked.** “No set-valued agent state” had been
   the first open item for two rounds and was simply wrong:
-  [`abm_agents()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_agents.md)
+  [`abm_agents()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_agents.md)
   takes a list column, an
-  [`abm_rules()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_rules.md)
+  [`abm_rules()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_rules.md)
   right-hand side may return one, `partner_<col>` carries one, and
   snapshots record one. The Naming Game holds a growing inventory of
   names per agent and the Minority Game a 2^m × S strategy table, both
@@ -236,9 +236,9 @@ Two entries came off *Open items* with no code change at all:
 - **A push is often a pull.** NetLogo’s contagion — every infected node
   rolling a die at every neighbour — is exactly `1 - (1 - p)^k` for a
   susceptible node with `k` infected neighbours, so
-  [`abm_neighbours()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_neighbours.md)
+  [`abm_neighbours()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_neighbours.md)
   plus one rule says it without any outward write.
-  [`abm_tell()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_tell.md)
+  [`abm_tell()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_tell.md)
   is for the cases where what is transmitted depends on *which* agent
   sent it.
 
@@ -250,7 +250,7 @@ scripts.
 ### Notes
 
 `R CMD check` takes around nine minutes, almost all of it in
-[`vignette("corrections")`](https://rayhanalirachman.github.io/tidyabm/articles/corrections.md),
+[`vignette("corrections")`](https://rayhanalirachman.github.io/tidyABM/articles/corrections.md),
 which runs three full experiments. If that becomes awkward in CI,
 precompute that vignette rather than shrinking the models — the
 ethnocentrism result is drift-dominated below a few hundred agents and
@@ -264,5 +264,87 @@ the mechanism that produces it: El Farol needs agents that switch
 between candidate predictors, ethnocentrism needs tag-conditional
 strategies *and* local reproduction, and the zakah model needs a risk
 process or nobody is ever poor.
-[`vignette("corrections")`](https://rayhanalirachman.github.io/tidyabm/articles/corrections.md)
+[`vignette("corrections")`](https://rayhanalirachman.github.io/tidyABM/articles/corrections.md)
 diagnoses and fixes all three.
+
+### Steps added by the fourth round of models (Part 6)
+
+Ten more models — response thresholds and the division of labour, the
+garbage can model, the emergence of firms, adaptation on a rugged
+landscape, imitation dynamics of vaccination, bank runs, random copying,
+image scoring, deferred acceptance and predator–prey without space —
+were ported as a stress test. Six of them needed something the grammar
+did not have; four did not.
+
+- `abm_repeat(..., until =, max =)` replays a block of steps inside a
+  tick until a condition holds. A tick was the only loop there was, so a
+  phase that has to run to completion before the next phase starts — an
+  epidemic that burns out before anyone reconsiders vaccinating, a round
+  of proposals that continues until nobody is rejected — could only be
+  written as a fixed number of repetitions, which is either wrong or
+  wasteful. `until` is evaluated the way an
+  [`abm_global()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_global.md)
+  right-hand side is and is checked after each pass, so the block always
+  runs at least once; `max` is required, because a condition that never
+  becomes true would hang the run. It also answers the *no early
+  stopping* entry from the other end: a block wrapped in
+  [`abm_repeat()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_repeat.md)
+  and run for one tick stops at the model’s absorbing state (models 51
+  and 55).
+- `abm_match(pair = "nearest", cost = <expression>)` replaces the single
+  Euclidean metric with a number the chooser is minimising, evaluated
+  once per (chooser, candidate) pair with the candidate’s columns under
+  their own names and the chooser’s under `own_<col>` — the convention
+  [`abm_neighbours()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_neighbours.md)
+  already used, extended to include `.id` and `.group`. `NA` means the
+  candidate is not acceptable to that chooser. `by =` is the special
+  case `cost = (x - own_x)^2`; an energy deficit, a delivered price and
+  a position in a preference list are not distances at all (models 48
+  and 55).
+- `abm_rules(..., .by = <column>)` evaluates rules once per distinct
+  value of an agent column, across the whole population, and writes the
+  result back to every member. It is the third grouping a rule can have,
+  alongside the standing match and the whole population, and it is the
+  only one the agents themselves control: an agent that writes a new
+  value into the `.by` column has moved to a different group. Firms,
+  households, teams and cohorts are all this shape (model 49).
+- `abm_sequential(..., .order = <expression>)` processes agents in a
+  named order rather than a fresh shuffle. The shuffle is right when the
+  order is meant to be arbitrary and wrong when it is part of the model
+  — a queue at a counter, a sequential-service constraint. The same
+  bank-run model under the two orderings gives different answers, which
+  is the point (model 52).
+- `abm_tell(to = <list column>)` writes to a *set* of recipients rather
+  than one, so a sender can address an audience that is neither its
+  partner nor its network neighbourhood — the onlookers who happened to
+  see this interaction, or the problems a choice opportunity has
+  collected (models 48 and 54).
+- `abm_tell(.resolve = "collect")` hands the recipient the list of
+  everything it was told and lets its own rule decide what to make of
+  it, which is strictly more general than any fixed collision policy and
+  is the beginning of an answer to
+  *[`abm_tell()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_tell.md)
+  resolves collisions but does not order them* (models 48 and 54).
+
+Two fixes came with them:
+
+- **A group of one is a group of one.** `sample(x)` reinterprets a
+  length-1 numeric `x` as `seq_len(x)`, so a matching pool holding a
+  single agent id silently became a pool of `.id` agents:
+  `abm_match(pair = "opposite_group")` with four wolves and one sheep
+  paired the sheep with all four, and `pair = "one_of"` with a single
+  candidate drew partners that did not exist. Every shuffle and every
+  with-replacement draw in the package now goes through helpers that do
+  not have this behaviour. Found by model 56, where the populations
+  routinely cross.
+- **A global need not be a scalar.**
+  [`abm_globals()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_globals.md)
+  assumed every global was a single value and wrote one row per tick; a
+  matrix-valued global — an NK landscape, a payoff table — produced one
+  row per matrix row and a tick column that repeated. Non-scalar globals
+  are now stored in a list column (model 50).
+
+[`abm_rules()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_rules.md)
+on an empty population is now a quiet no-op rather than an error, so a
+model whose agents all die reports the extinction rather than a message
+about columns no group has.

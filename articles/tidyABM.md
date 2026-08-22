@@ -29,9 +29,9 @@ economy
 #> • agents: 500 agents ["money"]
 ```
 
-[`abm_setup()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_setup.md)
+[`abm_setup()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_setup.md)
 declares the world;
-[`abm_agents()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_agents.md)
+[`abm_agents()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_agents.md)
 declares one group of agents within it. A plain value like `money = 100`
 is recycled across every agent.
 
@@ -50,12 +50,12 @@ go
 ```
 
 Two steps.
-[`abm_match()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_match.md)
+[`abm_match()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_match.md)
 shuffles the population into pairs and works out who in each pair is the
 giver — the `role` list says the giver must satisfy `money > 0` and the
 receiver can be anyone, so a pair where neither agent has money is
 dropped for this tick.
-[`abm_rules()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_rules.md)
+[`abm_rules()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_rules.md)
 then moves the dollar.
 
 ``` r
@@ -80,7 +80,7 @@ result
 ```
 
 The result is one row per agent per tick. Tick 0 is the state
-[`abm_setup()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_setup.md)
+[`abm_setup()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_setup.md)
 produced, before anything has run.
 
 ``` r
@@ -102,7 +102,7 @@ tail. That is the whole point of the model.
 
 ## Setup: agents, networks, globals
 
-[`abm_agents()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_agents.md)
+[`abm_agents()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_agents.md)
 takes `n` and any number of named columns. A plain value recycles; a
 one-sided formula is evaluated once and must return `n` values (or one,
 to recycle). Formulas run in order, so a later column can use an earlier
@@ -164,7 +164,7 @@ abm_network(type = "random", degree = 4)
 
 ## Go: a sequence of steps
 
-[`abm_go()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_go.md)
+[`abm_go()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_go.md)
 takes steps in order and dispatches them by type, not by argument name.
 That means a model with several phases per tick is written flat:
 
@@ -209,7 +209,7 @@ abm_go(
 ```
 
 Matching is optional. A model where every agent decides alone needs no
-[`abm_match()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_match.md)
+[`abm_match()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_match.md)
 at all:
 
 ``` r
@@ -285,10 +285,10 @@ everybody.
 ## Simultaneous or sequential
 
 Every rule in one
-[`abm_rules()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_rules.md)
+[`abm_rules()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_rules.md)
 call sees the state at the *start* of the step. That is the synchronous
 update agent-based models normally assume, and it is the one place
-[`abm_rules()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_rules.md)
+[`abm_rules()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_rules.md)
 deliberately differs from
 [`dplyr::mutate()`](https://dplyr.tidyverse.org/reference/mutate.html):
 
@@ -310,7 +310,7 @@ abm_run(swap, abm_go(abm_rules(a ~ b, b ~ a)), ticks = 1)
 
 Sometimes that is wrong. If agents compete for a pool that gets *used
 up*, the first agent to act has to change what the next one sees.
-[`abm_sequential()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_sequential.md)
+[`abm_sequential()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_sequential.md)
 processes agents one at a time in shuffled order, and its writes to
 globals are visible to the agents after it:
 
@@ -328,18 +328,61 @@ sum(seq_run$got[seq_run$tick == 1])  # exactly the 10 units that existed
 ```
 
 With
-[`abm_rules()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_rules.md)
+[`abm_rules()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_rules.md)
 instead, all twenty agents would see a full pot and all twenty would be
 served. Use
-[`abm_sequential()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_sequential.md)
+[`abm_sequential()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_sequential.md)
 only when that difference is the point: it is slower and harder to
 reason about.
 
+The order is a fresh shuffle unless you name one. When the order is
+itself part of the model — a queue at a counter, a sequential-service
+constraint — pass `.order =` and the agents go through in its ascending
+order instead:
+
+``` r
+
+queue <- abm_setup(agents = abm_agents(n = 20, place = ~sample(n), got = 0),
+                   globals = list(pot = 10))
+
+abm_run(queue, abm_go(abm_sequential(
+  got ~ if_else(pot > 0, 1, 0),
+  pot ~ if_else(pot > 0, pot - 1, pot),
+  .order = place
+)), ticks = 1, seed = 1) -> q
+sum(q$got[q$tick == 1 & q$place <= 10])   # the front of the queue, every time
+#> [1] 10
+```
+
+## Repeating a block
+
+A tick is one pass through
+[`abm_go()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_go.md).
+Some models have a *phase* inside the tick that has to finish first — an
+epidemic that burns out before anyone reconsiders vaccinating, a round
+of proposals that runs until nobody is rejected.
+[`abm_repeat()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_repeat.md)
+replays a block until a condition holds:
+
+``` r
+
+grow <- abm_setup(agents = abm_agents(n = 5, x = 0))
+r <- abm_run(grow, abm_go(
+  abm_repeat(abm_rules(x ~ x + 1), until = mean(x) >= 4, max = 100)
+), ticks = 1, seed = 1)
+unique(r$x[r$tick == 1])
+#> [1] 4
+```
+
+`until` is checked after each pass, so the block always runs at least
+once, and `max` is required — a condition that never becomes true would
+otherwise hang the run.
+
 ## Changing the population
 
-[`abm_birth()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_birth.md)
+[`abm_birth()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_birth.md)
 and
-[`abm_death()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_death.md)
+[`abm_death()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_death.md)
 are the only steps that add or remove agents.
 
 ``` r
@@ -365,7 +408,7 @@ r <- abm_run(ethno, abm_go(
 table(r$tick)[c(1, 11, 21)]
 #> 
 #>   0  10  20 
-#> 100 110  82
+#> 100 106  73
 ```
 
 `cost` says what reproduction costs, as ordinary `column ~ expression`
@@ -375,7 +418,7 @@ resource splits it between them.
 ## Reproducibility
 
 Agent-based models are stochastic, so `seed` is an argument to
-[`abm_run()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_run.md)
+[`abm_run()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_run.md)
 rather than something you arrange yourself. It is set locally, so your
 session’s random state is untouched:
 
@@ -399,12 +442,12 @@ identical(as.data.frame(a), as.data.frame(b))
 ```
 
 There is a sharp edge here worth knowing about.
-[`abm_run()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_run.md)‘s
+[`abm_run()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_run.md)‘s
 seed fixes the *run*, not the *model*. If your agents’ starting columns
 are random, they were drawn when
-[`abm_setup()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_setup.md)
+[`abm_setup()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_setup.md)
 was called — before
-[`abm_run()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_run.md)
+[`abm_run()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_run.md)
 had a chance to set anything — so two experiments built the same way can
 start from different populations:
 
@@ -438,6 +481,6 @@ statistical behaviour rather than by exact equality when you upgrade.
 
 ## Where to go next
 
-[`vignette("models")`](https://rayhanalirachman.github.io/tidyabm/articles/models.md)
+[`vignette("models")`](https://rayhanalirachman.github.io/tidyABM/articles/models.md)
 works through the models the package was designed against, each with the
 mechanism it demonstrates.

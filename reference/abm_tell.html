@@ -39,7 +39,7 @@ has to mark the counterparty — cannot be written without it."></head><body>
 <li class="nav-item"><a class="nav-link" href="../news/index.html">Changelog</a></li>
       </ul><ul class="navbar-nav"><li class="nav-item"><form class="form-inline" role="search">
  <input class="form-control" type="search" name="search-input" id="search-input" autocomplete="off" aria-label="Search site" placeholder="Search for" data-search-index="../search.json"></form></li>
-<li class="nav-item"><a class="external-link nav-link" href="https://github.com/rayhanalirachman/tidyabm/" aria-label="GitHub"><span class="fa fab fa-github fa-lg"></span></a></li>
+<li class="nav-item"><a class="external-link nav-link" href="https://github.com/rayhanalirachman/tidyABM/" aria-label="GitHub"><span class="fa fab fa-github fa-lg"></span></a></li>
       </ul></div>
 
 
@@ -49,7 +49,7 @@ has to mark the counterparty — cannot be written without it."></head><body>
   <main id="main" class="col-md-9"><div class="page-header">
 
       <h1>Write a value into another agent's row</h1>
-      <small class="dont-index">Source: <a href="https://github.com/rayhanalirachman/tidyabm/blob/main/R/tell.R" class="external-link"><code>R/tell.R</code></a></small>
+      <small class="dont-index">Source: <a href="https://github.com/rayhanalirachman/tidyABM/blob/main/R/tell.R" class="external-link"><code>R/tell.R</code></a></small>
       <div class="d-none name"><code>abm_tell.Rd</code></div>
     </div>
 
@@ -70,7 +70,7 @@ has to mark the counterparty — cannot be written without it.</p>
 <span>  <span class="va">...</span>,</span>
 <span>  <span class="va">to</span>,</span>
 <span>  when <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  .resolve <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"last"</span>, <span class="st">"first"</span>, <span class="st">"sum"</span>, <span class="st">"mean"</span>, <span class="st">"max"</span>, <span class="st">"min"</span>, <span class="st">"error"</span><span class="op">)</span></span>
+<span>  .resolve <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"last"</span>, <span class="st">"first"</span>, <span class="st">"sum"</span>, <span class="st">"mean"</span>, <span class="st">"max"</span>, <span class="st">"min"</span>, <span class="st">"collect"</span>, <span class="st">"error"</span><span class="op">)</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -85,7 +85,9 @@ column of the same name. The column must already exist on the recipient.</p></dd
 
 
 <dt id="arg-to">to<a class="anchor" aria-label="anchor" href="#arg-to"></a></dt>
-<dd><p><code>"neighbours"</code>, or an expression naming the recipient's <code>.id</code>.</p></dd>
+<dd><p><code>"neighbours"</code>, or an expression naming the recipient's <code>.id</code>. If
+the expression returns a list column, each element is a vector of <code>.id</code>s
+and the sender writes to all of them.</p></dd>
 
 
 <dt id="arg-when">when<a class="anchor" aria-label="anchor" href="#arg-when"></a></dt>
@@ -95,8 +97,11 @@ send anything.</p></dd>
 
 <dt id="arg--resolve">.resolve<a class="anchor" aria-label="anchor" href="#arg--resolve"></a></dt>
 <dd><p>What to do when several senders write to the same recipient
-in one step: <code>"last"</code> (an arbitrary one wins), <code>"first"</code>, <code>"sum"</code>,
-<code>"mean"</code>, <code>"max"</code>, <code>"min"</code>, or <code>"error"</code> to stop.</p></dd>
+in one step:
+<code>"last"</code> (an arbitrary one wins), <code>"first"</code>, <code>"sum"</code>,
+<code>"mean"</code>, <code>"max"</code>, <code>"min"</code>, <code>"collect"</code> — which hands the recipient a list
+of everything it was told, so the recipient's own rule decides what to make
+of them, including in what order — or <code>"error"</code> to stop.</p></dd>
 
 </dl></div>
     <div class="section level2">
@@ -108,7 +113,9 @@ in one step: <code>"last"</code> (an arbitrary one wins), <code>"first"</code>, 
     <p>Who receives is set by <code>to</code>:</p><ul><li><p><code>to = "neighbours"</code> — every agent the sender is joined to in the model's
 <code><a href="abm_network.html">abm_network()</a></code>. This is the broadcast: one sender, many recipients.</p></li>
 <li><p><code>to = &lt;expression&gt;</code> — an expression evaluated in the sender's row that
-names a single recipient by <code>.id</code>. <code>to = .partner</code> writes to the partner a
+names the recipient by <code>.id</code>. A list column names <em>several</em>: one sender,
+a set of recipients chosen however the model likes, which is what a
+broadcast to an audience that is not the network needs. <code>to = .partner</code> writes to the partner a
 preceding <code><a href="abm_match.html">abm_match()</a></code> gave you; <code>to = best_bid_holder</code> writes to whichever
 agent a global names. <code>NA</code> means the sender says nothing.</p></li>
 </ul><p>The right-hand side of each rule is evaluated in the <strong>sender's</strong> row, so it

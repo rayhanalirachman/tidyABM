@@ -16,16 +16,17 @@ abm_go(...)
 - ...:
 
   Step objects:
-  [`abm_match()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_match.md),
-  [`abm_rules()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_rules.md),
-  [`abm_sequential()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_sequential.md),
-  [`abm_global()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_global.md),
-  [`abm_neighbours()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_neighbours.md),
-  [`abm_tell()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_tell.md),
-  [`abm_birth()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_birth.md),
-  [`abm_death()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_death.md),
-  [`abm_link()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_link.md),
-  [`abm_unlink()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_unlink.md).
+  [`abm_match()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_match.md),
+  [`abm_rules()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_rules.md),
+  [`abm_sequential()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_sequential.md),
+  [`abm_global()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_global.md),
+  [`abm_neighbours()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_neighbours.md),
+  [`abm_tell()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_tell.md),
+  [`abm_birth()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_birth.md),
+  [`abm_death()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_death.md),
+  [`abm_link()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_link.md),
+  [`abm_unlink()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_unlink.md),
+  [`abm_repeat()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_repeat.md).
 
 ## Value
 
@@ -44,12 +45,12 @@ rules apply:
 - it cannot be empty;
 
 - no two
-  [`abm_match()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_match.md)
+  [`abm_match()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_match.md)
   steps may sit next to each other, since the first would be discarded
   unused;
 
 - it cannot end on an
-  [`abm_match()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_match.md),
+  [`abm_match()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_match.md),
   for the same reason.
 
 Everything else is allowed. In particular a model may use no matching at

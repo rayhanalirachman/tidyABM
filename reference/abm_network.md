@@ -2,11 +2,11 @@
 
 A network is an edge list that lives alongside the agent tibble for the
 whole run. It is built once at
-[`abm_setup()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_setup.md)
+[`abm_setup()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_setup.md)
 time and is read-only thereafter, with one exception:
-[`abm_birth()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_birth.md)'s
+[`abm_birth()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_birth.md)'s
 `attach_via` argument can append one edge per newborn agent, and
-[`abm_death()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_death.md)
+[`abm_death()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_death.md)
 prunes the edges of agents that are removed.
 
 ## Usage
@@ -29,7 +29,7 @@ abm_network(
   one-dimensional lattice, `"complete"` for every possible edge,
   `"manual"` to supply `edges` yourself, or `"empty"` for a network that
   starts with no edges (useful with
-  [`abm_birth()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_birth.md)).
+  [`abm_birth()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_birth.md)).
 
 - degree:
 
@@ -57,7 +57,7 @@ the whole population.
 
 `type = "complete"` connects every agent to every other one. That is the
 well-mixed population written as a graph, and it is what lets
-[`abm_neighbours()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_neighbours.md)
+[`abm_neighbours()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_neighbours.md)
 mean "over everybody else" in a model with no spatial or social
 structure at all.
 

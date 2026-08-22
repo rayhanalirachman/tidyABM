@@ -2,10 +2,10 @@
 
 `abm_setup()` turns declarations into an initial population: it
 evaluates the
-[`abm_agents()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_agents.md)
+[`abm_agents()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_agents.md)
 specifications into tibbles, builds the network, and stores the starting
 values of any shared globals. The result is the `model` argument of
-[`abm_run()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_run.md).
+[`abm_run()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_run.md).
 
 ## Usage
 
@@ -18,7 +18,7 @@ abm_setup(agents, network = NULL, globals = list(), seed = NULL)
 - agents:
 
   Either one
-  [`abm_agents()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_agents.md)
+  [`abm_agents()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_agents.md)
   specification, or a *named* list of them for a model with several
   kinds of agent (for example
   `list(buyers = abm_agents(...), sellers = abm_agents(...))`).
@@ -26,7 +26,7 @@ abm_setup(agents, network = NULL, globals = list(), seed = NULL)
 - network:
 
   Optionally an
-  [`abm_network()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_network.md)
+  [`abm_network()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_network.md)
   specification.
 
 - globals:
@@ -34,16 +34,16 @@ abm_setup(agents, network = NULL, globals = list(), seed = NULL)
   A named list of population-level values shared by every agent, for
   example `list(last_attendance = 60)`. Globals are readable inside
   every rule and are updated by
-  [`abm_global()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_global.md).
+  [`abm_global()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_global.md).
 
 - seed:
 
   Optional integer. Sets the random seed for setup only, so the starting
   population is reproducible independently of the run. Note that this
   and
-  [`abm_run()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_run.md)'s
+  [`abm_run()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_run.md)'s
   `seed` do different jobs: this one fixes *who the agents are*,
-  [`abm_run()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_run.md)'s
+  [`abm_run()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_run.md)'s
   fixes *what happens to them*. A model whose columns are drawn at
   random needs both to be reproducible end to end.
 

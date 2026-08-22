@@ -1,9 +1,9 @@
 # Write a value into another agent's row
 
 Every other update step writes to the agent it is evaluated on:
-[`abm_rules()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_rules.md)
+[`abm_rules()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_rules.md)
 changes your own columns,
-[`abm_neighbours()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_neighbours.md)
+[`abm_neighbours()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_neighbours.md)
 *reads* your neighbours' and writes the summary to you. `abm_tell()` is
 the one that goes the other way — a sender computes a value and writes
 it into a *recipient's* row. That is the difference between "how many of
@@ -19,7 +19,7 @@ abm_tell(
   ...,
   to,
   when = NULL,
-  .resolve = c("last", "first", "sum", "mean", "max", "min", "error")
+  .resolve = c("last", "first", "sum", "mean", "max", "min", "collect", "error")
 )
 ```
 
@@ -33,7 +33,9 @@ abm_tell(
 
 - to:
 
-  `"neighbours"`, or an expression naming the recipient's `.id`.
+  `"neighbours"`, or an expression naming the recipient's `.id`. If the
+  expression returns a list column, each element is a vector of `.id`s
+  and the sender writes to all of them.
 
 - when:
 
@@ -44,7 +46,9 @@ abm_tell(
 
   What to do when several senders write to the same recipient in one
   step: `"last"` (an arbitrary one wins), `"first"`, `"sum"`, `"mean"`,
-  `"max"`, `"min"`, or `"error"` to stop.
+  `"max"`, `"min"`, `"collect"` — which hands the recipient a list of
+  everything it was told, so the recipient's own rule decides what to
+  make of them, including in what order — or `"error"` to stop.
 
 ## Value
 
@@ -56,20 +60,22 @@ Who receives is set by `to`:
 
 - `to = "neighbours"` — every agent the sender is joined to in the
   model's
-  [`abm_network()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_network.md).
+  [`abm_network()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_network.md).
   This is the broadcast: one sender, many recipients.
 
 - `to = <expression>` — an expression evaluated in the sender's row that
-  names a single recipient by `.id`. `to = .partner` writes to the
-  partner a preceding
-  [`abm_match()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_match.md)
+  names the recipient by `.id`. A list column names *several*: one
+  sender, a set of recipients chosen however the model likes, which is
+  what a broadcast to an audience that is not the network needs.
+  `to = .partner` writes to the partner a preceding
+  [`abm_match()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_match.md)
   gave you; `to = best_bid_holder` writes to whichever agent a global
   names. `NA` means the sender says nothing.
 
 The right-hand side of each rule is evaluated in the **sender's** row,
 so it sees the sender's columns, `partner_<col>`, `.role` and the
 globals, exactly as
-[`abm_rules()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_rules.md)
+[`abm_rules()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_rules.md)
 would. The value it produces is then written into the recipient's column
 of that name. An agent that no one wrote to keeps the value it already
 had — `abm_tell()` never touches a silent agent's row.

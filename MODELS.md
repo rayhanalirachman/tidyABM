@@ -11,7 +11,7 @@ the numbers the run produced.
 |  |  |
 |----|----|
 | [The grammar](https://rayhanalirachman.github.io/models/grammar.md) | every step, and what each one means |
-| [All 46 models](https://rayhanalirachman.github.io/models/README.md) | the index, by part |
+| [All 56 models](https://rayhanalirachman.github.io/models/README.md) | the index, by part |
 | [Open items](https://rayhanalirachman.github.io/models/open-items.md) | what the grammar still cannot say |
 | [What each stress test changed](https://rayhanalirachman.github.io/models/what-changed.md) | how the grammar got its shape |
 | [Sources](https://rayhanalirachman.github.io/models/sources.md) | every citation in one table |

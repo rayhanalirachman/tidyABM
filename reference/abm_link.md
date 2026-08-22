@@ -1,7 +1,7 @@
 # Add edges between matched agents
 
 `abm_link()` turns the pairing produced by the preceding
-[`abm_match()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_match.md)
+[`abm_match()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_match.md)
 into permanent edges. It is how a network grows during a run without
 anyone being born — random-graph percolation, tie formation, coalition
 building.

@@ -9,7 +9,7 @@ would be inside
 ## Usage
 
 ``` r
-abm_rules(..., .scope = c("match", "population"))
+abm_rules(..., .scope = c("match", "population"), .by = NULL)
 ```
 
 ## Arguments
@@ -19,17 +19,29 @@ abm_rules(..., .scope = c("match", "population"))
   One or more `column ~ expression` rules. The expression can use any
   column of the agent tibble, any global, any `partner_<col>` produced
   by a preceding
-  [`abm_match()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_match.md),
+  [`abm_match()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_match.md),
   `.role`, and anything visible where the rule was written.
 
 - .scope:
 
   `"match"` (the default) evaluates the rules within whatever grouping
   the preceding
-  [`abm_match()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_match.md)
+  [`abm_match()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_match.md)
   produced. `"population"` ignores it and evaluates across all agents,
   so aggregates like [`sum()`](https://rdrr.io/r/base/sum.html) and
   draws like `sample(x, n())` see everybody.
+
+- .by:
+
+  A column naming a partition of the agents — a firm, a household, a
+  team, a cohort. The rules are evaluated once per distinct value,
+  across the whole population, so `sum(effort)` means "the total effort
+  of my firm" and the answer is written back to every member of it. This
+  is the third grouping a rule can have, alongside the standing match
+  and the whole population, and it is the only one the *agents
+  themselves* can change: an agent that writes a new value into the
+  `.by` column has moved to a different group. Cannot be combined with
+  `.scope = "population"`.
 
 ## Value
 
@@ -73,4 +85,9 @@ abm_rules(strategy ~ sample(strategy, n(), replace = TRUE, prob = fitness),
           .scope = "population")
 #> <abm_rules> 1 rule {.emph (population scope)}
 #> • `strategy ~ sample(strategy, n(), replace = TRUE, prob = fitness)`
+
+# every member of a firm is paid an equal share of what the firm produces
+abm_rules(pay ~ output(sum(effort)) / n(), .by = firm)
+#> <abm_rules> 1 rule {.emph (by firm)}
+#> • `pay ~ output(sum(effort))/n()`
 ```

@@ -3,7 +3,7 @@
 `abm_match()` is the step that decides *who interacts with whom* this
 tick. It does not change any agent column; it only produces a partner
 (for `size = 2`) or a group (for `size > 2`), which the
-[`abm_rules()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_rules.md)
+[`abm_rules()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_rules.md)
 steps that follow it then use.
 
 ## Usage
@@ -20,7 +20,8 @@ abm_match(
   positions = NULL,
   limits = NULL,
   from = NULL,
-  among = NULL
+  among = NULL,
+  cost = NULL
 )
 ```
 
@@ -34,7 +35,7 @@ abm_match(
   other group named by `by`; `"nearest"` gives each agent its closest
   other agent in the space defined by `by`; `"network"` draws the
   partner from the agent's neighbours in the model's
-  [`abm_network()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_network.md).
+  [`abm_network()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_network.md).
 
 - size:
 
@@ -89,7 +90,7 @@ abm_match(
   and then one of its endpoints, which selects agents in proportion to
   their degree (used by preferential attachment); `"parent"` is only
   meaningful inside
-  [`abm_birth()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_birth.md)'s
+  [`abm_birth()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_birth.md)'s
   `attach_via` and links a newborn to the agent it was cloned from,
   which is what puts offspring next to their kin.
 
@@ -98,6 +99,21 @@ abm_match(
   A condition naming the agents that may be *chosen*, for the
   directional modes `"one_of"` and `"nearest"`. Defaults to everybody.
   An agent is never matched to itself.
+
+- cost:
+
+  For `"nearest"`, an expression naming what the chooser is minimising,
+  used instead of `by`. It is evaluated once per (chooser, candidate)
+  pair: the candidate's columns are visible under their own names and
+  the chooser's under `own_<col>`, the same convention
+  [`abm_neighbours()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_neighbours.md)
+  uses. `.id` and `.group` are included, so a cost can be a lookup into
+  the chooser's own preference list as easily as a price. `by` is the
+  special case `cost = (x - own_x)^2`; anything else — a delivered price
+  `price + travel * abs(x - own_x)`, an energy deficit, a position in a
+  preference list — needs this. `NA` means the candidate is not
+  acceptable to that chooser, and a chooser with no acceptable candidate
+  sits the step out.
 
 ## Value
 
@@ -124,7 +140,7 @@ ignored:
 | `"random"` | `size`, `role`, `eligible` |
 | `"one_of"` | `role`, `eligible`, `among` |
 | `"opposite_group"` | `by`, `role`, `eligible`, `resolve`, `rounds`, `positions`, `limits` |
-| `"nearest"` | `by`, `size`, `eligible`, `among` |
+| `"nearest"` | `by` *or* `cost`, `size`, `eligible`, `among` |
 | `"network"` | `from`, `eligible` |
 
 `eligible` and `among` ask different questions, and the difference only
@@ -159,6 +175,11 @@ abm_match(pair = "nearest", by = opinion)
 abm_match(pair = "nearest", by = position, among = .group == "shops")
 #> <abm_match> pair = "nearest"
 #> • by = `position`
+#> • among = `.group == "shops"`
+abm_match(pair = "nearest", cost = price + abs(x - own_x),
+          among = .group == "shops")
+#> <abm_match> pair = "nearest"
+#> • cost = `price + abs(x - own_x)`
 #> • among = `.group == "shops"`
 abm_match(pair = "random", role = list(giver = money > 0, receiver = TRUE))
 #> <abm_match> pair = "random"

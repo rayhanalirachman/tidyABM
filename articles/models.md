@@ -56,7 +56,7 @@ abm_globals(r)$last_attendance
 ```
 
 **What it introduced:**
-[`abm_global()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_global.md),
+[`abm_global()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_global.md),
 and the fact that matching is optional — this is the first model with no
 pairing at all.
 
@@ -65,7 +65,7 @@ collapses into a two-cycle: attendance overshoots, everyone stays home,
 attendance undershoots, everyone goes. Arthur’s result needs agents that
 hold several candidate forecasts and switch to whichever has been
 working. The mechanism above is the scaffolding, not the result —
-[`vignette("corrections")`](https://rayhanalirachman.github.io/tidyabm/articles/corrections.md)
+[`vignette("corrections")`](https://rayhanalirachman.github.io/tidyABM/articles/corrections.md)
 builds the working version.
 
 ## Prisoner’s dilemma, well mixed
@@ -129,9 +129,9 @@ as.integer(table(r$tick))[c(1, 11, 21, 31)]
 ```
 
 **What it introduced:**
-[`abm_birth()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_birth.md)
+[`abm_birth()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_birth.md)
 and
-[`abm_death()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_death.md),
+[`abm_death()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_death.md),
 as two more flat steps in the sequence rather than a special population
 mechanism.
 
@@ -140,7 +140,7 @@ unconditional, so cooperating is simply dominated and the population
 runs itself down. Hammond and Axelrod’s agents decide *separately*
 whether to cooperate with their own tag and with others — and even that
 is not enough without local reproduction.
-[`vignette("corrections")`](https://rayhanalirachman.github.io/tidyabm/articles/corrections.md)
+[`vignette("corrections")`](https://rayhanalirachman.github.io/tidyABM/articles/corrections.md)
 builds both variants and shows why the second one matters.
 
 ## Rumour mill
@@ -256,7 +256,7 @@ round(c(start = mean(r$opinion[r$tick == 0]),
 ```
 
 **What it introduced:**
-[`abm_network()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_network.md)
+[`abm_network()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_network.md)
 and `pair = "network"`. The network is a separate edge list stored
 alongside the agent tibble, not a list-column on it.
 
@@ -390,7 +390,7 @@ household converges on `20 * income` and nobody is persistently poor.
 Zakah then becomes a pure drag on the payers. Check
 `sum(wealth < poverty_line)` over the run before reading anything into
 the inequality path;
-[`vignette("corrections")`](https://rayhanalirachman.github.io/tidyabm/articles/corrections.md)
+[`vignette("corrections")`](https://rayhanalirachman.github.io/tidyABM/articles/corrections.md)
 fixes it.
 
 ## Bank reserves
@@ -438,7 +438,7 @@ round(tail(abm_globals(r), 3), 2)
 ```
 
 **What it introduced:**
-[`abm_sequential()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_sequential.md).
+[`abm_sequential()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_sequential.md).
 Every earlier model works fine with simultaneous updates, because a
 shared pool that is only ever *divided* — the public goods pot, the
 zakah pool — gives the same answer either way. Lendable reserves are
@@ -448,13 +448,13 @@ the loop a rule reads and writes its own agent’s columns and any global,
 and nothing else.
 
 Note that the last
-[`abm_sequential()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_sequential.md)
+[`abm_sequential()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_sequential.md)
 rule writes to a global. That is what makes the depletion visible to the
 next agent; without it the reserve would only be recomputed at the end
 of the tick and every agent would borrow against the same balance.
 
 The first rule is doing something too. Rules inside
-[`abm_sequential()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_sequential.md)
+[`abm_sequential()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_sequential.md)
 cascade — each one sees what the rule above it wrote — so the amount
 actually drawn is worked out once, into `draw`, and the three rules that
 move money all refer to it. Writing the condition out three times would

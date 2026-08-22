@@ -13,7 +13,7 @@ abm_edges(x)
 - x:
 
   An `abm_result` from
-  [`abm_run()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_run.md).
+  [`abm_run()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_run.md).
 
 ## Value
 

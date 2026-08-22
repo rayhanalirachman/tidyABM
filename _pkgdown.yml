@@ -1,0 +1,20 @@
+url: https://rayhanalirachman.github.io/tidyabm/
+
+template:
+  bootstrap: 5
+
+reference:
+- title: Setting up the world
+  contents: [abm_agents, abm_network, abm_setup]
+- title: Matching
+  contents: [abm_match]
+- title: Updating agents
+  contents: [abm_rules, abm_sequential, abm_global, abm_neighbours, abm_tell]
+- title: Changing the population
+  contents: [abm_birth, abm_death]
+- title: Changing the network
+  contents: [abm_link, abm_unlink]
+- title: Running a model
+  contents: [abm_go, abm_run]
+- title: Working with results
+  contents: [abm_globals, abm_edges, n_agents]

@@ -1,0 +1,328 @@
+---
+title: "Getting started with tidyABM"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Getting started with tidyABM}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
+```
+
+```{r setup}
+library(tidyABM)
+```
+
+An agent-based model is usually written as nested loops: for each tick, for each
+agent, do something. tidyABM asks you to write the model as a *specification*
+instead — a declaration of what the population is and an ordered list of what
+happens to it — and runs the loops for you.
+
+That buys three things. The model reads as a description of the mechanism rather
+than as bookkeeping; mistakes in the structure are caught once, when you build the
+model, rather than on tick 400; and the output is tidy data, so analysing a run is
+ordinary dplyr.
+
+## The whole game
+
+Wilensky and Rand's *Simple Economy* is the smallest interesting model there is.
+Five hundred agents start with \$100 each. Every tick, everyone who has money
+gives \$1 to someone else. Nothing else happens.
+
+```{r}
+economy <- abm_setup(agents = abm_agents(n = 500, money = 100))
+economy
+```
+
+`abm_setup()` declares the world; `abm_agents()` declares one group of agents
+within it. A plain value like `money = 100` is recycled across every agent.
+
+Now the behaviour:
+
+```{r}
+go <- abm_go(
+  abm_match(pair = "random", role = list(giver = money > 0, receiver = TRUE)),
+  abm_rules(money ~ if_else(.role == "giver", money - 1, money + 1))
+)
+go
+```
+
+Two steps. `abm_match()` shuffles the population into pairs and works out who in
+each pair is the giver — the `role` list says the giver must satisfy
+`money > 0` and the receiver can be anyone, so a pair where neither agent has
+money is dropped for this tick. `abm_rules()` then moves the dollar.
+
+```{r}
+result <- abm_run(economy, go, ticks = 500, seed = 1)
+result
+```
+
+The result is one row per agent per tick. Tick 0 is the state `abm_setup()`
+produced, before anything has run.
+
+```{r}
+start <- result$money[result$tick == 0]
+end   <- result$money[result$tick == 500]
+
+c(total_start = sum(start), total_end = sum(end))
+round(summary(end))
+```
+
+Money is conserved — no rule creates or destroys any — but the distribution has
+gone from a spike at 100 to something with a long right tail. That is the whole
+point of the model.
+
+## Setup: agents, networks, globals
+
+`abm_agents()` takes `n` and any number of named columns. A plain value recycles;
+a one-sided formula is evaluated once and must return `n` values (or one, to
+recycle). Formulas run in order, so a later column can use an earlier one:
+
+```{r}
+abm_agents(
+  n = 200,
+  wtp   = ~rnorm(n, 50, 10),
+  offer = ~wtp * 0.8
+)
+```
+
+A model can have several kinds of agent, declared as a named list. Each keeps its
+own columns:
+
+```{r}
+market <- abm_setup(agents = list(
+  buyers  = abm_agents(n = 5, wtp = ~rnorm(n, 50, 10), offer = ~wtp * 0.8),
+  sellers = abm_agents(n = 5, wta = ~rnorm(n, 40, 10), ask   = ~wta * 1.2)
+))
+market
+```
+
+Agent ids are unique across the whole model, and every agent carries a `.group`
+column naming its group.
+
+Values shared by the whole population — a bar's last attendance, a bank's ledger
+— go in `globals`. They are readable inside every rule:
+
+```{r}
+elfarol <- abm_setup(
+  agents  = abm_agents(n = 100, threshold = ~runif(n, 40, 80)),
+  globals = list(last_attendance = 60)
+)
+```
+
+A network is an edge list built once and kept for the whole run:
+
+```{r}
+abm_network(type = "random", degree = 4)
+```
+
+`type = "random"` gives every agent *exactly* `degree` neighbours, using
+`igraph::sample_k_regular()`. `degree = 1` therefore pairs the whole population
+off permanently.
+
+## Go: a sequence of steps
+
+`abm_go()` takes steps in order and dispatches them by type, not by argument
+name. That means a model with several phases per tick is written flat:
+
+```{r}
+pd_go <- abm_go(
+  # phase 1: play
+  abm_match(pair = "random"),
+  abm_rules(payoff ~ case_when(
+    strategy == "cooperate" & partner_strategy == "cooperate" ~ 3,
+    strategy == "defect"    & partner_strategy == "defect"    ~ 1,
+    strategy == "defect"    & partner_strategy == "cooperate" ~ 5,
+    strategy == "cooperate" & partner_strategy == "defect"    ~ 0
+  )),
+  # phase 2: imitate whoever did better
+  abm_match(pair = "random"),
+  abm_rules(strategy ~ if_else(partner_payoff > payoff, partner_strategy, strategy))
+)
+pd_go
+```
+
+The sequence is checked when you build it. Two matches in a row, or a sequence
+ending on a match, means a pairing nobody uses, and that is an error rather than a
+silent waste:
+
+```{r, error = TRUE}
+abm_go(
+  abm_match(pair = "random"),
+  abm_match(pair = "random"),
+  abm_rules(x ~ 1)
+)
+```
+
+Matching is optional. A model where every agent decides alone needs no
+`abm_match()` at all:
+
+```{r}
+farol_go <- abm_go(
+  abm_rules(go_today ~ last_attendance < threshold),
+  abm_global(last_attendance ~ sum(go_today))
+)
+abm_run(elfarol, farol_go, ticks = 5, seed = 1) |> abm_globals()
+```
+
+## What a match gives a rule
+
+For a pair, every rule downstream of the match can see `partner_<col>` for each
+of the partner's columns:
+
+```{r}
+rumour <- abm_setup(
+  agents = abm_agents(n = 100, state = ~c("spreader", rep("ignorant", n - 1)))
+)
+
+r <- abm_run(rumour, abm_go(
+  abm_match(pair = "random"),
+  abm_rules(state ~ case_when(
+    state == "ignorant" & partner_state == "spreader" ~ "spreader",
+    state == "spreader" & partner_state == "spreader" ~ "stifler",
+    state == "spreader" & partner_state == "stifler"  ~ "stifler",
+    TRUE ~ state
+  ))
+), ticks = 100, seed = 1)
+
+table(r$state[r$tick == 100])
+```
+
+For a group, rules are evaluated group by group, so an aggregate inside a rule
+means "across this agent's group". The public goods game is one line because of
+it:
+
+```{r}
+pgg <- abm_setup(agents = abm_agents(
+  n = 100, contribution = ~sample(c(0, 1), n, replace = TRUE), payoff = 0
+))
+
+r <- abm_run(pgg, abm_go(
+  abm_match(pair = "random", size = 4),
+  abm_rules(payoff ~ sum(contribution) * 2 / 4)
+), ticks = 10, seed = 1)
+
+table(r$payoff[r$tick == 10])
+```
+
+Grouping is also what makes randomness inside a rule behave: with a match
+standing, `sample(x, 1)` is drawn once per pair, not once for everybody.
+
+## Simultaneous or sequential
+
+Every rule in one `abm_rules()` call sees the state at the *start* of the step.
+That is the synchronous update agent-based models normally assume, and it is the
+one place `abm_rules()` deliberately differs from `dplyr::mutate()`:
+
+```{r}
+swap <- abm_setup(agents = abm_agents(n = 3, a = 1, b = 2))
+abm_run(swap, abm_go(abm_rules(a ~ b, b ~ a)), ticks = 1)
+```
+
+Sometimes that is wrong. If agents compete for a pool that gets *used up*, the
+first agent to act has to change what the next one sees. `abm_sequential()`
+processes agents one at a time in shuffled order, and its writes to globals are
+visible to the agents after it:
+
+```{r}
+pot <- abm_setup(agents = abm_agents(n = 20, got = 0), globals = list(pot = 10))
+
+seq_run <- abm_run(pot, abm_go(abm_sequential(
+  got ~ if_else(pot > 0, 1, 0),
+  pot ~ if_else(pot > 0, pot - 1, pot)
+)), ticks = 1, seed = 1)
+
+sum(seq_run$got[seq_run$tick == 1])  # exactly the 10 units that existed
+```
+
+With `abm_rules()` instead, all twenty agents would see a full pot and all twenty
+would be served. Use `abm_sequential()` only when that difference is the point:
+it is slower and harder to reason about.
+
+## Changing the population
+
+`abm_birth()` and `abm_death()` are the only steps that add or remove agents.
+
+```{r}
+ethno <- abm_setup(agents = abm_agents(
+  n = 100,
+  strategy = ~sample(c("cooperate", "defect"), n, replace = TRUE),
+  resource = 10
+))
+
+r <- abm_run(ethno, abm_go(
+  abm_match(pair = "random"),
+  abm_rules(resource ~ case_when(
+    strategy == "cooperate" & partner_strategy == "cooperate" ~ resource + 2,
+    strategy == "defect"    & partner_strategy == "cooperate" ~ resource + 4,
+    strategy == "cooperate" & partner_strategy == "defect"    ~ resource - 1,
+    TRUE ~ resource
+  ) - 1),
+  abm_birth(when = resource > 20, cost = resource ~ resource / 2),
+  abm_death(when = resource <= 0)
+), ticks = 20, seed = 1)
+
+table(r$tick)[c(1, 11, 21)]
+```
+
+`cost` says what reproduction costs, as ordinary `column ~ expression` formulas
+applied to the parent and the newborn alike — halving a resource splits it
+between them.
+
+## Reproducibility
+
+Agent-based models are stochastic, so `seed` is an argument to `abm_run()` rather
+than something you arrange yourself. It is set locally, so your session's random
+state is untouched:
+
+```{r}
+set.seed(1); before <- runif(1)
+invisible(abm_run(economy, go, ticks = 5, seed = 99))
+set.seed(1); after <- runif(1)
+identical(before, after)
+```
+
+Two runs of the same model with the same seed are identical:
+
+```{r}
+a <- abm_run(economy, go, ticks = 20, seed = 42)
+b <- abm_run(economy, go, ticks = 20, seed = 42)
+identical(as.data.frame(a), as.data.frame(b))
+```
+
+There is a sharp edge here worth knowing about. `abm_run()`'s seed fixes the
+*run*, not the *model*. If your agents' starting columns are random, they were
+drawn when `abm_setup()` was called — before `abm_run()` had a chance to set
+anything — so two experiments built the same way can start from different
+populations:
+
+```{r}
+random_pop <- function() abm_setup(agents = abm_agents(n = 50, x = ~runif(n)))
+set.seed(1); one <- abm_run(random_pop(), abm_go(abm_rules(x ~ x)), 1, seed = 5)
+set.seed(2); two <- abm_run(random_pop(), abm_go(abm_rules(x ~ x)), 1, seed = 5)
+identical(one$x, two$x)
+```
+
+Seed both, and the whole experiment reproduces:
+
+```{r}
+experiment <- function() {
+  m <- abm_setup(agents = abm_agents(n = 50, x = ~runif(n)), seed = 4)
+  abm_run(m, abm_go(abm_rules(x ~ x)), ticks = 1, seed = 5)
+}
+set.seed(1); one <- experiment()
+set.seed(2); two <- experiment()
+identical(one$x, two$x)
+```
+
+One further caveat: a seed fixes a run given a version of the package, not across
+versions. Reordering an internal random draw changes the exact numbers without
+changing the model, so compare runs by their statistical behaviour rather than by
+exact equality when you upgrade.
+
+## Where to go next
+
+`vignette("models")` works through the models the package was designed against,
+each with the mechanism it demonstrates.

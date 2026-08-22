@@ -1,0 +1,306 @@
+# Rules, globals, births and deaths --------------------------------------
+
+new_rule_step <- function(rules, class, scope = "match") {
+  structure(list(rules = rules, scope = scope), class = c(class, "abm_step"))
+}
+
+#' Collect and check `col ~ expr` formulas
+#' @noRd
+collect_rules <- function(dots, fn, call = rlang::caller_env()) {
+  if (length(dots) == 0L) {
+    abm_abort("{.fn {fn}} needs at least one {.code column ~ formula} rule.",
+              class = "tidyABM_empty_step", call = call)
+  }
+  ok <- vapply(dots, is_formula2, logical(1))
+  if (!all(ok)) {
+    abm_abort(
+      c("Every argument to {.fn {fn}} must be a two-sided formula.",
+        "x" = "Argument {which(!ok)[[1]]} is {.cls {class(dots[[which(!ok)[[1]]]])[[1]]}}.",
+        "i" = "Rules look like {.code money ~ money - 1}."),
+      class = "tidyABM_bad_formula", call = call
+    )
+  }
+  lapply(dots, function(f) {
+    list(
+      target = f_lhs_name(f, arg = "rule", call = call),
+      quo    = rlang::new_quosure(rlang::f_rhs(f), rlang::f_env(f)),
+      vars   = f_rhs_vars(f)
+    )
+  })
+}
+
+#' Update agent columns
+#'
+#' `abm_rules()` is the step that changes agents. Every rule is a two-sided
+#' formula: the left-hand side names the column to write, the right-hand side is
+#' an expression evaluated against the agent tibble, exactly as it would be
+#' inside [dplyr::mutate()].
+#'
+#' All rules in a single `abm_rules()` call are evaluated **simultaneously**,
+#' against the state at the start of the step. So in
+#' `abm_rules(a ~ b, b ~ a)` both sides see the old values — this is the
+#' synchronous update that agent-based models normally assume, and it is the one
+#' place where `abm_rules()` deliberately departs from `mutate()`'s sequential
+#' semantics. Write two `abm_rules()` calls if you want one rule to see the
+#' other's result.
+#'
+#' In a model with several agent groups, a rule is applied to a group only if
+#' every agent column it mentions exists in that group. That is how the market
+#' example routes `offer ~ ...` to buyers and `ask ~ ...` to sellers without any
+#' explicit test on agent type.
+#'
+#' While a match is standing, rules are evaluated group by group — per pair, per
+#' group, or per agent depending on the pairing mode. That is usually what you
+#' want, and it is what makes `sample(x, 1)` mean "once per pair". Occasionally
+#' a step in the middle of a tick is about the whole population instead — drawing
+#' the next generation from this one, say — and `.scope = "population"` evaluates
+#' it against every agent at once, ignoring the standing match.
+#'
+#' @param ... One or more `column ~ expression` rules. The expression can use any
+#'   column of the agent tibble, any global, any `partner_<col>` produced by a
+#'   preceding [abm_match()], `.role`, and anything visible where the rule was
+#'   written.
+#' @param .scope `"match"` (the default) evaluates the rules within whatever
+#'   grouping the preceding [abm_match()] produced. `"population"` ignores it and
+#'   evaluates across all agents, so aggregates like `sum()` and draws like
+#'   `sample(x, n())` see everybody.
+#'
+#' @return An `abm_rules` step object.
+#' @export
+#' @examples
+#' abm_rules(money ~ ifelse(.role == "giver", money - 1, money + 1))
+#' abm_rules(opinion ~ partner_opinion)
+#'
+#' # the next generation, drawn from this one in proportion to fitness
+#' abm_rules(strategy ~ sample(strategy, n(), replace = TRUE, prob = fitness),
+#'           .scope = "population")
+abm_rules <- function(..., .scope = c("match", "population")) {
+  .scope <- rlang::arg_match(.scope)
+  new_rule_step(collect_rules(rlang::list2(...), "abm_rules"), "abm_rules",
+                scope = .scope)
+}
+
+#' Update agent columns one agent at a time
+#'
+#' `abm_sequential()` is the order-dependent sibling of [abm_rules()]. Agents are
+#' processed one at a time in a freshly shuffled order, and each agent's writes
+#' to **globals** are visible to every agent processed after it within the same
+#' step. This mirrors NetLogo's `ask turtles`, and it is what you need when
+#' agents compete for a shared resource that is *depleted* rather than merely
+#' divided — a bank's lendable reserves, say.
+#'
+#' Rules also cascade *within* each agent: the second rule sees what the first
+#' one just wrote, to the agent's own row and to the globals alike. That is the
+#' opposite of [abm_rules()], where every rule reads the state at the start of
+#' the step, and it is what "one agent at a time" already implies — an agent
+#' that draws a quote and then decides whether the quote crosses the book has to
+#' be able to read the number it just drew.
+#'
+#' The step is deliberately narrow: during the per-agent loop a rule can read its
+#' own agent's columns and any global, and it can write its own agent's columns
+#' and any global. It cannot see other agents' column values — use [abm_tell()]
+#' to write into another agent's row. Use [abm_rules()] unless you specifically
+#' need the ordering, since sequential evaluation is both slower and harder to
+#' reason about.
+#'
+#' @param ... One or more `column ~ expression` rules. The left-hand side may
+#'   name either an agent column or a global.
+#'
+#' @return An `abm_sequential` step object.
+#' @export
+#' @examples
+#' abm_sequential(
+#'   loan          ~ ifelse(wallet < 0, loan + 1, loan),
+#'   bank_reserves ~ ifelse(wallet < 0, bank_reserves - 1, bank_reserves)
+#' )
+abm_sequential <- function(...) {
+  new_rule_step(collect_rules(rlang::list2(...), "abm_sequential"),
+                "abm_sequential")
+}
+
+#' Update a shared, population-level value
+#'
+#' `abm_global()` writes to a value held once for the whole model rather than
+#' once per agent — El Farol's `last_attendance`, a zakah pool, a bank's ledger.
+#' The right-hand side is an aggregate expression evaluated over the agent
+#' tibble, so it normally collapses to a single value.
+#'
+#' Unlike the other update steps, `abm_global()` does not need a preceding
+#' [abm_match()]: a population-level summary does not depend on who was paired
+#' with whom.
+#'
+#' @param ... One or more `global_name ~ aggregate_expression` rules. The
+#'   expression can use agent columns and other globals; each rule sees the
+#'   globals as updated by the rules before it in the same call.
+#'
+#' @return An `abm_global` step object.
+#' @export
+#' @examples
+#' abm_global(last_attendance ~ sum(go_today))
+abm_global <- function(...) {
+  new_rule_step(collect_rules(rlang::list2(...), "abm_global"), "abm_global")
+}
+
+# Population -------------------------------------------------------------
+
+new_abm_birth <- function(when, n, cost, inherit, attach_via) {
+  structure(list(when = when, n = n, cost = cost, inherit = inherit,
+                 attach_via = attach_via),
+            class = c("abm_birth", "abm_step"))
+}
+
+#' Add agents
+#'
+#' `abm_birth()` is one of the two steps that change the size of the population.
+#' It has two modes, and exactly one of them must be used:
+#'
+#' * `when = <condition>` clones every agent that satisfies the condition. The
+#'   newborn inherits all of its parent's columns.
+#' * `n = <count>` adds that many brand-new agents, whose columns are copied from
+#'   a randomly chosen existing agent of the same group.
+#'
+#' @param when A condition. Agents satisfying it reproduce.
+#' @param n A count of new agents to add unconditionally.
+#' @param cost One or more `column ~ expression` formulas applied to the parent
+#'   *and* the newborn after the split, expressing what reproduction costs — for
+#'   example `cost = resource ~ resource / 2` to halve a resource between them.
+#' @param inherit One or more `column ~ expression` formulas applied to the
+#'   newborn *only*, expressing what the offspring gets that the parent does not
+#'   keep: a reset age, a mutated trait, a sex drawn at birth. The expressions are
+#'   evaluated in the parent's row, so they can use the parent's columns and —
+#'   when an [abm_match()] is standing — the other parent's, as `partner_<col>`.
+#'   That is how two-parent inheritance is written:
+#'   `inherit = trait ~ (trait + partner_trait) / 2`.
+#' @param attach_via An [abm_match()] object with `pair = "network"`, used to
+#'   connect each newborn to an existing agent. This is the only way the network
+#'   grows during a run; `from = "random_edge"` gives degree-proportional
+#'   (preferential) attachment.
+#'
+#' @return An `abm_birth` step object.
+#' @export
+#' @examples
+#' abm_birth(when = resource > 20, cost = resource ~ resource / 2)
+#' abm_birth(n = 1, attach_via = abm_match(pair = "network", from = "random_edge"))
+#'
+#' # a child of two parents, with its own age and a mutated trait
+#' abm_birth(
+#'   when = sex == "female",
+#'   inherit = list(age ~ 0, trait ~ (trait + partner_trait) / 2 + rnorm(n(), 0, 0.01))
+#' )
+abm_birth <- function(when = NULL, n = NULL, cost = NULL, inherit = NULL,
+                      attach_via = NULL) {
+  when <- enquo_or_null(rlang::enquo(when))
+
+  if (is.null(when) && is.null(n)) {
+    abm_abort(
+      c("{.fn abm_birth} needs either {.arg when} or {.arg n}.",
+        "i" = "{.arg when} clones agents that satisfy a condition; {.arg n} adds new ones."),
+      class = "tidyABM_missing_arg"
+    )
+  }
+  if (!is.null(when) && !is.null(n)) {
+    abm_abort("Supply either {.arg when} or {.arg n}, not both.",
+              class = "tidyABM_conflicting_args")
+  }
+  if (!is.null(n) && (!rlang::is_scalar_integerish(n) || n < 0)) {
+    abm_abort("{.arg n} must be a single non-negative whole number.",
+              class = "tidyABM_bad_n")
+  }
+  if (!is.null(cost)) {
+    if (is_formula2(cost)) cost <- list(cost)
+    cost <- collect_rules(cost, "abm_birth")
+  }
+  if (!is.null(inherit)) {
+    if (is_formula2(inherit)) inherit <- list(inherit)
+    inherit <- collect_rules(inherit, "abm_birth")
+  }
+  if (!is.null(attach_via)) {
+    if (!inherits(attach_via, "abm_match") || attach_via$pair != "network") {
+      abm_abort(
+        '{.arg attach_via} must be {.code abm_match(pair = "network", ...)}.',
+        class = "tidyABM_bad_attach"
+      )
+    }
+  }
+  new_abm_birth(when, if (is.null(n)) NULL else as.integer(n), cost, inherit,
+                attach_via)
+}
+
+new_abm_death <- function(when, prune_edges) {
+  structure(list(when = when, prune_edges = prune_edges),
+            class = c("abm_death", "abm_step"))
+}
+
+#' Remove agents
+#'
+#' `abm_death()` drops every agent satisfying `when`. By default it also removes
+#' those agents' edges from the network, because leaving them in would make
+#' `abm_match(pair = "network")` draw partners that no longer exist.
+#'
+#' @param when A condition. Agents satisfying it are removed.
+#' @param prune_edges Whether to delete the removed agents' network edges.
+#'   Defaults to `TRUE`; set to `FALSE` only if you want a network whose node set
+#'   deliberately outlives its agents.
+#'
+#' @return An `abm_death` step object.
+#' @export
+#' @examples
+#' abm_death(when = resource <= 0)
+abm_death <- function(when, prune_edges = TRUE) {
+  when <- enquo_or_null(rlang::enquo(when))
+  if (is.null(when)) {
+    abm_abort("{.arg when} is required.", class = "tidyABM_missing_arg")
+  }
+  if (!rlang::is_bool(prune_edges)) {
+    abm_abort("{.arg prune_edges} must be {.code TRUE} or {.code FALSE}.",
+              class = "tidyABM_bad_arg")
+  }
+  new_abm_death(when, prune_edges)
+}
+
+# Printing ---------------------------------------------------------------
+
+rule_labels <- function(x) {
+  vapply(x$rules, function(r) {
+    paste0(r$target, " ~ ", deparse1(rlang::quo_get_expr(r$quo)))
+  }, character(1))
+}
+
+#' @export
+print.abm_rules <- function(x, ...) print_rule_step(x, "abm_rules")
+
+#' @export
+print.abm_sequential <- function(x, ...) print_rule_step(x, "abm_sequential")
+
+#' @export
+print.abm_global <- function(x, ...) print_rule_step(x, "abm_global")
+
+print_rule_step <- function(x, cls) {
+  scope <- if (identical(x$scope, "population")) ' {.emph (population scope)}' else ""
+  cli::cli_text("{.cls {cls}} {length(x$rules)} rule{?s}{scope}")
+  labs <- rule_labels(x)
+  cli::cli_bullets(stats::setNames(paste0("{.code ", labs, "}"),
+                                   rep("*", length(labs))))
+  invisible(x)
+}
+
+#' @export
+print.abm_birth <- function(x, ...) {
+  cli::cli_text("{.cls abm_birth}")
+  bits <- c(
+    if (!is.null(x$when)) "when = {.code {deparse1(rlang::quo_get_expr(x$when))}}",
+    if (!is.null(x$n)) "n = {x$n}",
+    if (!is.null(x$cost)) "cost = {.code {rule_labels(list(rules = x$cost))}}",
+    if (!is.null(x$inherit)) "inherit = {.code {rule_labels(list(rules = x$inherit))}}",
+    if (!is.null(x$attach_via)) 'attach_via = network ({.val {x$attach_via$from}})'
+  )
+  cli::cli_bullets(stats::setNames(bits, rep("*", length(bits))))
+  invisible(x)
+}
+
+#' @export
+print.abm_death <- function(x, ...) {
+  cli::cli_text("{.cls abm_death}")
+  cli::cli_bullets(c("*" = "when = {.code {deparse1(rlang::quo_get_expr(x$when))}}"))
+  invisible(x)
+}

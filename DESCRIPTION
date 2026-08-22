@@ -1,0 +1,27 @@
+Package: tidyABM
+Title: Agent-Based Modelling with Tidy Data and a Declarative Grammar
+Version: 0.0.0.9000
+Authors@R: 
+    person("Rayhan Ali", "Rachman", email = "rayhanalirachman@gmail.com",
+           role = c("aut", "cre"))
+Description: A declarative grammar for writing agent-based models (ABMs) in R.
+    Models are described as data rather than as loops: a setup block declares the
+    agent population, an optional network and shared globals, and a behavioural
+    block declares an ordered sequence of typed steps (matching, rules, births,
+    deaths and global updates). Agents are stored as tibbles and rules are written
+    as 'dplyr'-style formulas, so a model reads as a specification and its output
+    is tidy data ready for analysis. The design follows the block structure of
+    'NetLogo' (setup / go) while keeping the interface idiomatic to the tidyverse.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+Depends: R (>= 4.1)
+Imports: cli, dplyr (>= 1.1.0), igraph, rlang (>= 1.1.0), stats,
+        tibble, utils, vctrs
+Suggests: knitr, rmarkdown, testthat (>= 3.0.0), withr
+Config/testthat/edition: 3
+VignetteBuilder: knitr
+URL: https://github.com/rayhanalirachman/tidyabm,
+    https://rayhanalirachman.github.io/tidyabm/
+BugReports: https://github.com/rayhanalirachman/tidyabm/issues
+Config/roxygen2/version: 8.1.0

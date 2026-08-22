@@ -1,0 +1,386 @@
+# Three models that need more than the sketch
+
+``` r
+
+library(tidyABM)
+```
+
+Three of the models in
+[`vignette("models")`](https://rayhanalirachman.github.io/tidyabm/articles/models.md)
+run correctly and still do not show the behaviour they are famous for.
+That is not a bug in the package or in the translation — it is that the
+short version of each model, the one that fits in a paragraph, leaves
+out the mechanism that produces the result. This vignette shows what is
+missing in each case and puts it back.
+
+The distinction matters when you are porting models. A translation can
+be faithful to the source you were given and still be scientifically
+wrong, because the source was a sketch. The only way to catch it is to
+check the output against what the model is supposed to do, which is why
+every model in this package’s test suite asserts a behavioural claim
+rather than just “it ran”.
+
+## El Farol: one predictor is no predictor
+
+Arthur’s bar problem is famous for never settling. A hundred people
+decide independently whether to go to a bar that is only fun below 60;
+if everyone expects it to be empty everyone goes, and the expectation
+destroys itself.
+
+The short version gives every agent the same forecast — last week’s
+attendance — and differs only in the threshold each will tolerate:
+
+``` r
+
+short <- abm_run(
+  abm_setup(agents  = abm_agents(n = 100, threshold = ~runif(n, 40, 80)),
+            globals = list(last_attendance = 60)),
+  abm_go(abm_rules(go_today ~ last_attendance < threshold),
+         abm_global(last_attendance ~ sum(go_today))),
+  ticks = 40, seed = 2)
+
+tail(abm_globals(short)$last_attendance, 12)
+#>  [1]   0 100   0 100   0 100   0 100   0 100   0 100
+```
+
+Everybody goes, then nobody goes, forever. With a single shared forecast
+the population is effectively one agent, and one agent chasing its own
+tail produces a two-cycle. Giving the agents heterogeneous *fixed*
+forecasts is not enough either — it moves the cycle but the map is still
+deterministic and still converges.
+
+Arthur’s actual mechanism is **inductive**: each agent holds several
+candidate predictors, scores them against what actually happened, and
+acts on whichever has been working. Nobody’s forecast is stable, so the
+population’s response to a given history keeps changing, and attendance
+never settles.
+
+That is expressible here, but it needs each agent to carry a *set* of
+strategies, and the grammar has no shorthand for that — one column per
+weight per strategy is the only way. Ordinary R metaprogramming fills
+the gap:
+
+``` r
+
+MEMORY <- 5    # weeks of attendance each predictor looks at
+N_STRAT <- 10  # candidate predictors per agent
+CAPACITY <- 60
+
+# each strategy s is a linear rule: w_s0 * 100 + w_s1 * att1 + ... + w_s5 * att5
+strategy_columns <- function() {
+  cols <- list()
+  for (s in seq_len(N_STRAT)) {
+    for (j in 0:MEMORY) cols[[sprintf("w%d_%d", s, j)]] <- ~runif(n, -1, 1)
+    cols[[sprintf("e%d", s)]] <- 0     # rolling error of strategy s
+  }
+  cols$active <- 1L                    # which one the agent currently trusts
+  cols
+}
+
+farol <- abm_setup(
+  agents  = do.call(abm_agents, c(list(n = 100), strategy_columns())),
+  globals = setNames(as.list(rep(CAPACITY, MEMORY)), paste0("att", 1:MEMORY))
+)
+```
+
+The steps themselves are ordinary: forecast, act, observe, re-score,
+switch.
+
+``` r
+
+f <- function(lhs, rhs) rlang::new_formula(str2lang(lhs), str2lang(rhs))
+lags <- paste0("att", 1:MEMORY)
+
+forecast <- do.call(abm_rules, lapply(seq_len(N_STRAT), function(s) {
+  f(paste0("p", s),
+    paste(c(sprintf("w%d_0 * 100", s), sprintf("w%d_%d * %s", s, 1:MEMORY, lags)),
+          collapse = " + "))
+}))
+
+act <- abm_rules(f("go_today", paste0(
+  "case_when(", paste(sprintf("active == %d ~ p%d", 1:(N_STRAT - 1), 1:(N_STRAT - 1)),
+                      collapse = ", "),
+  ", TRUE ~ p", N_STRAT, ") < ", CAPACITY)))
+
+observe <- do.call(abm_global, c(
+  lapply(MEMORY:2, function(j) f(paste0("att", j), paste0("att", j - 1))),
+  list(f("att1", "sum(go_today)"))
+))
+
+rescore <- do.call(abm_rules, lapply(seq_len(N_STRAT), function(s)
+  f(paste0("e", s), sprintf("0.8 * e%d + 0.2 * abs(p%d - att1)", s, s))))
+
+switch_to_best <- abm_rules(f("active", paste0(
+  "case_when(",
+  paste(sprintf("e%d <= pmin(%s) ~ %dL", 1:(N_STRAT - 1),
+                vapply(1:(N_STRAT - 1),
+                       function(s) paste0("e", setdiff(1:N_STRAT, s), collapse = ", "),
+                       character(1)),
+                1:(N_STRAT - 1)), collapse = ", "),
+  ", TRUE ~ ", N_STRAT, "L)")))
+
+r <- abm_run(farol, abm_go(forecast, act, observe, rescore, switch_to_best),
+             ticks = 300, seed = 2)
+
+attendance <- abm_globals(r)$att1[-(1:100)]
+c(mean = round(mean(attendance), 1), sd = round(sd(attendance), 1),
+  min = min(attendance), max = max(attendance),
+  distinct = length(unique(attendance)))
+#>     mean       sd      min      max distinct 
+#>     60.8      3.7     54.0     69.0     16.0
+```
+
+Attendance now hovers near the capacity of 60 without ever repeating
+itself — Arthur’s result. Note how sensitive it is: with three
+predictors instead of ten it locks up again. The fluctuation is a
+property of the predictor pool, not something the model produces on its
+own.
+
+**What this exposes about the grammar.** There is no compact way to give
+an agent a *set* of anything. Ten strategies over five lags is seventy
+columns, and only metaprogramming makes that bearable. A future
+[`abm_agents()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_agents.md)
+might accept matrix-valued or list-valued columns; until then, build the
+spec with [`do.call()`](https://rdrr.io/r/base/do.call.html).
+
+## Ethnocentrism: cooperation has to be conditional, and neighbours have to be kin
+
+Hammond and Axelrod’s model is famous for showing that in-group
+favouritism can evolve from nothing. The short version gives agents a
+tag and a strategy, but the strategy ignores the tag — so the tag does
+no work, defection is simply the best move, and the population runs
+itself down.
+
+The real model gives every agent **two** strategy bits: whether to
+cooperate with someone of your own tag, and whether to cooperate with
+someone of a different one. That makes four types.
+
+``` r
+
+COST <- 0.01; BENEFIT <- 0.03; BASE_PTR <- 0.12; DEATH <- 0.10; CAPACITY <- 800
+
+random_traits <- list(
+  tag      ~ sample(c("red", "blue"), n(), replace = TRUE),
+  coop_in  ~ sample(c(TRUE, FALSE),   n(), replace = TRUE),
+  coop_out ~ sample(c(TRUE, FALSE),   n(), replace = TRUE)
+)
+
+start_pop <- function(network = NULL) {
+  abm_setup(
+    agents = abm_agents(
+      n = 400,
+      tag      = ~sample(c("red", "blue"), n, replace = TRUE),
+      coop_in  = ~sample(c(TRUE, FALSE), n, replace = TRUE),
+      coop_out = ~sample(c(TRUE, FALSE), n, replace = TRUE),
+      ptr      = BASE_PTR),
+    network = network)
+}
+
+label <- function(r) {
+  dplyr::mutate(r, type = case_when(
+    coop_in & !coop_out ~ "ethnocentric",
+    coop_in &  coop_out ~ "altruist",
+   !coop_in & !coop_out ~ "egoist",
+    TRUE                ~ "traitor"))
+}
+shares <- function(r, t) {
+  x <- label(r); x <- x$type[x$tick == t]
+  round(sort(table(x) / length(x), decreasing = TRUE), 3)
+}
+```
+
+Even with conditional strategies, a well-mixed population does not
+produce ethnocentrism. Everyone meets a random stranger, so the tag
+carries no information, and the cheapest strategy wins:
+
+``` r
+
+mixed <- abm_run(start_pop(), abm_go(
+  abm_match(pair = "random"),
+  abm_rules(give ~ if_else(partner_tag == tag, coop_in, coop_out)),
+  abm_rules(ptr ~ BASE_PTR - COST * give + BENEFIT * partner_give),
+  abm_birth(when = runif(n()) < ptr),
+  abm_death(when = runif(n()) < DEATH + 0.25 * pmax(0, (n() - CAPACITY) / CAPACITY)),
+  do.call(abm_birth, list(n = 8, cost = random_traits))
+), ticks = 400, seed = 1)
+
+shares(mixed, 400)
+#> x
+#>       egoist ethnocentric     altruist      traitor 
+#>        0.336        0.260        0.216        0.188
+```
+
+Egoists, with ethnocentrics behind them. This is not a failure — it is
+Hammond and Axelrod’s own control condition, and it is the point of
+their paper: ethnocentrism needs *local* structure. Offspring have to
+settle next to their parents, so that your neighbours are
+disproportionately your kin, so that “same tag” actually predicts “will
+cooperate with me”.
+
+That is what the model needs and it is the one thing the package could
+not express: `attach_via` could put a newborn next to a random agent or
+a well-connected one, but not next to its own parent. `from = "parent"`
+closes that gap.
+
+``` r
+
+local <- abm_run(start_pop(abm_network(type = "random", degree = 4)), abm_go(
+  abm_match(pair = "network"),
+  abm_rules(give ~ if_else(partner_tag == tag, coop_in, coop_out)),
+  abm_rules(ptr ~ BASE_PTR - COST * give + BENEFIT * partner_give),
+  abm_birth(when = runif(n()) < ptr,
+            attach_via = abm_match(pair = "network", from = "parent")),
+  abm_death(when = runif(n()) < DEATH + 0.25 * pmax(0, (n() - CAPACITY) / CAPACITY)),
+  do.call(abm_birth, list(n = 8, attach_via = abm_match(pair = "network"),
+                          cost = random_traits))
+), ticks = 400, seed = 1)
+
+shares(local, 400)
+#> x
+#>     altruist ethnocentric       egoist      traitor 
+#>        0.370        0.361        0.136        0.134
+```
+
+Ethnocentrics now lead, and egoists are down to about a third of their
+well-mixed share. The clustering is visible directly in the network:
+
+``` r
+
+edges <- abm_edges(local)
+final <- local[local$tick == 400, ]
+tags  <- setNames(final$tag, final$.id)
+mean(tags[as.character(edges$from)] == tags[as.character(edges$to)], na.rm = TRUE)
+#> [1] 0.953168
+```
+
+Around 0.5 would mean neighbours are random with respect to tag. What
+you get is close to 1: local reproduction has sorted the population into
+same-tag neighbourhoods, and that is the whole mechanism.
+
+## Zakah: nobody is poor in a model with no risk
+
+The zakah model collects 2.5% from every household above the *nisab* and
+shares it among households below a poverty line. As written it stops
+working after about ten ticks:
+
+``` r
+
+NISAB <- 100
+consume <- abm_rules(wealth ~ wealth + income - (0.6 * income + 0.02 * wealth))
+
+short <- abm_run(
+  abm_setup(agents  = abm_agents(n = 500, wealth = ~rlnorm(n, 4, 0.5),
+                                 income = ~rlnorm(n, 3, 0.4)),
+            globals = list(zakah_pool = 0)),
+  abm_go(consume,
+         abm_global(zakah_pool ~ sum(if_else(wealth > NISAB, wealth * 0.025, 0))),
+         abm_rules(wealth ~ if_else(wealth > NISAB, wealth * 0.975, wealth)),
+         abm_rules(wealth ~ if_else(wealth < 30,
+                                    wealth + zakah_pool / sum(wealth < 30), wealth))),
+  ticks = 100, seed = 12)
+
+# how many households are below the poverty line, over time?
+tapply(short$wealth < 30, short$tick, sum)[c("0", "5", "10", "50", "100")]
+#>   0   5  10  50 100 
+#>  46   0   0   0   0
+```
+
+The pool keeps being collected and stops being distributed, so zakah
+becomes a flat tax that goes nowhere.
+
+Two things are wrong, and only one of them is the threshold.
+
+**The poverty line is absolute in a model where wealth grows.** Everyone
+crosses 30 within a few ticks. Making it relative — half the median, the
+standard measure of relative poverty — is a one-line fix.
+
+**More importantly, the model has no risk.** The consumption rule is
+`wealth * 0.98 + 0.4 * income`, which converges to exactly `20 * income`
+for every household. Wealth becomes a deterministic function of income,
+the distribution gets *tighter* over time, and nobody is ever
+persistently poor no matter where you put the line. A redistribution
+model with nothing to redistribute against is measuring nothing.
+
+Put in a source of dispersion — income that moves, and occasional large
+losses — and the model has something to say:
+
+``` r
+
+shocks <- abm_rules(
+  income ~ exp(0.9 * log(income) + 0.1 * 3 + rnorm(n(), 0, 0.15)),  # AR(1) in logs
+  wealth ~ wealth - if_else(runif(n()) < 0.03, wealth * 0.6, 0)     # occasional hit
+)
+consume <- abm_rules(wealth ~ pmax(0.01, wealth + income - (0.6 * income + 0.02 * wealth)))
+line    <- abm_global(poverty_line ~ 0.5 * median(wealth))
+
+start <- function() abm_setup(
+  agents  = abm_agents(n = 500, wealth = ~rlnorm(n, 4, 0.5), income = ~rlnorm(n, 3, 0.4)),
+  globals = list(zakah_pool = 0, poverty_line = 30))
+
+with_zakah <- abm_run(start(), abm_go(
+  shocks, consume, line,
+  abm_global(zakah_pool ~ sum(if_else(wealth > NISAB, wealth * 0.025, 0))),
+  abm_rules(wealth ~ if_else(wealth > NISAB, wealth * 0.975, wealth)),
+  abm_rules(wealth ~ if_else(wealth < poverty_line,
+                             wealth + zakah_pool / pmax(1, sum(wealth < poverty_line)),
+                             wealth))
+), ticks = 300, seed = 12)
+
+baseline <- abm_run(start(), abm_go(shocks, consume, line), ticks = 300, seed = 12)
+```
+
+``` r
+
+gini <- function(x) { x <- sort(x); n <- length(x); sum((2 * seq_len(n) - n - 1) * x) / (n * sum(x)) }
+compare <- function(r) {
+  w <- r$wealth[r$tick == 300]
+  c(p10 = round(quantile(w, 0.1), 1), median = round(median(w), 1),
+    gini = round(gini(w), 3))
+}
+rbind(baseline = compare(baseline), zakah = compare(with_zakah))
+#>          p10.10% median  gini
+#> baseline   108.1  202.1 0.249
+#> zakah      144.3  212.0 0.173
+```
+
+The bottom decile is higher and the Gini coefficient is a third lower.
+The recipient pool no longer empties:
+
+``` r
+
+poor_share <- function(r) {
+  pl <- abm_globals(r)$poverty_line[match(r$tick, abm_globals(r)$tick)]
+  tapply(r$wealth < pl, r$tick, mean)
+}
+c(baseline = round(mean(tail(poor_share(baseline), 100)), 3),
+  zakah    = round(mean(tail(poor_share(with_zakah), 100)), 3))
+#> baseline    zakah 
+#>    0.113    0.000
+```
+
+One caveat on reading that last number. Transferring 2.5% of nearly
+everyone’s wealth to the few per cent below the line is an enormous
+per-head transfer, so relative poverty is not merely reduced but
+eliminated. Real zakah is levied on *zakatable* assets held for a year
+and distributed across eight categories, of which the poor are two. If
+you want the model to say something about actual policy, that is the
+next thing to calibrate.
+
+## What to take from this
+
+The three failures have the same shape: a mechanism was compressed out
+of the description, and the compressed version still runs.
+
+- El Farol lost the *inductive* part — agents that revise which forecast
+  they trust. Without it the population is one agent.
+- Ethnocentrism lost both the tag-conditional strategy and the local
+  reproduction. Without the second one you reproduce the paper’s
+  control, not its result.
+- Zakah lost the risk process. Without it there is no poverty to
+  redistribute against, and the threshold question is a distraction from
+  that.
+
+Two of the three needed no change to the package. The third needed one
+argument, `from = "parent"`, which was a genuine gap: there was no way
+to put an offspring next to its parent, and that is a mechanism a lot of
+spatial and kin-structured models depend on.

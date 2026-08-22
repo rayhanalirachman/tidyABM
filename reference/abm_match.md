@@ -1,0 +1,166 @@
+# Match agents into pairs or groups
+
+`abm_match()` is the step that decides *who interacts with whom* this
+tick. It does not change any agent column; it only produces a partner
+(for `size = 2`) or a group (for `size > 2`), which the
+[`abm_rules()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_rules.md)
+steps that follow it then use.
+
+## Usage
+
+``` r
+abm_match(
+  pair = c("random", "one_of", "opposite_group", "nearest", "network"),
+  size = NULL,
+  by = NULL,
+  role = NULL,
+  eligible = NULL,
+  resolve = NULL,
+  rounds = NULL,
+  positions = NULL,
+  limits = NULL,
+  from = NULL,
+  among = NULL
+)
+```
+
+## Arguments
+
+- pair:
+
+  The pairing mode. `"random"` shuffles agents into groups of `size`;
+  `"one_of"` gives each agent one partner drawn uniformly from the whole
+  population; `"opposite_group"` pairs each agent with one from the
+  other group named by `by`; `"nearest"` gives each agent its closest
+  other agent in the space defined by `by`; `"network"` draws the
+  partner from the agent's neighbours in the model's
+  [`abm_network()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_network.md).
+
+- size:
+
+  Group size. Defaults to 2 (a pair). Only `"random"` and `"nearest"`
+  support `size > 2`; `"opposite_group"` is undefined above 2.
+
+- by:
+
+  Column(s) defining the space or the split. For `"opposite_group"` a
+  single column that takes exactly two values (use `.group` for a
+  multi-group model); for `"nearest"` one or more numeric columns,
+  compared by Euclidean distance.
+
+- role:
+
+  A named list of two conditions, e.g.
+  `list(giver = money > 0, receiver = TRUE)`. Within each pair, roles
+  are assigned so that each member satisfies its own role's condition;
+  if no assignment works the pair is dropped for this step. Rules then
+  see `.role`.
+
+- eligible:
+
+  A condition. Agents for which it is `FALSE` sit the step out.
+
+- resolve:
+
+  For `"opposite_group"`, `"none"` (the default) or `"negotiate"`, which
+  runs `rounds` rounds of offer/counter-offer and sets `traded` and
+  `price` columns.
+
+- rounds:
+
+  Number of negotiation rounds when `resolve = "negotiate"`.
+
+- positions:
+
+  For `resolve = "negotiate"`,
+  `c(<first group's bid column>, <second group's ask column>)`.
+
+- limits:
+
+  For `resolve = "negotiate"`,
+  `c(<first group's reservation column>, <second group's reservation column>)`
+  — the bid never rises above the first, and the ask never falls below
+  the second.
+
+- from:
+
+  For `"network"`, `"neighbour"` (the default) picks a random neighbour
+  of the agent; `"random_edge"` picks a random edge of the whole network
+  and then one of its endpoints, which selects agents in proportion to
+  their degree (used by preferential attachment); `"parent"` is only
+  meaningful inside
+  [`abm_birth()`](https://rayhanalirachman.github.io/tidyabm/reference/abm_birth.md)'s
+  `attach_via` and links a newborn to the agent it was cloned from,
+  which is what puts offspring next to their kin.
+
+- among:
+
+  A condition naming the agents that may be *chosen*, for the
+  directional modes `"one_of"` and `"nearest"`. Defaults to everybody.
+  An agent is never matched to itself.
+
+## Value
+
+An `abm_match` step object.
+
+## Details
+
+After a match, every rule can see:
+
+- `partner_<col>` for each of the partner's columns, when `size = 2`;
+
+- grouped-mutate semantics when `size > 2`, so `sum(contribution)`
+  inside a rule means "sum across this agent's group";
+
+- `.role`, when `role` is supplied.
+
+Each `pair` mode uses a fixed set of the other arguments, and passing
+one that the chosen mode does not use is an error rather than being
+ignored:
+
+|  |  |
+|----|----|
+| mode | uses |
+| `"random"` | `size`, `role`, `eligible` |
+| `"one_of"` | `role`, `eligible`, `among` |
+| `"opposite_group"` | `by`, `role`, `eligible`, `resolve`, `rounds`, `positions`, `limits` |
+| `"nearest"` | `by`, `size`, `eligible`, `among` |
+| `"network"` | `from`, `eligible` |
+
+`eligible` and `among` ask different questions, and the difference only
+has teeth in the directional modes. `eligible` says who *takes part*;
+`among` says who may be *picked*. A consumer choosing the nearest shop
+wants `among = .group == "shops"`, or it will find that the nearest
+agent to it is another consumer.
+
+Two of the modes are *mutual*: `"random"` and `"opposite_group"`
+partition the eligible agents into pairs or groups, so being matched is
+symmetric and every agent appears once. The other three are
+*directional*: `"one_of"`, `"nearest"` and `"network"` give each agent a
+partner of its own, and your partner need not have picked you.
+`"one_of"` is NetLogo's `one-of other turtles`; `"random"` is a fresh
+shuffle of the whole population into couples. They are different models
+of who meets whom, and which one you want depends on the source you are
+porting.
+
+## Examples
+
+``` r
+abm_match(pair = "random")
+#> <abm_match> pair = "random"
+abm_match(pair = "one_of")
+#> <abm_match> pair = "one_of"
+abm_match(pair = "random", size = 4)
+#> <abm_match> pair = "random"
+#> • size = 4
+abm_match(pair = "nearest", by = opinion)
+#> <abm_match> pair = "nearest"
+#> • by = `opinion`
+abm_match(pair = "nearest", by = position, among = .group == "shops")
+#> <abm_match> pair = "nearest"
+#> • by = `position`
+#> • among = `.group == "shops"`
+abm_match(pair = "random", role = list(giver = money > 0, receiver = TRUE))
+#> <abm_match> pair = "random"
+#> • roles = "giver" and "receiver"
+```

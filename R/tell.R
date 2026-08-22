@@ -22,7 +22,9 @@ new_abm_tell <- function(rules, to, to_quo, when, resolve) {
 #' * `to = "neighbours"` — every agent the sender is joined to in the model's
 #'   [abm_network()]. This is the broadcast: one sender, many recipients.
 #' * `to = <expression>` — an expression evaluated in the sender's row that
-#'   names a single recipient by `.id`. `to = .partner` writes to the partner a
+#'   names the recipient by `.id`. A list column names *several*: one sender,
+#'   a set of recipients chosen however the model likes, which is what a
+#'   broadcast to an audience that is not the network needs. `to = .partner` writes to the partner a
 #'   preceding [abm_match()] gave you; `to = best_bid_holder` writes to whichever
 #'   agent a global names. `NA` means the sender says nothing.
 #'
@@ -41,12 +43,17 @@ new_abm_tell <- function(rules, to, to_quo, when, resolve) {
 #' @param ... One or more `column ~ expression` rules. The expression is
 #'   evaluated in the sender's row; the result is written to the recipient's
 #'   column of the same name. The column must already exist on the recipient.
-#' @param to `"neighbours"`, or an expression naming the recipient's `.id`.
+#' @param to `"neighbours"`, or an expression naming the recipient's `.id`. If
+#'   the expression returns a list column, each element is a vector of `.id`s
+#'   and the sender writes to all of them.
 #' @param when Optional condition on the sender. Only agents for which it holds
 #'   send anything.
 #' @param .resolve What to do when several senders write to the same recipient
-#'   in one step: `"last"` (an arbitrary one wins), `"first"`, `"sum"`,
-#'   `"mean"`, `"max"`, `"min"`, or `"error"` to stop.
+#'   in one step:
+#'   `"last"` (an arbitrary one wins), `"first"`, `"sum"`,
+#'   `"mean"`, `"max"`, `"min"`, `"collect"` — which hands the recipient a list
+#'   of everything it was told, so the recipient's own rule decides what to make
+#'   of them, including in what order — or `"error"` to stop.
 #'
 #' @return An `abm_tell` step object.
 #' @export
@@ -61,7 +68,7 @@ new_abm_tell <- function(rules, to, to_quo, when, resolve) {
 #' abm_tell(dose ~ dose + load, to = "neighbours", when = infected, .resolve = "sum")
 abm_tell <- function(..., to, when = NULL,
                      .resolve = c("last", "first", "sum", "mean", "max", "min",
-                                  "error")) {
+                                  "collect", "error")) {
   .resolve <- rlang::arg_match(.resolve)
   rules <- collect_rules(rlang::list2(...), "abm_tell")
 
@@ -92,6 +99,12 @@ abm_tell <- function(..., to, when = NULL,
 #' @noRd
 resolve_messages <- function(value, to, resolve, target,
                              call = rlang::caller_env()) {
+  if (resolve == "collect") {
+    keys <- unique(to)
+    idx <- split(seq_along(to), factor(to, levels = keys))
+    return(list(to = keys,
+                value = I(unname(lapply(idx, function(i) unname(value[i]))))))
+  }
   if (!anyDuplicated(to)) return(list(to = to, value = value))
   if (resolve == "error") {
     dup <- to[duplicated(to)][[1]]
@@ -143,10 +156,22 @@ run_tell <- function(step, state) {
   } else {
     tgt <- eval_rule(list(quo = step$to_quo), aug, state$globals,
                      grouped = FALSE)
-    if (length(tgt) == 1L) tgt <- rep(tgt, nrow(aug))
-    keep <- speaks & !is.na(tgt)
-    sender_row <- which(keep)
-    recipient  <- as.integer(tgt[keep])
+    if (!is.list(tgt) && length(tgt) == 1L) tgt <- rep(tgt, nrow(aug))
+    if (is.list(tgt)) {
+      # a list column: one sender, a set of recipients. That is the shape a
+      # broadcast to a chosen audience needs -- the onlookers who happened to
+      # see this interaction -- and it is not the network, so
+      # `to = "neighbours"` cannot say it.
+      tgt <- lapply(tgt, function(v) as.integer(v[!is.na(v)]))
+      tgt[!speaks] <- list(integer())
+      sender_row <- rep(seq_along(tgt), lengths(tgt))
+      recipient  <- unlist(tgt, use.names = FALSE)
+      if (is.null(recipient)) recipient <- integer()
+    } else {
+      keep <- speaks & !is.na(tgt)
+      sender_row <- which(keep)
+      recipient  <- as.integer(tgt[keep])
+    }
     unknown <- setdiff(recipient, combined$.id)
     if (length(unknown)) {
       abm_abort(

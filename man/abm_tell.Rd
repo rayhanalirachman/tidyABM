@@ -8,7 +8,7 @@ abm_tell(
   ...,
   to,
   when = NULL,
-  .resolve = c("last", "first", "sum", "mean", "max", "min", "error")
+  .resolve = c("last", "first", "sum", "mean", "max", "min", "collect", "error")
 )
 }
 \arguments{
@@ -16,14 +16,19 @@ abm_tell(
 evaluated in the sender's row; the result is written to the recipient's
 column of the same name. The column must already exist on the recipient.}
 
-\item{to}{\code{"neighbours"}, or an expression naming the recipient's \code{.id}.}
+\item{to}{\code{"neighbours"}, or an expression naming the recipient's \code{.id}. If
+the expression returns a list column, each element is a vector of \code{.id}s
+and the sender writes to all of them.}
 
 \item{when}{Optional condition on the sender. Only agents for which it holds
 send anything.}
 
 \item{.resolve}{What to do when several senders write to the same recipient
-in one step: \code{"last"} (an arbitrary one wins), \code{"first"}, \code{"sum"},
-\code{"mean"}, \code{"max"}, \code{"min"}, or \code{"error"} to stop.}
+in one step:
+\code{"last"} (an arbitrary one wins), \code{"first"}, \code{"sum"},
+\code{"mean"}, \code{"max"}, \code{"min"}, \code{"collect"} — which hands the recipient a list
+of everything it was told, so the recipient's own rule decides what to make
+of them, including in what order — or \code{"error"} to stop.}
 }
 \value{
 An \code{abm_tell} step object.
@@ -44,7 +49,9 @@ Who receives is set by \code{to}:
 \item \code{to = "neighbours"} — every agent the sender is joined to in the model's
 \code{\link[=abm_network]{abm_network()}}. This is the broadcast: one sender, many recipients.
 \item \verb{to = <expression>} — an expression evaluated in the sender's row that
-names a single recipient by \code{.id}. \code{to = .partner} writes to the partner a
+names the recipient by \code{.id}. A list column names \emph{several}: one sender,
+a set of recipients chosen however the model likes, which is what a
+broadcast to an audience that is not the network needs. \code{to = .partner} writes to the partner a
 preceding \code{\link[=abm_match]{abm_match()}} gave you; \code{to = best_bid_holder} writes to whichever
 agent a global names. \code{NA} means the sender says nothing.
 }

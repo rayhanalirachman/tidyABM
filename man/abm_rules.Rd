@@ -4,7 +4,7 @@
 \alias{abm_rules}
 \title{Update agent columns}
 \usage{
-abm_rules(..., .scope = c("match", "population"))
+abm_rules(..., .scope = c("match", "population"), .by = NULL)
 }
 \arguments{
 \item{...}{One or more \code{column ~ expression} rules. The expression can use any
@@ -16,6 +16,15 @@ written.}
 grouping the preceding \code{\link[=abm_match]{abm_match()}} produced. \code{"population"} ignores it and
 evaluates across all agents, so aggregates like \code{sum()} and draws like
 \code{sample(x, n())} see everybody.}
+
+\item{.by}{A column naming a partition of the agents — a firm, a household, a
+team, a cohort. The rules are evaluated once per distinct value, across the
+whole population, so \code{sum(effort)} means "the total effort of my firm" and
+the answer is written back to every member of it. This is the third
+grouping a rule can have, alongside the standing match and the whole
+population, and it is the only one the \emph{agents themselves} can change: an
+agent that writes a new value into the \code{.by} column has moved to a
+different group. Cannot be combined with \code{.scope = "population"}.}
 }
 \value{
 An \code{abm_rules} step object.
@@ -54,4 +63,7 @@ abm_rules(opinion ~ partner_opinion)
 # the next generation, drawn from this one in proportion to fitness
 abm_rules(strategy ~ sample(strategy, n(), replace = TRUE, prob = fitness),
           .scope = "population")
+
+# every member of a firm is paid an equal share of what the firm produces
+abm_rules(pay ~ output(sum(effort)) / n(), .by = firm)
 }

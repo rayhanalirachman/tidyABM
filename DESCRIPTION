@@ -21,7 +21,10 @@ Imports: cli, dplyr (>= 1.1.0), igraph, rlang (>= 1.1.0), stats,
 Suggests: knitr, rmarkdown, testthat (>= 3.0.0), withr
 Config/testthat/edition: 3
 VignetteBuilder: knitr
-URL: https://github.com/rayhanalirachman/tidyabm,
-    https://rayhanalirachman.github.io/tidyabm/
-BugReports: https://github.com/rayhanalirachman/tidyabm/issues
+URL: https://github.com/rayhanalirachman/tidyABM
+BugReports: https://github.com/rayhanalirachman/tidyABM/issues
 Config/roxygen2/version: 8.1.0
+NeedsCompilation: no
+Packaged: 2026-08-21 20:44:26 UTC; root
+Author: Rayhan Ali Rachman [aut, cre]
+Maintainer: Rayhan Ali Rachman <rayhanalirachman@gmail.com>

@@ -9,7 +9,7 @@ original where one exists, the package code and the numbers the run produced.
 | | |
 |---|---|
 | [The grammar](../models/grammar.md) | every step, and what each one means |
-| [All 46 models](../models/README.md) | the index, by part |
+| [All 56 models](../models/README.md) | the index, by part |
 | [Open items](../models/open-items.md) | what the grammar still cannot say |
 | [What each stress test changed](../models/what-changed.md) | how the grammar got its shape |
 | [Sources](../models/sources.md) | every citation in one table |

@@ -1,7 +1,6 @@
 # tidyABM
 
 <!-- badges: start -->
-[![R-CMD-check](https://github.com/rayhanalirachman/tidyabm/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/rayhanalirachman/tidyabm/actions/workflows/R-CMD-check.yaml)
 [![Lifecycle: experimental](https://img.shields.io/badge/lifecycle-experimental-orange.svg)](https://lifecycle.r-lib.org/articles/stages.html#experimental)
 <!-- badges: end -->
 
@@ -14,28 +13,9 @@ dplyr-style formulas, and the output is tidy data.
 
 ## Installation
 
-tidyABM lives on GitHub. Install it with either of these:
-
 ``` r
 # install.packages("pak")
-pak::pak("rayhanalirachman/tidyabm")
-
-# or
-# install.packages("remotes")
-remotes::install_github("rayhanalirachman/tidyabm")
-```
-
-To get the vignettes as well:
-
-``` r
-remotes::install_github("rayhanalirachman/tidyabm", build_vignettes = TRUE)
-vignette("tidyABM")
-```
-
-Then:
-
-``` r
-library(tidyABM)
+pak::pak("rayhanalirachman/tidyABM")
 ```
 
 ## A whole model
@@ -85,13 +65,14 @@ type and position rather than by argument name:
 |--------------------|-----------------------------------------------------|
 | `abm_match()`      | decides who interacts with whom this tick           |
 | `abm_rules()`      | updates agent columns, all agents simultaneously    |
-| `abm_sequential()` | updates them one at a time, in shuffled order       |
+| `abm_sequential()` | updates them one at a time, in shuffled order or an order you name |
 | `abm_neighbours()` | summarises each agent's network neighbourhood       |
 | `abm_tell()`       | writes a value into *another* agent's row           |
 | `abm_global()`     | updates a value shared by the whole population      |
 | `abm_birth()`      | adds agents                                         |
 | `abm_death()`      | removes them                                        |
 | `abm_link()` / `abm_unlink()` | adds or removes network edges            |
+| `abm_repeat()`     | replays a block of steps until a condition holds     |
 
 So a two-phase model — play, then imitate — is written flat and in order:
 
@@ -111,14 +92,16 @@ tick.
 
 After `abm_match(pair = ..., size = 2)` every rule can see `partner_<col>` for
 each of the partner's columns. With `size > 2` rules are grouped instead, so
-`sum(contribution)` inside a rule means "sum across this agent's group".
+`sum(contribution)` inside a rule means "sum across this agent's group". A rule
+can also be grouped by an ordinary agent column with `.by =`, which is how a
+firm, a household or a team becomes a thing the model can add up.
 
 | mode               | partner is…                                        | |
 |--------------------|----------------------------------------------------|---|
 | `"random"`         | drawn from a fresh random partition of the population | mutual |
 | `"opposite_group"` | from the other side of a two-valued split           | mutual |
 | `"one_of"`         | drawn from the whole population (NetLogo's `one-of other turtles`) | directional |
-| `"nearest"`        | the closest agent in the space you name             | directional |
+| `"nearest"`        | the closest agent in the space you name, or the one that minimises a `cost` you write | directional |
 | `"network"`        | one of the agent's neighbours in the model network  | directional |
 
 *Mutual* modes partition the eligible agents, so being matched is symmetric.
@@ -136,17 +119,18 @@ it.
 Experimental. The API is shaped by what porting models turns up, and it is still
 moving.
 
-Forty-six models are implemented and documented in
+Fifty-six models are implemented and documented in
 [`models/`](../models/README.md), each on its own page with its code, the result
 it reproduces and its source: thirteen the grammar was designed against, three of
 those rebuilt because the short version does not show what the model is known
-for, and three rounds of ten ported as stress tests.
+for, and four rounds of ten ported as stress tests.
 
 Every feature in the package that is not in the founding thirteen exists because
-one of those thirty models asked for it — `abm_link()`, `abm_neighbours()`,
-`abm_tell()`, the `one_of` pairing mode, `among =`, `.scope = "population"`,
-clique linking, the Poisson and scale-free and ring networks, and the cascading
-semantics of `abm_sequential()`.
+one of those forty models asked for it — `abm_link()`, `abm_neighbours()`,
+`abm_tell()`, `abm_repeat()`, the `one_of` pairing mode, `among =`, `cost =`,
+`.by =`, `.order =`, `.scope = "population"`, clique linking, the Poisson and
+scale-free and ring networks, and the cascading semantics of
+`abm_sequential()`.
 [`models/what-changed.md`](../models/what-changed.md) is the history;
 [`models/open-items.md`](../models/open-items.md) is what is still out of reach.
 
@@ -158,7 +142,11 @@ count matches `floor(1/(2d))` at six values of the threshold; Watts's cascade
 window matches its closed-form boundaries at both ends; the Minority Game
 reproduces the σ²/α curve with its minimum at the reported critical value; and
 the Naming Game's two scaling exponents come out at 1.45 and 1.39 against a
-reported 3/2.
+reported 3/2. The fourth round adds three more: the division of labour settles
+at δ/α to two decimals whatever the thresholds are, the neutral model's variant
+counts land on the Ewens sampling formula across two orders of magnitude in the
+innovation rate, and deferred acceptance reproduces Pittel's `ln n` and
+`n / ln n` on the nose at n = 200.
 
 See `vignette("tidyABM")` to get started, `vignette("models")` for a tour of the
 grammar, and `vignette("corrections")` for the three models whose short form runs

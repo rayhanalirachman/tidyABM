@@ -77,7 +77,7 @@ run_match <- function(spec, agents, edges, globals, call = rlang::caller_env()) 
 }
 
 match_random <- function(spec, agents, globals, pool) {
-  pool <- sample(pool)
+  pool <- shuffle(pool)
   ch <- chunk_ids(pool, spec$size)
   if (length(ch$ids) == 0L) return(list(match = empty_match(), updates = NULL))
 
@@ -121,10 +121,10 @@ match_one_of <- function(spec, agents, globals, pool, candidates = NULL) {
   pool <- usable
   if (length(pool) == 0L) return(list(match = empty_match(), updates = NULL))
   idx <- match(pool, agents$.id)
-  draw <- sample(candidates, length(pool), replace = TRUE)
+  draw <- draw_from(candidates, length(pool))
   clash <- draw == pool
   while (any(clash)) {
-    draw[clash] <- sample(candidates, sum(clash), replace = TRUE)
+    draw[clash] <- draw_from(candidates, sum(clash))
     clash <- draw == pool
   }
 
@@ -173,8 +173,8 @@ match_opposite <- function(spec, agents, globals, pool, call) {
   if (length(all_vals) < 2L || length(unique(sub[[by]])) < 2L) {
     return(list(match = empty_match(), updates = NULL))
   }
-  g1 <- sample(sub$.id[sub[[by]] == vals[[1]]])
-  g2 <- sample(sub$.id[sub[[by]] == vals[[2]]])
+  g1 <- shuffle(sub$.id[sub[[by]] == vals[[1]]])
+  g2 <- shuffle(sub$.id[sub[[by]] == vals[[2]]])
   k <- min(length(g1), length(g2))
   if (k == 0L) return(list(match = empty_match(), updates = NULL))
   a <- g1[seq_len(k)]; b <- g2[seq_len(k)]
@@ -244,6 +244,9 @@ negotiate <- function(spec, agents, a, b, call) {
 }
 
 match_nearest <- function(spec, agents, globals, pool, candidates, call) {
+  if (!is.null(spec$cost)) {
+    return(match_cheapest(spec, agents, globals, pool, candidates, call))
+  }
   by <- by_columns(spec$by, call)
   missing <- setdiff(by, names(agents))
   if (length(missing)) {
@@ -274,6 +277,61 @@ match_nearest <- function(spec, agents, globals, pool, candidates, call) {
   list(match = m, updates = NULL)
 }
 
+#' `pair = "nearest"` with a cost expression rather than a coordinate
+#'
+#' One row per (chooser, candidate): the candidate's columns under their own
+#' names, the chooser's under `own_<col>`. That is the same view
+#' `abm_neighbours()` gives, and it is what lets the thing being minimised be a
+#' delivered price or an energy deficit rather than a distance.
+#' @noRd
+match_cheapest <- function(spec, agents, globals, pool, candidates, call) {
+  candidates <- candidates %||% agents$.id
+  sub  <- agents[agents$.id %in% pool, , drop = FALSE]
+  cand <- agents[agents$.id %in% candidates, , drop = FALSE]
+  if (nrow(sub) == 0L || nrow(cand) == 0L) {
+    return(list(match = empty_match(), updates = NULL))
+  }
+  # every column, `.id` and `.group` included, so a cost can say "my rank of
+  # this candidate" (`own_rank[[.]][.id]`) as well as "the price it charges"
+  cols <- names(agents)
+  ci <- rep(seq_len(nrow(cand)), times = nrow(sub))
+  si <- rep(seq_len(nrow(sub)),  each  = nrow(cand))
+
+  view <- cand[ci, cols, drop = FALSE]
+  own  <- sub[si, cols, drop = FALSE]
+  names(own) <- paste0("own_", cols)
+  view <- dplyr::bind_cols(view, own)
+  view$.chooser <- sub$.id[si]
+  view$.candidate <- cand$.id[ci]
+
+  quo <- spec$cost
+  env <- rlang::quo_get_env(quo)
+  if (length(globals)) env <- rlang::new_environment(globals, parent = env)
+  quo <- rlang::quo_set_env(quo, env)
+  val <- dplyr::pull(dplyr::mutate(view, .abm_cost = !!quo), ".abm_cost")
+  if (length(val) == 1L) val <- rep(val, nrow(view))
+  if (!is.numeric(val)) {
+    abm_abort(
+      c("{.arg cost} must be numeric.",
+        "x" = "{.code {deparse1(rlang::quo_get_expr(spec$cost))}} returned {.cls {class(val)[[1]]}}."),
+      class = "tidyABM_bad_cost", call = call
+    )
+  }
+  val[view$.chooser == view$.candidate] <- NA_real_   # never yourself
+  keep <- !is.na(val)
+  if (!any(keep)) return(list(match = empty_match(), updates = NULL))
+
+  ord <- order(view$.chooser[keep], val[keep])
+  ch  <- view$.chooser[keep][ord]
+  cd  <- view$.candidate[keep][ord]
+  first <- !duplicated(ch)
+  m <- tibble::tibble(
+    .id = ch[first], .partner = cd[first],
+    .role = NA_character_, .group_id = seq_len(sum(first))
+  )
+  list(match = m, updates = NULL)
+}
+
 #' Row minima of a matrix, without a dependency
 #' @noRd
 matrixStats_rowMins <- function(x) {
@@ -286,7 +344,7 @@ match_network <- function(spec, agents, edges, pool) {
   nb <- nb[nb$.id %in% pool & nb$.neighbour %in% agents$.id, , drop = FALSE]
   if (nrow(nb) == 0L) return(list(match = empty_match(), updates = NULL))
 
-  nb <- nb[sample(nrow(nb)), , drop = FALSE]
+  nb <- nb[sample.int(nrow(nb)), , drop = FALSE]
   pick <- !duplicated(nb$.id)
   chosen <- nb[pick, , drop = FALSE]
 
@@ -301,9 +359,9 @@ match_network <- function(spec, agents, edges, pool) {
 #' @noRd
 attach_target <- function(spec, agents, edges) {
   if (spec$from == "random_edge" && !is.null(edges) && nrow(edges) > 0L) {
-    e <- sample(nrow(edges), 1L)
+    e <- sample.int(nrow(edges), 1L)
     return(if (stats::runif(1) < 0.5) edges$from[[e]] else edges$to[[e]])
   }
   if (nrow(agents) == 0L) return(NA_integer_)
-  agents$.id[sample(nrow(agents), 1L)]
+  agents$.id[sample.int(nrow(agents), 1L)]
 }

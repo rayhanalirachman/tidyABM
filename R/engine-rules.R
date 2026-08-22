@@ -64,13 +64,15 @@ augment_group <- function(g, match_state, combined) {
 
 #' Evaluate one rule against an augmented group tibble
 #' @noRd
-eval_rule <- function(rule, aug, globals, grouped) {
+eval_rule <- function(rule, aug, globals, grouped, by = NULL) {
   quo <- rule$quo
   env <- rlang::quo_get_env(quo)
   if (length(globals)) env <- rlang::new_environment(globals, parent = env)
   quo <- rlang::quo_set_env(quo, env)
 
-  dat <- if (grouped) dplyr::group_by(aug, .data$.group_id) else aug
+  dat <- if (!is.null(by)) dplyr::group_by(aug, .data[[by]])
+         else if (grouped) dplyr::group_by(aug, .data$.group_id)
+         else aug
   out <- dplyr::mutate(dat, .abm_value = !!quo)
   dplyr::pull(dplyr::ungroup(out), ".abm_value")
 }
@@ -96,6 +98,8 @@ assign_rule <- function(g, target, value, rows) {
 #' @noRd
 run_rules <- function(step, state) {
   combined <- bind_groups(state$groups)
+  if (nrow(combined) == 0L) return(state)
+  if (!is.null(step$by)) return(run_rules_by(step, state, combined))
   all_cols <- setdiff(model_columns(state$groups), c(".id", ".group"))
   active <- !is.null(state$match) && nrow(state$match$match) > 0L
   # When a match is standing, rules are evaluated group-by-group: per pair for
@@ -135,6 +139,39 @@ run_rules <- function(step, state) {
   state
 }
 
+#' Run one abm_rules step grouped by an agent column
+#'
+#' `.by` partitions the whole population, which may cut across agent groups, so
+#' the rules are evaluated once over the combined tibble and the results are
+#' scattered back by `.id`. That is also what makes the partition mutable: an
+#' agent that writes a new value into the `.by` column has changed which group
+#' it is in, and the next step sees the new one.
+#' @noRd
+run_rules_by <- function(step, state, combined) {
+  by <- by_columns(step$by)
+  if (length(by) != 1L || !by %in% names(combined)) {
+    abm_abort(
+      c("{.arg .by} must name one existing agent column.",
+        "x" = "No column {.field {by}}."),
+      class = "tidyABM_missing_column"
+    )
+  }
+  aug <- augment_group(combined, state$match, combined)
+  for (r in step$rules) {
+    value <- eval_rule(r, aug, state$globals, grouped = FALSE, by = by)
+    for (nm in names(state$groups)) {
+      g <- state$groups[[nm]]
+      if (nrow(g) == 0L) next
+      idx <- match(g$.id, combined$.id)
+      g <- assign_rule(g, r$target, value[idx], rep(TRUE, nrow(g)))
+      state$groups[[nm]] <- g
+    }
+    combined[[r$target]] <- value
+    aug[[r$target]] <- value
+  }
+  state
+}
+
 #' Run one abm_global step
 #' @noRd
 run_global <- function(step, state) {
@@ -167,7 +204,20 @@ run_sequential <- function(step, state) {
   all_cols <- setdiff(model_columns(state$groups), c(".id", ".group"))
   order_ids <- unlist(lapply(state$groups, function(g) g$.id), use.names = FALSE)
   if (!length(order_ids)) return(state)
-  order_ids <- sample(order_ids)
+  if (is.null(step$order)) {
+    order_ids <- shuffle(order_ids)
+  } else {
+    # The order agents are processed in is part of some models -- a queue, a
+    # sequential-service constraint -- and a fresh shuffle is then the wrong
+    # answer rather than an arbitrary one.
+    combined <- bind_groups(state$groups)
+    key <- eval_rule(list(quo = step$order), combined, state$globals,
+                     grouped = FALSE)
+    if (length(key) == 1L) key <- rep(key, nrow(combined))
+    keep <- !is.na(key)
+    order_ids <- combined$.id[keep][order(key[keep])]
+    if (!length(order_ids)) return(state)
+  }
 
   group_of <- rep(names(state$groups),
                   vapply(state$groups, nrow, integer(1)))

@@ -7,16 +7,16 @@ match_relevant_args <- list(
   one_of          = c("role", "eligible", "among"),
   opposite_group  = c("size", "by", "role", "eligible", "resolve", "rounds",
                       "positions", "limits"),
-  nearest         = c("by", "size", "eligible", "among"),
+  nearest         = c("by", "cost", "size", "eligible", "among"),
   network         = c("from", "eligible")
 )
 
 new_abm_match <- function(pair, size, by, role, eligible, resolve, rounds,
-                          positions, limits, from, among) {
+                          positions, limits, from, among, cost) {
   structure(
     list(pair = pair, size = size, by = by, role = role, eligible = eligible,
          resolve = resolve, rounds = rounds, positions = positions,
-         limits = limits, from = from, among = among),
+         limits = limits, from = from, among = among, cost = cost),
     class = c("abm_match", "abm_step")
   )
 }
@@ -43,7 +43,7 @@ new_abm_match <- function(pair, size, by, role, eligible, resolve, rounds,
 #' | `"random"`         | `size`, `role`, `eligible`                            |
 #' | `"one_of"`         | `role`, `eligible`, `among`                           |
 #' | `"opposite_group"` | `by`, `role`, `eligible`, `resolve`, `rounds`, `positions`, `limits` |
-#' | `"nearest"`        | `by`, `size`, `eligible`, `among`                     |
+#' | `"nearest"`        | `by` *or* `cost`, `size`, `eligible`, `among`         |
 #' | `"network"`        | `from`, `eligible`                                    |
 #'
 #' `eligible` and `among` ask different questions, and the difference only has
@@ -78,6 +78,16 @@ new_abm_match <- function(pair, size, by, role, eligible, resolve, rounds,
 #'   assigned so that each member satisfies its own role's condition; if no
 #'   assignment works the pair is dropped for this step. Rules then see `.role`.
 #' @param eligible A condition. Agents for which it is `FALSE` sit the step out.
+#' @param cost For `"nearest"`, an expression naming what the chooser is
+#'   minimising, used instead of `by`. It is evaluated once per
+#'   (chooser, candidate) pair: the candidate's columns are visible under their
+#'   own names and the chooser's under `own_<col>`, the same convention
+#'   [abm_neighbours()] uses. `.id` and `.group` are included, so a cost can be
+#'   a lookup into the chooser's own preference list as easily as a price. `by` is the special case
+#'   `cost = (x - own_x)^2`; anything else — a delivered price
+#'   `price + travel * abs(x - own_x)`, an energy deficit, a position in a
+#'   preference list — needs this. `NA` means the candidate is not acceptable to
+#'   that chooser, and a chooser with no acceptable candidate sits the step out.
 #' @param among A condition naming the agents that may be *chosen*, for the
 #'   directional modes `"one_of"` and `"nearest"`. Defaults to everybody. An
 #'   agent is never matched to itself.
@@ -105,15 +115,18 @@ new_abm_match <- function(pair, size, by, role, eligible, resolve, rounds,
 #' abm_match(pair = "random", size = 4)
 #' abm_match(pair = "nearest", by = opinion)
 #' abm_match(pair = "nearest", by = position, among = .group == "shops")
+#' abm_match(pair = "nearest", cost = price + abs(x - own_x),
+#'           among = .group == "shops")
 #' abm_match(pair = "random", role = list(giver = money > 0, receiver = TRUE))
 abm_match <- function(pair = c("random", "one_of", "opposite_group", "nearest",
                                 "network"),
                       size = NULL, by = NULL, role = NULL, eligible = NULL,
                       resolve = NULL, rounds = NULL, positions = NULL,
-                      limits = NULL, from = NULL, among = NULL) {
+                      limits = NULL, from = NULL, among = NULL, cost = NULL) {
   pair <- rlang::arg_match(pair)
 
   by        <- enquo_or_null(rlang::enquo(by))
+  cost      <- enquo_or_null(rlang::enquo(cost))
   role      <- enquo_or_null(rlang::enquo(role))
   eligible  <- enquo_or_null(rlang::enquo(eligible))
   positions <- enquo_or_null(rlang::enquo(positions))
@@ -130,7 +143,8 @@ abm_match <- function(pair = c("random", "one_of", "opposite_group", "nearest",
     if (!is.null(positions)) "positions",
     if (!is.null(limits))    "limits",
     if (!is.null(from))      "from",
-    if (!is.null(among))     "among"
+    if (!is.null(among))     "among",
+    if (!is.null(cost))      "cost"
   )
   irrelevant <- setdiff(supplied, match_relevant_args[[pair]])
   if (length(irrelevant)) {
@@ -148,8 +162,18 @@ abm_match <- function(pair = c("random", "one_of", "opposite_group", "nearest",
   }
   size <- as.integer(size)
 
-  if (pair %in% c("opposite_group", "nearest") && is.null(by)) {
+  if (pair == "nearest" && !is.null(by) && !is.null(cost)) {
+    abm_abort(
+      c('Supply either {.arg by} or {.arg cost}, not both.',
+        "i" = "{.arg by} is a coordinate to be close to; {.arg cost} is a number to be minimised."),
+      class = "tidyABM_conflicting_args")
+  }
+  if (pair == "opposite_group" && is.null(by)) {
     abm_abort('{.arg by} is required when {.code pair = "{pair}"}.',
+              class = "tidyABM_missing_arg")
+  }
+  if (pair == "nearest" && is.null(by) && is.null(cost)) {
+    abm_abort('{.arg by} or {.arg cost} is required when {.code pair = "nearest"}.',
               class = "tidyABM_missing_arg")
   }
   if (pair == "nearest" && size > 2L) {
@@ -202,7 +226,7 @@ abm_match <- function(pair = c("random", "one_of", "opposite_group", "nearest",
   }
 
   new_abm_match(pair, size, by, role, eligible, resolve, rounds,
-                positions, limits, from, among)
+                positions, limits, from, among, cost)
 }
 
 #' @export
@@ -210,6 +234,7 @@ print.abm_match <- function(x, ...) {
   bits <- c(
     if (x$size != 2L) "size = {x$size}",
     if (!is.null(x$by)) "by = {.code {deparse1(rlang::quo_get_expr(x$by))}}",
+    if (!is.null(x$cost)) "cost = {.code {deparse1(rlang::quo_get_expr(x$cost))}}",
     if (!is.null(x$role)) "roles = {.val {names(as.list(rlang::quo_get_expr(x$role))[-1])}}",
     if (!is.null(x$eligible)) "eligible = {.code {deparse1(rlang::quo_get_expr(x$eligible))}}",
     if (!is.null(x$among)) "among = {.code {deparse1(rlang::quo_get_expr(x$among))}}",

@@ -1,7 +1,9 @@
 # Rules, globals, births and deaths --------------------------------------
 
-new_rule_step <- function(rules, class, scope = "match") {
-  structure(list(rules = rules, scope = scope), class = c(class, "abm_step"))
+new_rule_step <- function(rules, class, scope = "match", by = NULL,
+                          order = NULL) {
+  structure(list(rules = rules, scope = scope, by = by, order = order),
+            class = c(class, "abm_step"))
 }
 
 #' Collect and check `col ~ expr` formulas
@@ -64,6 +66,14 @@ collect_rules <- function(dots, fn, call = rlang::caller_env()) {
 #'   grouping the preceding [abm_match()] produced. `"population"` ignores it and
 #'   evaluates across all agents, so aggregates like `sum()` and draws like
 #'   `sample(x, n())` see everybody.
+#' @param .by A column naming a partition of the agents — a firm, a household, a
+#'   team, a cohort. The rules are evaluated once per distinct value, across the
+#'   whole population, so `sum(effort)` means "the total effort of my firm" and
+#'   the answer is written back to every member of it. This is the third
+#'   grouping a rule can have, alongside the standing match and the whole
+#'   population, and it is the only one the *agents themselves* can change: an
+#'   agent that writes a new value into the `.by` column has moved to a
+#'   different group. Cannot be combined with `.scope = "population"`.
 #'
 #' @return An `abm_rules` step object.
 #' @export
@@ -74,10 +84,22 @@ collect_rules <- function(dots, fn, call = rlang::caller_env()) {
 #' # the next generation, drawn from this one in proportion to fitness
 #' abm_rules(strategy ~ sample(strategy, n(), replace = TRUE, prob = fitness),
 #'           .scope = "population")
-abm_rules <- function(..., .scope = c("match", "population")) {
+#'
+#' # every member of a firm is paid an equal share of what the firm produces
+#' abm_rules(pay ~ output(sum(effort)) / n(), .by = firm)
+abm_rules <- function(..., .scope = c("match", "population"), .by = NULL) {
+  .scope_given <- !missing(.scope)
   .scope <- rlang::arg_match(.scope)
+  by <- enquo_or_null(rlang::enquo(.by))
+  if (!is.null(by) && .scope_given && .scope == "population") {
+    abm_abort(
+      c("{.arg .by} and {.code .scope = \"population\"} are different groupings.",
+        "i" = "{.arg .by} already ignores the standing match."),
+      class = "tidyABM_conflicting_args"
+    )
+  }
   new_rule_step(collect_rules(rlang::list2(...), "abm_rules"), "abm_rules",
-                scope = .scope)
+                scope = .scope, by = by)
 }
 
 #' Update agent columns one agent at a time
@@ -105,6 +127,12 @@ abm_rules <- function(..., .scope = c("match", "population")) {
 #'
 #' @param ... One or more `column ~ expression` rules. The left-hand side may
 #'   name either an agent column or a global.
+#' @param .order Optional expression, evaluated over the whole population, whose
+#'   ascending order is the order agents are processed in. The default is a
+#'   fresh shuffle every step, which is right when the order is meant to be
+#'   arbitrary and wrong when it is part of the model: a queue at a counter, a
+#'   sequential-service constraint, a fixed speaking order. `NA` sits the agent
+#'   out of the step.
 #'
 #' @return An `abm_sequential` step object.
 #' @export
@@ -113,9 +141,9 @@ abm_rules <- function(..., .scope = c("match", "population")) {
 #'   loan          ~ ifelse(wallet < 0, loan + 1, loan),
 #'   bank_reserves ~ ifelse(wallet < 0, bank_reserves - 1, bank_reserves)
 #' )
-abm_sequential <- function(...) {
+abm_sequential <- function(..., .order = NULL) {
   new_rule_step(collect_rules(rlang::list2(...), "abm_sequential"),
-                "abm_sequential")
+                "abm_sequential", order = enquo_or_null(rlang::enquo(.order)))
 }
 
 #' Update a shared, population-level value
@@ -276,7 +304,12 @@ print.abm_sequential <- function(x, ...) print_rule_step(x, "abm_sequential")
 print.abm_global <- function(x, ...) print_rule_step(x, "abm_global")
 
 print_rule_step <- function(x, cls) {
-  scope <- if (identical(x$scope, "population")) ' {.emph (population scope)}' else ""
+  scope <- if (identical(x$scope, "population")) ' {.emph (population scope)}'
+    else if (!is.null(x$by))
+      paste0(' {.emph (by ', deparse1(rlang::quo_get_expr(x$by)), ')}')
+    else if (!is.null(x$order))
+      paste0(' {.emph (in order of ', deparse1(rlang::quo_get_expr(x$order)), ')}')
+    else ""
   cli::cli_text("{.cls {cls}} {length(x$rules)} rule{?s}{scope}")
   labs <- rule_labels(x)
   cli::cli_bullets(stats::setNames(paste0("{.code ", labs, "}"),

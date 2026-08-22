@@ -15,7 +15,8 @@ abm_match(
   positions = NULL,
   limits = NULL,
   from = NULL,
-  among = NULL
+  among = NULL,
+  cost = NULL
 )
 }
 \arguments{
@@ -62,6 +63,17 @@ cloned from, which is what puts offspring next to their kin.}
 \item{among}{A condition naming the agents that may be \emph{chosen}, for the
 directional modes \code{"one_of"} and \code{"nearest"}. Defaults to everybody. An
 agent is never matched to itself.}
+
+\item{cost}{For \code{"nearest"}, an expression naming what the chooser is
+minimising, used instead of \code{by}. It is evaluated once per
+(chooser, candidate) pair: the candidate's columns are visible under their
+own names and the chooser's under \verb{own_<col>}, the same convention
+\code{\link[=abm_neighbours]{abm_neighbours()}} uses. \code{.id} and \code{.group} are included, so a cost can be
+a lookup into the chooser's own preference list as easily as a price. \code{by} is the special case
+\code{cost = (x - own_x)^2}; anything else — a delivered price
+\code{price + travel * abs(x - own_x)}, an energy deficit, a position in a
+preference list — needs this. \code{NA} means the candidate is not acceptable to
+that chooser, and a chooser with no acceptable candidate sits the step out.}
 }
 \value{
 An \code{abm_match} step object.
@@ -87,7 +99,7 @@ the chosen mode does not use is an error rather than being ignored:\tabular{ll}{
    \code{"random"} \tab \code{size}, \code{role}, \code{eligible} \cr
    \code{"one_of"} \tab \code{role}, \code{eligible}, \code{among} \cr
    \code{"opposite_group"} \tab \code{by}, \code{role}, \code{eligible}, \code{resolve}, \code{rounds}, \code{positions}, \code{limits} \cr
-   \code{"nearest"} \tab \code{by}, \code{size}, \code{eligible}, \code{among} \cr
+   \code{"nearest"} \tab \code{by} \emph{or} \code{cost}, \code{size}, \code{eligible}, \code{among} \cr
    \code{"network"} \tab \code{from}, \code{eligible} \cr
 }
 
@@ -113,5 +125,7 @@ abm_match(pair = "one_of")
 abm_match(pair = "random", size = 4)
 abm_match(pair = "nearest", by = opinion)
 abm_match(pair = "nearest", by = position, among = .group == "shops")
+abm_match(pair = "nearest", cost = price + abs(x - own_x),
+          among = .group == "shops")
 abm_match(pair = "random", role = list(giver = money > 0, receiver = TRUE))
 }

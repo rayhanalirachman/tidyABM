@@ -1,4 +1,4 @@
-url: https://rayhanalirachman.github.io/tidyabm/
+url: https://rayhanalirachman.github.io/tidyABM/
 
 template:
   bootstrap: 5
@@ -15,6 +15,6 @@ reference:
 - title: Changing the network
   contents: [abm_link, abm_unlink]
 - title: Running a model
-  contents: [abm_go, abm_run]
+  contents: [abm_go, abm_repeat, abm_run]
 - title: Working with results
   contents: [abm_globals, abm_edges, n_agents]

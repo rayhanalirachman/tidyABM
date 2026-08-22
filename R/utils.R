@@ -70,6 +70,21 @@ by_columns <- function(by_quo, call = rlang::caller_env()) {
   )
 }
 
+#' Shuffle a vector, safely
+#'
+#' `sample(x)` reinterprets a length-1 numeric `x` as `seq_len(x)`, which for a
+#' vector of agent ids means a population of one silently becomes a population
+#' of `.id` agents. Every shuffle in the package goes through here.
+#' @noRd
+shuffle <- function(x) if (length(x) <= 1L) x else sample(x)
+
+#' Draw `k` values from `x` with replacement, safely
+#'
+#' Same trap as [shuffle()]: `sample(x, k, replace = TRUE)` with a length-1 `x`
+#' draws from `seq_len(x)` instead of from `x`.
+#' @noRd
+draw_from <- function(x, k) x[sample.int(length(x), k, replace = TRUE)]
+
 #' Bind a list of tibbles with differing schemas into one long tibble
 #' @noRd
 bind_groups <- function(groups) {

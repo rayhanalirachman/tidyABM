@@ -118,6 +118,7 @@ run_step <- function(step, state) {
     abm_death      = run_death(step, state),
     abm_link       = run_link(step, state),
     abm_unlink     = run_unlink(step, state),
+    abm_repeat     = run_repeat(step, state),
     abm_abort("Unknown step type {.cls {class(step)[[1]]}}.",
               class = "tidyABM_unknown_step")
   )
@@ -146,7 +147,14 @@ snapshot <- function(state, t) {
 
 global_row <- function(state, t) {
   if (!length(state$globals)) return(tibble::tibble(tick = t))
-  dplyr::bind_cols(tibble::tibble(tick = t), tibble::as_tibble(state$globals))
+  # A global need not be a scalar -- a lookup table, a matrix of payoffs, a
+  # vector of prices. One row per tick is still the right shape for the log, so
+  # anything that is not a single value is wrapped in a list column rather than
+  # silently recycling the tick column.
+  vals <- lapply(state$globals, function(v) {
+    if (is.null(dim(v)) && length(v) == 1L) v else list(v)
+  })
+  dplyr::bind_cols(tibble::tibble(tick = t), tibble::as_tibble(vals))
 }
 
 #' Global values recorded during a run

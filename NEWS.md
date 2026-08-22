@@ -201,3 +201,71 @@ produces it: El Farol needs agents that switch between candidate predictors,
 ethnocentrism needs tag-conditional strategies *and* local reproduction, and the
 zakah model needs a risk process or nobody is ever poor. `vignette("corrections")`
 diagnoses and fixes all three.
+
+## Steps added by the fourth round of models (Part 6)
+
+Ten more models — response thresholds and the division of labour, the garbage
+can model, the emergence of firms, adaptation on a rugged landscape, imitation
+dynamics of vaccination, bank runs, random copying, image scoring, deferred
+acceptance and predator–prey without space — were ported as a stress test. Six
+of them needed something the grammar did not have; four did not.
+
+* `abm_repeat(..., until =, max =)` replays a block of steps inside a tick
+  until a condition holds. A tick was the only loop there was, so a phase that
+  has to run to completion before the next phase starts — an epidemic that
+  burns out before anyone reconsiders vaccinating, a round of proposals that
+  continues until nobody is rejected — could only be written as a fixed number
+  of repetitions, which is either wrong or wasteful. `until` is evaluated the
+  way an `abm_global()` right-hand side is and is checked after each pass, so
+  the block always runs at least once; `max` is required, because a condition
+  that never becomes true would hang the run. It also answers the *no early
+  stopping* entry from the other end: a block wrapped in `abm_repeat()` and run
+  for one tick stops at the model's absorbing state (models 51 and 55).
+* `abm_match(pair = "nearest", cost = <expression>)` replaces the single
+  Euclidean metric with a number the chooser is minimising, evaluated once per
+  (chooser, candidate) pair with the candidate's columns under their own names
+  and the chooser's under `own_<col>` — the convention `abm_neighbours()`
+  already used, extended to include `.id` and `.group`. `NA` means the
+  candidate is not acceptable to that chooser. `by =` is the special case
+  `cost = (x - own_x)^2`; an energy deficit, a delivered price and a position in
+  a preference list are not distances at all (models 48 and 55).
+* `abm_rules(..., .by = <column>)` evaluates rules once per distinct value of an
+  agent column, across the whole population, and writes the result back to every
+  member. It is the third grouping a rule can have, alongside the standing match
+  and the whole population, and it is the only one the agents themselves
+  control: an agent that writes a new value into the `.by` column has moved to a
+  different group. Firms, households, teams and cohorts are all this shape
+  (model 49).
+* `abm_sequential(..., .order = <expression>)` processes agents in a named order
+  rather than a fresh shuffle. The shuffle is right when the order is meant to
+  be arbitrary and wrong when it is part of the model — a queue at a counter, a
+  sequential-service constraint. The same bank-run model under the two
+  orderings gives different answers, which is the point (model 52).
+* `abm_tell(to = <list column>)` writes to a *set* of recipients rather than
+  one, so a sender can address an audience that is neither its partner nor its
+  network neighbourhood — the onlookers who happened to see this interaction,
+  or the problems a choice opportunity has collected (models 48 and 54).
+* `abm_tell(.resolve = "collect")` hands the recipient the list of everything it
+  was told and lets its own rule decide what to make of it, which is strictly
+  more general than any fixed collision policy and is the beginning of an answer
+  to *`abm_tell()` resolves collisions but does not order them* (models 48
+  and 54).
+
+Two fixes came with them:
+
+* **A group of one is a group of one.** `sample(x)` reinterprets a length-1
+  numeric `x` as `seq_len(x)`, so a matching pool holding a single agent id
+  silently became a pool of `.id` agents: `abm_match(pair = "opposite_group")`
+  with four wolves and one sheep paired the sheep with all four, and
+  `pair = "one_of"` with a single candidate drew partners that did not exist.
+  Every shuffle and every with-replacement draw in the package now goes through
+  helpers that do not have this behaviour. Found by model 56, where the
+  populations routinely cross.
+* **A global need not be a scalar.** `abm_globals()` assumed every global was a
+  single value and wrote one row per tick; a matrix-valued global — an NK
+  landscape, a payoff table — produced one row per matrix row and a tick column
+  that repeated. Non-scalar globals are now stored in a list column (model 50).
+
+`abm_rules()` on an empty population is now a quiet no-op rather than an error,
+so a model whose agents all die reports the extinction rather than a message
+about columns no group has.

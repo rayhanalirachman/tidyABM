@@ -9,7 +9,7 @@ abm_go(...)
 \arguments{
 \item{...}{Step objects: \code{\link[=abm_match]{abm_match()}}, \code{\link[=abm_rules]{abm_rules()}}, \code{\link[=abm_sequential]{abm_sequential()}},
 \code{\link[=abm_global]{abm_global()}}, \code{\link[=abm_neighbours]{abm_neighbours()}}, \code{\link[=abm_tell]{abm_tell()}}, \code{\link[=abm_birth]{abm_birth()}},
-\code{\link[=abm_death]{abm_death()}}, \code{\link[=abm_link]{abm_link()}}, \code{\link[=abm_unlink]{abm_unlink()}}.}
+\code{\link[=abm_death]{abm_death()}}, \code{\link[=abm_link]{abm_link()}}, \code{\link[=abm_unlink]{abm_unlink()}}, \code{\link[=abm_repeat]{abm_repeat()}}.}
 }
 \value{
 An \code{abm_go} object.

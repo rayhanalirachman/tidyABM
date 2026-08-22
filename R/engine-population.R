@@ -59,7 +59,7 @@ birth_by_count <- function(step, state) {
     abm_abort("{.fn abm_birth} cannot add agents to an empty group.",
               class = "tidyABM_empty_group")
   }
-  template <- g[sample(nrow(g), step$n, replace = TRUE), , drop = FALSE]
+  template <- g[sample.int(nrow(g), step$n, replace = TRUE), , drop = FALSE]
   template$.id <- state$next_id + seq_len(step$n) - 1L
   template$.group <- nm
   state$next_id <- state$next_id + step$n

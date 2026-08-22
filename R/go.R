@@ -32,7 +32,7 @@ new_abm_go <- function(steps) {
 #'
 #' @param ... Step objects: [abm_match()], [abm_rules()], [abm_sequential()],
 #'   [abm_global()], [abm_neighbours()], [abm_tell()], [abm_birth()],
-#'   [abm_death()], [abm_link()], [abm_unlink()].
+#'   [abm_death()], [abm_link()], [abm_unlink()], [abm_repeat()].
 #'
 #' @return An `abm_go` object.
 #' @export
@@ -43,12 +43,21 @@ new_abm_go <- function(steps) {
 #' )
 abm_go <- function(...) {
   steps <- rlang::list2(...)
+  validate_steps(steps, "abm_go")
+  new_abm_go(steps)
+}
 
+#' Check a list of steps for the three sequencing rules
+#'
+#' Shared by [abm_go()] and [abm_repeat()], which are the two places a block of
+#' steps is declared.
+#' @noRd
+validate_steps <- function(steps, fn, call = rlang::caller_env()) {
   if (length(steps) == 0L) {
     abm_abort(
-      c("{.fn abm_go} needs at least one step.",
+      c("{.fn {fn}} needs at least one step.",
         "i" = "Steps are built with {.fn abm_match}, {.fn abm_rules}, {.fn abm_global}, {.fn abm_birth} and {.fn abm_death}."),
-      class = "tidyABM_empty_go"
+      class = "tidyABM_empty_go", call = call
     )
   }
 
@@ -56,10 +65,10 @@ abm_go <- function(...) {
   if (!all(is_step)) {
     bad <- which(!is_step)[[1]]
     abm_abort(
-      c("Every argument to {.fn abm_go} must be a step.",
+      c("Every argument to {.fn {fn}} must be a step.",
         "x" = "Argument {bad} is {.cls {class(steps[[bad]])[[1]]}}.",
         "i" = "Steps come from {.fn abm_match}, {.fn abm_rules}, {.fn abm_sequential}, {.fn abm_global}, {.fn abm_birth} or {.fn abm_death}."),
-      class = "tidyABM_not_a_step"
+      class = "tidyABM_not_a_step", call = call
     )
   }
 
@@ -71,7 +80,7 @@ abm_go <- function(...) {
       c("Two {.fn abm_match} steps in a row.",
         "x" = "Step {dup[[1]]} and step {dup[[1]] + 1L} are both {.fn abm_match}.",
         "i" = "The first match would be discarded unused. Put an update step between them."),
-      class = "tidyABM_bad_sequence"
+      class = "tidyABM_bad_sequence", call = call
     )
   }
 
@@ -80,11 +89,10 @@ abm_go <- function(...) {
       c("The sequence ends on an {.fn abm_match}.",
         "x" = "Step {length(kinds)} is the last one, and nothing uses its pairing.",
         "i" = "Follow it with {.fn abm_rules}, or drop it."),
-      class = "tidyABM_bad_sequence"
+      class = "tidyABM_bad_sequence", call = call
     )
   }
-
-  new_abm_go(steps)
+  invisible(steps)
 }
 
 #' @export
@@ -106,7 +114,8 @@ print.abm_go <- function(x, ...) {
       abm_birth      = "birth",
       abm_death      = "death",
       abm_link       = "link",
-      abm_unlink     = "unlink"
+      abm_unlink     = "unlink",
+      abm_repeat     = paste0("repeat ", length(s$steps), " step(s), max ", s$max)
     )
     cli::cli_text("{.emph {sprintf('%2d.', i)}} {label}")
   }

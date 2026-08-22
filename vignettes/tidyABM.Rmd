@@ -241,6 +241,41 @@ With `abm_rules()` instead, all twenty agents would see a full pot and all twent
 would be served. Use `abm_sequential()` only when that difference is the point:
 it is slower and harder to reason about.
 
+The order is a fresh shuffle unless you name one. When the order is itself part
+of the model — a queue at a counter, a sequential-service constraint — pass
+`.order =` and the agents go through in its ascending order instead:
+
+```{r}
+queue <- abm_setup(agents = abm_agents(n = 20, place = ~sample(n), got = 0),
+                   globals = list(pot = 10))
+
+abm_run(queue, abm_go(abm_sequential(
+  got ~ if_else(pot > 0, 1, 0),
+  pot ~ if_else(pot > 0, pot - 1, pot),
+  .order = place
+)), ticks = 1, seed = 1) -> q
+sum(q$got[q$tick == 1 & q$place <= 10])   # the front of the queue, every time
+```
+
+## Repeating a block
+
+A tick is one pass through `abm_go()`. Some models have a *phase* inside the
+tick that has to finish first — an epidemic that burns out before anyone
+reconsiders vaccinating, a round of proposals that runs until nobody is
+rejected. `abm_repeat()` replays a block until a condition holds:
+
+```{r}
+grow <- abm_setup(agents = abm_agents(n = 5, x = 0))
+r <- abm_run(grow, abm_go(
+  abm_repeat(abm_rules(x ~ x + 1), until = mean(x) >= 4, max = 100)
+), ticks = 1, seed = 1)
+unique(r$x[r$tick == 1])
+```
+
+`until` is checked after each pass, so the block always runs at least once, and
+`max` is required — a condition that never becomes true would otherwise hang the
+run.
+
 ## Changing the population
 
 `abm_birth()` and `abm_death()` are the only steps that add or remove agents.

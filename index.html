@@ -11,8 +11,8 @@
 <script src="deps/bootstrap-5.3.8/bootstrap.bundle.min.js"></script><link href="deps/font-awesome-6.5.2/css/all.min.css" rel="stylesheet">
 <link href="deps/font-awesome-6.5.2/css/v4-shims.min.css" rel="stylesheet">
 <script src="deps/headroom-0.11.0/headroom.min.js"></script><script src="deps/headroom-0.11.0/jQuery.headroom.min.js"></script><script src="deps/bootstrap-toc-1.0.1/bootstrap-toc.min.js"></script><script src="deps/clipboard.js-2.0.11/clipboard.min.js"></script><script src="deps/search-1.0.0/autocomplete.jquery.min.js"></script><script src="deps/search-1.0.0/fuse.min.js"></script><script src="deps/search-1.0.0/mark.min.js"></script><!-- pkgdown --><script src="pkgdown.js"></script><meta property="og:title" content="Agent-Based Modelling with Tidy Data and a Declarative Grammar">
-<meta name="description" content="A declarative grammar for writing agent-based models (ABMs) in R. Models are described as data rather than as loops: a setup block declares the agent population, an optional network and shared globals, and a behavioural block declares an ordered sequence of typed steps (matching, rules, births, deaths and global updates). Agents are stored as tibbles and rules are written as dplyr-style formulas, so a model reads as a specification and its output is tidy data ready for analysis. The design follows the block structure of NetLogo (setup / go) while keeping the interface idiomatic to the tidyverse.">
-<meta property="og:description" content="A declarative grammar for writing agent-based models (ABMs) in R. Models are described as data rather than as loops: a setup block declares the agent population, an optional network and shared globals, and a behavioural block declares an ordered sequence of typed steps (matching, rules, births, deaths and global updates). Agents are stored as tibbles and rules are written as dplyr-style formulas, so a model reads as a specification and its output is tidy data ready for analysis. The design follows the block structure of NetLogo (setup / go) while keeping the interface idiomatic to the tidyverse.">
+<meta name="description" content="A declarative grammar for writing agent-based models (ABMs) in R. Models are described as data rather than as loops, in three parts: abm_setup() declares the agent population, an optional network and shared globals; abm_go() declares an ordered sequence of typed steps (matching, rules, births, deaths and global updates) replayed once per tick; and abm_run() takes the two and returns the result. Agents are stored as tibbles and rules are written as dplyr-style formulas, so a model reads as a specification and its output is tidy data ready for analysis. The design follows the block structure of NetLogo (setup / go) while keeping the interface idiomatic to the tidyverse.">
+<meta property="og:description" content="A declarative grammar for writing agent-based models (ABMs) in R. Models are described as data rather than as loops, in three parts: abm_setup() declares the agent population, an optional network and shared globals; abm_go() declares an ordered sequence of typed steps (matching, rules, births, deaths and global updates) replayed once per tick; and abm_run() takes the two and returns the result. Agents are stored as tibbles and rules are written as dplyr-style formulas, so a model reads as a specification and its output is tidy data ready for analysis. The design follows the block structure of NetLogo (setup / go) while keeping the interface idiomatic to the tidyverse.">
 </head>
 <body>
     <a href="#main" class="visually-hidden-focusable">Skip to contents</a>
@@ -60,7 +60,7 @@
 <!-- badges: start -->
 
 <p>Agent-based models, written as a specification rather than a loop.</p>
-<p>tidyABM keeps NetLogo’s two-block structure — a <code>setup</code> that declares the world and a <code>go</code> that runs once per tick — but replaces the imperative <code>ask turtles</code> body with an ordered sequence of typed steps. Agents live in a tibble, rules are dplyr-style formulas, and the output is tidy data.</p>
+<p>tidyABM keeps NetLogo’s <code>setup</code> / <code>go</code> division but replaces the imperative <code>ask turtles</code> body with an ordered sequence of typed steps. Agents live in a tibble, rules are dplyr-style formulas, and the output is tidy data.</p>
 <div class="section level2">
 <h2 id="installation">Installation<a class="anchor" aria-label="anchor" href="#installation"></a>
 </h2>
@@ -71,28 +71,26 @@
 <div class="section level2">
 <h2 id="three-parts">Three parts<a class="anchor" aria-label="anchor" href="#three-parts"></a>
 </h2>
-<p>Every tidyABM model is written as the same three components, in the same order, each one a named object you can print, reuse and pass around:</p>
+<p>Every tidyABM model is the same three functions, written as three statements:</p>
 <table class="table">
 <colgroup>
-<col width="21%">
-<col width="35%">
-<col width="42%">
+<col width="19%">
+<col width="32%">
+<col width="48%">
 </colgroup>
 <thead><tr>
 <th>part</th>
 <th>function</th>
-<th>what it is</th>
+<th>what it holds</th>
 </tr></thead>
 <tbody>
 <tr>
-<td>1. the agents</td>
-<td>
-<code><a href="reference/abm_agents.html">abm_agents()</a></code> — inside <code><a href="reference/abm_setup.html">abm_setup()</a></code>
-</td>
-<td>who is in the model and what they start with</td>
+<td>1. the world</td>
+<td><code><a href="reference/abm_setup.html">abm_setup()</a></code></td>
+<td>the agents, the network, the globals</td>
 </tr>
 <tr>
-<td>2. the go block</td>
+<td>2. the tick</td>
 <td><code><a href="reference/abm_go.html">abm_go()</a></code></td>
 <td>the ordered steps replayed once per tick</td>
 </tr>
@@ -104,23 +102,24 @@
 </tr>
 </tbody>
 </table>
-<p>Keep them as three statements. <code><a href="reference/abm_go.html">abm_go()</a></code> is a first-class object, not an argument you build inside the call to <code><a href="reference/abm_run.html">abm_run()</a></code>, and writing it that way is what lets you print it, validate it once, reuse one go block across several populations, or swap one population through several go blocks.</p>
 <div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">agents</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/abm_setup.html">abm_setup</a></span><span class="op">(</span>agents <span class="op">=</span> <span class="fu"><a href="reference/abm_agents.html">abm_agents</a></span><span class="op">(</span><span class="va">...</span><span class="op">)</span><span class="op">)</span>   <span class="co"># 1</span></span>
-<span><span class="va">go</span>     <span class="op">&lt;-</span> <span class="fu"><a href="reference/abm_go.html">abm_go</a></span><span class="op">(</span><span class="va">...</span><span class="op">)</span>                           <span class="co"># 2</span></span>
-<span><span class="va">result</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/abm_run.html">abm_run</a></span><span class="op">(</span><span class="va">agents</span>, <span class="va">go</span>, ticks <span class="op">=</span> <span class="va">...</span>, seed <span class="op">=</span> <span class="va">...</span><span class="op">)</span>   <span class="co"># 3</span></span></code></pre></div>
+<code class="sourceCode R"><span><span class="va">world</span>  <span class="op">&lt;-</span> <span class="fu"><a href="reference/abm_setup.html">abm_setup</a></span><span class="op">(</span><span class="va">...</span><span class="op">)</span>                                <span class="co"># 1</span></span>
+<span><span class="va">go</span>     <span class="op">&lt;-</span> <span class="fu"><a href="reference/abm_go.html">abm_go</a></span><span class="op">(</span><span class="va">...</span><span class="op">)</span>                                   <span class="co"># 2</span></span>
+<span><span class="va">result</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/abm_run.html">abm_run</a></span><span class="op">(</span><span class="va">world</span>, <span class="va">go</span>, ticks <span class="op">=</span> <span class="va">...</span>, seed <span class="op">=</span> <span class="va">...</span><span class="op">)</span>   <span class="co"># 3</span></span></code></pre></div>
+<p><code><a href="reference/abm_setup.html">abm_setup()</a></code> and <code><a href="reference/abm_go.html">abm_go()</a></code> return objects, not arguments. Build each on its own line and you can print it, check it and reuse it — one go block against several worlds, or one world through several go blocks, which is what a parameter sweep is.</p>
+<p>Everything else in the grammar sits inside one of the three. <code><a href="reference/abm_agents.html">abm_agents()</a></code> and <code><a href="reference/abm_network.html">abm_network()</a></code> are what you hand to <code><a href="reference/abm_setup.html">abm_setup()</a></code>; every other <code>abm_*()</code> function is a step inside <code><a href="reference/abm_go.html">abm_go()</a></code>.</p>
 </div>
 <div class="section level2">
 <h2 id="a-whole-model">A whole model<a class="anchor" aria-label="anchor" href="#a-whole-model"></a>
 </h2>
-<p>Wilensky and Rand’s <em>Simple Economy</em>: 500 agents start with $100 each, and every tick anyone with money gives $1 to someone else. The wealth distribution starts as a spike and ends up exponential — no agent is doing anything clever, and inequality appears anyway. The three parts are numbered in the comments.</p>
+<p>Wilensky and Rand’s <em>Simple Economy</em>: 500 agents start with $100 each, and every tick anyone with money gives $1 to someone else. The wealth distribution starts as a spike and ends up exponential — no agent is doing anything clever, and inequality appears anyway.</p>
 <div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://github.com/rayhanalirachman/tidyABM" class="external-link">tidyABM</a></span><span class="op">)</span></span>
 <span></span>
-<span><span class="co"># 1. the agents</span></span>
+<span><span class="co"># 1. the world</span></span>
 <span><span class="va">economy</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/abm_setup.html">abm_setup</a></span><span class="op">(</span>agents <span class="op">=</span> <span class="fu"><a href="reference/abm_agents.html">abm_agents</a></span><span class="op">(</span>n <span class="op">=</span> <span class="fl">500</span>, money <span class="op">=</span> <span class="fl">100</span><span class="op">)</span><span class="op">)</span></span>
 <span></span>
-<span><span class="co"># 2. the go block</span></span>
+<span><span class="co"># 2. the tick</span></span>
 <span><span class="va">go</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/abm_go.html">abm_go</a></span><span class="op">(</span></span>
 <span>  <span class="fu"><a href="reference/abm_match.html">abm_match</a></span><span class="op">(</span>pair <span class="op">=</span> <span class="st">"random"</span>, role <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>giver <span class="op">=</span> <span class="va">money</span> <span class="op">&gt;</span> <span class="fl">0</span>, receiver <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span><span class="op">)</span>,</span>
 <span>  <span class="fu"><a href="reference/abm_rules.html">abm_rules</a></span><span class="op">(</span><span class="va">money</span> <span class="op">~</span> <span class="fu"><a href="https://dplyr.tidyverse.org/reference/if_else.html" class="external-link">if_else</a></span><span class="op">(</span><span class="va">.role</span> <span class="op">==</span> <span class="st">"giver"</span>, <span class="va">money</span> <span class="op">-</span> <span class="fl">1</span>, <span class="va">money</span> <span class="op">+</span> <span class="fl">1</span><span class="op">)</span><span class="op">)</span></span>
@@ -141,24 +140,34 @@
 <div class="section level2">
 <h2 id="the-grammar">The grammar<a class="anchor" aria-label="anchor" href="#the-grammar"></a>
 </h2>
-<p>Setup declares the world:</p>
+<p><code><a href="reference/abm_setup.html">abm_setup()</a></code> declares the world, out of two other specifications and a list:</p>
 <table class="table">
+<colgroup>
+<col width="16%">
+<col width="20%">
+<col width="62%">
+</colgroup>
 <thead><tr>
-<th>function</th>
+<th>argument</th>
+<th>built with</th>
 <th>what it declares</th>
 </tr></thead>
 <tbody>
 <tr>
+<td><code>agents =</code></td>
 <td><code><a href="reference/abm_agents.html">abm_agents()</a></code></td>
 <td>how many agents, and what columns they start with</td>
 </tr>
 <tr>
+<td><code>network =</code></td>
 <td><code><a href="reference/abm_network.html">abm_network()</a></code></td>
 <td>a persistent set of connections between them</td>
 </tr>
 <tr>
-<td><code><a href="reference/abm_setup.html">abm_setup()</a></code></td>
-<td>the whole world, plus any shared globals</td>
+<td><code>globals =</code></td>
+<td>a plain <code><a href="https://rdrr.io/r/base/list.html" class="external-link">list()</a></code>
+</td>
+<td>values the whole population can read</td>
 </tr>
 </tbody>
 </table>

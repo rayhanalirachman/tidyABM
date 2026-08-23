@@ -1,11 +1,12 @@
 # Run a model
 
-`abm_run()` is the scheduler: it takes a model built by
-[`abm_setup()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_setup.md)
-and a behavioural block built by
+`abm_run()` is the last of the three functions a model is made of –
+[`abm_setup()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_setup.md),
+then
 [`abm_go()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_go.md),
-replays the block `ticks` times, and records the whole population after
-every tick.
+then `abm_run()`. It is the scheduler: it takes the model and the
+behavioural block, replays the block `ticks` times, and records the
+whole population after every tick.
 
 ## Usage
 

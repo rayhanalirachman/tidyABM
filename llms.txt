@@ -2,8 +2,7 @@
 
 Agent-based models, written as a specification rather than a loop.
 
-tidyABM keeps NetLogo’s two-block structure — a `setup` that declares
-the world and a `go` that runs once per tick — but replaces the
+tidyABM keeps NetLogo’s `setup` / `go` division but replaces the
 imperative `ask turtles` body with an ordered sequence of typed steps.
 Agents live in a tibble, rules are dplyr-style formulas, and the output
 is tidy data.
@@ -18,46 +17,54 @@ pak::pak("rayhanalirachman/tidyABM")
 
 ## Three parts
 
-Every tidyABM model is written as the same three components, in the same
-order, each one a named object you can print, reuse and pass around:
+Every tidyABM model is the same three functions, written as three
+statements:
 
-| part | function | what it is |
+| part | function | what it holds |
 |----|----|----|
-| 1\. the agents | [`abm_agents()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_agents.md) — inside [`abm_setup()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_setup.md) | who is in the model and what they start with |
-| 2\. the go block | [`abm_go()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_go.md) | the ordered steps replayed once per tick |
+| 1\. the world | [`abm_setup()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_setup.md) | the agents, the network, the globals |
+| 2\. the tick | [`abm_go()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_go.md) | the ordered steps replayed once per tick |
 | 3\. the run | [`abm_run()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_run.md) | the two above, plus `ticks`, `seed` and `record` |
-
-Keep them as three statements.
-[`abm_go()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_go.md)
-is a first-class object, not an argument you build inside the call to
-[`abm_run()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_run.md),
-and writing it that way is what lets you print it, validate it once,
-reuse one go block across several populations, or swap one population
-through several go blocks.
 
 ``` r
 
-agents <- abm_setup(agents = abm_agents(...))   # 1
-go     <- abm_go(...)                           # 2
-result <- abm_run(agents, go, ticks = ..., seed = ...)   # 3
+world  <- abm_setup(...)                                # 1
+go     <- abm_go(...)                                   # 2
+result <- abm_run(world, go, ticks = ..., seed = ...)   # 3
 ```
+
+[`abm_setup()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_setup.md)
+and
+[`abm_go()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_go.md)
+return objects, not arguments. Build each on its own line and you can
+print it, check it and reuse it — one go block against several worlds,
+or one world through several go blocks, which is what a parameter sweep
+is.
+
+Everything else in the grammar sits inside one of the three.
+[`abm_agents()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_agents.md)
+and
+[`abm_network()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_network.md)
+are what you hand to
+[`abm_setup()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_setup.md);
+every other `abm_*()` function is a step inside
+[`abm_go()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_go.md).
 
 ## A whole model
 
 Wilensky and Rand’s *Simple Economy*: 500 agents start with \$100 each,
 and every tick anyone with money gives \$1 to someone else. The wealth
 distribution starts as a spike and ends up exponential — no agent is
-doing anything clever, and inequality appears anyway. The three parts
-are numbered in the comments.
+doing anything clever, and inequality appears anyway.
 
 ``` r
 
 library(tidyABM)
 
-# 1. the agents
+# 1. the world
 economy <- abm_setup(agents = abm_agents(n = 500, money = 100))
 
-# 2. the go block
+# 2. the tick
 go <- abm_go(
   abm_match(pair = "random", role = list(giver = money > 0, receiver = TRUE)),
   abm_rules(money ~ if_else(.role == "giver", money - 1, money + 1))
@@ -80,13 +87,14 @@ ggplot2.
 
 ## The grammar
 
-Setup declares the world:
+[`abm_setup()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_setup.md)
+declares the world, out of two other specifications and a list:
 
-| function | what it declares |
-|----|----|
-| [`abm_agents()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_agents.md) | how many agents, and what columns they start with |
-| [`abm_network()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_network.md) | a persistent set of connections between them |
-| [`abm_setup()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_setup.md) | the whole world, plus any shared globals |
+| argument | built with | what it declares |
+|----|----|----|
+| `agents =` | [`abm_agents()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_agents.md) | how many agents, and what columns they start with |
+| `network =` | [`abm_network()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_network.md) | a persistent set of connections between them |
+| `globals =` | a plain [`list()`](https://rdrr.io/r/base/list.html) | values the whole population can read |
 
 [`abm_go()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_go.md)
 declares what happens each tick, as a sequence of steps dispatched by
@@ -210,21 +218,36 @@ for the three models whose short form runs but is wrong.
 
 # Package index
 
-## Setting up the world
+## The three parts
+
+Every model is these three functions, written as three statements: the
+world, the tick, the run.
+
+- [`abm_setup()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_setup.md)
+  : Set up a model
+- [`abm_go()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_go.md)
+  : Declare what happens each tick
+- [`abm_run()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_run.md)
+  : Run a model
+
+## Declaring the world
+
+The specifications you hand to
+[`abm_setup()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_setup.md).
 
 - [`abm_agents()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_agents.md)
   : Declare a group of agents
 - [`abm_network()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_network.md)
   : Declare a persistent network between agents
-- [`abm_setup()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_setup.md)
-  : Set up a model
 
-## Matching
+## Steps — matching
+
+Who interacts with whom this tick.
 
 - [`abm_match()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_match.md)
   : Match agents into pairs or groups
 
-## Updating agents
+## Steps — updating agents
 
 - [`abm_rules()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_rules.md)
   : Update agent columns
@@ -237,14 +260,14 @@ for the three models whose short form runs but is wrong.
 - [`abm_tell()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_tell.md)
   : Write a value into another agent's row
 
-## Changing the population
+## Steps — changing the population
 
 - [`abm_birth()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_birth.md)
   : Add agents
 - [`abm_death()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_death.md)
   : Remove agents
 
-## Changing the network
+## Steps — changing the network
 
 - [`abm_link()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_link.md)
   : Add edges between matched agents
@@ -253,14 +276,10 @@ for the three models whose short form runs but is wrong.
 - [`abm_draw()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_draw.md)
   : Attach a value to every edge, visible from both ends
 
-## Running a model
+## Steps — control flow
 
-- [`abm_go()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_go.md)
-  : Declare what happens each tick
 - [`abm_repeat()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_repeat.md)
   : Repeat a block of steps until a condition holds
-- [`abm_run()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_run.md)
-  : Run a model
 
 ## Working with results
 

@@ -17,16 +17,13 @@ output is tidy data, so analysing a run is ordinary dplyr.
 
 ## The three parts
 
-Every model in this package is the same three components, written as
+Every model in this package is the same three functions, written as
 three statements:
 
-1.  **the agents** —
-    [`abm_agents()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_agents.md),
-    wrapped in
-    [`abm_setup()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_setup.md)
-    along with any network and globals. Who is in the model and what
-    they start with.
-2.  **the go block** —
+1.  **the world** —
+    [`abm_setup()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_setup.md).
+    The agents, the network, the globals.
+2.  **the tick** —
     [`abm_go()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_go.md).
     The ordered steps replayed once per tick.
 3.  **the run** —
@@ -35,18 +32,25 @@ three statements:
 
 ``` r
 
-agents <- abm_setup(agents = abm_agents(...))            # 1
-go     <- abm_go(...)                                    # 2
-result <- abm_run(agents, go, ticks = ..., seed = ...)   # 3
+world  <- abm_setup(...)                                # 1
+go     <- abm_go(...)                                   # 2
+result <- abm_run(world, go, ticks = ..., seed = ...)   # 3
 ```
 
-Keep them apart.
-[`abm_go()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_go.md)
-returns an object you can print and inspect, and every example below
-builds it on its own line rather than inside the call to
-[`abm_run()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_run.md)
-— which is what lets you reuse one go block across several populations,
-or run one population through several go blocks.
+The first two return objects you can print and inspect, so every example
+below builds them on their own lines rather than inside the call to
+[`abm_run()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_run.md).
+That is what lets you reuse one go block across several worlds, or run
+one world through several go blocks.
+
+Everything else sits inside one of the three:
+[`abm_agents()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_agents.md)
+and
+[`abm_network()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_network.md)
+are what you hand to
+[`abm_setup()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_setup.md),
+and every other `abm_*()` function is a step inside
+[`abm_go()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_go.md).
 
 ## The whole game
 
@@ -56,7 +60,7 @@ everyone who has money gives \$1 to someone else. Nothing else happens.
 
 ``` r
 
-# 1. the agents
+# 1. the world
 economy <- abm_setup(agents = abm_agents(n = 500, money = 100))
 economy
 #> <abm_model> 500 agents in 1 group
@@ -66,14 +70,14 @@ economy
 [`abm_setup()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_setup.md)
 declares the world;
 [`abm_agents()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_agents.md)
-declares one group of agents within it. A plain value like `money = 100`
+declares one group of agents inside it. A plain value like `money = 100`
 is recycled across every agent.
 
 Now the behaviour:
 
 ``` r
 
-# 2. the go block
+# 2. the tick
 go <- abm_go(
   abm_match(pair = "random", role = list(giver = money > 0, receiver = TRUE)),
   abm_rules(money ~ if_else(.role == "giver", money - 1, money + 1))

@@ -38,9 +38,39 @@
     </div>
 
     <div class="section level2">
-      <h2 id="setting-up-the-world">Setting up the world<a class="anchor" aria-label="anchor" href="#setting-up-the-world"></a></h2>
+      <h2 id="the-three-parts">The three parts<a class="anchor" aria-label="anchor" href="#the-three-parts"></a></h2>
+
+      <div class="section-desc"><p>Every model is these three functions, written as three statements: the world, the tick, the run.</p></div>
+
+      <dl></dl></div><div class="section level2">
 
 
+
+
+      <dl><dt>
+
+          <code><a href="abm_setup.html">abm_setup()</a></code>
+
+        </dt>
+        <dd>Set up a model</dd>
+
+        <dt>
+
+          <code><a href="abm_go.html">abm_go()</a></code>
+
+        </dt>
+        <dd>Declare what happens each tick</dd>
+
+        <dt>
+
+          <code><a href="abm_run.html">abm_run()</a></code>
+
+        </dt>
+        <dd>Run a model</dd>
+      </dl></div><div class="section level2">
+      <h2 id="declaring-the-world">Declaring the world<a class="anchor" aria-label="anchor" href="#declaring-the-world"></a></h2>
+
+      <div class="section-desc"><p>The specifications you hand to <code><a href="../reference/abm_setup.html">abm_setup()</a></code>.</p></div>
 
       <dl></dl></div><div class="section level2">
 
@@ -60,17 +90,10 @@
 
         </dt>
         <dd>Declare a persistent network between agents</dd>
-
-        <dt>
-
-          <code><a href="abm_setup.html">abm_setup()</a></code>
-
-        </dt>
-        <dd>Set up a model</dd>
       </dl></div><div class="section level2">
-      <h2 id="matching">Matching<a class="anchor" aria-label="anchor" href="#matching"></a></h2>
+      <h2 id="steps-matching">Steps — matching<a class="anchor" aria-label="anchor" href="#steps-matching"></a></h2>
 
-
+      <div class="section-desc"><p>Who interacts with whom this tick.</p></div>
 
       <dl></dl></div><div class="section level2">
 
@@ -84,7 +107,7 @@
         </dt>
         <dd>Match agents into pairs or groups</dd>
       </dl></div><div class="section level2">
-      <h2 id="updating-agents">Updating agents<a class="anchor" aria-label="anchor" href="#updating-agents"></a></h2>
+      <h2 id="steps-updating-agents">Steps — updating agents<a class="anchor" aria-label="anchor" href="#steps-updating-agents"></a></h2>
 
 
 
@@ -128,7 +151,7 @@
         </dt>
         <dd>Write a value into another agent's row</dd>
       </dl></div><div class="section level2">
-      <h2 id="changing-the-population">Changing the population<a class="anchor" aria-label="anchor" href="#changing-the-population"></a></h2>
+      <h2 id="steps-changing-the-population">Steps — changing the population<a class="anchor" aria-label="anchor" href="#steps-changing-the-population"></a></h2>
 
 
 
@@ -151,7 +174,7 @@
         </dt>
         <dd>Remove agents</dd>
       </dl></div><div class="section level2">
-      <h2 id="changing-the-network">Changing the network<a class="anchor" aria-label="anchor" href="#changing-the-network"></a></h2>
+      <h2 id="steps-changing-the-network">Steps — changing the network<a class="anchor" aria-label="anchor" href="#steps-changing-the-network"></a></h2>
 
 
 
@@ -181,7 +204,7 @@
         </dt>
         <dd>Attach a value to every edge, visible from both ends</dd>
       </dl></div><div class="section level2">
-      <h2 id="running-a-model">Running a model<a class="anchor" aria-label="anchor" href="#running-a-model"></a></h2>
+      <h2 id="steps-control-flow">Steps — control flow<a class="anchor" aria-label="anchor" href="#steps-control-flow"></a></h2>
 
 
 
@@ -192,24 +215,10 @@
 
       <dl><dt>
 
-          <code><a href="abm_go.html">abm_go()</a></code>
-
-        </dt>
-        <dd>Declare what happens each tick</dd>
-
-        <dt>
-
           <code><a href="abm_repeat.html">abm_repeat()</a></code>
 
         </dt>
         <dd>Repeat a block of steps until a condition holds</dd>
-
-        <dt>
-
-          <code><a href="abm_run.html">abm_run()</a></code>
-
-        </dt>
-        <dd>Run a model</dd>
       </dl></div><div class="section level2">
       <h2 id="working-with-results">Working with results<a class="anchor" aria-label="anchor" href="#working-with-results"></a></h2>
 

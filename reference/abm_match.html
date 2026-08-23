@@ -121,8 +121,9 @@ assignment works the pair is dropped for this step. Rules then see <code>.role</
 
 
 <dt id="arg-limits">limits<a class="anchor" aria-label="anchor" href="#arg-limits"></a></dt>
-<dd><p>For <code>resolve = "negotiate"</code>, <code>c(&lt;first group's reservation column&gt;, &lt;second group's reservation column&gt;)</code> — the bid never rises above
-the first, and the ask never falls below the second.</p></dd>
+<dd><p>For <code>resolve = "negotiate"</code>, <code>c(&lt;first group's
+reservation column&gt;, &lt;second group's reservation column&gt;)</code>, the bid never rises
+above the first, and the ask never falls below the second.</p></dd>
 
 
 <dt id="arg-from">from<a class="anchor" aria-label="anchor" href="#arg-from"></a></dt>
@@ -142,15 +143,16 @@ agent is never matched to itself.</p></dd>
 
 <dt id="arg-cost">cost<a class="anchor" aria-label="anchor" href="#arg-cost"></a></dt>
 <dd><p>For <code>"nearest"</code>, an expression naming what the chooser is
-minimising, used instead of <code>by</code>. It is evaluated once per
-(chooser, candidate) pair: the candidate's columns are visible under their
-own names and the chooser's under <code>own_&lt;col&gt;</code>, the same convention
-<code><a href="abm_neighbours.html">abm_neighbours()</a></code> uses. <code>.id</code> and <code>.group</code> are included, so a cost can be
-a lookup into the chooser's own preference list as easily as a price. <code>by</code> is the special case
-<code>cost = (x - own_x)^2</code>; anything else — a delivered price
-<code>price + travel * abs(x - own_x)</code>, an energy deficit, a position in a
-preference list — needs this. <code>NA</code> means the candidate is not acceptable to
-that chooser, and a chooser with no acceptable candidate sits the step out.</p></dd>
+minimising, used instead of <code>by</code>. It is evaluated once per (chooser,
+candidate) pair: the candidate's columns are visible under their own names and
+the chooser's under <code>own_&lt;col&gt;</code>, the same convention
+<code><a href="abm_neighbours.html">abm_neighbours()</a></code> uses. <code>.id</code> and
+<code>.group</code> are included, so a cost can be a lookup into the chooser's own
+preference list as easily as a price. <code>by</code> is the special case <code>cost
+= (x - own_x)^2</code>; anything else, a delivered price <code>price + travel * abs(x
+- own_x)</code>, an energy deficit, a position in a preference list, needs this.
+<code>NA</code> means the candidate is not acceptable to that chooser, and a chooser
+with no acceptable candidate sits the step out.</p></dd>
 
 </dl></div>
     <div class="section level2">

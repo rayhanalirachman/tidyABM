@@ -1,7 +1,7 @@
 # Summarise each agent's neighbourhood
 
 A match gives an agent *one* partner. Plenty of models need the whole
-neighbourhood instead — how many of my neighbours are infected, what
+neighbourhood instead, how many of my neighbours are infected, what
 fraction of them are flashing, what my neighbours believe on average.
 `abm_neighbours()` writes exactly that: for every agent, an aggregate
 over the agents around it.
@@ -42,7 +42,7 @@ neighbours think on average". An agent with no neighbours gets `NA`.
 
 Alongside each neighbour column the expression also sees `own_<col>`,
 the focal agent's own value of that column, recycled down its
-neighbourhood. That is what makes a *comparison* possible —
+neighbourhood. That is what makes a *comparison* possible,
 `sum(wealth > own_wealth)` is "how many of my neighbours are richer than
 me", which no aggregate over the neighbours alone can express.
 
@@ -51,7 +51,7 @@ me", which no aggregate over the neighbours alone can express.
 By default the neighbourhood is the model's
 [`abm_network()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_network.md):
 the agents this one shares an edge with. `within =` replaces it with a
-neighbourhood in **attribute space** — everybody whose columns satisfy a
+neighbourhood in **attribute space**, everybody whose columns satisfy a
 condition, whether or not the model has a network at all. The condition
 is evaluated once per (focal, candidate) pair, with the candidate's
 columns under their own names and the focal agent's under `own_<col>`,

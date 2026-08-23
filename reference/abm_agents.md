@@ -2,7 +2,7 @@
 
 `abm_agents()` describes one homogeneous group of agents: how many there
 are and what columns they start with. It is a *specification*, not a
-population — nothing is created until the spec is passed to
+population, nothing is created until the spec is passed to
 [`abm_setup()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_setup.md),
 which is where a model's first part is declared.
 

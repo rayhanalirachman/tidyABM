@@ -70,14 +70,13 @@
 <div class="sourceCode" id="cb1"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://github.com/rayhanalirachman/tidyABM" class="external-link">tidyABM</a></span><span class="op">)</span></span></code></pre></div>
 <p>An agent-based model is usually written as nested loops: for each
-tick, for each agent, do something. tidyABM asks you to write the model
-as a <em>specification</em> instead — a declaration of what the
-population is and an ordered list of what happens to it — and runs the
-loops for you.</p>
-<p>That buys three things. The model reads as a description of the
-mechanism rather than as bookkeeping; mistakes in the structure are
-caught once, when you build the model, rather than on tick 400; and the
-output is tidy data, so analysing a run is ordinary dplyr.</p>
+tick, for each agent, do something. tidyABM asks for a
+<em>specification</em> instead. You declare what the population is and
+list what happens to it, in order, and the package runs the loops.</p>
+<p>Three things come out of that. The model reads as a description of
+the mechanism rather than as bookkeeping. Mistakes in the structure are
+caught when you build the model, not on tick 400. And the output is tidy
+data, so analysing a run is ordinary dplyr.</p>
 <div class="section level2">
 <h2 id="the-three-parts">The three parts<a class="anchor" aria-label="anchor" href="#the-three-parts"></a>
 </h2>
@@ -85,13 +84,13 @@ output is tidy data, so analysing a run is ordinary dplyr.</p>
 three statements:</p>
 <ol style="list-style-type: decimal">
 <li>
-<strong>the world</strong> — <code><a href="../reference/abm_setup.html">abm_setup()</a></code>. The agents,
+<strong>the world</strong>, <code><a href="../reference/abm_setup.html">abm_setup()</a></code>. The agents,
 the network, the globals.</li>
 <li>
-<strong>the tick</strong> — <code><a href="../reference/abm_go.html">abm_go()</a></code>. The ordered steps
+<strong>the tick</strong>, <code><a href="../reference/abm_go.html">abm_go()</a></code>. The ordered steps
 replayed once per tick.</li>
 <li>
-<strong>the run</strong> — <code><a href="../reference/abm_run.html">abm_run()</a></code>. The two above,
+<strong>the run</strong>, <code><a href="../reference/abm_run.html">abm_run()</a></code>. The two above,
 plus <code>ticks</code>, <code>seed</code> and <code>record</code>.</li>
 </ol>
 <div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
@@ -120,7 +119,7 @@ else happens.</p>
 <span><span class="va">economy</span></span>
 <span><span class="co">#&gt; <span style="color: #0000BB;">&lt;abm_model&gt;</span> <span style="font-weight: bold;">500</span> agents in 1 group</span></span>
 <span><span class="co">#&gt; <span style="color: #00BBBB;">•</span> <span style="color: #00BB00;">agents</span>: 500 agents [<span style="color: #0000BB;">"money"</span>]</span></span></code></pre></div>
-<p><code><a href="../reference/abm_setup.html">abm_setup()</a></code> declares the world;
+<p><code><a href="../reference/abm_setup.html">abm_setup()</a></code> declares the world.
 <code><a href="../reference/abm_agents.html">abm_agents()</a></code> declares one group of agents inside it. A
 plain value like <code>money = 100</code> is recycled across every
 agent.</p>
@@ -136,11 +135,11 @@ agent.</p>
 <span><span class="co">#&gt; <span style="font-style: italic;">1.</span> match random</span></span>
 <span><span class="co">#&gt; <span style="font-style: italic;">2.</span> rules 1 rule(s)</span></span></code></pre></div>
 <p>Two steps. <code><a href="../reference/abm_match.html">abm_match()</a></code> shuffles the population into
-pairs and works out who in each pair is the giver — the
-<code>role</code> list says the giver must satisfy
-<code>money &gt; 0</code> and the receiver can be anyone, so a pair
-where neither agent has money is dropped for this tick.
-<code><a href="../reference/abm_rules.html">abm_rules()</a></code> then moves the dollar.</p>
+pairs and works out who in each pair is the giver. The <code>role</code>
+list says the giver must satisfy <code>money &gt; 0</code> and the
+receiver can be anyone, so a pair where neither agent has money is
+dropped for this tick. Then <code><a href="../reference/abm_rules.html">abm_rules()</a></code> moves the
+dollar.</p>
 <div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># 3. the run</span></span>
 <span><span class="va">result</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/abm_run.html">abm_run</a></span><span class="op">(</span><span class="va">economy</span>, <span class="va">go</span>, ticks <span class="op">=</span> <span class="fl">500</span>, seed <span class="op">=</span> <span class="fl">1</span><span class="op">)</span></span>
@@ -172,7 +171,7 @@ where neither agent has money is dropped for this tick.
 <span><span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary</a></span><span class="op">(</span><span class="va">end</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="co">#&gt;    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. </span></span>
 <span><span class="co">#&gt;      42      86     100     100     114     160</span></span></code></pre></div>
-<p>Money is conserved — no rule creates or destroys any — but the
+<p>Money is conserved, because no rule creates or destroys any, but the
 distribution has gone from a spike at 100 to something with a long right
 tail. That is the whole point of the model.</p>
 </div>
@@ -180,8 +179,8 @@ tail. That is the whole point of the model.</p>
 <h2 id="setup-agents-networks-globals">Setup: agents, networks, globals<a class="anchor" aria-label="anchor" href="#setup-agents-networks-globals"></a>
 </h2>
 <p><code><a href="../reference/abm_agents.html">abm_agents()</a></code> takes <code>n</code> and any number of
-named columns. A plain value recycles; a one-sided formula is evaluated
-once and must return <code>n</code> values (or one, to recycle).
+named columns. A plain value recycles. A one-sided formula is evaluated
+once and must return <code>n</code> values, or one value to recycle.
 Formulas run in order, so a later column can use an earlier one:</p>
 <div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/abm_agents.html">abm_agents</a></span><span class="op">(</span></span>
@@ -205,9 +204,9 @@ Each keeps its own columns:</p>
 <span><span class="co">#&gt; <span style="color: #00BBBB;">•</span> <span style="color: #00BB00;">sellers</span>: 5 agents [<span style="color: #0000BB;">"wta"</span> and <span style="color: #0000BB;">"ask"</span>]</span></span></code></pre></div>
 <p>Agent ids are unique across the whole model, and every agent carries
 a <code>.group</code> column naming its group.</p>
-<p>Values shared by the whole population — a bar’s last attendance, a
-bank’s ledger — go in <code>globals</code>. They are readable inside
-every rule:</p>
+<p>Values shared by the whole population go in <code>globals</code>: a
+bar’s last attendance, a bank’s ledger. They are readable inside every
+rule:</p>
 <div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">elfarol</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/abm_setup.html">abm_setup</a></span><span class="op">(</span></span>
 <span>  agents  <span class="op">=</span> <span class="fu"><a href="../reference/abm_agents.html">abm_agents</a></span><span class="op">(</span>n <span class="op">=</span> <span class="fl">100</span>, threshold <span class="op">=</span> <span class="op">~</span><span class="fu"><a href="https://rdrr.io/r/stats/Uniform.html" class="external-link">runif</a></span><span class="op">(</span><span class="va">n</span>, <span class="fl">40</span>, <span class="fl">80</span><span class="op">)</span><span class="op">)</span>,</span>
@@ -373,9 +372,9 @@ full pot and all twenty would be served. Use
 <code><a href="../reference/abm_sequential.html">abm_sequential()</a></code> only when that difference is the point: it
 is slower and harder to reason about.</p>
 <p>The order is a fresh shuffle unless you name one. When the order is
-itself part of the model — a queue at a counter, a sequential-service
-constraint — pass <code>.order =</code> and the agents go through in its
-ascending order instead:</p>
+itself part of the model, say a queue at a counter or a
+sequential-service constraint, pass <code>.order =</code> and the agents
+go through in its ascending order instead:</p>
 <div class="sourceCode" id="cb18"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">queue</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/abm_setup.html">abm_setup</a></span><span class="op">(</span>agents <span class="op">=</span> <span class="fu"><a href="../reference/abm_agents.html">abm_agents</a></span><span class="op">(</span>n <span class="op">=</span> <span class="fl">20</span>, place <span class="op">=</span> <span class="op">~</span><span class="fu"><a href="https://rdrr.io/r/base/sample.html" class="external-link">sample</a></span><span class="op">(</span><span class="va">n</span><span class="op">)</span>, got <span class="op">=</span> <span class="fl">0</span><span class="op">)</span>,</span>
 <span>                   globals <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>pot <span class="op">=</span> <span class="fl">10</span><span class="op">)</span><span class="op">)</span></span>
@@ -394,7 +393,7 @@ ascending order instead:</p>
 <h2 id="repeating-a-block">Repeating a block<a class="anchor" aria-label="anchor" href="#repeating-a-block"></a>
 </h2>
 <p>A tick is one pass through <code><a href="../reference/abm_go.html">abm_go()</a></code>. Some models have a
-<em>phase</em> inside the tick that has to finish first — an epidemic
+<em>phase</em> inside the tick that has to finish first: an epidemic
 that burns out before anyone reconsiders vaccinating, a round of
 proposals that runs until nobody is rejected. <code><a href="../reference/abm_repeat.html">abm_repeat()</a></code>
 replays a block until a condition holds:</p>
@@ -408,8 +407,8 @@ replays a block until a condition holds:</p>
 <span><span class="fu"><a href="https://rdrr.io/r/base/unique.html" class="external-link">unique</a></span><span class="op">(</span><span class="va">r</span><span class="op">$</span><span class="va">x</span><span class="op">[</span><span class="va">r</span><span class="op">$</span><span class="va">tick</span> <span class="op">==</span> <span class="fl">1</span><span class="op">]</span><span class="op">)</span></span>
 <span><span class="co">#&gt; [1] 4</span></span></code></pre></div>
 <p><code>until</code> is checked after each pass, so the block always
-runs at least once, and <code>max</code> is required — a condition that
-never becomes true would otherwise hang the run.</p>
+runs at least once, and <code>max</code> is required, because a
+condition that never becomes true would hang the run.</p>
 </div>
 <div class="section level2">
 <h2 id="neighbourhoods">Neighbourhoods<a class="anchor" aria-label="anchor" href="#neighbourhoods"></a>
@@ -436,9 +435,9 @@ over the neighbours’ rows, with the focal agent’s own columns visible as
 <span><span class="co">#&gt;    0    1    2    3    4    5    6 &lt;NA&gt; </span></span>
 <span><span class="co">#&gt;    9    9    8    5    2    4    2    1</span></span></code></pre></div>
 <p>The neighbourhood is the network by default. <code>within =</code>
-makes it a neighbourhood in <em>attribute space</em> instead — everybody
-whose columns satisfy a condition, network or no network. Hegselmann and
-Krause’s bounded confidence model is one step:</p>
+makes it a neighbourhood in <em>attribute space</em> instead, meaning
+everybody whose columns satisfy a condition, network or no network.
+Hegselmann and Krause’s bounded confidence model is one step:</p>
 <div class="sourceCode" id="cb21"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">crowd</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/abm_setup.html">abm_setup</a></span><span class="op">(</span>agents <span class="op">=</span> <span class="fu"><a href="../reference/abm_agents.html">abm_agents</a></span><span class="op">(</span>n <span class="op">=</span> <span class="fl">200</span>, opinion <span class="op">=</span> <span class="op">~</span><span class="fu"><a href="https://rdrr.io/r/stats/Uniform.html" class="external-link">runif</a></span><span class="op">(</span><span class="va">n</span><span class="op">)</span><span class="op">)</span>,</span>
 <span>                   globals <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>eps <span class="op">=</span> <span class="fl">0.15</span><span class="op">)</span>, seed <span class="op">=</span> <span class="fl">42</span><span class="op">)</span></span>
@@ -451,9 +450,9 @@ Krause’s bounded confidence model is one step:</p>
 <span><span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/sort.html" class="external-link">sort</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/unique.html" class="external-link">unique</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="va">hk</span><span class="op">$</span><span class="va">opinion</span><span class="op">[</span><span class="va">hk</span><span class="op">$</span><span class="va">tick</span> <span class="op">==</span> <span class="fl">30</span><span class="op">]</span>, <span class="fl">4</span><span class="op">)</span><span class="op">)</span><span class="op">)</span>, <span class="fl">3</span><span class="op">)</span></span>
 <span><span class="co">#&gt; [1] 0.190 0.478 0.752</span></span></code></pre></div>
 <p>One difference is worth knowing: an agent is inside its own
-<em>attribute</em> neighbourhood whenever the condition holds of it —
-“the mean opinion of everyone I take seriously” includes its own — and
-never inside its own <em>network</em> one. Write
+<em>attribute</em> neighbourhood whenever the condition holds of it,
+since “the mean opinion of everyone I take seriously” includes its own,
+and never inside its own <em>network</em> one. Write
 <code>within = ... &amp; .id != own_.id</code> if you want it out.</p>
 <p>Two <code><a href="../reference/abm_neighbours.html">abm_neighbours()</a></code> passes draw their random numbers
 independently, which is right when each is a separate event and wrong
@@ -475,7 +474,7 @@ number:</p>
 <span><span class="co">#&gt; [1] 58</span></span></code></pre></div>
 <p><code>.each = "endpoint"</code> gives the two ends one draw each
 instead, read as <code>name</code> from an agent’s own side and
-<code>name_back</code> from the other — which is what an asymmetric
+<code>name_back</code> from the other, which is what an asymmetric
 interaction needs, since whether I noticed you and whether you noticed
 me are different questions about the same edge.</p>
 </div>
@@ -511,7 +510,7 @@ steps that add or remove agents.</p>
 <span><span class="co">#&gt; 100 106  73</span></span></code></pre></div>
 <p><code>cost</code> says what reproduction costs, as ordinary
 <code>column ~ expression</code> formulas applied to the parent and the
-newborn alike — halving a resource splits it between them.</p>
+newborn alike, so halving a resource splits it between them.</p>
 <p>One parent, one offspring, unless <code>times</code> says otherwise.
 It takes an expression evaluated in the parent’s row, so a fertility can
 be a column, a number, or a draw:</p>
@@ -552,8 +551,8 @@ untouched:</p>
 <p>There is a sharp edge here worth knowing about.
 <code><a href="../reference/abm_run.html">abm_run()</a></code>‘s seed fixes the <em>run</em>, not the
 <em>model</em>. If your agents’ starting columns are random, they were
-drawn when <code><a href="../reference/abm_setup.html">abm_setup()</a></code> was called — before
-<code><a href="../reference/abm_run.html">abm_run()</a></code> had a chance to set anything — so two experiments
+drawn when <code><a href="../reference/abm_setup.html">abm_setup()</a></code> was called, before
+<code><a href="../reference/abm_run.html">abm_run()</a></code> had a chance to set anything, so two experiments
 built the same way can start from different populations:</p>
 <div class="sourceCode" id="cb27"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">random_pop</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span><span class="op">)</span> <span class="fu"><a href="../reference/abm_setup.html">abm_setup</a></span><span class="op">(</span>agents <span class="op">=</span> <span class="fu"><a href="../reference/abm_agents.html">abm_agents</a></span><span class="op">(</span>n <span class="op">=</span> <span class="fl">50</span>, x <span class="op">=</span> <span class="op">~</span><span class="fu"><a href="https://rdrr.io/r/stats/Uniform.html" class="external-link">runif</a></span><span class="op">(</span><span class="va">n</span><span class="op">)</span><span class="op">)</span><span class="op">)</span></span>
@@ -584,9 +583,9 @@ upgrade.</p>
 <h2 id="how-much-to-record">How much to record<a class="anchor" aria-label="anchor" href="#how-much-to-record"></a>
 </h2>
 <p>By default <code><a href="../reference/abm_run.html">abm_run()</a></code> keeps every agent of every tick,
-which is right for a fixed population and wrong for a growing one — a
-run that ends with fifty thousand agents has been keeping every one of
-them since the start. <code>record</code> says how much to keep:</p>
+which is right for a fixed population and wrong for a growing one. A run
+that ends with fifty thousand agents has been keeping every one of them
+since the start. <code>record</code> says how much to keep:</p>
 <div class="sourceCode" id="cb29"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">sizes</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span></span>
 <span>  all      <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/nrow.html" class="external-link">nrow</a></span><span class="op">(</span><span class="fu"><a href="../reference/abm_run.html">abm_run</a></span><span class="op">(</span><span class="va">economy</span>, <span class="va">go</span>, ticks <span class="op">=</span> <span class="fl">20</span>, record <span class="op">=</span> <span class="st">"all"</span><span class="op">)</span><span class="op">)</span>,</span>
@@ -597,13 +596,13 @@ them since the start. <code>record</code> says how much to keep:</p>
 <span><span class="va">sizes</span></span>
 <span><span class="co">#&gt;     all every_5   final globals </span></span>
 <span><span class="co">#&gt;   10500    2500     500       0</span></span></code></pre></div>
-<p>A whole number keeps every <em>n</em>th tick plus the two ends;
-<code>"final"</code> keeps the last tick only; <code>"globals"</code>
-keeps none of the populations. Globals are recorded every tick whatever
-you say, since they are one row each, so <code>"globals"</code> is the
-setting for a model whose output is an aggregate. Nothing about the run
-itself changes — the same seed gives the same final state at any
-setting.</p>
+<p>A whole number keeps every <em>n</em>th tick plus the two ends.
+<code>"final"</code> keeps the last tick only, and
+<code>"globals"</code> keeps none of the populations. Globals are
+recorded every tick whatever you say, since they are one row each, so
+<code>"globals"</code> is the setting for a model whose output is an
+aggregate. The run itself is unchanged either way: the same seed gives
+the same final state at any setting.</p>
 </div>
 <div class="section level2">
 <h2 id="where-to-go-next">Where to go next<a class="anchor" aria-label="anchor" href="#where-to-go-next"></a>

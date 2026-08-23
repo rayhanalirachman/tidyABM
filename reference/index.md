@@ -22,14 +22,14 @@ The specifications you hand to
 - [`abm_network()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_network.md)
   : Declare a persistent network between agents
 
-## Steps — matching
+## Steps: matching
 
 Who interacts with whom this tick.
 
 - [`abm_match()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_match.md)
   : Match agents into pairs or groups
 
-## Steps — updating agents
+## Steps: updating agents
 
 - [`abm_rules()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_rules.md)
   : Update agent columns
@@ -42,14 +42,14 @@ Who interacts with whom this tick.
 - [`abm_tell()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_tell.md)
   : Write a value into another agent's row
 
-## Steps — changing the population
+## Steps: changing the population
 
 - [`abm_birth()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_birth.md)
   : Add agents
 - [`abm_death()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_death.md)
   : Remove agents
 
-## Steps — changing the network
+## Steps: changing the network
 
 - [`abm_link()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_link.md)
   : Add edges between matched agents
@@ -58,7 +58,7 @@ Who interacts with whom this tick.
 - [`abm_draw()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_draw.md)
   : Attach a value to every edge, visible from both ends
 
-## Steps — control flow
+## Steps: control flow
 
 - [`abm_repeat()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_repeat.md)
   : Repeat a block of steps until a condition holds

@@ -118,14 +118,14 @@ unless it is crowded, and their decisions are what make it crowded.</p>
 <span><span class="co">#&gt;  [1]  60  44  88   0 100   0 100   0 100   0 100   0 100   0 100   0 100   0 100</span></span>
 <span><span class="co">#&gt; [20]   0 100</span></span></code></pre></div>
 <p><strong>What it introduced:</strong> <code><a href="../reference/abm_global.html">abm_global()</a></code>, and
-the fact that matching is optional — this is the first model with no
+the fact that matching is optional. This is the first model with no
 pairing at all.</p>
 <p><strong>A warning about this version.</strong> With one shared
 predictor, the model collapses into a two-cycle: attendance overshoots,
 everyone stays home, attendance undershoots, everyone goes. Arthur’s
 result needs agents that hold several candidate forecasts and switch to
 whichever has been working. The mechanism above is the scaffolding, not
-the result — <code><a href="../articles/corrections.html">vignette("corrections")</a></code> builds the working
+the result. <code><a href="../articles/corrections.html">vignette("corrections")</a></code> builds the working
 version.</p>
 </div>
 <div class="section level2">
@@ -196,7 +196,7 @@ than a special population mechanism.</p>
 strategies are unconditional, so cooperating is simply dominated and the
 population runs itself down. Hammond and Axelrod’s agents decide
 <em>separately</em> whether to cooperate with their own tag and with
-others — and even that is not enough without local reproduction.
+others, and even that is not enough without local reproduction.
 <code><a href="../articles/corrections.html">vignette("corrections")</a></code> builds both variants and shows why
 the second one matters.</p>
 </div>
@@ -226,10 +226,10 @@ hears it.</p>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; ignorant  stifler </span></span>
 <span><span class="co">#&gt;       12      188</span></span></code></pre></div>
-<p><strong>What it introduced:</strong> nothing new — which was the
+<p><strong>What it introduced:</strong> nothing new. Which was the
 point. Pairwise state comparison through <code>partner_*</code> columns
 is self-consistent by construction, so it needs no <code>role</code>.
-Transfers of a conserved quantity need <code>role</code>; symmetric
+Transfers of a conserved quantity need <code>role</code>. Symmetric
 state changes do not.</p>
 </div>
 <div class="section level2">
@@ -254,10 +254,10 @@ their nearest neighbour is close enough.</p>
 <span><span class="co">#&gt;       start         end </span></span>
 <span><span class="co">#&gt; 0.004968612 0.004968612</span></span></code></pre></div>
 <p><strong>What it introduced:</strong> <code>pair = "nearest"</code>.
-Note that this pairing is <em>directional</em> — your nearest neighbour
-need not have you as theirs — so each agent gets its own
-<code>.group_id</code>, and <code>runif(1)</code> in the rule above is
-drawn once per agent rather than once for the population.</p>
+Note that this pairing is <em>directional</em>, since your nearest
+neighbour need not have you as theirs, so each agent gets its own
+<code>.group_id</code>. <code>runif(1)</code> in the rule above is
+therefore drawn once per agent rather than once for the population.</p>
 </div>
 <div class="section level2">
 <h2 id="market">Market<a class="anchor" aria-label="anchor" href="#market"></a>
@@ -286,7 +286,7 @@ level.</p>
 <span><span class="co">#&gt; 42.95 43.80 47.91</span></span></code></pre></div>
 <p><strong>What it introduced:</strong> several agent groups, and rule
 routing by column existence. The <code>offer</code> rule mentions a
-column only buyers have, so it applies only to buyers; the
+column only buyers have, so it applies only to buyers, the
 <code>ask</code> rule only to sellers. No <code>type ==</code> test, no
 merging of the two tibbles.</p>
 </div>
@@ -373,7 +373,7 @@ survives.</p>
 <p><strong>What it introduced:</strong> nothing. It is a composition of
 <code>abm_network(degree = 1)</code> for fixed partnerships and the
 <code>partner_*</code> convention, which already carries a partner’s
-previous move forward. Memory of one round comes free; anything longer
+previous move forward. Memory of one round comes free. Anything longer
 needs an explicit column.</p>
 </div>
 <div class="section level2">
@@ -398,15 +398,15 @@ appear.</p>
 <span><span class="co">#&gt;    max_degree median_degree </span></span>
 <span><span class="co">#&gt;            36             1</span></span></code></pre></div>
 <p><strong>What it introduced:</strong> the only way the network changes
-during a run. <code>from = "random_edge"</code> reuses NetLogo’s trick —
-pick an edge uniformly, then one of its endpoints — so selection is
-degree-proportional without anyone storing a degree.</p>
+during a run. <code>from = "random_edge"</code> reuses NetLogo’s trick.
+Pick an edge uniformly, then one of its endpoints, and selection comes
+out degree-proportional without anyone storing a degree.</p>
 </div>
 <div class="section level2">
 <h2 id="zakah-redistribution">Zakah redistribution<a class="anchor" aria-label="anchor" href="#zakah-redistribution"></a>
 </h2>
-<p>Consumption erodes wealth; those above the <em>nisab</em> pay 2.5%
-into a pool; those below the poverty line share it.</p>
+<p>Consumption erodes wealth. Those above the <em>nisab</em> pay 2.5%
+into a pool, and those below the poverty line share it.</p>
 <div class="sourceCode" id="cb13"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">nisab</span> <span class="op">&lt;-</span> <span class="fl">100</span></span>
 <span><span class="va">poverty_line</span> <span class="op">&lt;-</span> <span class="fl">30</span></span>
@@ -430,21 +430,21 @@ into a pool; those below the poverty line share it.</p>
 <span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/utils/head.html" class="external-link">tail</a></span><span class="op">(</span><span class="fu"><a href="../reference/abm_globals.html">abm_globals</a></span><span class="op">(</span><span class="va">r</span><span class="op">)</span><span class="op">$</span><span class="va">zakah_pool</span>, <span class="fl">3</span><span class="op">)</span>, <span class="fl">1</span><span class="op">)</span></span>
 <span><span class="co">#&gt; [1] 1374.0 1368.3 1365.0</span></span></code></pre></div>
-<p><strong>What it introduced:</strong> nothing mechanically — it is the
+<p><strong>What it introduced:</strong> nothing mechanically. It is the
 first model made of nothing but individual and population-level steps,
 which confirmed matching is optional machinery rather than a
 requirement. Collection is modelled as a pool rather than peer-to-peer
 transfers, both because that is how zakah institutions actually work and
 because it sidesteps matching a mismatched number of payers and
 recipients.</p>
-<p><strong>Watch the two thresholds — and the missing risk.</strong>
+<p><strong>Watch the two thresholds, and the missing risk.</strong>
 <code>nisab</code> and <code>poverty_line</code> are deliberately
 different, so a middle group pays nothing and receives nothing. But the
 recipient pool empties within about ten ticks: the consumption rule is
 mean-reverting, so every household converges on <code>20 * income</code>
 and nobody is persistently poor. Zakah then becomes a pure drag on the
 payers. Check <code>sum(wealth &lt; poverty_line)</code> over the run
-before reading anything into the inequality path;
+before reading anything into the inequality path.
 <code><a href="../articles/corrections.html">vignette("corrections")</a></code> fixes it.</p>
 </div>
 <div class="section level2">
@@ -492,19 +492,19 @@ it has, and whoever asks first gets it.</p>
 <span><span class="co">#&gt; <span style="color: #BCBCBC;">3</span>   100         <span style="text-decoration: underline;">3</span>133.       314.         -<span style="color: #BB0000;">0.98</span></span></span></code></pre></div>
 <p><strong>What it introduced:</strong> <code><a href="../reference/abm_sequential.html">abm_sequential()</a></code>.
 Every earlier model works fine with simultaneous updates, because a
-shared pool that is only ever <em>divided</em> — the public goods pot,
-the zakah pool — gives the same answer either way. Lendable reserves are
+shared pool that is only ever <em>divided</em> (the public goods pot,
+the zakah pool) gives the same answer either way. Lendable reserves are
 different: they are <em>depleted</em>, so the first borrower has to
 change what the second one sees. The step is scoped narrowly to that
-case — during the loop a rule reads and writes its own agent’s columns
+case: during the loop a rule reads and writes its own agent’s columns
 and any global, and nothing else.</p>
 <p>Note that the last <code><a href="../reference/abm_sequential.html">abm_sequential()</a></code> rule writes to a
-global. That is what makes the depletion visible to the next agent;
-without it the reserve would only be recomputed at the end of the tick
+global. That is what makes the depletion visible to the next agent.
+Without it the reserve would only be recomputed at the end of the tick
 and every agent would borrow against the same balance.</p>
 <p>The first rule is doing something too. Rules inside
-<code><a href="../reference/abm_sequential.html">abm_sequential()</a></code> cascade — each one sees what the rule
-above it wrote — so the amount actually drawn is worked out once, into
+<code><a href="../reference/abm_sequential.html">abm_sequential()</a></code> cascade, each one seeing what the rule
+above it wrote, so the amount actually drawn is worked out once, into
 <code>draw</code>, and the three rules that move money all refer to it.
 Writing the condition out three times would not work: the second rule
 brings <code>wallet</code> back to zero, and the third would then find

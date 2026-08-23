@@ -8,7 +8,7 @@ library(tidyABM)
 Three of the models in
 [`vignette("models")`](https://rayhanalirachman.github.io/tidyABM/articles/models.md)
 run correctly and still do not show the behaviour they are famous for.
-That is not a bug in the package or in the translation — it is that the
+That is not a bug in the package or in the translation. It is that the
 short version of each model, the one that fits in a paragraph, leaves
 out the mechanism that produces the result. This vignette shows what is
 missing in each case and puts it back.
@@ -23,12 +23,12 @@ rather than just “it ran”.
 ## El Farol: one predictor is no predictor
 
 Arthur’s bar problem is famous for never settling. A hundred people
-decide independently whether to go to a bar that is only fun below 60;
-if everyone expects it to be empty everyone goes, and the expectation
+decide independently whether to go to a bar that is only fun below 60.
+If everyone expects it to be empty everyone goes, and the expectation
 destroys itself.
 
-The short version gives every agent the same forecast — last week’s
-attendance — and differs only in the threshold each will tolerate:
+The short version gives every agent the same forecast, last week’s
+attendance, and differs only in the threshold each will tolerate:
 
 ``` r
 
@@ -49,7 +49,7 @@ tail(abm_globals(short)$last_attendance, 12)
 Everybody goes, then nobody goes, forever. With a single shared forecast
 the population is effectively one agent, and one agent chasing its own
 tail produces a two-cycle. Giving the agents heterogeneous *fixed*
-forecasts is not enough either — it moves the cycle but the map is still
+forecasts is not enough either. It moves the cycle, but the map is still
 deterministic and still converges.
 
 Arthur’s actual mechanism is **inductive**: each agent holds several
@@ -59,7 +59,7 @@ population’s response to a given history keeps changing, and attendance
 never settles.
 
 That is expressible here, but it needs each agent to carry a *set* of
-strategies, and the grammar has no shorthand for that — one column per
+strategies, and the grammar has no shorthand for that. One column per
 weight per strategy is the only way. Ordinary R metaprogramming fills
 the gap:
 
@@ -135,7 +135,7 @@ c(mean = round(mean(attendance), 1), sd = round(sd(attendance), 1),
 ```
 
 Attendance now hovers near the capacity of 60 without ever repeating
-itself — Arthur’s result. Note how sensitive it is: with three
+itself, which is Arthur’s result. Note how sensitive it is. With three
 predictors instead of ten it locks up again. The fluctuation is a
 property of the predictor pool, not something the model produces on its
 own.
@@ -144,16 +144,16 @@ own.
 an agent a *set* of anything. Ten strategies over five lags is seventy
 columns, and only metaprogramming makes that bearable. A future
 [`abm_agents()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_agents.md)
-might accept matrix-valued or list-valued columns; until then, build the
+might accept matrix-valued or list-valued columns. Until then, build the
 spec with [`do.call()`](https://rdrr.io/r/base/do.call.html).
 
 ## Ethnocentrism: cooperation has to be conditional, and neighbours have to be kin
 
 Hammond and Axelrod’s model is famous for showing that in-group
 favouritism can evolve from nothing. The short version gives agents a
-tag and a strategy, but the strategy ignores the tag — so the tag does
-no work, defection is simply the best move, and the population runs
-itself down.
+tag and a strategy, but the strategy ignores the tag, so the tag does no
+work, defection is simply the best move, and the population runs itself
+down.
 
 The real model gives every agent **two** strategy bits: whether to
 cooperate with someone of your own tag, and whether to cooperate with
@@ -216,7 +216,7 @@ shares(mixed, 400)
 #>        0.336        0.260        0.216        0.188
 ```
 
-Egoists, with ethnocentrics behind them. This is not a failure — it is
+Egoists, with ethnocentrics behind them. This is not a failure. It is
 Hammond and Axelrod’s own control condition, and it is the point of
 their paper: ethnocentrism needs *local* structure. Offspring have to
 settle next to their parents, so that your neighbours are
@@ -303,8 +303,8 @@ becomes a flat tax that goes nowhere.
 Two things are wrong, and only one of them is the threshold.
 
 **The poverty line is absolute in a model where wealth grows.** Everyone
-crosses 30 within a few ticks. Making it relative — half the median, the
-standard measure of relative poverty — is a one-line fix.
+crosses 30 within a few ticks. Making it relative, at half the median,
+which is the standard measure of relative poverty, is a one-line fix.
 
 **More importantly, the model has no risk.** The consumption rule is
 `wealth * 0.98 + 0.4 * income`, which converges to exactly `20 * income`
@@ -313,8 +313,8 @@ the distribution gets *tighter* over time, and nobody is ever
 persistently poor no matter where you put the line. A redistribution
 model with nothing to redistribute against is measuring nothing.
 
-Put in a source of dispersion — income that moves, and occasional large
-losses — and the model has something to say:
+Put in a source of dispersion, meaning income that moves plus occasional
+large losses, and the model has something to say:
 
 ``` r
 
@@ -386,8 +386,8 @@ next thing to calibrate.
 The three failures have the same shape: a mechanism was compressed out
 of the description, and the compressed version still runs.
 
-- El Farol lost the *inductive* part — agents that revise which forecast
-  they trust. Without it the population is one agent.
+- El Farol lost the *inductive* part, the agents that revise which
+  forecast they trust. Without it the population is one agent.
 - Ethnocentrism lost both the tag-conditional strategy and the local
   reproduction. Without the second one you reproduce the paper’s
   control, not its result.

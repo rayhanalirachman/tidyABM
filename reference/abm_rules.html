@@ -76,14 +76,14 @@ evaluates across all agents, so aggregates like <code><a href="https://rdrr.io/r
 
 
 <dt id="arg--by">.by<a class="anchor" aria-label="anchor" href="#arg--by"></a></dt>
-<dd><p>A column naming a partition of the agents — a firm, a household, a
+<dd><p>A column naming a partition of the agents, a firm, a household, a
 team, a cohort. The rules are evaluated once per distinct value, across the
 whole population, so <code>sum(effort)</code> means "the total effort of my firm" and
-the answer is written back to every member of it. This is the third
-grouping a rule can have, alongside the standing match and the whole
-population, and it is the only one the <em>agents themselves</em> can change: an
-agent that writes a new value into the <code>.by</code> column has moved to a
-different group. Cannot be combined with <code>.scope = "population"</code>.</p></dd>
+the answer is written back to every member of it. This is the third grouping a
+rule can have, alongside the standing match and the whole population, and it is
+the only one the <em>agents themselves</em> can change: an agent that writes a
+new value into the <code>.by</code> column has moved to a different group. Cannot be
+combined with <code>.scope = "population"</code>.</p></dd>
 
 </dl></div>
     <div class="section level2">
@@ -92,23 +92,24 @@ different group. Cannot be combined with <code>.scope = "population"</code>.</p>
     </div>
     <div class="section level2">
     <h2 id="details">Details<a class="anchor" aria-label="anchor" href="#details"></a></h2>
-    <p>All rules in a single <code>abm_rules()</code> call are evaluated <strong>simultaneously</strong>,
-against the state at the start of the step. So in
-<code>abm_rules(a ~ b, b ~ a)</code> both sides see the old values — this is the
+    <p>All rules in a single <code>abm_rules()</code> call are evaluated
+<strong>simultaneously</strong>, against the state at the start of the step. So in
+<code>abm_rules(a ~ b, b ~ a)</code> both sides see the old values, this is the
 synchronous update that agent-based models normally assume, and it is the one
-place where <code>abm_rules()</code> deliberately departs from <code>mutate()</code>'s sequential
-semantics. Write two <code>abm_rules()</code> calls if you want one rule to see the
-other's result.</p>
+place where <code>abm_rules()</code> deliberately departs from <code>mutate()</code>'s
+sequential semantics. Write two <code>abm_rules()</code> calls if you want one rule
+to see the other's result.</p>
 <p>In a model with several agent groups, a rule is applied to a group only if
 every agent column it mentions exists in that group. That is how the market
 example routes <code>offer ~ ...</code> to buyers and <code>ask ~ ...</code> to sellers without any
 explicit test on agent type.</p>
-<p>While a match is standing, rules are evaluated group by group — per pair, per
+<p>While a match is standing, rules are evaluated group by group, per pair, per
 group, or per agent depending on the pairing mode. That is usually what you
-want, and it is what makes <code>sample(x, 1)</code> mean "once per pair". Occasionally
-a step in the middle of a tick is about the whole population instead — drawing
-the next generation from this one, say — and <code>.scope = "population"</code> evaluates
-it against every agent at once, ignoring the standing match.</p>
+want, and it is what makes <code>sample(x, 1)</code> mean "once per pair".
+Occasionally a step in the middle of a tick is about the whole population
+instead, drawing the next generation from this one, say, and <code>.scope =
+"population"</code> evaluates it against every agent at once, ignoring the standing
+match.</p>
     </div>
 
     <div class="section level2">

@@ -33,7 +33,7 @@ abm_rules(..., .scope = c("match", "population"), .by = NULL)
 
 - .by:
 
-  A column naming a partition of the agents — a firm, a household, a
+  A column naming a partition of the agents, a firm, a household, a
   team, a cohort. The rules are evaluated once per distinct value,
   across the whole population, so `sum(effort)` means "the total effort
   of my firm" and the answer is written back to every member of it. This
@@ -51,7 +51,7 @@ An `abm_rules` step object.
 
 All rules in a single `abm_rules()` call are evaluated
 **simultaneously**, against the state at the start of the step. So in
-`abm_rules(a ~ b, b ~ a)` both sides see the old values — this is the
+`abm_rules(a ~ b, b ~ a)` both sides see the old values, this is the
 synchronous update that agent-based models normally assume, and it is
 the one place where `abm_rules()` deliberately departs from `mutate()`'s
 sequential semantics. Write two `abm_rules()` calls if you want one rule
@@ -62,13 +62,13 @@ if every agent column it mentions exists in that group. That is how the
 market example routes `offer ~ ...` to buyers and `ask ~ ...` to sellers
 without any explicit test on agent type.
 
-While a match is standing, rules are evaluated group by group — per
-pair, per group, or per agent depending on the pairing mode. That is
-usually what you want, and it is what makes `sample(x, 1)` mean "once
-per pair". Occasionally a step in the middle of a tick is about the
-whole population instead — drawing the next generation from this one,
-say — and `.scope = "population"` evaluates it against every agent at
-once, ignoring the standing match.
+While a match is standing, rules are evaluated group by group, per pair,
+per group, or per agent depending on the pairing mode. That is usually
+what you want, and it is what makes `sample(x, 1)` mean "once per pair".
+Occasionally a step in the middle of a tick is about the whole
+population instead, drawing the next generation from this one, say, and
+`.scope = "population"` evaluates it against every agent at once,
+ignoring the standing match.
 
 ## Examples
 

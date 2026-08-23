@@ -96,11 +96,11 @@ run's globals and final network as attributes.</p>
     </div>
     <div class="section level2">
     <h2 id="details">Details<a class="anchor" aria-label="anchor" href="#details"></a></h2>
-    <p>The result is one long tibble — <code>tick</code>, <code>.id</code>, <code>.group</code>, then every agent
-column — which is what you want for plotting and summarising. Tick 0 is the
-state produced by <code><a href="abm_setup.html">abm_setup()</a></code>, before any step has run, so a run of <code>n</code>
-ticks returns <code>n + 1</code> snapshots. Global values are recorded alongside and are
-available with <code><a href="abm_globals.html">abm_globals()</a></code>.</p>
+    <p>The result is one long tibble, <code>tick</code>, <code>.id</code>, <code>.group</code>, then
+every agent column, which is what you want for plotting and summarising. Tick 0
+is the state produced by <code><a href="abm_setup.html">abm_setup()</a></code>, before any step has run, so a run
+of <code>n</code> ticks returns <code>n + 1</code> snapshots. Global values are recorded
+alongside and are available with <code><a href="abm_globals.html">abm_globals()</a></code>.</p>
 <p>Agent-based models are stochastic, so <code>seed</code> is a first-class argument rather
 than something to arrange yourself: it makes the run reproducible without
 touching the global random state.</p>

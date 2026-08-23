@@ -81,17 +81,18 @@ mutation drawn there differs from sibling to sibling.</p></dd>
 
 <dt id="arg-cost">cost<a class="anchor" aria-label="anchor" href="#arg-cost"></a></dt>
 <dd><p>One or more <code>column ~ expression</code> formulas applied to the parent
-<em>and</em> the newborn after the split, expressing what reproduction costs — for
-example <code>cost = resource ~ resource / 2</code> to halve a resource between them.</p></dd>
+<em>and</em> the newborn after the split, expressing what reproduction costs, for
+example <code>cost = resource ~ resource / 2</code> to halve a resource between
+them.</p></dd>
 
 
 <dt id="arg-inherit">inherit<a class="anchor" aria-label="anchor" href="#arg-inherit"></a></dt>
 <dd><p>One or more <code>column ~ expression</code> formulas applied to the
-newborn <em>only</em>, expressing what the offspring gets that the parent does not
-keep: a reset age, a mutated trait, a sex drawn at birth. The expressions are
-evaluated in the parent's row, so they can use the parent's columns and —
-when an <code><a href="abm_match.html">abm_match()</a></code> is standing — the other parent's, as <code>partner_&lt;col&gt;</code>.
-That is how two-parent inheritance is written:
+newborn <em>only</em>, expressing what the offspring gets that the parent does
+not keep: a reset age, a mutated trait, a sex drawn at birth. The expressions
+are evaluated in the parent's row, so they can use the parent's columns and,
+when an <code><a href="abm_match.html">abm_match()</a></code> is standing, the other parent's,
+as <code>partner_&lt;col&gt;</code>. That is how two-parent inheritance is written:
 <code>inherit = trait ~ (trait + partner_trait) / 2</code>.</p></dd>
 
 
@@ -113,10 +114,10 @@ grows during a run; <code>from = "random_edge"</code> gives degree-proportional
 newborn inherits all of its parent's columns.</p></li>
 <li><p><code>n = &lt;count&gt;</code> adds that many brand-new agents, whose columns are copied from
 a randomly chosen existing agent of the same group.</p></li>
-</ul><p>One parent, one offspring, unless <code>times</code> says otherwise. Any fertility above
-one — a clutch, a litter, a Poisson number of seeds — is <code>times</code>, and each
-offspring is evaluated separately, so a mutation drawn in <code>inherit</code> differs
-between siblings.</p>
+</ul><p>One parent, one offspring, unless <code>times</code> says otherwise. Any fertility
+above one, a clutch, a litter, a Poisson number of seeds, is <code>times</code>, and
+each offspring is evaluated separately, so a mutation drawn in <code>inherit</code>
+differs between siblings.</p>
     </div>
 
     <div class="section level2">

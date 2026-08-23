@@ -5,11 +5,11 @@ Every other update step writes to the agent it is evaluated on:
 changes your own columns,
 [`abm_neighbours()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_neighbours.md)
 *reads* your neighbours' and writes the summary to you. `abm_tell()` is
-the one that goes the other way — a sender computes a value and writes
-it into a *recipient's* row. That is the difference between "how many of
-my neighbours are shouting" and "I shout at my neighbours", and models
-built on the second shape — outward persuasion, contagion carrying a
-dose, an order book where a trade has to mark the counterparty — cannot
+the one that goes the other way, a sender computes a value and writes it
+into a *recipient's* row. That is the difference between "how many of my
+neighbours are shouting" and "I shout at my neighbours", and models
+built on the second shape, outward persuasion, contagion carrying a
+dose, an order book where a trade has to mark the counterparty, cannot
 be written without it.
 
 ## Usage
@@ -47,9 +47,9 @@ abm_tell(
 
   What to do when several senders write to the same recipient in one
   step: `"last"` (an arbitrary one wins), `"first"`, `"sum"`, `"mean"`,
-  `"max"`, `"min"`, `"collect"` — which hands the recipient a list of
+  `"max"`, `"min"`, `"collect"`, which hands the recipient a list of
   everything it was told, so the recipient's own rule decides what to
-  make of them — or `"error"` to stop.
+  make of them, or `"error"` to stop.
 
 - .order:
 
@@ -70,12 +70,12 @@ An `abm_tell` step object.
 
 Who receives is set by `to`:
 
-- `to = "neighbours"` — every agent the sender is joined to in the
+- `to = "neighbours"`, every agent the sender is joined to in the
   model's
   [`abm_network()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_network.md).
   This is the broadcast: one sender, many recipients.
 
-- `to = <expression>` — an expression evaluated in the sender's row that
+- `to = <expression>`, an expression evaluated in the sender's row that
   names the recipient by `.id`. A list column names *several*: one
   sender, a set of recipients chosen however the model likes, which is
   what a broadcast to an audience that is not the network needs.
@@ -90,7 +90,7 @@ globals, exactly as
 [`abm_rules()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_rules.md)
 would. The value it produces is then written into the recipient's column
 of that name. An agent that no one wrote to keeps the value it already
-had — `abm_tell()` never touches a silent agent's row.
+had, `abm_tell()` never touches a silent agent's row.
 
 Two senders can address the same recipient in one step, and `.resolve`
 says what happens then. The default, `"last"`, takes an arbitrary one of
@@ -99,7 +99,7 @@ anyway; `"sum"` is right for anything additive, like a dose or an order
 quantity; `"error"` says the collision is a modelling mistake and should
 stop the run.
 
-Three of those resolutions — `"first"`, `"last"` and `"collect"` — pick
+Three of those resolutions, `"first"`, `"last"` and `"collect"`, pick
 out a message rather than combining them all, so they only mean
 something once the messages have an order. `.order` gives them one: an
 expression evaluated in the sender's row whose ascending order the

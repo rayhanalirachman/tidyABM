@@ -84,18 +84,18 @@ aggregate. Each rule is evaluated once per edge, and the value it produces is
 then readable inside every later <code><a href="abm_neighbours.html">abm_neighbours()</a></code> rule in the same tick,
 from either endpoint, as a column of that name. Because both endpoints read
 the same number, two aggregates over it describe the same events.</p>
-<p>The right-hand side is evaluated over the <strong>edge table</strong> — one row per edge,
-with <code>from</code> and <code>to</code> — so <code><a href="https://dplyr.tidyverse.org/reference/context.html" class="external-link">n()</a></code> is the number of edges and
-<code>runif(n())</code> is "a uniform per edge". Globals are in scope. The values live
-until the next <code>abm_draw()</code> of that name replaces them, so a draw made once
-per tick lasts the tick and one made in <code><a href="abm_setup.html">abm_setup()</a></code>'s first step lasts the
-run.</p>
-<p><code>.each</code> says who the value belongs to:</p><ul><li><p><code>"edge"</code> (the default) — one value for the edge. Both endpoints read the
-same number in the column of that name. This is a coin the <em>pair</em> tosses:
-whether they met, what the encounter was worth.</p></li>
-<li><p><code>"endpoint"</code> — one value each. The focal agent reads its own in the column
-of that name and its neighbour's as <code>&lt;name&gt;_back</code>. This is a coin each of
-them tosses privately about the other, which is what an asymmetric
+<p>The right-hand side is evaluated over the <strong>edge table</strong>, one row per
+edge, with <code>from</code> and <code>to</code>, so <code><a href="https://dplyr.tidyverse.org/reference/context.html" class="external-link">n()</a></code> is the number of edges and
+<code>runif(n())</code> is "a uniform per edge". Globals are in scope. The values
+live until the next <code>abm_draw()</code> of that name replaces them, so a draw
+made once per tick lasts the tick and one made in <code><a href="abm_setup.html">abm_setup()</a></code>'s first
+step lasts the run.</p>
+<p><code>.each</code> says who the value belongs to:</p><ul><li><p><code>"edge"</code> (the default), one value for the edge. Both endpoints read
+the same number in the column of that name. This is a coin the <em>pair</em>
+tosses: whether they met, what the encounter was worth.</p></li>
+<li><p><code>"endpoint"</code>, one value each. The focal agent reads its own in the
+column of that name and its neighbour's as <code>&lt;name&gt;_back</code>. This is a coin
+each of them tosses privately about the other, which is what an asymmetric
 interaction needs: whether I noticed <em>you</em>, and separately whether you
 noticed <em>me</em>.</p></li>
 </ul></div>

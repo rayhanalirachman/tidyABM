@@ -79,9 +79,9 @@ abm_match(
 - limits:
 
   For `resolve = "negotiate"`,
-  `c(<first group's reservation column>, <second group's reservation column>)`
-  — the bid never rises above the first, and the ask never falls below
-  the second.
+  `c(<first group's reservation column>, <second group's reservation column>)`,
+  the bid never rises above the first, and the ask never falls below the
+  second.
 
 - from:
 
@@ -109,9 +109,9 @@ abm_match(
   [`abm_neighbours()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_neighbours.md)
   uses. `.id` and `.group` are included, so a cost can be a lookup into
   the chooser's own preference list as easily as a price. `by` is the
-  special case `cost = (x - own_x)^2`; anything else — a delivered price
+  special case `cost = (x - own_x)^2`; anything else, a delivered price
   `price + travel * abs(x - own_x)`, an energy deficit, a position in a
-  preference list — needs this. `NA` means the candidate is not
+  preference list, needs this. `NA` means the candidate is not
   acceptable to that chooser, and a chooser with no acceptable candidate
   sits the step out.
 

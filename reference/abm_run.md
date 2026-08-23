@@ -54,9 +54,9 @@ run's globals and final network as attributes.
 
 ## Details
 
-The result is one long tibble — `tick`, `.id`, `.group`, then every
-agent column — which is what you want for plotting and summarising. Tick
-0 is the state produced by
+The result is one long tibble, `tick`, `.id`, `.group`, then every agent
+column, which is what you want for plotting and summarising. Tick 0 is
+the state produced by
 [`abm_setup()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_setup.md),
 before any step has run, so a run of `n` ticks returns `n + 1`
 snapshots. Global values are recorded alongside and are available with

@@ -86,11 +86,12 @@ logical value. <code>NULL</code> (the default) means always run <code>max</code>
     </div>
     <div class="section level2">
     <h2 id="details">Details<a class="anchor" aria-label="anchor" href="#details"></a></h2>
-    <p><code>until</code> is evaluated the way an <code><a href="abm_global.html">abm_global()</a></code> right-hand side is —
-over the whole population, with the globals in scope — and must collapse to a
-single <code>TRUE</code> or <code>FALSE</code>. It is checked <em>after</em> each pass, so the block always
-runs at least once. <code>max</code> is required, because a condition that never becomes
-true would otherwise hang the run.</p>
+    <p><code>until</code> is evaluated the way an <code><a href="abm_global.html">abm_global()</a></code>
+right-hand side is, over the whole population, with the globals in scope, and
+must collapse to a single <code>TRUE</code> or <code>FALSE</code>. It is checked
+<em>after</em> each pass, so the block always runs at least once. <code>max</code> is
+required, because a condition that never becomes true would otherwise hang the
+run.</p>
 <p>The same idea covers early stopping for a whole model: a block wrapped in
 <code>abm_repeat(until = &lt;absorbed&gt;, max = &lt;ticks&gt;)</code> and run for a single tick
 stops as soon as the model reaches its absorbing state, instead of

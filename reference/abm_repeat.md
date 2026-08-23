@@ -40,8 +40,8 @@ An `abm_repeat` step object.
 
 `until` is evaluated the way an
 [`abm_global()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_global.md)
-right-hand side is — over the whole population, with the globals in
-scope — and must collapse to a single `TRUE` or `FALSE`. It is checked
+right-hand side is, over the whole population, with the globals in
+scope, and must collapse to a single `TRUE` or `FALSE`. It is checked
 *after* each pass, so the block always runs at least once. `max` is
 required, because a condition that never becomes true would otherwise
 hang the run.

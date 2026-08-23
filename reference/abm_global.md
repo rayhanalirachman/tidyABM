@@ -1,7 +1,7 @@
 # Update a shared, population-level value
 
 `abm_global()` writes to a value held once for the whole model rather
-than once per agent — El Farol's `last_attendance`, a zakah pool, a
+than once per agent, El Farol's `last_attendance`, a zakah pool, a
 bank's ledger. The right-hand side is an aggregate expression evaluated
 over the agent tibble, so it normally collapses to a single value.
 
@@ -53,9 +53,9 @@ the scalar version does:
     abm_global(stimulus ~ stimulus + delta - alpha * sum(task == .key) / n(),
                .by = 1:2)
 
-Each key still sees the **whole population** —
+Each key still sees the **whole population**,
 [`n()`](https://dplyr.tidyverse.org/reference/context.html) is
-everybody, not everybody on this task — because that is what a
+everybody, not everybody on this task, because that is what a
 colony-level stimulus balance means.
 
 `.by` names the index either way round. Give it a vector and the index

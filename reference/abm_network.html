@@ -75,7 +75,7 @@ yourself, or <code>"empty"</code> for a network that starts with no edges (usefu
 
 
 <dt id="arg-degree">degree<a class="anchor" aria-label="anchor" href="#arg-degree"></a></dt>
-<dd><p>Number of neighbours per agent — exactly, for <code>"random"</code> and
+<dd><p>Number of neighbours per agent, exactly, for <code>"random"</code> and
 <code>"ring"</code>; on average, for <code>"poisson"</code>; per newly attached agent, for
 <code>"scale_free"</code>. Required for all four. <code>n * degree</code> must be even for
 <code>"random"</code>, and <code>degree</code> must be even for <code>"ring"</code>.</p></dd>
@@ -100,16 +100,17 @@ one-to-one pairing of the whole population.</p>
 well-mixed population written as a graph, and it is what lets
 <code><a href="abm_neighbours.html">abm_neighbours()</a></code> mean "over everybody else" in a model with no spatial or
 social structure at all.</p>
-<p>The degree distribution is not a detail. <code>"random"</code> is <em>regular</em> — every
-agent has exactly <code>degree</code> neighbours — and a threshold model on a regular
-graph behaves quite differently from the same model on a graph with the same
-mean degree but a spread of degrees, because the low-degree agents are the
+<p>The degree distribution is not a detail. <code>"random"</code> is <em>regular</em>,
+every agent has exactly <code>degree</code> neighbours, and a threshold model on a
+regular graph behaves quite differently from the same model on a graph with the
+same mean degree but a spread of degrees, because the low-degree agents are the
 ones a cascade can get started on. <code>"poisson"</code> is the Erdos-Renyi graph
-<code>G(n, p)</code> with <code>p</code> chosen to give mean degree <code>degree</code>, and it is what the
-random-graph literature means by "a random graph". <code>"scale_free"</code> grows a
-Barabasi-Albert graph attaching <code>degree</code> edges per new agent, giving the
-heavy tail. <code>"ring"</code> is the one-dimensional lattice, each agent joined to the
-<code>degree / 2</code> agents on either side of it.</p>
+<code>G(n, p)</code> with <code>p</code> chosen to give mean degree <code>degree</code>, and it
+is what the random-graph literature means by "a random graph".
+<code>"scale_free"</code> grows a Barabasi-Albert graph attaching <code>degree</code> edges
+per new agent, giving the heavy tail. <code>"ring"</code> is the one-dimensional
+lattice, each agent joined to the <code>degree / 2</code> agents on either side of
+it.</p>
     </div>
 
     <div class="section level2">

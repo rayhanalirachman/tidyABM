@@ -71,7 +71,7 @@
 <code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://github.com/rayhanalirachman/tidyABM" class="external-link">tidyABM</a></span><span class="op">)</span></span></code></pre></div>
 <p>Three of the models in <code><a href="../articles/models.html">vignette("models")</a></code> run correctly
 and still do not show the behaviour they are famous for. That is not a
-bug in the package or in the translation — it is that the short version
+bug in the package or in the translation. It is that the short version
 of each model, the one that fits in a paragraph, leaves out the
 mechanism that produces the result. This vignette shows what is missing
 in each case and puts it back.</p>
@@ -85,11 +85,11 @@ rather than just “it ran”.</p>
 <h2 id="el-farol-one-predictor-is-no-predictor">El Farol: one predictor is no predictor<a class="anchor" aria-label="anchor" href="#el-farol-one-predictor-is-no-predictor"></a>
 </h2>
 <p>Arthur’s bar problem is famous for never settling. A hundred people
-decide independently whether to go to a bar that is only fun below 60;
-if everyone expects it to be empty everyone goes, and the expectation
+decide independently whether to go to a bar that is only fun below 60.
+If everyone expects it to be empty everyone goes, and the expectation
 destroys itself.</p>
-<p>The short version gives every agent the same forecast — last week’s
-attendance — and differs only in the threshold each will tolerate:</p>
+<p>The short version gives every agent the same forecast, last week’s
+attendance, and differs only in the threshold each will tolerate:</p>
 <div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">short_pop</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/abm_setup.html">abm_setup</a></span><span class="op">(</span></span>
 <span>  agents  <span class="op">=</span> <span class="fu"><a href="../reference/abm_agents.html">abm_agents</a></span><span class="op">(</span>n <span class="op">=</span> <span class="fl">100</span>, threshold <span class="op">=</span> <span class="op">~</span><span class="fu"><a href="https://rdrr.io/r/stats/Uniform.html" class="external-link">runif</a></span><span class="op">(</span><span class="va">n</span>, <span class="fl">40</span>, <span class="fl">80</span><span class="op">)</span><span class="op">)</span>,</span>
@@ -106,7 +106,7 @@ attendance — and differs only in the threshold each will tolerate:</p>
 <p>Everybody goes, then nobody goes, forever. With a single shared
 forecast the population is effectively one agent, and one agent chasing
 its own tail produces a two-cycle. Giving the agents heterogeneous
-<em>fixed</em> forecasts is not enough either — it moves the cycle but
+<em>fixed</em> forecasts is not enough either. It moves the cycle, but
 the map is still deterministic and still converges.</p>
 <p>Arthur’s actual mechanism is <strong>inductive</strong>: each agent
 holds several candidate predictors, scores them against what actually
@@ -114,8 +114,8 @@ happened, and acts on whichever has been working. Nobody’s forecast is
 stable, so the population’s response to a given history keeps changing,
 and attendance never settles.</p>
 <p>That is expressible here, but it needs each agent to carry a
-<em>set</em> of strategies, and the grammar has no shorthand for that —
-one column per weight per strategy is the only way. Ordinary R
+<em>set</em> of strategies, and the grammar has no shorthand for that.
+One column per weight per strategy is the only way. Ordinary R
 metaprogramming fills the gap:</p>
 <div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">MEMORY</span> <span class="op">&lt;-</span> <span class="fl">5</span>    <span class="co"># weeks of attendance each predictor looks at</span></span>
@@ -182,7 +182,7 @@ switch.</p>
 <span><span class="co">#&gt;     mean       sd      min      max distinct </span></span>
 <span><span class="co">#&gt;     60.8      3.7     54.0     69.0     16.0</span></span></code></pre></div>
 <p>Attendance now hovers near the capacity of 60 without ever repeating
-itself — Arthur’s result. Note how sensitive it is: with three
+itself, which is Arthur’s result. Note how sensitive it is. With three
 predictors instead of ten it locks up again. The fluctuation is a
 property of the predictor pool, not something the model produces on its
 own.</p>
@@ -190,7 +190,7 @@ own.</p>
 compact way to give an agent a <em>set</em> of anything. Ten strategies
 over five lags is seventy columns, and only metaprogramming makes that
 bearable. A future <code><a href="../reference/abm_agents.html">abm_agents()</a></code> might accept matrix-valued
-or list-valued columns; until then, build the spec with
+or list-valued columns. Until then, build the spec with
 <code><a href="https://rdrr.io/r/base/do.call.html" class="external-link">do.call()</a></code>.</p>
 </div>
 <div class="section level2">
@@ -199,9 +199,9 @@ have to be kin<a class="anchor" aria-label="anchor" href="#ethnocentrism-coopera
 </h2>
 <p>Hammond and Axelrod’s model is famous for showing that in-group
 favouritism can evolve from nothing. The short version gives agents a
-tag and a strategy, but the strategy ignores the tag — so the tag does
-no work, defection is simply the best move, and the population runs
-itself down.</p>
+tag and a strategy, but the strategy ignores the tag, so the tag does no
+work, defection is simply the best move, and the population runs itself
+down.</p>
 <p>The real model gives every agent <strong>two</strong> strategy bits:
 whether to cooperate with someone of your own tag, and whether to
 cooperate with someone of a different one. That makes four types.</p>
@@ -255,8 +255,8 @@ carries no information, and the cheapest strategy wins:</p>
 <span><span class="co">#&gt; x</span></span>
 <span><span class="co">#&gt;       egoist ethnocentric     altruist      traitor </span></span>
 <span><span class="co">#&gt;        0.336        0.260        0.216        0.188</span></span></code></pre></div>
-<p>Egoists, with ethnocentrics behind them. This is not a failure — it
-is Hammond and Axelrod’s own control condition, and it is the point of
+<p>Egoists, with ethnocentrics behind them. This is not a failure. It is
+Hammond and Axelrod’s own control condition, and it is the point of
 their paper: ethnocentrism needs <em>local</em> structure. Offspring
 have to settle next to their parents, so that your neighbours are
 disproportionately your kin, so that “same tag” actually predicts “will
@@ -330,8 +330,8 @@ becomes a flat tax that goes nowhere.</p>
 <p>Two things are wrong, and only one of them is the threshold.</p>
 <p><strong>The poverty line is absolute in a model where wealth
 grows.</strong> Everyone crosses 30 within a few ticks. Making it
-relative — half the median, the standard measure of relative poverty —
-is a one-line fix.</p>
+relative, at half the median, which is the standard measure of relative
+poverty, is a one-line fix.</p>
 <p><strong>More importantly, the model has no risk.</strong> The
 consumption rule is <code>wealth * 0.98 + 0.4 * income</code>, which
 converges to exactly <code>20 * income</code> for every household.
@@ -339,8 +339,8 @@ Wealth becomes a deterministic function of income, the distribution gets
 <em>tighter</em> over time, and nobody is ever persistently poor no
 matter where you put the line. A redistribution model with nothing to
 redistribute against is measuring nothing.</p>
-<p>Put in a source of dispersion — income that moves, and occasional
-large losses — and the model has something to say:</p>
+<p>Put in a source of dispersion, meaning income that moves plus
+occasional large losses, and the model has something to say:</p>
 <div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">shocks</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/abm_rules.html">abm_rules</a></span><span class="op">(</span></span>
 <span>  <span class="va">income</span> <span class="op">~</span> <span class="fu"><a href="https://rdrr.io/r/base/Log.html" class="external-link">exp</a></span><span class="op">(</span><span class="fl">0.9</span> <span class="op">*</span> <span class="fu"><a href="https://rdrr.io/r/base/Log.html" class="external-link">log</a></span><span class="op">(</span><span class="va">income</span><span class="op">)</span> <span class="op">+</span> <span class="fl">0.1</span> <span class="op">*</span> <span class="fl">3</span> <span class="op">+</span> <span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">rnorm</a></span><span class="op">(</span><span class="fu"><a href="https://dplyr.tidyverse.org/reference/context.html" class="external-link">n</a></span><span class="op">(</span><span class="op">)</span>, <span class="fl">0</span>, <span class="fl">0.15</span><span class="op">)</span><span class="op">)</span>,  <span class="co"># AR(1) in logs</span></span>
@@ -402,8 +402,8 @@ next thing to calibrate.</p>
 <p>The three failures have the same shape: a mechanism was compressed
 out of the description, and the compressed version still runs.</p>
 <ul>
-<li>El Farol lost the <em>inductive</em> part — agents that revise which
-forecast they trust. Without it the population is one agent.</li>
+<li>El Farol lost the <em>inductive</em> part, the agents that revise
+which forecast they trust. Without it the population is one agent.</li>
 <li>Ethnocentrism lost both the tag-conditional strategy and the local
 reproduction. Without the second one you reproduce the paper’s control,
 not its result.</li>

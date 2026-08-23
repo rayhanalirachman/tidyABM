@@ -33,7 +33,7 @@ abm_network(
 
 - degree:
 
-  Number of neighbours per agent — exactly, for `"random"` and `"ring"`;
+  Number of neighbours per agent, exactly, for `"random"` and `"ring"`;
   on average, for `"poisson"`; per newly attached agent, for
   `"scale_free"`. Required for all four. `n * degree` must be even for
   `"random"`, and `degree` must be even for `"ring"`.
@@ -61,8 +61,8 @@ well-mixed population written as a graph, and it is what lets
 mean "over everybody else" in a model with no spatial or social
 structure at all.
 
-The degree distribution is not a detail. `"random"` is *regular* — every
-agent has exactly `degree` neighbours — and a threshold model on a
+The degree distribution is not a detail. `"random"` is *regular*, every
+agent has exactly `degree` neighbours, and a threshold model on a
 regular graph behaves quite differently from the same model on a graph
 with the same mean degree but a spread of degrees, because the
 low-degree agents are the ones a cascade can get started on. `"poisson"`

@@ -38,7 +38,7 @@ abm_birth(
 - cost:
 
   One or more `column ~ expression` formulas applied to the parent *and*
-  the newborn after the split, expressing what reproduction costs — for
+  the newborn after the split, expressing what reproduction costs, for
   example `cost = resource ~ resource / 2` to halve a resource between
   them.
 
@@ -48,9 +48,9 @@ abm_birth(
   *only*, expressing what the offspring gets that the parent does not
   keep: a reset age, a mutated trait, a sex drawn at birth. The
   expressions are evaluated in the parent's row, so they can use the
-  parent's columns and — when an
+  parent's columns and, when an
   [`abm_match()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_match.md)
-  is standing — the other parent's, as `partner_<col>`. That is how
+  is standing, the other parent's, as `partner_<col>`. That is how
   two-parent inheritance is written:
   `inherit = trait ~ (trait + partner_trait) / 2`.
 
@@ -76,7 +76,7 @@ An `abm_birth` step object.
   copied from a randomly chosen existing agent of the same group.
 
 One parent, one offspring, unless `times` says otherwise. Any fertility
-above one — a clutch, a litter, a Poisson number of seeds — is `times`,
+above one, a clutch, a litter, a Poisson number of seeds, is `times`,
 and each offspring is evaluated separately, so a mutation drawn in
 `inherit` differs between siblings.
 

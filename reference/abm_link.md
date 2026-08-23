@@ -3,7 +3,7 @@
 `abm_link()` turns the pairing produced by the preceding
 [`abm_match()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_match.md)
 into permanent edges. It is how a network grows during a run without
-anyone being born — random-graph percolation, tie formation, coalition
+anyone being born, random-graph percolation, tie formation, coalition
 building.
 
 ## Usage
@@ -28,7 +28,7 @@ An `abm_link` step object.
 An edge is added once per matched pair, and pairs that are already
 connected are left alone, so the network never gains a duplicate edge.
 
-After a match with `size > 2` the group is linked as a *clique* — every
+After a match with `size > 2` the group is linked as a *clique*, every
 pair inside it gains an edge. That is what a team, a committee or a
 coalition means once it is written as a network.
 

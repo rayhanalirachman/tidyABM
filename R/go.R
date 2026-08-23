@@ -6,9 +6,11 @@ new_abm_go <- function(steps) {
 
 #' Declare what happens each tick
 #'
-#' `abm_go()` is the behavioural block: an ordered sequence of typed steps that
-#' is replayed once per tick. Steps are dispatched by *type and position*, not by
-#' argument name, so a model with several phases is written flat and in order:
+#' `abm_go()` is the second of the three functions a model is made of --
+#' [abm_setup()], then `abm_go()`, then [abm_run()]. It is the behavioural
+#' block: an ordered sequence of typed steps replayed once per tick. Steps are
+#' dispatched by *type and position*, not by argument name, so a model with
+#' several phases is written flat and in order:
 #'
 #' ```
 #' abm_go(
@@ -38,7 +40,7 @@ new_abm_go <- function(steps) {
 #' @return An `abm_go` object.
 #' @export
 #' @examples
-#' # Every model is the same three parts: agents, a go block, a run.
+#' # Every model is the same three parts: abm_setup(), abm_go(), abm_run().
 #' rumour <- abm_setup(agents = abm_agents(
 #'   n = 200, state = ~c("spreader", rep("ignorant", n - 1))))
 #'

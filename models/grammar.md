@@ -3,26 +3,31 @@
 A tidyABM model is three parts, written as three statements:
 
 ```r
-agents <- abm_setup(agents = abm_agents(...))            # 1. who is in the model
-go     <- abm_go(...)                                    # 2. what happens each tick
-result <- abm_run(agents, go, ticks = ..., seed = ...)   # 3. run it
+world  <- abm_setup(...)                                # 1. who is in the model
+go     <- abm_go(...)                                   # 2. what happens each tick
+result <- abm_run(world, go, ticks = ..., seed = ...)   # 3. run it
 ```
 
-`abm_agents()` — inside `abm_setup()` — declares the world: who the agents are,
-what network joins them, what values everyone shares. `abm_go()` declares the
-tick, an ordered sequence of typed steps. `abm_run()` takes both and produces a
-tidy tibble. The first two follow NetLogo's `setup` / `go`; what is different is
-that they are data rather than loops, so a model reads as a specification.
+`abm_setup()` declares the world: who the agents are, what network joins them,
+what values everyone shares. `abm_go()` declares the tick, an ordered sequence
+of typed steps. `abm_run()` takes both and produces a tidy tibble. The first two
+follow NetLogo's `setup` / `go`; what is different is that they are data rather
+than loops, so a model reads as a specification.
 
-Every model in this reference is written this way, and none of them builds
-`abm_go()` inside the call to `abm_run()`. The go block is an object: it is
-validated once when you build it, it prints, and it can be reused across
-populations or swapped for another over the same one.
+Everything else in this reference sits inside one of the three. `abm_agents()`
+and `abm_network()` are specifications you hand to `abm_setup()`; every other
+`abm_*()` function is a step inside `abm_go()`.
 
-## Setting up the world
+Every model here is written that way, and none of them builds `abm_go()` inside
+the call to `abm_run()`. The setup and the go block are objects: they are
+validated once when you build them, they print, and either can be reused while
+the other varies.
 
-- `abm_setup(agents =, network =, globals =, seed =)` — the model. `agents` is
-  one `abm_agents()` or a named list of them.
+## 1. `abm_setup()` — the world
+
+- `abm_setup(agents =, network =, globals =, seed =)` — the model itself.
+  `agents` is one `abm_agents()` or a named list of them; `globals` is a plain
+  list; `seed` fixes the draws that build the population.
 - `abm_agents(n, col = value_or_formula, ...)` — one group. A plain value
   recycles; a one-sided formula is evaluated once and sees `n` and the columns
   before it. A column may be a **list column**, which is how an agent holds a
@@ -49,7 +54,7 @@ Globals are not required to be scalars. A lookup table, a payoff matrix or a
 vector of prices is a perfectly good global; `abm_globals()` keeps it in a list
 column so that the log stays one row per tick.
 
-## The tick
+## 2. `abm_go()` — the tick
 
 `abm_go(...)` takes steps in order, dispatched by type and position. Validated
 once at construction: not empty, no two `abm_match()` adjacent, not ending on a
@@ -255,7 +260,7 @@ that continues until nobody is rejected (55). A block wrapped in `abm_repeat()`
 and run for a single tick is also how a whole model stops early at its absorbing
 state.
 
-## Running
+## 3. `abm_run()` — the run
 
 `abm_run(model, go, ticks, seed, record)` returns one long tibble — `tick`,
 `.id`, `.group`, then the agent columns — with globals and the final network

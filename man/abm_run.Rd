@@ -30,9 +30,10 @@ An \code{abm_result}: a tibble of one row per agent per tick, carrying the
 run's globals and final network as attributes.
 }
 \description{
-\code{abm_run()} is the scheduler: it takes a model built by \code{\link[=abm_setup]{abm_setup()}} and a
-behavioural block built by \code{\link[=abm_go]{abm_go()}}, replays the block \code{ticks} times, and
-records the whole population after every tick.
+\code{abm_run()} is the last of the three functions a model is made of --
+\code{\link[=abm_setup]{abm_setup()}}, then \code{\link[=abm_go]{abm_go()}}, then \code{abm_run()}. It is the scheduler: it
+takes the model and the behavioural block, replays the block \code{ticks} times,
+and records the whole population after every tick.
 }
 \details{
 The result is one long tibble — \code{tick}, \code{.id}, \code{.group}, then every agent

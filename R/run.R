@@ -2,9 +2,10 @@
 
 #' Run a model
 #'
-#' `abm_run()` is the scheduler: it takes a model built by [abm_setup()] and a
-#' behavioural block built by [abm_go()], replays the block `ticks` times, and
-#' records the whole population after every tick.
+#' `abm_run()` is the last of the three functions a model is made of --
+#' [abm_setup()], then [abm_go()], then `abm_run()`. It is the scheduler: it
+#' takes the model and the behavioural block, replays the block `ticks` times,
+#' and records the whole population after every tick.
 #'
 #' The result is one long tibble — `tick`, `.id`, `.group`, then every agent
 #' column — which is what you want for plotting and summarising. Tick 0 is the

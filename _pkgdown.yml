@@ -4,17 +4,24 @@ template:
   bootstrap: 5
 
 reference:
-- title: Setting up the world
-  contents: [abm_agents, abm_network, abm_setup]
-- title: Matching
+- title: The three parts
+  desc: >
+    Every model is these three functions, written as three statements:
+    the world, the tick, the run.
+  contents: [abm_setup, abm_go, abm_run]
+- title: Declaring the world
+  desc: The specifications you hand to `abm_setup()`.
+  contents: [abm_agents, abm_network]
+- title: Steps — matching
+  desc: Who interacts with whom this tick.
   contents: [abm_match]
-- title: Updating agents
+- title: Steps — updating agents
   contents: [abm_rules, abm_sequential, abm_global, abm_neighbours, abm_tell]
-- title: Changing the population
+- title: Steps — changing the population
   contents: [abm_birth, abm_death]
-- title: Changing the network
+- title: Steps — changing the network
   contents: [abm_link, abm_unlink, abm_draw]
-- title: Running a model
-  contents: [abm_go, abm_repeat, abm_run]
+- title: Steps — control flow
+  contents: [abm_repeat]
 - title: Working with results
   contents: [abm_globals, abm_edges, n_agents]

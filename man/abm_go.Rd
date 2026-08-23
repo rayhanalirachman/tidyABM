@@ -16,9 +16,11 @@ abm_go(...)
 An \code{abm_go} object.
 }
 \description{
-\code{abm_go()} is the behavioural block: an ordered sequence of typed steps that
-is replayed once per tick. Steps are dispatched by \emph{type and position}, not by
-argument name, so a model with several phases is written flat and in order:
+\code{abm_go()} is the second of the three functions a model is made of --
+\code{\link[=abm_setup]{abm_setup()}}, then \code{abm_go()}, then \code{\link[=abm_run]{abm_run()}}. It is the behavioural
+block: an ordered sequence of typed steps replayed once per tick. Steps are
+dispatched by \emph{type and position}, not by argument name, so a model with
+several phases is written flat and in order:
 }
 \details{
 \if{html}{\out{<div class="sourceCode">}}\preformatted{abm_go(
@@ -42,7 +44,7 @@ follow a single match — the market model pairs once and then applies separate
 rules to buyers and to sellers.
 }
 \examples{
-# Every model is the same three parts: agents, a go block, a run.
+# Every model is the same three parts: abm_setup(), abm_go(), abm_run().
 rumour <- abm_setup(agents = abm_agents(
   n = 200, state = ~c("spreader", rep("ignorant", n - 1))))
 

@@ -6,10 +6,9 @@
 
 Agent-based models, written as a specification rather than a loop.
 
-tidyABM keeps NetLogo's two-block structure — a `setup` that declares the world
-and a `go` that runs once per tick — but replaces the imperative `ask turtles`
-body with an ordered sequence of typed steps. Agents live in a tibble, rules are
-dplyr-style formulas, and the output is tidy data.
+tidyABM keeps NetLogo's `setup` / `go` division but replaces the imperative
+`ask turtles` body with an ordered sequence of typed steps. Agents live in a
+tibble, rules are dplyr-style formulas, and the output is tidy data.
 
 ## Installation
 
@@ -20,40 +19,43 @@ pak::pak("rayhanalirachman/tidyABM")
 
 ## Three parts
 
-Every tidyABM model is written as the same three components, in the same order,
-each one a named object you can print, reuse and pass around:
+Every tidyABM model is the same three functions, written as three statements:
 
-| part | function | what it is |
-|------|----------|------------|
-| 1. the agents | `abm_agents()` — inside `abm_setup()` | who is in the model and what they start with |
-| 2. the go block | `abm_go()` | the ordered steps replayed once per tick |
-| 3. the run | `abm_run()` | the two above, plus `ticks`, `seed` and `record` |
-
-Keep them as three statements. `abm_go()` is a first-class object, not an
-argument you build inside the call to `abm_run()`, and writing it that way is
-what lets you print it, validate it once, reuse one go block across several
-populations, or swap one population through several go blocks.
+| part | function | what it holds |
+|------|----------|---------------|
+| 1. the world | `abm_setup()` | the agents, the network, the globals |
+| 2. the tick  | `abm_go()`    | the ordered steps replayed once per tick |
+| 3. the run   | `abm_run()`   | the two above, plus `ticks`, `seed` and `record` |
 
 ``` r
-agents <- abm_setup(agents = abm_agents(...))   # 1
-go     <- abm_go(...)                           # 2
-result <- abm_run(agents, go, ticks = ..., seed = ...)   # 3
+world  <- abm_setup(...)                                # 1
+go     <- abm_go(...)                                   # 2
+result <- abm_run(world, go, ticks = ..., seed = ...)   # 3
 ```
+
+`abm_setup()` and `abm_go()` return objects, not arguments. Build each on its
+own line and you can print it, check it and reuse it — one go block against
+several worlds, or one world through several go blocks, which is what a
+parameter sweep is.
+
+Everything else in the grammar sits inside one of the three. `abm_agents()` and
+`abm_network()` are what you hand to `abm_setup()`; every other `abm_*()`
+function is a step inside `abm_go()`.
 
 ## A whole model
 
 Wilensky and Rand's *Simple Economy*: 500 agents start with $100 each, and every
 tick anyone with money gives $1 to someone else. The wealth distribution starts
 as a spike and ends up exponential — no agent is doing anything clever, and
-inequality appears anyway. The three parts are numbered in the comments.
+inequality appears anyway.
 
 ``` r
 library(tidyABM)
 
-# 1. the agents
+# 1. the world
 economy <- abm_setup(agents = abm_agents(n = 500, money = 100))
 
-# 2. the go block
+# 2. the tick
 go <- abm_go(
   abm_match(pair = "random", role = list(giver = money > 0, receiver = TRUE)),
   abm_rules(money ~ if_else(.role == "giver", money - 1, money + 1))
@@ -75,13 +77,13 @@ result
 
 ## The grammar
 
-Setup declares the world:
+`abm_setup()` declares the world, out of two other specifications and a list:
 
-| function        | what it declares                                  |
-|-----------------|---------------------------------------------------|
-| `abm_agents()`  | how many agents, and what columns they start with |
-| `abm_network()` | a persistent set of connections between them      |
-| `abm_setup()`   | the whole world, plus any shared globals          |
+| argument    | built with      | what it declares                                  |
+|-------------|-----------------|---------------------------------------------------|
+| `agents =`  | `abm_agents()`  | how many agents, and what columns they start with |
+| `network =` | `abm_network()` | a persistent set of connections between them      |
+| `globals =` | a plain `list()`| values the whole population can read              |
 
 `abm_go()` declares what happens each tick, as a sequence of steps dispatched by
 type and position rather than by argument name:

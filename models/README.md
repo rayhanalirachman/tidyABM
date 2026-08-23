@@ -5,14 +5,14 @@ NetLogo-style sketch of the original where one exists, the working package code
 and the numbers the run produced. Every model here runs; every one with a
 behavioural claim is pinned by a test in `tidyABM/tests/testthat/`.
 
-Every model here is written as the same three parts — `abm_agents()` inside
-`abm_setup()`, then `abm_go()`, then `abm_run()` — as three separate statements,
-so the code on each page shows the whole model rather than a fragment:
+Every model here is written as the same three parts — `abm_setup()`, then
+`abm_go()`, then `abm_run()` — as three separate statements, so the code on each
+page shows the whole model rather than a fragment:
 
 ```r
-agents <- abm_setup(agents = abm_agents(...))            # 1. who is in the model
-go     <- abm_go(...)                                    # 2. what happens each tick
-result <- abm_run(agents, go, ticks = ..., seed = ...)   # 3. run it
+world  <- abm_setup(...)                                # 1. who is in the model
+go     <- abm_go(...)                                   # 2. what happens each tick
+result <- abm_run(world, go, ticks = ..., seed = ...)   # 3. run it
 ```
 
 Start with [the grammar](grammar.md) if you have not written a tidyABM model

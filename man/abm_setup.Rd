@@ -27,10 +27,11 @@ drawn at random needs both to be reproducible end to end.}
 An \code{abm_model} object.
 }
 \description{
-\code{abm_setup()} turns declarations into an initial population: it evaluates the
-\code{\link[=abm_agents]{abm_agents()}} specifications into tibbles, builds the network, and stores the
-starting values of any shared globals. The result is the \code{model} argument of
-\code{\link[=abm_run]{abm_run()}}.
+\code{abm_setup()} is the first of the three functions a model is made of --
+\code{abm_setup()}, then \code{\link[=abm_go]{abm_go()}}, then \code{\link[=abm_run]{abm_run()}}. It turns declarations into
+an initial population: it evaluates the \code{\link[=abm_agents]{abm_agents()}} specifications into
+tibbles, builds the \code{\link[=abm_network]{abm_network()}}, and stores the starting values of any
+shared globals. The result is the \code{model} argument of \code{\link[=abm_run]{abm_run()}}.
 }
 \details{
 Agent ids (\code{.id}) are unique across the whole model, and every agent carries a
@@ -38,10 +39,18 @@ Agent ids (\code{.id}) are unique across the whole model, and every agent carrie
 the group name \code{"agents"}.
 }
 \examples{
-abm_setup(agents = abm_agents(n = 500, money = 100))
-
 abm_setup(
   agents  = abm_agents(n = 100, threshold = ~runif(n, 40, 80)),
   globals = list(last_attendance = 60)
 )
+
+# The world is the first of the three parts a model is made of.
+economy <- abm_setup(agents = abm_agents(n = 500, money = 100))
+
+go <- abm_go(
+  abm_match(pair = "random", role = list(giver = money > 0, receiver = TRUE)),
+  abm_rules(money ~ if_else(.role == "giver", money - 1, money + 1))
+)
+
+abm_run(economy, go, ticks = 10, seed = 1)
 }

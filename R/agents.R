@@ -8,7 +8,8 @@ new_abm_agents <- function(n, cols) {
 #'
 #' `abm_agents()` describes one homogeneous group of agents: how many there are
 #' and what columns they start with. It is a *specification*, not a population —
-#' nothing is created until the spec is passed to [abm_setup()].
+#' nothing is created until the spec is passed to [abm_setup()], which is where
+#' a model's first part is declared.
 #'
 #' Column values follow one rule:
 #'
@@ -30,7 +31,8 @@ new_abm_agents <- function(n, cols) {
 #' @examples
 #' abm_agents(n = 500, money = 100)
 #'
-#' # A spec becomes a population in abm_setup(), and a run needs all three parts.
+#' # A spec is not a population: hand it to abm_setup(), the first of the
+#' # three parts a model is made of.
 #' economy <- abm_setup(agents = abm_agents(n = 500, money = 100))
 #'
 #' go <- abm_go(

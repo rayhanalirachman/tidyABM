@@ -2,15 +2,15 @@
 
 **Concept**
 
-- Setup: three populations that meet only by accident — 10 choice
-  opportunities, 20 problems and 10 decision makers — each entering over time,
+- Setup: three populations that meet only by accident, 10 choice
+  opportunities, 20 problems and 10 decision makers, each entering over time,
   with an access structure saying which problems may reach which choices
 - Go: every live problem attaches itself to the accessible choice closest to
   being made; every decision maker puts its energy where that energy makes the
   most difference; a choice whose accumulated energy covers what is attached to
   it is made
-- Output: how the decisions get made — by *resolution*, by *flight* or by
-  *oversight* — and how many problems are actually solved
+- Output: how the decisions get made, by *resolution*, by *flight* or by
+  *oversight*, and how many problems are actually solved
 
 **Package**
 
@@ -72,7 +72,7 @@ go <- abm_go(
 result <- abm_run(m, go, ticks = 20, seed = 1)
 ```
 
-**Result** (20 periods, 20 seeds; counts out of 10 choices and 20 problems)
+**Result** (20 periods, 20 seeds. Counts out of 10 choices and 20 problems)
 
 | access | load | decided | resolution | flight | oversight | problems solved |
 |---|---|---|---|---|---|---|
@@ -88,36 +88,36 @@ result <- abm_run(m, go, ticks = 20, seed = 1)
 Cohen, March and Olsen's claim is that decisions and problems are only loosely
 coupled, and the table is that claim in one line: at a load of 1.1 the
 organisation makes nine decisions out of ten and solves none of its twenty
-problems. Every one of those nine is a *flight* — the problems that had been
+problems. Every one of those nine is a *flight*, the problems that had been
 attached to it moved somewhere else, and the choice was made once it was empty
 enough to be cheap. Raising the load does not make the organisation deal with
-its problems; it makes it decide less often, and still solve nothing.
+its problems. It makes it decide less often, and still solve nothing.
 
 The light-load row shows the other half of it. All ten choices are made and all
 twenty problems are solved, but only *one* decision resolved anything: the
 problems herd onto whichever choice is currently cheapest, so twenty of them
 end up in the same can and are cleared at once, while the other nine choices
 are made by oversight before any problem reaches them. "The garbage can" is
-not a metaphor for disorder; it is the observation that a choice opportunity is
+not a metaphor for disorder. It is the observation that a choice opportunity is
 a container, and what ends up in it depends on what else is open at the time.
 
-Segmenting access — a problem may only attach to a choice of its own kind —
-spreads the problems out and puts some resolution back at light load, at the
-cost of making fewer decisions overall.
+Segmenting access, so that a problem may only attach to a choice of its own
+kind, spreads the problems out and puts some resolution back at light load, at
+the cost of making fewer decisions overall.
 
 *Forced `cost =` on `abm_match(pair = "nearest")`. The attachment rule is "go
 to the accessible choice with the smallest energy deficit", and the old
 `nearest` mode could only ask "which candidate is closest in these
 coordinates". A deficit is a number the candidate carries, not a position, and
-the access structure is a condition on the pair rather than on either agent —
+the access structure is a condition on the pair rather than on either agent.
 `cost = if_else(open | kind == own_kind, deficit, NA_real_)` says both at once,
 with `NA` meaning "not acceptable to me". The Open items entry asking for this
-was written against Hotelling with prices; the garbage can is the model that
+was written against Hotelling with prices. The garbage can is the model that
 made it unavoidable, because there is no coordinate system in it at all.*
 
 *Forced `abm_tell(to = <a set>)` and `.resolve = "collect"` together, and the
 two turn out to be one idea. A choice does not know which problems are attached
-to it — attachment is a column on the problem, pointing the other way — so the
+to it, attachment is a column on the problem, pointing the other way, so the
 problems tell it: `abm_tell(members ~ .id, to = .partner, .resolve = "collect")`
 hands the choice the list of everyone who wrote to it. Later,
 `abm_tell(solved ~ TRUE, to = lapply(members, unlist))` writes back to all of
@@ -127,12 +127,12 @@ senders into a number, which meant a many-to-one relation could be counted but
 not held.*
 
 *The parameterisation is ours, not Cohen, March and Olsen's. Their numeric
-specification — the energy each choice requires in its own right, the exact
-entry times, the three access and three decision structures — was not available
+specification, the energy each choice requires in its own right, the exact
+entry times, the three access and three decision structures, was not available
 to us, so what is reproduced here is the mechanism and the qualitative
 signature it produces, not the tables in the paper. The load parameter is the
 ratio of total problem energy required to total decision-maker energy
-available, which is their "net energy load"; the rest is calibrated so that the
+available, which is their "net energy load". The rest is calibrated so that the
 light-load and heavy-load regimes are both visible in twenty periods.*
 
 ---

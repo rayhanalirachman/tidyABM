@@ -2,7 +2,7 @@
 
 **Concept**
 
-- Setup: N people, each holding a cultural variant — a name, a pot decoration,
+- Setup: N people, each holding a cultural variant, a name, a pot decoration,
   a citation
 - Go: everyone is replaced; each newcomer copies a variant from a random member
   of the previous generation, or with probability μ invents one nobody has used
@@ -44,7 +44,7 @@ result <- abm_run(m, go, ticks = 3000, seed = 1)
 The variant counts land on the Ewens sampling formula, which is the exact
 result for the infinite-alleles model this is: `E[k] = Σ θ/(θ+i)` with
 `θ = 2Nμ`. Nothing in the model is fitted to it, and the agreement is within a
-few per cent across two orders of magnitude in μ — the sharpest analytic check
+few per cent across two orders of magnitude in μ, the sharpest analytic check
 in the corpus alongside the quarter-cycle lag in model 56.
 
 The popularity distribution is the reason anyone cares. Copying at random,
@@ -57,7 +57,7 @@ finding a power law in a popularity list is not evidence of anything: it is
 what you get when nobody is deciding anything at all.
 
 *Needed no package change, and is one of the few models here with no
-interaction structure whatever — no network, no match, no partner. It is three
+interaction structure whatever, no network, no match, no partner. It is three
 population-scope rules and a global.*
 
 *The one thing it does need is a way to make something new. A variant nobody
@@ -65,13 +65,13 @@ has held before is a fresh identifier, and the idiom is a global counter plus
 `cumsum()` over the innovators in the same step:
 `variant ~ if_else(innovate, coined + cumsum(innovate), copied)`, then
 `abm_global(coined ~ coined + sum(innovate))`. It works because `abm_rules()`
-is simultaneous — every innovator sees the same `coined` — so the running sum
+is simultaneous, every innovator sees the same `coined`, so the running sum
 is what hands out distinct numbers. Written as an `abm_sequential()` step it
 would also work and be a hundred times slower.*
 
 *The ccdf slope is worth less than it looks. Bentley's argument is that Nμ
 alone fixes the distribution, and the last row (N = 2000, μ = 0.0025) has the
-same θ as the third (N = 500, μ = 0.01) and does not give the same slope — 0.61
+same θ as the third (N = 500, μ = 0.01) and does not give the same slope, 0.61
 against 0.84. The variant counts for those two rows differ too, and correctly
 so: `E[k]` depends on the sample size as well as θ. What the slope is sensitive
 to is the range of frequencies the fit covers, which grows with N. The number

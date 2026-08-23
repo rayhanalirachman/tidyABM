@@ -26,7 +26,7 @@ result <- abm_run(drift, go, ticks = 800, seed = 3)
 ```
 
 **Result.** Five alleles → two by tick 200 → one by tick 800. Over 120 replicates
-starting at 30/70, the minority allele fixed in 33% of runs; theory says 30%.
+starting at 30/70, the minority allele fixed in 33% of runs. Theory says 30%.
 
 *One line, because a rule with no match standing sees the whole population, so
 `sample(allele, n(), replace = TRUE)` is literally the Wright–Fisher operator. The

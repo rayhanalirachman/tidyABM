@@ -7,10 +7,11 @@ new_abm_network <- function(type, degree, edges) {
 
 #' Declare a persistent network between agents
 #'
-#' A network is an edge list that lives alongside the agent tibble for the whole
-#' run. It is built once at [abm_setup()] time and is read-only thereafter, with
-#' one exception: [abm_birth()]'s `attach_via` argument can append one edge per
-#' newborn agent, and [abm_death()] prunes the edges of agents that are removed.
+#' A network is an edge list that lives alongside the agent tibble for the
+#' whole run. It is built once at [abm_setup()] time and is read-only
+#' thereafter, with one exception: [abm_birth()]'s `attach_via` argument can
+#' append one edge per newborn agent, and [abm_death()] prunes the edges of
+#' agents that are removed.
 #'
 #' `type = "random"` builds a `degree`-regular random graph with
 #' [igraph::sample_k_regular()], so every agent ends up with *exactly* `degree`
@@ -22,16 +23,16 @@ new_abm_network <- function(type, degree, edges) {
 #' [abm_neighbours()] mean "over everybody else" in a model with no spatial or
 #' social structure at all.
 #'
-#' The degree distribution is not a detail. `"random"` is *regular* — every
-#' agent has exactly `degree` neighbours — and a threshold model on a regular
+#' The degree distribution is not a detail. `"random"` is *regular*, every
+#' agent has exactly `degree` neighbours, and a threshold model on a regular
 #' graph behaves quite differently from the same model on a graph with the same
 #' mean degree but a spread of degrees, because the low-degree agents are the
 #' ones a cascade can get started on. `"poisson"` is the Erdos-Renyi graph
 #' `G(n, p)` with `p` chosen to give mean degree `degree`, and it is what the
 #' random-graph literature means by "a random graph". `"scale_free"` grows a
 #' Barabasi-Albert graph attaching `degree` edges per new agent, giving the
-#' heavy tail. `"ring"` is the one-dimensional lattice, each agent joined to the
-#' `degree / 2` agents on either side of it.
+#' heavy tail. `"ring"` is the one-dimensional lattice, each agent joined to
+#' the `degree / 2` agents on either side of it.
 #'
 #' @param type How the network is built. `"random"` for a `degree`-regular
 #'   random graph, `"poisson"` for an Erdos-Renyi graph of mean degree `degree`,
@@ -39,7 +40,7 @@ new_abm_network <- function(type, degree, edges) {
 #'   lattice, `"complete"` for every possible edge, `"manual"` to supply `edges`
 #'   yourself, or `"empty"` for a network that starts with no edges (useful with
 #'   [abm_birth()]).
-#' @param degree Number of neighbours per agent — exactly, for `"random"` and
+#' @param degree Number of neighbours per agent, exactly, for `"random"` and
 #'   `"ring"`; on average, for `"poisson"`; per newly attached agent, for
 #'   `"scale_free"`. Required for all four. `n * degree` must be even for
 #'   `"random"`, and `degree` must be even for `"ring"`.

@@ -21,27 +21,29 @@ out of the step.}
 An \code{abm_sequential} step object.
 }
 \description{
-\code{abm_sequential()} is the order-dependent sibling of \code{\link[=abm_rules]{abm_rules()}}. Agents are
-processed one at a time in a freshly shuffled order, and each agent's writes
-to \strong{globals} are visible to every agent processed after it within the same
-step. This mirrors NetLogo's \verb{ask turtles}, and it is what you need when
-agents compete for a shared resource that is \emph{depleted} rather than merely
-divided — a bank's lendable reserves, say.
+\code{abm_sequential()} is the order-dependent sibling of
+\code{\link[=abm_rules]{abm_rules()}}. Agents are processed one at a time in a
+freshly shuffled order, and each agent's writes to \strong{globals} are visible
+to every agent processed after it within the same step. This mirrors NetLogo's
+\verb{ask turtles}, and it is what you need when agents compete for a shared
+resource that is \emph{depleted} rather than merely divided, a bank's lendable
+reserves, say.
 }
 \details{
-Rules also cascade \emph{within} each agent: the second rule sees what the first
-one just wrote, to the agent's own row and to the globals alike. That is the
-opposite of \code{\link[=abm_rules]{abm_rules()}}, where every rule reads the state at the start of
-the step, and it is what "one agent at a time" already implies — an agent
-that draws a quote and then decides whether the quote crosses the book has to
-be able to read the number it just drew.
+Rules also cascade \emph{within} each agent: the second rule sees what the
+first one just wrote, to the agent's own row and to the globals alike. That is
+the opposite of \code{\link[=abm_rules]{abm_rules()}}, where every rule reads
+the state at the start of the step, and it is what "one agent at a time"
+already implies, an agent that draws a quote and then decides whether the quote
+crosses the book has to be able to read the number it just drew.
 
 The step is deliberately narrow: during the per-agent loop a rule can read its
 own agent's columns and any global, and it can write its own agent's columns
-and any global. It cannot see other agents' column values — use \code{\link[=abm_tell]{abm_tell()}}
-to write into another agent's row. Use \code{\link[=abm_rules]{abm_rules()}} unless you specifically
-need the ordering, since sequential evaluation is both slower and harder to
-reason about.
+and any global. It cannot see other agents' column values, use
+\code{\link[=abm_tell]{abm_tell()}} to write into another agent's row. Use
+\code{\link[=abm_rules]{abm_rules()}} unless you specifically need the
+ordering, since sequential evaluation is both slower and harder to reason
+about.
 }
 \examples{
 abm_sequential(

@@ -7,7 +7,7 @@
 - Go: meet a neighbour; interact with probability equal to your cultural
   similarity; if you interact, copy one feature you differ on
 - Output: homophily produces *stable cultural regions*, and the number of them
-  rises with *q* — more variety means less convergence, not more
+  rises with *q*, more variety means less convergence, not more
 
 **Package**
 
@@ -47,8 +47,8 @@ result <- abm_run(pop, go, ticks = 400, seed = 3)
 q = 10 → 287 of 400 agents.
 
 *Needed nothing new. The "pick one feature at random among those that differ"
-rule is expressible exactly — give each differing feature a random key and copy
-the one with the highest key — rather than approximated. Worth noting that the
+rule is expressible exactly, give each differing feature a random key and copy
+the one with the highest key, rather than approximated. Worth noting that the
 random-key trick is a general pattern for "choose one of several options
 uniformly" inside a vectorised rule.*
 

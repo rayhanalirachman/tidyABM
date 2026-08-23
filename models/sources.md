@@ -1,11 +1,11 @@
 # Sources
 
 One line per model. Where a model exists both as a paper and as a NetLogo
-sample model, both are given, because the two are not always the same model —
+sample model, both are given, because the two are not always the same model.
 the NetLogo version is usually a particular parameterisation of the paper's and
 occasionally a simplification of it.
 
-## Part 1 — the founding thirteen
+## Part 1: the founding thirteen
 
 | # | model | source |
 |---|---|---|
@@ -23,7 +23,7 @@ occasionally a simplification of it.
 | 12 | Random Consumption Zakah, short form | Custom. |
 | 13 | Bank Reserves | Wilensky, U. (1998). NetLogo Bank Reserves model. CCL, Northwestern University. <http://ccl.northwestern.edu/netlogo/models/BankReserves> |
 
-## Part 2 — three of those, corrected
+## Part 2: three of those, corrected
 
 | # | model | source |
 |---|---|---|
@@ -31,7 +31,7 @@ occasionally a simplification of it.
 | 15 | Ethnocentrism | Hammond, R. A. & Axelrod, R. (2006), as above. |
 | 16 | Zakah with a risk process | Custom. |
 
-## Part 3 — the first stress test
+## Part 3: the first stress test
 
 | # | model | source |
 |---|---|---|
@@ -46,7 +46,7 @@ occasionally a simplification of it.
 | 25 | Axelrod's cultural dissemination | Axelrod, R. (1997). The Dissemination of Culture. *Journal of Conflict Resolution* 41(2): 203–226. |
 | 26 | PD N-Person Iterated | Wilensky, U. (2002). NetLogo PD N-Person Iterated model. CCL, Northwestern University. <http://ccl.northwestern.edu/netlogo/models/PDN-PersonIterated> |
 
-## Part 4 — the second stress test
+## Part 4: the second stress test
 
 | # | model | source |
 |---|---|---|
@@ -61,7 +61,7 @@ occasionally a simplification of it.
 | 35 | Simple Genetic Algorithm | Wilensky, U. (1998). NetLogo Simple Genetic Algorithm model. <http://ccl.northwestern.edu/netlogo/models/SimpleGeneticAlgorithm> |
 | 36 | Information cascade | Bikhchandani, S., Hirshleifer, D. & Welch, I. (1992). A Theory of Fads, Fashion, Custom, and Cultural Change as Informational Cascades. *Journal of Political Economy* 100(5): 992–1026. |
 
-## Part 5 — the third stress test
+## Part 5: the third stress test
 
 | # | model | source |
 |---|---|---|
@@ -76,16 +76,16 @@ occasionally a simplification of it.
 | 45 | Hotelling's Law | Hotelling, H. (1929). Stability in Competition. *Economic Journal* 39(153): 41–57. NetLogo Hotelling's Law model. <http://ccl.northwestern.edu/netlogo/models/HotellingsLaw> The price-competition result referred to in the notes is d'Aspremont, C., Gabszewicz, J. J. & Thisse, J.-F. (1979). On Hotelling's "Stability in Competition". *Econometrica* 47(5): 1145–1150. |
 | 46 | Beer Distribution Game | Sterman, J. D. (1989). Modeling Managerial Behavior: Misperceptions of Feedback in a Dynamic Decision Making Experiment. *Management Science* 35(3): 321–339. |
 
-## Part 6 — the fourth stress test
+## Part 6: the fourth stress test
 
 | # | model | source |
 |---|---|---|
 | 47 | Response thresholds and the division of labour | Bonabeau, E., Theraulaz, G. & Deneubourg, J.-L. (1996). Quantitative study of the fixed threshold model for the regulation of division of labour in insect societies. *Proceedings of the Royal Society B* 263(1376): 1565–1569. The reinforcement variant and the parameter values used here follow Theraulaz, G., Bonabeau, E. & Deneubourg, J.-L. (1998). Response threshold reinforcement and division of labour in insect societies. SFI working paper 98-01-006. |
-| 48 | A garbage can model of organizational choice | Cohen, M. D., March, J. G. & Olsen, J. P. (1972). A Garbage Can Model of Organizational Choice. *Administrative Science Quarterly* 17(1): 1–25. The parameterisation used here is ours; the original's numeric specification was not available to us. |
+| 48 | A garbage can model of organizational choice | Cohen, M. D., March, J. G. & Olsen, J. P. (1972). A Garbage Can Model of Organizational Choice. *Administrative Science Quarterly* 17(1): 1–25. The parameterisation used here is ours, since the original's numeric specification was not available to us. |
 | 49 | The emergence of firms | Axtell, R. L. (1999). The Emergence of Firms in a Population of Agents. Brookings CSED working paper 3. See also Axtell, R. L. (2018). Endogenous firm dynamics and labor flows via heterogeneous agents. *Journal of Economic Dynamics and Control* 91: 190–208. |
 | 50 | Adaptation on a rugged landscape | Levinthal, D. A. (1997). Adaptation on Rugged Landscapes. *Management Science* 43(7): 934–950. The landscape is Kauffman, S. A. (1993). *The Origins of Order*. Oxford University Press. |
 | 51 | Imitation dynamics of vaccination | Fu, F., Rosenbloom, D. I., Wang, L. & Nowak, M. A. (2011). Imitation dynamics of vaccination behaviour on social networks. *Proceedings of the Royal Society B* 278(1702): 42–49. |
-| 52 | Bank runs and the sequential service constraint | Diamond, D. W. & Dybvig, P. H. (1983). Bank Runs, Deposit Insurance, and Liquidity. *Journal of Political Economy* 91(3): 401–419. The belief rule is ours; the original has no learning. |
+| 52 | Bank runs and the sequential service constraint | Diamond, D. W. & Dybvig, P. H. (1983). Bank Runs, Deposit Insurance, and Liquidity. *Journal of Political Economy* 91(3): 401–419. The belief rule is ours. The original has no learning. |
 | 53 | Random copying and the neutral model | Bentley, R. A., Hahn, M. W. & Shennan, S. J. (2004). Random drift and culture change. *Proceedings of the Royal Society B* 271(1547): 1443–1450. The analytic check is Ewens, W. J. (1972). The sampling theory of selectively neutral alleles. *Theoretical Population Biology* 3(1): 87–112. |
 | 54 | Indirect reciprocity by image scoring | Nowak, M. A. & Sigmund, K. (1998). Evolution of indirect reciprocity by image scoring. *Nature* 393(6685): 573–577. The `q > c/b` condition is from Nowak, M. A. & Sigmund, K. (1998). The Dynamics of Indirect Reciprocity. *Journal of Theoretical Biology* 194(4): 561–574. |
 | 55 | Deferred acceptance | Gale, D. & Shapley, L. S. (1962). College Admissions and the Stability of Marriage. *American Mathematical Monthly* 69(1): 9–15. The asymptotics checked against are Pittel, B. (1989). The average number of stable matchings. *SIAM Journal on Discrete Mathematics* 2(4): 530–549. |

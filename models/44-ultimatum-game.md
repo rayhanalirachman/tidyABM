@@ -2,7 +2,7 @@
 
 **Concept**
 
-- Setup: 100 agents, each with a strategy (p, q) — offer p when proposing,
+- Setup: 100 agents, each with a strategy (p, q), offer p when proposing,
   accept nothing below q when responding
 - Go: random pairs, one proposing and one responding, eight rounds a
   generation. With probability `w` the proposer knows this responder's demand
@@ -73,8 +73,8 @@ result <- abm_run(m, go, ticks = 350, seed = 1)
 | 0.75 | 0.283 | 0.582 |
 | 1.00 | 0.160 | 0.587 |
 
-With no information the population heads for the rational solution S(0, 0) —
-q is already at 0.07 and still falling. Information moves it towards fairness,
+With no information the population heads for the rational solution S(0, 0), with
+q already at 0.07 and still falling. Information moves it towards fairness,
 and at w = 0.5 both traits are up with q a little below p, which is the shape
 Nowak, Page & Sigmund report.
 
@@ -88,7 +88,7 @@ selection, and the run bears that out: p peaks at intermediate w and falls
 away on either side.
 
 *Needed nothing new. It is the "draw the index once" idiom from Part 4 doing the
-work — a genome with two traits cannot be resampled with two independent
+work, a genome with two traits cannot be resampled with two independent
 `sample()` calls, or p and q get shuffled apart and the population inherits
 combinations that never existed. The index is drawn in a step of its own and both
 traits are indexed by it. What it adds to that idiom is the composition trick:

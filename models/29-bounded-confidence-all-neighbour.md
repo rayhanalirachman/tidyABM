@@ -3,7 +3,7 @@
 **Concept**
 
 - Setup: 500 agents with opinions drawn uniformly on [0, 1]
-- Go: each agent moves to the *mean* of everybody within `eps` of it — not one
+- Go: each agent moves to the *mean* of everybody within `eps` of it, not one
   partner, everybody
 - Output: consensus above a critical `eps`, fragmentation below it
 
@@ -27,25 +27,25 @@ hk <- function(eps, n = 500, ticks = 50) {
 |---|---|---|---|---|---|---|
 | clusters | 1 | 1 | 2 | 3 | 3 | 8 |
 
-Consensus for `eps ≥ 0.25`, fragmentation below — the transition the paper
+Consensus for `eps ≥ 0.25`, fragmentation below, the transition the paper
 reports.
 
 *Forced `abm_neighbours(within =)`, one round later.* When this model was first
-written the averaging was expressible — with no match standing, a rule sees the
-whole population as vectors — but only as a hand-rolled `vapply()` that is O(n²)
+written the averaging was expressible, with no match standing, a rule sees the
+whole population as vectors, but only as a hand-rolled `vapply()` that is O(n²)
 and reads like base R rather than like a step, because `abm_neighbours()`
 aggregated over the **network** and nothing else. `within =` is the fix: the
 neighbourhood is everybody whose columns satisfy a condition, evaluated once per
 (focal, candidate) pair with the focal agent's columns under `own_<col>`. It is
 the same view `abm_match(cost =)` minimises over, with an aggregate on the end
 instead of an argmin, which is why the machinery already existed. The table above
-is unchanged — the step produces the same trajectory as the `vapply()`, agent for
-agent.
+is unchanged, since the step produces the same run as the `vapply()` did, agent
+for agent.
 
 *One thing had to be decided rather than inherited. An agent is inside its own
 attribute neighbourhood, because "the mean opinion of everyone I take seriously"
 includes the agent's own and Hegselmann and Krause's confidence set is defined
-that way; it is never inside its own network neighbourhood, because an agent is
+that way. It is never inside its own network neighbourhood, because an agent is
 not joined to itself. `within = ... & .id != own_.id` excludes it.*
 
 ---

@@ -166,7 +166,7 @@ match_opposite <- function(spec, agents, globals, pool, call) {
       class = "tidyABM_bad_by", call = call
     )
   }
-  # a population that is all one kind this tick — every male dead, say — is a
+  # a population that is all one kind this tick (every male dead, say) is a
   # step where nobody pairs up, not an error
   sub <- agents[agents$.id %in% pool, , drop = FALSE]
   vals <- all_vals

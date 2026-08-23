@@ -3,7 +3,7 @@
 **What was missing.** Two things, and only one is the threshold. The poverty line
 was absolute in a model where wealth grows, so everyone crosses it within about
 ten ticks. More importantly, the consumption rule `wealth*0.98 + 0.4*income`
-converges every household to exactly `20 * income` — wealth becomes a
+converges every household to exactly `20 * income`, so wealth becomes a
 deterministic function of income, the distribution *tightens*, and nobody is ever
 persistently poor no matter where the line is. A redistribution model needs
 something to redistribute against.

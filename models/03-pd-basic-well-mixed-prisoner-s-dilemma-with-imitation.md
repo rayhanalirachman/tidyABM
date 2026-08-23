@@ -1,4 +1,4 @@
-# 3. PD Basic — well-mixed prisoner's dilemma with imitation
+# 3. PD Basic, a well-mixed prisoner's dilemma with imitation
 
 **Concept**
 

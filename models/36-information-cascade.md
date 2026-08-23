@@ -7,7 +7,7 @@
 - Go: agents decide **one at a time**, seeing every predecessor's decision but
   none of their signals. Follow your own signal unless the public tally already
   leads by two, in which case follow the crowd
-- Output: once two decisions agree, everybody afterwards copies — and the herd is
+- Output: once two decisions agree, everybody afterwards copies, and the herd is
   wrong a fixed fraction of the time no matter how many agents there are
 
 **Package**
@@ -48,15 +48,15 @@ cascade against the closed form `p² / (p² + (1-p)²)`:
 Five for five within sampling error. Alongside Hawks and Doves, this is the
 tightest quantitative validation in the corpus.
 
-*Needed nothing new, and it is the clearest test of `abm_sequential()` so far* —
-the public tally is a global that each agent reads and then adds to, which is
+*Needed nothing new, and it is the clearest test of `abm_sequential()` so far.*
+The public tally is a global that each agent reads and then adds to, which is
 exactly the depletion semantics the step exists for. It also found the step's
 sharpest edge, which Part 5 then fixed: rules inside one `abm_sequential()` step
 used to be simultaneous within the agent, so `nA ~ nA + (decision == "A")` would
-read the *previous* decision, and the choice had to be recomputed — hence
+read the *previous* decision, and the choice had to be recomputed, hence
 `side()` appearing three times. Rules now cascade, so the natural form works.
 The three-call version above is left as written because it is what the run in the
-table used and because it is still correct; the point is that it no longer has
+table used and because it is still correct. The point is that it no longer has
 to be written that way.
 
 ---

@@ -14,10 +14,10 @@ new_abm_repeat <- function(steps, until, max) {
 #' clears. `abm_repeat()` is that phase. It holds a block of steps and replays
 #' it until `until` is true, or `max` times, whichever comes first.
 #'
-#' `until` is evaluated the way an [abm_global()] right-hand side is —
-#' over the whole population, with the globals in scope — and must collapse to a
-#' single `TRUE` or `FALSE`. It is checked *after* each pass, so the block always
-#' runs at least once. `max` is required, because a condition that never becomes
+#' `until` is evaluated the way an [abm_global()] right-hand side is, over the
+#' whole population, with the globals in scope, and must collapse to a single
+#' `TRUE` or `FALSE`. It is checked *after* each pass, so the block always runs
+#' at least once. `max` is required, because a condition that never becomes
 #' true would otherwise hang the run.
 #'
 #' The same idea covers early stopping for a whole model: a block wrapped in

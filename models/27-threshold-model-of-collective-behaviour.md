@@ -2,7 +2,7 @@
 
 **Concept**
 
-- Setup: 100 people, each with a threshold — the number of others already
+- Setup: 100 people, each with a threshold, the number of others already
   rioting it needs to see before joining
 - Go: everybody looks at last tick's count and decides
 - Output: the outcome is set by the *shape* of the threshold distribution, not
@@ -32,7 +32,7 @@ bumped <- 0:99; bumped[2] <- 2                   # one person's 1 becomes a 2
 and ends with all 100 rioting. Changing a single person's threshold from 1 to 2
 breaks the chain at the first link and leaves **1** rioter. That is Granovetter's
 own example, reproduced exactly: two crowds with almost identical
-distributions — same mean, same median, one person different — end up 99 people
+distributions, same mean, same median, one person different, end up 99 people
 apart.
 
 *Needed nothing new.* It is the smallest model in the corpus that uses no

@@ -5,7 +5,7 @@
 - Setup: 300 nodes in a ring lattice, each joined to its 4 nearest
 - Go: with probability *p*, an agent drops one neighbour and links to a stranger
 - Output: a little rewiring collapses the average path length while leaving
-  clustering almost intact — the small-world regime
+  clustering almost intact, the small-world regime
 
 **NetLogo**
 
@@ -43,7 +43,7 @@ result <- abm_run(sw, go(0.005), ticks = 20, seed = 2)
 
 *Motivated `abm_unlink()` and, more importantly, `pair = "one_of"`. The first
 attempt used `pair = "random"` for the re-link, which **partitions the eligible
-agents among themselves**, so R agents dropped R edges and gained only R/2 — the
+agents among themselves**, so R agents dropped R edges and gained only R/2. The
 network bled edges every tick. `"one_of"` draws each agent a partner from the
 whole population, which is NetLogo's `one-of other turtles` and what rewiring
 actually means.*

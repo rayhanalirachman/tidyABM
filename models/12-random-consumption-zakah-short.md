@@ -29,7 +29,7 @@ result <- abm_run(zakah, go, ticks = 50, seed = 12)
 ```
 
 *First model made only of individual and population-level steps, which confirmed
-matching is optional machinery. **It stops working after about ten ticks** — see
+matching is optional machinery. **It stops working after about ten ticks**. See
 model 16.*
 
 ---

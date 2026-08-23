@@ -55,7 +55,7 @@ Two shops meet in the middle and stay there: Hotelling's *minimum
 differentiation*, and the reason the two supermarkets are next door to each
 other. Neither can do better anywhere else, and it is the worst arrangement
 there is for the buyers, who walk exactly twice as far as they would if the
-shops were placed to suit them. Adding shops does not fix it — five shops
+shops were placed to suit them. Adding shops does not fix it, five shops
 cluster into a pair, a pair and a singleton and still leave the buyers walking
 three and a half times the optimum.
 
@@ -65,16 +65,16 @@ a model with two groups a buyer's nearest agent is another buyer, so the mode
 was unusable for exactly the models it was meant for. `eligible =` says who
 takes part and `among =` says who may be picked, and the two only come apart in
 the directional modes. `one_of` gained it at the same time and for the same
-reason — "copy a random agent of the other group" was not sayable either.*
+reason: "copy a random agent of the other group" was not sayable either.*
 
 *Counting the buyers who chose you is then one line:
 `abm_tell(customers ~ 1, to = .partner, .resolve = "sum")`, each buyer sending
-its chosen shop a 1. A match gives an agent one partner; that step is what lets
+its chosen shop a 1. A match gives an agent one partner. That step is what lets
 the agent on the receiving end of many matches find out how many.*
 
 *Two things did not work and are worth recording as much as the thing that did.
 The shops must compare a step against what they are getting* now*, not against
-the best they ever got — hence the block counting buyers twice per tick. A shop
+the best they ever got, hence the block counting buyers twice per tick. A shop
 comparing against its historical best freezes the moment a rival moves in next
 door, because its old takings have become unreachable and every move looks bad.
 And they must require a* strict *improvement: a pair of shops standing together
@@ -85,8 +85,8 @@ produce a plausible wrong answer.*
 
 *One real limitation did show up. `pair = "nearest"` has a single fixed metric,
 Euclidean distance in the `by` columns. The price-competition version of this
-model — d'Aspremont, Gabszewicz & Thisse (1979), where shops set prices too and
-the answer flips to* maximum *differentiation — needs "nearest in price plus
+model, d'Aspremont, Gabszewicz & Thisse (1979), where shops set prices too and
+the answer flips to* maximum *differentiation, needs "nearest in price plus
 travel cost", which the mode cannot express. See Open items.*
 
 ---

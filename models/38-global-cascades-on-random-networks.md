@@ -32,7 +32,7 @@ cascade_run <- function(z, phi = 0.18, n = 2000, seed = 1, ticks = 60) {
 Watts's cascade condition is `sum_k k(k-1) rho_k p_k = z` with
 `rho_k = 1[1/k >= phi]`, which for φ = 0.18 and a Poisson degree distribution
 has roots at **z = 1.021 and z = 5.765**. Outside those two numbers a single
-seed should never spread; inside them it often should.
+seed should never spread. Inside them it often should.
 
 | z | P(cascade), 40 seeds | inside the window? |
 |---|---|---|
@@ -52,9 +52,9 @@ Robustness and fragility are the same property looked at from two sides.
 *Needed `abm_network(type = "poisson")`, and the model is the argument for it.
 On the k-regular graph that `type = "random"` builds, no cascade ever starts
 once k > 1/φ, because every agent is identical and none of them is vulnerable.
-The whole phenomenon lives in the low-degree tail of the degree distribution —
-the agents with three neighbours in a graph averaging five — and a regular graph
-does not have one. It is the clearest case in the corpus of the network
+The whole phenomenon lives in the low-degree tail of the degree distribution,
+among the agents with three neighbours in a graph averaging five, and a regular
+graph does not have one. It is the clearest case in the corpus of the network
 generator being part of the model rather than part of the setup.*
 
 ---

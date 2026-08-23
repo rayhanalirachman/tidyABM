@@ -3,7 +3,7 @@
 **Concept**
 
 - Setup: 100 people with a `wallet`, `savings` and `loan`; a bank ledger
-- Go: exchange cash pairwise, settle up individually, then borrow from the bank —
+- Go: exchange cash pairwise, settle up individually, then borrow from the bank,
   but only while it has lendable reserves
 - Output: the money multiplier
 
@@ -52,16 +52,16 @@ result <- abm_run(bankres, go, ticks = 100, seed = 13)
 *Introduced `abm_sequential()`. Every earlier model is fine with simultaneous
 updates because a shared pool that is only ever **divided** gives the same answer
 either way. Lendable reserves are **depleted**, so the first borrower has to
-change what the second one sees. The last rule writes to a global — that is what
+change what the second one sees. The last rule writes to a global, and that is what
 makes the depletion visible to the next agent.*
 
 *Rewritten in Part 5, when rules inside `abm_sequential()` started to cascade.
 The amount drawn is now worked out once, into `draw`, and the three rules that
-move money refer to it; the original wrote the condition
+move money refer to it. The original wrote the condition
 `wallet < 0 & bank_reserves > 0` out three times, which was right when every
 rule read the agent's row as it stood at the start of the step and is wrong now
 that the second rule brings `wallet` back to zero before the third one tests it.
-The model is the same; it is the version of it that survives a change in the
+The model is the same. It is the version of it that survives a change in the
 step's semantics, and it reads better than the original did.*
 
 ---

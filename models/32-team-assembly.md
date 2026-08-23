@@ -55,13 +55,13 @@ result <- abm_run(pop, go, ticks = 300, seed = 1)
 |---|---|---|---|---|---|
 | giant component | 0.66 | 0.98 | 1.00 | 1.00 | 0.89 |
 
-More incumbents connect the field; heavy repeat collaboration (`q = 0.95`) starts
+More incumbents connect the field. Heavy repeat collaboration (`q = 0.95`) starts
 to fragment it again. That is the paper's phase diagram.
 
 *Forced clique linking in `abm_link()`.* A matched group of three or more now
 gains an edge between every pair inside it, which is what a team, a committee or
-a coalition means once it is written as a network. The other half of this model —
-assembling the team **one member at a time** — turned out to be expressible after
+a coalition means once it is written as a network. The other half of this model,
+assembling the team **one member at a time**, turned out to be expressible after
 all, by repeating a five-step `recruit` block `m` times and carrying the partial
 team in an `on_team` column. That is the first model in the corpus with a
 constructive, order-dependent sub-loop inside a single tick.

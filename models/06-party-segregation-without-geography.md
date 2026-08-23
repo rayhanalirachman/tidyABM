@@ -1,4 +1,4 @@
-# 6. Party — segregation without geography
+# 6. Party, segregation without geography
 
 **Concept**
 

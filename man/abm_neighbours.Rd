@@ -21,10 +21,10 @@ An \code{abm_neighbours} step object.
 }
 \description{
 A match gives an agent \emph{one} partner. Plenty of models need the whole
-neighbourhood instead — how many of my neighbours are infected, what fraction
-of them are flashing, what my neighbours believe on average.
-\code{abm_neighbours()} writes exactly that: for every agent, an aggregate over the
-agents around it.
+neighbourhood instead, how many of my neighbours are infected, what fraction of
+them are flashing, what my neighbours believe on average.
+\code{abm_neighbours()} writes exactly that: for every agent, an aggregate over
+the agents around it.
 }
 \details{
 Each rule is \code{column ~ aggregate_expression}, and the expression is evaluated
@@ -34,18 +34,19 @@ An agent with no neighbours gets \code{NA}.
 
 Alongside each neighbour column the expression also sees \verb{own_<col>}, the
 focal agent's own value of that column, recycled down its neighbourhood. That
-is what makes a \emph{comparison} possible — \code{sum(wealth > own_wealth)} is "how many
-of my neighbours are richer than me", which no aggregate over the neighbours
-alone can express.
+is what makes a \emph{comparison} possible, \code{sum(wealth > own_wealth)} is
+"how many of my neighbours are richer than me", which no aggregate over the
+neighbours alone can express.
 }
 \section{Two kinds of neighbourhood}{
-By default the neighbourhood is the model's \code{\link[=abm_network]{abm_network()}}: the agents this
-one shares an edge with. \verb{within =} replaces it with a neighbourhood in
-\strong{attribute space} — everybody whose columns satisfy a condition, whether or
-not the model has a network at all. The condition is evaluated once per
-(focal, candidate) pair, with the candidate's columns under their own names
-and the focal agent's under \verb{own_<col>}, which is the same view
-\code{abm_match(cost =)} minimises over.
+By default the neighbourhood is the model's
+\code{\link[=abm_network]{abm_network()}}: the agents this one shares an edge
+with. \verb{within =} replaces it with a neighbourhood in \strong{attribute
+space}, everybody whose columns satisfy a condition, whether or not the model
+has a network at all. The condition is evaluated once per (focal, candidate)
+pair, with the candidate's columns under their own names and the focal agent's
+under \verb{own_<col>}, which is the same view \code{abm_match(cost =)}
+minimises over.
 
 \if{html}{\out{<div class="sourceCode">}}\preformatted{abm_neighbours(opinion ~ mean(opinion), within = abs(opinion - own_opinion) <= eps)
 }\if{html}{\out{</div>}}

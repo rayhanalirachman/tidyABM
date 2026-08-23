@@ -36,7 +36,7 @@ deffuant <- function(d, mu = 0.5, n = 1000, ticks = 600) {
 
 Six for six against the paper's estimate `n_max ≈ 1/(2d)`.
 
-*Needed nothing new.* The whole model is one match and one conditional rule; it
+*Needed nothing new.* The whole model is one match and one conditional rule. It
 is the cleanest demonstration in the corpus that `partner_<col>` plus
 `if_else()` is enough for a pairwise interaction model.
 

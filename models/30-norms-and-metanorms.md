@@ -11,9 +11,9 @@
   punisher `E = 2`
 - Then a generation turns over: score a standard deviation above the mean and you
   are copied twice, one below and you are not copied at all
-- Output: the bare norm **collapses** — punishing is pure cost, so vengefulness
-  erodes and boldness climbs. Add a *metanorm* — punishment for seeing a
-  defection and letting it go — and the norm holds.
+- Output: the bare norm **collapses**, punishing is pure cost, so vengefulness
+  erodes and boldness climbs. Add a *metanorm*, punishment for seeing a
+  defection and letting it go, and the norm holds.
 
 **Package**
 
@@ -94,33 +94,33 @@ result <- abm_run(pop, go, ticks = 100, seed = 1)
 Axelrod's headline result, both halves of it.
 
 *Forced `abm_network(type = "complete")` and `own_<col>` in `abm_neighbours()`.*
-Every agent can see every other, so the population **is** the neighbourhood — but
+Every agent can see every other, so the population **is** the neighbourhood, but
 until now a neighbourhood aggregate could only see the neighbours' columns, and
 "how many of the others punished me" needs my own `seen` weighed against each
 neighbour's vengefulness. `own_seen` is that. The same addition makes the
-commonplace `sum(wealth > own_wealth)` — how many of my neighbours are richer
-than me — expressible for the first time.
+commonplace `sum(wealth > own_wealth)`, meaning "how many of my neighbours are
+richer than me", expressible for the first time.
 
 *It also forced `abm_draw()`, one round later.* Written the first way, the two
-neighbourhood passes — who punished me, and how much punishing I did — drew
+neighbourhood passes (who punished me, and how much punishing I did) drew
 independently. Both were correct in distribution, and neither was tied to the
 other, so the punishments handed out and the punishments received balanced only
 on average: no defector was charged for the acts its own punishers were being
 charged for. `abm_draw()` puts the coins on the **edge** instead of inside the
 aggregate. Each agent holds one draw per neighbour for whether it noticed that
-neighbour and one for whether it acted; the focal agent reads its own as `saw`
+neighbour and one for whether it acted. The focal agent reads its own as `saw`
 and `zeal` and its neighbour's as `saw_back` and `zeal_back`, and because both
 ends read the same numbers the two passes are one set of events counted twice.
-The test for it is an identity — `sum(punish_acts) == sum(punishers)`, exactly,
-every tick — rather than a comparison of means.
+The test for it is an identity, `sum(punish_acts) == sum(punishers)`, exactly,
+every tick, rather than a comparison of means.
 
 *`.each = "endpoint"` came out of writing this model rather than out of the open
 item, which asked only for a draw the pair shares. A symmetric draw says* did we
 meet*. Whether I noticed you and whether you noticed me are two questions about
 one edge, and an asymmetric interaction needs a coin each.*
 
-*The numbers above moved slightly when the draws were tied together — the random
-stream is not the same one — but not the result: the bare norm still decays and
+*The numbers above moved slightly when the draws were tied together, the random
+stream is not the same one, but not the result: the bare norm still decays and
 the metanorm still holds.*
 
 ---

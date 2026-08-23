@@ -27,7 +27,7 @@ result <- abm_run(rumour, go, ticks = 100, seed = 5)
 
 *Introduced nothing, which was the point: symmetric state comparison through
 `partner_*` is self-consistent and needs no `role`. Conserved-quantity transfers
-need `role`; symmetric state changes do not.*
+need `role`. Symmetric state changes do not.*
 
 ---
 

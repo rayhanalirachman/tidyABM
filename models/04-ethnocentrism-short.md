@@ -30,7 +30,7 @@ result <- abm_run(ethno, go, ticks = 30, seed = 4)
 ```
 
 *Introduced `abm_birth()` and `abm_death()` as two more flat steps. **It does not
-work** — the tag does no work because strategies are unconditional, so defection
+work**. The tag does no work because strategies are unconditional, so defection
 dominates and the population runs down. See model 15.*
 
 ---

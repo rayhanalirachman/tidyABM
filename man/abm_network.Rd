@@ -18,7 +18,7 @@ lattice, \code{"complete"} for every possible edge, \code{"manual"} to supply \c
 yourself, or \code{"empty"} for a network that starts with no edges (useful with
 \code{\link[=abm_birth]{abm_birth()}}).}
 
-\item{degree}{Number of neighbours per agent — exactly, for \code{"random"} and
+\item{degree}{Number of neighbours per agent, exactly, for \code{"random"} and
 \code{"ring"}; on average, for \code{"poisson"}; per newly attached agent, for
 \code{"scale_free"}. Required for all four. \code{n * degree} must be even for
 \code{"random"}, and \code{degree} must be even for \code{"ring"}.}
@@ -46,16 +46,17 @@ well-mixed population written as a graph, and it is what lets
 \code{\link[=abm_neighbours]{abm_neighbours()}} mean "over everybody else" in a model with no spatial or
 social structure at all.
 
-The degree distribution is not a detail. \code{"random"} is \emph{regular} — every
-agent has exactly \code{degree} neighbours — and a threshold model on a regular
-graph behaves quite differently from the same model on a graph with the same
-mean degree but a spread of degrees, because the low-degree agents are the
+The degree distribution is not a detail. \code{"random"} is \emph{regular},
+every agent has exactly \code{degree} neighbours, and a threshold model on a
+regular graph behaves quite differently from the same model on a graph with the
+same mean degree but a spread of degrees, because the low-degree agents are the
 ones a cascade can get started on. \code{"poisson"} is the Erdos-Renyi graph
-\code{G(n, p)} with \code{p} chosen to give mean degree \code{degree}, and it is what the
-random-graph literature means by "a random graph". \code{"scale_free"} grows a
-Barabasi-Albert graph attaching \code{degree} edges per new agent, giving the
-heavy tail. \code{"ring"} is the one-dimensional lattice, each agent joined to the
-\code{degree / 2} agents on either side of it.
+\code{G(n, p)} with \code{p} chosen to give mean degree \code{degree}, and it
+is what the random-graph literature means by "a random graph".
+\code{"scale_free"} grows a Barabasi-Albert graph attaching \code{degree} edges
+per new agent, giving the heavy tail. \code{"ring"} is the one-dimensional
+lattice, each agent joined to the \code{degree / 2} agents on either side of
+it.
 }
 \examples{
 abm_network(type = "random", degree = 4)

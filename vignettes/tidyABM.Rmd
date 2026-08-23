@@ -16,13 +16,13 @@ library(tidyABM)
 ```
 
 An agent-based model is usually written as nested loops: for each tick, for each
-agent, do something. tidyABM asks you to write the model as a *specification*
-instead — a declaration of what the population is and an ordered list of what
-happens to it — and runs the loops for you.
+agent, do something. tidyABM asks for a *specification* instead. You declare what
+the population is and list what happens to it, in order, and the package runs the
+loops.
 
-That buys three things. The model reads as a description of the mechanism rather
-than as bookkeeping; mistakes in the structure are caught once, when you build the
-model, rather than on tick 400; and the output is tidy data, so analysing a run is
+Three things come out of that. The model reads as a description of the mechanism
+rather than as bookkeeping. Mistakes in the structure are caught when you build
+the model, not on tick 400. And the output is tidy data, so analysing a run is
 ordinary dplyr.
 
 ## The three parts
@@ -30,9 +30,9 @@ ordinary dplyr.
 Every model in this package is the same three functions, written as three
 statements:
 
-1. **the world** — `abm_setup()`. The agents, the network, the globals.
-2. **the tick** — `abm_go()`. The ordered steps replayed once per tick.
-3. **the run** — `abm_run()`. The two above, plus `ticks`, `seed` and `record`.
+1. **the world**, `abm_setup()`. The agents, the network, the globals.
+2. **the tick**, `abm_go()`. The ordered steps replayed once per tick.
+3. **the run**, `abm_run()`. The two above, plus `ticks`, `seed` and `record`.
 
 ```{r, eval = FALSE}
 world  <- abm_setup(...)                                # 1
@@ -61,7 +61,7 @@ economy <- abm_setup(agents = abm_agents(n = 500, money = 100))
 economy
 ```
 
-`abm_setup()` declares the world; `abm_agents()` declares one group of agents
+`abm_setup()` declares the world. `abm_agents()` declares one group of agents
 inside it. A plain value like `money = 100` is recycled across every agent.
 
 Now the behaviour:
@@ -76,9 +76,9 @@ go
 ```
 
 Two steps. `abm_match()` shuffles the population into pairs and works out who in
-each pair is the giver — the `role` list says the giver must satisfy
-`money > 0` and the receiver can be anyone, so a pair where neither agent has
-money is dropped for this tick. `abm_rules()` then moves the dollar.
+each pair is the giver. The `role` list says the giver must satisfy `money > 0`
+and the receiver can be anyone, so a pair where neither agent has money is
+dropped for this tick. Then `abm_rules()` moves the dollar.
 
 ```{r}
 # 3. the run
@@ -97,15 +97,15 @@ c(total_start = sum(start), total_end = sum(end))
 round(summary(end))
 ```
 
-Money is conserved — no rule creates or destroys any — but the distribution has
-gone from a spike at 100 to something with a long right tail. That is the whole
-point of the model.
+Money is conserved, because no rule creates or destroys any, but the
+distribution has gone from a spike at 100 to something with a long right tail.
+That is the whole point of the model.
 
 ## Setup: agents, networks, globals
 
-`abm_agents()` takes `n` and any number of named columns. A plain value recycles;
-a one-sided formula is evaluated once and must return `n` values (or one, to
-recycle). Formulas run in order, so a later column can use an earlier one:
+`abm_agents()` takes `n` and any number of named columns. A plain value recycles.
+A one-sided formula is evaluated once and must return `n` values, or one value to
+recycle. Formulas run in order, so a later column can use an earlier one:
 
 ```{r}
 abm_agents(
@@ -129,8 +129,8 @@ market
 Agent ids are unique across the whole model, and every agent carries a `.group`
 column naming its group.
 
-Values shared by the whole population — a bar's last attendance, a bank's ledger
-— go in `globals`. They are readable inside every rule:
+Values shared by the whole population go in `globals`: a bar's last attendance,
+a bank's ledger. They are readable inside every rule:
 
 ```{r}
 elfarol <- abm_setup(
@@ -277,7 +277,7 @@ would be served. Use `abm_sequential()` only when that difference is the point:
 it is slower and harder to reason about.
 
 The order is a fresh shuffle unless you name one. When the order is itself part
-of the model — a queue at a counter, a sequential-service constraint — pass
+of the model, say a queue at a counter or a sequential-service constraint, pass
 `.order =` and the agents go through in its ascending order instead:
 
 ```{r}
@@ -297,7 +297,7 @@ sum(q$got[q$tick == 1 & q$place <= 10])   # the front of the queue, every time
 ## Repeating a block
 
 A tick is one pass through `abm_go()`. Some models have a *phase* inside the
-tick that has to finish first — an epidemic that burns out before anyone
+tick that has to finish first: an epidemic that burns out before anyone
 reconsiders vaccinating, a round of proposals that runs until nobody is
 rejected. `abm_repeat()` replays a block until a condition holds:
 
@@ -312,7 +312,7 @@ unique(r$x[r$tick == 1])
 ```
 
 `until` is checked after each pass, so the block always runs at least once, and
-`max` is required — a condition that never becomes true would otherwise hang the
+`max` is required, because a condition that never becomes true would hang the
 run.
 
 ## Neighbourhoods
@@ -338,7 +338,7 @@ table(r$richer[r$tick == 1], useNA = "ifany")
 ```
 
 The neighbourhood is the network by default. `within =` makes it a neighbourhood
-in *attribute space* instead — everybody whose columns satisfy a condition,
+in *attribute space* instead, meaning everybody whose columns satisfy a condition,
 network or no network. Hegselmann and Krause's bounded confidence model is one
 step:
 
@@ -355,8 +355,9 @@ round(sort(unique(round(hk$opinion[hk$tick == 30], 4))), 3)
 ```
 
 One difference is worth knowing: an agent is inside its own *attribute*
-neighbourhood whenever the condition holds of it — "the mean opinion of everyone
-I take seriously" includes its own — and never inside its own *network* one.
+neighbourhood whenever the condition holds of it, since "the mean opinion of
+everyone I take seriously" includes its own, and never inside its own *network*
+one.
 Write `within = ... & .id != own_.id` if you want it out.
 
 Two `abm_neighbours()` passes draw their random numbers independently, which is
@@ -379,7 +380,7 @@ sum(r$met[r$tick == 1], na.rm = TRUE)
 ```
 
 `.each = "endpoint"` gives the two ends one draw each instead, read as `name`
-from an agent's own side and `name_back` from the other — which is what an
+from an agent's own side and `name_back` from the other, which is what an
 asymmetric interaction needs, since whether I noticed you and whether you noticed
 me are different questions about the same edge.
 
@@ -412,7 +413,7 @@ table(r$tick)[c(1, 11, 21)]
 ```
 
 `cost` says what reproduction costs, as ordinary `column ~ expression` formulas
-applied to the parent and the newborn alike — halving a resource splits it
+applied to the parent and the newborn alike, so halving a resource splits it
 between them.
 
 One parent, one offspring, unless `times` says otherwise. It takes an expression
@@ -456,8 +457,8 @@ identical(as.data.frame(a), as.data.frame(b))
 
 There is a sharp edge here worth knowing about. `abm_run()`'s seed fixes the
 *run*, not the *model*. If your agents' starting columns are random, they were
-drawn when `abm_setup()` was called — before `abm_run()` had a chance to set
-anything — so two experiments built the same way can start from different
+drawn when `abm_setup()` was called, before `abm_run()` had a chance to set
+anything, so two experiments built the same way can start from different
 populations:
 
 ```{r}
@@ -490,7 +491,7 @@ exact equality when you upgrade.
 ## How much to record
 
 By default `abm_run()` keeps every agent of every tick, which is right for a
-fixed population and wrong for a growing one — a run that ends with fifty
+fixed population and wrong for a growing one. A run that ends with fifty
 thousand agents has been keeping every one of them since the start. `record` says
 how much to keep:
 
@@ -504,11 +505,12 @@ sizes <- c(
 sizes
 ```
 
-A whole number keeps every *n*th tick plus the two ends; `"final"` keeps the last
-tick only; `"globals"` keeps none of the populations. Globals are recorded every
-tick whatever you say, since they are one row each, so `"globals"` is the setting
-for a model whose output is an aggregate. Nothing about the run itself changes —
-the same seed gives the same final state at any setting.
+A whole number keeps every *n*th tick plus the two ends. `"final"` keeps the
+last tick only, and `"globals"` keeps none of the populations. Globals are
+recorded every tick whatever you say, since they are one row each, so
+`"globals"` is the setting for a model whose output is an aggregate. The run
+itself is unchanged either way: the same seed gives the same final state at any
+setting.
 
 ## Where to go next
 

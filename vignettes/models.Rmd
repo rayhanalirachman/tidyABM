@@ -61,14 +61,14 @@ r <- abm_run(elfarol, go, ticks = 20, seed = 2)
 abm_globals(r)$last_attendance
 ```
 
-**What it introduced:** `abm_global()`, and the fact that matching is optional —
-this is the first model with no pairing at all.
+**What it introduced:** `abm_global()`, and the fact that matching is optional.
+This is the first model with no pairing at all.
 
 **A warning about this version.** With one shared predictor, the model collapses
 into a two-cycle: attendance overshoots, everyone stays home, attendance
 undershoots, everyone goes. Arthur's result needs agents that hold several
 candidate forecasts and switch to whichever has been working. The mechanism above
-is the scaffolding, not the result — `vignette("corrections")` builds the working
+is the scaffolding, not the result. `vignette("corrections")` builds the working
 version.
 
 ## Prisoner's dilemma, well mixed
@@ -137,7 +137,7 @@ in the sequence rather than a special population mechanism.
 **A warning about this version.** The tag does no work: strategies are
 unconditional, so cooperating is simply dominated and the population runs itself
 down. Hammond and Axelrod's agents decide *separately* whether to cooperate with
-their own tag and with others — and even that is not enough without local
+their own tag and with others, and even that is not enough without local
 reproduction. `vignette("corrections")` builds both variants and shows why the
 second one matters.
 
@@ -165,9 +165,9 @@ r <- abm_run(rumour, go, ticks = 100, seed = 5)
 table(r$state[r$tick == 100])
 ```
 
-**What it introduced:** nothing new — which was the point. Pairwise state
+**What it introduced:** nothing new. Which was the point. Pairwise state
 comparison through `partner_*` columns is self-consistent by construction, so it
-needs no `role`. Transfers of a conserved quantity need `role`; symmetric state
+needs no `role`. Transfers of a conserved quantity need `role`. Symmetric state
 changes do not.
 
 ## Party
@@ -192,9 +192,9 @@ c(start = mean_gap(r$opinion[r$tick == 0]),
 ```
 
 **What it introduced:** `pair = "nearest"`. Note that this pairing is
-*directional* — your nearest neighbour need not have you as theirs — so each
-agent gets its own `.group_id`, and `runif(1)` in the rule above is drawn once per
-agent rather than once for the population.
+*directional*, since your nearest neighbour need not have you as theirs, so each
+agent gets its own `.group_id`. `runif(1)` in the rule above is therefore drawn
+once per agent rather than once for the population.
 
 ## Market
 
@@ -222,8 +222,8 @@ round(price[c("1", "50", "200")], 2)
 
 **What it introduced:** several agent groups, and rule routing by column
 existence. The `offer` rule mentions a column only buyers have, so it applies only
-to buyers; the `ask` rule only to sellers. No `type ==` test, no merging of the two
-tibbles.
+to buyers, the `ask` rule only to sellers. No `type ==` test, no merging of the
+two tibbles.
 
 ## Voter model
 
@@ -300,7 +300,7 @@ table(r$move[r$tick == 50])
 
 **What it introduced:** nothing. It is a composition of `abm_network(degree = 1)`
 for fixed partnerships and the `partner_*` convention, which already carries a
-partner's previous move forward. Memory of one round comes free; anything longer
+partner's previous move forward. Memory of one round comes free. Anything longer
 needs an explicit column.
 
 ## Preferential attachment
@@ -324,14 +324,14 @@ c(max_degree = max(deg), median_degree = median(deg))
 ```
 
 **What it introduced:** the only way the network changes during a run.
-`from = "random_edge"` reuses NetLogo's trick — pick an edge uniformly, then one
-of its endpoints — so selection is degree-proportional without anyone storing a
-degree.
+`from = "random_edge"` reuses NetLogo's trick. Pick an edge uniformly, then one
+of its endpoints, and selection comes out degree-proportional without anyone
+storing a degree.
 
 ## Zakah redistribution
 
-Consumption erodes wealth; those above the *nisab* pay 2.5% into a pool; those
-below the poverty line share it.
+Consumption erodes wealth. Those above the *nisab* pay 2.5% into a pool, and
+those below the poverty line share it.
 
 ```{r}
 nisab <- 100
@@ -357,20 +357,20 @@ r <- abm_run(zakah, go, ticks = 50, seed = 12)
 round(tail(abm_globals(r)$zakah_pool, 3), 1)
 ```
 
-**What it introduced:** nothing mechanically — it is the first model made of
+**What it introduced:** nothing mechanically. It is the first model made of
 nothing but individual and population-level steps, which confirmed matching is
 optional machinery rather than a requirement. Collection is modelled as a pool
 rather than peer-to-peer transfers, both because that is how zakah institutions
 actually work and because it sidesteps matching a mismatched number of payers and
 recipients.
 
-**Watch the two thresholds — and the missing risk.** `nisab` and `poverty_line`
+**Watch the two thresholds, and the missing risk.** `nisab` and `poverty_line`
 are deliberately different, so a middle group pays nothing and receives nothing.
 But the recipient pool empties within about ten ticks: the consumption rule is
 mean-reverting, so every household converges on `20 * income` and nobody is
 persistently poor. Zakah then becomes a pure drag on the payers. Check
 `sum(wealth < poverty_line)` over the run before reading anything into the
-inequality path; `vignette("corrections")` fixes it.
+inequality path. `vignette("corrections")` fixes it.
 
 ## Bank reserves
 
@@ -412,20 +412,20 @@ round(tail(abm_globals(r), 3), 2)
 ```
 
 **What it introduced:** `abm_sequential()`. Every earlier model works fine with
-simultaneous updates, because a shared pool that is only ever *divided* — the
-public goods pot, the zakah pool — gives the same answer either way. Lendable
+simultaneous updates, because a shared pool that is only ever *divided* (the
+public goods pot, the zakah pool) gives the same answer either way. Lendable
 reserves are different: they are *depleted*, so the first borrower has to change
-what the second one sees. The step is scoped narrowly to that case — during the
+what the second one sees. The step is scoped narrowly to that case: during the
 loop a rule reads and writes its own agent's columns and any global, and nothing
 else.
 
 Note that the last `abm_sequential()` rule writes to a global. That is what makes
-the depletion visible to the next agent; without it the reserve would only be
+the depletion visible to the next agent. Without it the reserve would only be
 recomputed at the end of the tick and every agent would borrow against the same
 balance.
 
-The first rule is doing something too. Rules inside `abm_sequential()` cascade —
-each one sees what the rule above it wrote — so the amount actually drawn is
+The first rule is doing something too. Rules inside `abm_sequential()` cascade,
+each one seeing what the rule above it wrote, so the amount actually drawn is
 worked out once, into `draw`, and the three rules that move money all refer to
 it. Writing the condition out three times would not work: the second rule
 brings `wallet` back to zero, and the third would then find nothing left to

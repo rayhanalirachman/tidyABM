@@ -1,4 +1,4 @@
-# 7. Market — supply and demand (after Primer)
+# 7. Market, supply and demand (after Primer)
 
 **Concept**
 

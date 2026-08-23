@@ -9,9 +9,9 @@ thirteen reference models.
 * `abm_match()` supports four pairing modes (`"random"`, `"opposite_group"`,
   `"nearest"`, `"network"`), generalised to groups of `size` where that is
   well defined. Passing an argument a mode does not use is an error.
-* `abm_rules()` updates agents simultaneously; `abm_sequential()` updates them
-  one at a time so that writes to globals are visible within the step;
-  `abm_global()` updates population-level values; `abm_birth()` and
+* `abm_rules()` updates agents simultaneously. `abm_sequential()` updates them
+  one at a time so that writes to globals are visible within the step.
+  `abm_global()` updates population-level values. `abm_birth()` and
   `abm_death()` change the size of the population.
 * `abm_run()` takes a `seed` and restores the caller's random state. It seeds the
   run, not the model: a randomly drawn starting population also needs
@@ -30,7 +30,7 @@ Three points where the implementation departs from the design notes:
 
 `abm_match(pair = "network", from = "parent")` links a newborn to the agent it was
 cloned from, which is the only way to put offspring near their kin. It exists
-because Hammond and Axelrod's ethnocentrism model does not work without it — see
+because Hammond and Axelrod's ethnocentrism model does not work without it. See
 `vignette("corrections")`.
 
 `abm_birth(when =)` and `abm_death(when =)` conditions are evaluated through the
@@ -48,9 +48,9 @@ Two open questions from the design notes are now resolved:
 
 ## Steps added by the second round of models (Part 3)
 
-Ten more models — Giant Component, Small Worlds, Fireflies, network SIR, genetic
+Ten more models (Giant Component, Small Worlds, Fireflies, network SIR, genetic
 drift, Hawks and Doves, Divide the Cake, Sex Ratio Equilibrium, Axelrod's cultural
-dissemination and PD N-Person Iterated — were ported as a stress test. Five of
+dissemination and PD N-Person Iterated) were ported as a stress test. Five of
 them needed something the grammar did not have:
 
 * `abm_link()` and `abm_unlink()` turn a standing pairing into edges, or remove
@@ -58,16 +58,16 @@ them needed something the grammar did not have:
   a graph process with a fixed population was inexpressible (Giant Component,
   Small Worlds).
 * `abm_neighbours(col ~ aggregate)` summarises an agent's whole network
-  neighbourhood into a column. A match gives one partner; plenty of models need
+  neighbourhood into a column. A match gives one partner. Plenty of models need
   "how many of my neighbours are infected" (Fireflies, SIR).
 * `abm_match(pair = "one_of")` draws each agent a partner from the whole
-  population — NetLogo's `one-of other turtles`. It is directional, unlike
+  population, the way NetLogo's `one-of other turtles` does. It is directional, unlike
   `"random"`, which partitions the eligible agents among themselves (Small
   Worlds).
 * `abm_rules(..., .scope = "population")` evaluates a rule across every agent,
   ignoring the standing match. Without it, a fitness-proportional resampling step
   inherited the pair grouping and resampled within each pair (Hawks and Doves).
-* `abm_birth(inherit =)` applies expressions to the newborn only — a reset age, a
+* `abm_birth(inherit =)` applies expressions to the newborn only: a reset age, a
   mutated trait, a sex drawn at birth. Evaluated in the parent's row with the
   match standing, so `partner_*` is available and two-parent inheritance is a
   one-liner (Sex Ratio Equilibrium).
@@ -84,16 +84,16 @@ Three consistency fixes came with them:
 
 ## Steps added by the third round of models (Part 4)
 
-Ten more — Granovetter's threshold crowd, Deffuant and Hegselmann–Krause bounded
+Ten more (Granovetter's threshold crowd, Deffuant and Hegselmann–Krause bounded
 confidence, Axelrod's norms and metanorms, Simple Birth Rates, Team Assembly,
 Language Change, epiDEM Basic, the Simple Genetic Algorithm and the
-Bikhchandani–Hirshleifer–Welch information cascade — were ported as a second
+Bikhchandani–Hirshleifer–Welch information cascade) were ported as a second
 stress test. Three of them needed something new:
 
 * `abm_neighbours()` rules now also see the focal agent's own columns, prefixed
   `own_`. A neighbourhood aggregate could previously only read the neighbours,
-  so a *comparison* — `sum(wealth > own_wealth)`, "how many of my neighbours are
-  richer than me" — was inexpressible. Axelrod's norms game forced it: "how many
+  so a *comparison* such as `sum(wealth > own_wealth)`, "how many of my
+  neighbours are richer than me", was inexpressible. Axelrod's norms game forced it: "how many
   of the others punished me" weighs my own chance of being seen against each
   neighbour's vengefulness.
 * `abm_network(type = "complete")` joins every pair of agents. That is the
@@ -113,15 +113,15 @@ one; building steps and rules programmatically with `rep()`, `do.call()` and
 `abm_network(type = "manual")` of the next.
 
 `models/` documents all forty-six models with their code, results and sources,
-and `models/open-items.md` lists what is still out of reach — notably a
+and `models/open-items.md` lists what is still out of reach, most of all a
 neighbourhood in attribute space and pairwise-consistent randomness.
 
 ## Steps added by the fourth round of models (Part 5)
 
-Ten more models — Virus on a Network, Watts's global cascades, the Sznajd model,
+Ten more models (Virus on a Network, Watts's global cascades, the Sznajd model,
 the Naming Game, the Minority Game, Kirman's ants, Gode & Sunder's
 zero-intelligence traders, the ultimatum game with reputation, Hotelling's Law
-and the Beer Distribution Game — were ported as a third stress test. This round
+and the Beer Distribution Game) were ported as a third stress test. This round
 was chosen against the *Open items* list rather than against the grammar: each
 model was picked because something on that list said it could not be written.
 
@@ -130,16 +130,16 @@ Four of them needed something new:
 * `abm_tell(col ~ expr, to =, when =, .resolve =)` writes into **another
   agent's** row. The right-hand side is evaluated in the sender's row and the
   value lands in the recipient's column of that name. `to = "neighbours"`
-  broadcasts along the network; `to = <expression>` names one recipient by
+  broadcasts along the network. `to = <expression>` names one recipient by
   `.id`, so `to = .partner` writes to a match partner and `to = best_bid_id`
   writes to whoever a global names. `.resolve` combines several senders
   addressing one recipient (`"last"`, `"first"`, `"sum"`, `"mean"`, `"max"`,
-  `"min"`, or `"error"`). This closes three separate open items at once — no
+  `"min"`, or `"error"`). This closes three separate open items at once: no
   agent could write to another agent, `abm_neighbours()` could read but not
   write, and the order book was the model the corpus could not reach (Sznajd,
   Gode & Sunder, the beer game).
 * `abm_match(..., among =)` names the agents that may be *picked*, for the
-  directional modes `"one_of"` and `"nearest"`. `eligible` says who takes part;
+  directional modes `"one_of"` and `"nearest"`. `eligible` says who takes part,
   `among` says who may be chosen, and the two only come apart when choosing is
   one-way. Without it, `pair = "nearest"` was unusable in a model with two
   agent groups, because a buyer's nearest agent is another buyer (Hotelling).
@@ -149,7 +149,7 @@ Four of them needed something new:
   The degree *distribution* turns out to be part of the model rather than part
   of the setup: on a regular graph, Watts's cascade never starts (cascades,
   Sznajd).
-* Rules inside `abm_sequential()` now **cascade** — the second rule sees what
+* Rules inside `abm_sequential()` now **cascade**, so the second rule sees what
   the first one wrote, to the agent's own row and to the globals alike. This is
   what "one agent at a time" always implied, and it is what lets an agent draw
   a quote and then decide whether the quote crosses the book, in one step.
@@ -175,8 +175,8 @@ Two entries came off *Open items* with no code change at all:
   carries one, and snapshots record one. The Naming Game holds a growing
   inventory of names per agent and the Minority Game a 2^m × S strategy table,
   both written directly. What was missing was the idiom, not the capability.
-* **A push is often a pull.** NetLogo's contagion — every infected node rolling
-  a die at every neighbour — is exactly `1 - (1 - p)^k` for a susceptible node
+* **A push is often a pull.** NetLogo's contagion, with every infected node
+  rolling a die at every neighbour, is exactly `1 - (1 - p)^k` for a susceptible node
   with `k` infected neighbours, so `abm_neighbours()` plus one rule says it
   without any outward write. `abm_tell()` is for the cases where what is
   transmitted depends on *which* agent sent it.
@@ -189,7 +189,7 @@ changed, the full source table, and the reproduction scripts.
 
 `R CMD check` takes around nine minutes, almost all of it in
 `vignette("corrections")`, which runs three full experiments. If that becomes
-awkward in CI, precompute that vignette rather than shrinking the models — the
+awkward in CI, precompute that vignette rather than shrinking the models. The
 ethnocentrism result is drift-dominated below a few hundred agents and stops
 being reliable.
 
@@ -204,30 +204,30 @@ diagnoses and fixes all three.
 
 ## Steps added by the fourth round of models (Part 6)
 
-Ten more models — response thresholds and the division of labour, the garbage
+Ten more models (response thresholds and the division of labour, the garbage
 can model, the emergence of firms, adaptation on a rugged landscape, imitation
 dynamics of vaccination, bank runs, random copying, image scoring, deferred
-acceptance and predator–prey without space — were ported as a stress test. Six
-of them needed something the grammar did not have; four did not.
+acceptance and predator–prey without space) were ported as a stress test. Six
+of them needed something the grammar did not have. Four did not.
 
 * `abm_repeat(..., until =, max =)` replays a block of steps inside a tick
   until a condition holds. A tick was the only loop there was, so a phase that
-  has to run to completion before the next phase starts — an epidemic that
+  has to run to completion before the next phase starts, such as an epidemic that
   burns out before anyone reconsiders vaccinating, a round of proposals that
-  continues until nobody is rejected — could only be written as a fixed number
+  continues until nobody is rejected, could once only be written as a fixed number
   of repetitions, which is either wrong or wasteful. `until` is evaluated the
   way an `abm_global()` right-hand side is and is checked after each pass, so
-  the block always runs at least once; `max` is required, because a condition
+  the block always runs at least once. `max` is required, because a condition
   that never becomes true would hang the run. It also answers the *no early
   stopping* entry from the other end: a block wrapped in `abm_repeat()` and run
   for one tick stops at the model's absorbing state (models 51 and 55).
 * `abm_match(pair = "nearest", cost = <expression>)` replaces the single
   Euclidean metric with a number the chooser is minimising, evaluated once per
   (chooser, candidate) pair with the candidate's columns under their own names
-  and the chooser's under `own_<col>` — the convention `abm_neighbours()`
+  and the chooser's under `own_<col>`, which is the convention `abm_neighbours()`
   already used, extended to include `.id` and `.group`. `NA` means the
   candidate is not acceptable to that chooser. `by =` is the special case
-  `cost = (x - own_x)^2`; an energy deficit, a delivered price and a position in
+  `cost = (x - own_x)^2`. An energy deficit, a delivered price and a position in
   a preference list are not distances at all (models 48 and 55).
 * `abm_rules(..., .by = <column>)` evaluates rules once per distinct value of an
   agent column, across the whole population, and writes the result back to every
@@ -238,12 +238,12 @@ of them needed something the grammar did not have; four did not.
   (model 49).
 * `abm_sequential(..., .order = <expression>)` processes agents in a named order
   rather than a fresh shuffle. The shuffle is right when the order is meant to
-  be arbitrary and wrong when it is part of the model — a queue at a counter, a
+  be arbitrary and wrong when it is part of the model: a queue at a counter, a
   sequential-service constraint. The same bank-run model under the two
   orderings gives different answers, which is the point (model 52).
 * `abm_tell(to = <list column>)` writes to a *set* of recipients rather than
   one, so a sender can address an audience that is neither its partner nor its
-  network neighbourhood — the onlookers who happened to see this interaction,
+  network neighbourhood, such as the onlookers who happened to see this interaction,
   or the problems a choice opportunity has collected (models 48 and 54).
 * `abm_tell(.resolve = "collect")` hands the recipient the list of everything it
   was told and lets its own rule decide what to make of it, which is strictly
@@ -262,8 +262,8 @@ Two fixes came with them:
   helpers that do not have this behaviour. Found by model 56, where the
   populations routinely cross.
 * **A global need not be a scalar.** `abm_globals()` assumed every global was a
-  single value and wrote one row per tick; a matrix-valued global — an NK
-  landscape, a payoff table — produced one row per matrix row and a tick column
+  single value and wrote one row per tick. A matrix-valued global, whether an NK
+  landscape or a payoff table, produced one row per matrix row and a tick column
   that repeated. Non-scalar globals are now stored in a list column (model 50).
 
 `abm_rules()` on an empty population is now a quiet no-op rather than an error,
@@ -277,20 +277,20 @@ each of which had been left there by an earlier round with a model naming the
 shape it wanted.
 
 * `abm_neighbours(..., within = <condition>)` aggregates over a neighbourhood in
-  **attribute space** rather than over the network — everybody whose columns
+  **attribute space** rather than over the network, meaning everybody whose columns
   satisfy the condition, whether or not the model has a network. The condition is
   evaluated once per (focal, candidate) pair with the candidate's columns under
   their own names and the focal agent's under `own_<col>`, which is the view
   `abm_match(cost =)` minimises over. Hegselmann–Krause (model 29) is now a step
-  rather than a hand-rolled O(n²) `vapply()`, and produces the same trajectory
-  agent for agent. An agent is inside its own attribute neighbourhood whenever
-  the condition holds of it, where it is never inside its own network one;
+  rather than a hand-rolled O(n²) `vapply()`, and produces the same path through
+  the run, agent for agent. An agent is inside its own attribute neighbourhood whenever
+  the condition holds of it, where it is never inside its own network one.
   `within = ... & .id != own_.id` excludes it.
 * `abm_global(..., .by = <keys or column>)` makes a global a **named vector**
-  indexed by a category — a stimulus per task, a price per good, a queue length
-  per counter — and evaluates the rule once per key. `.key` is the key being
+  indexed by a category (a stimulus per task, a price per good, a queue length
+  per counter) and evaluates the rule once per key. `.key` is the key being
   written and the global's own name is bound to that key's current value, so the
-  update reads exactly as the scalar version does; an ordinary rule reads the
+  update reads exactly as the scalar version does. An ordinary rule reads the
   table back with `price[good]`. Each key sees the whole population. Give `.by` a
   vector to declare the index (a task nobody is working on still has its stimulus
   rise) or an agent column to derive it (model 47).
@@ -299,18 +299,18 @@ shape it wanted.
   rule from either endpoint. Two neighbourhood passes over the same network used
   to draw independently, so a model that has to see one encounter from both sides
   could only get the payoffs to balance on average. `.each = "edge"` gives the
-  pair one value between them; `.each = "endpoint"` gives them one each, read as
+  pair one value between them. `.each = "endpoint"` gives them one each, read as
   `name` from an agent's own side and `name_back` from the other. Axelrod's
   metanorms (model 30) is the case, and its test is now an identity rather than a
   comparison of means.
 * `abm_tell(..., .order = <expression>)` fixes the order messages are considered
   in, evaluated in the sender's row. `"first"`, `"last"` and the list `"collect"`
-  hands over were all arbitrary for the same reason; all three become determinate
+  hands over were all arbitrary for the same reason. All three become determinate
   at once, so *the first person to reach the counter* is
   `.resolve = "first", .order = arrived_at`. `NA` sits a sender out, as in
   `abm_sequential(.order =)`.
-* `abm_birth(..., times = <expression>)` gives a parent more than one offspring —
-  a column, a draw such as `rpois(n(), 2)`, or a number — replacing the flag
+* `abm_birth(..., times = <expression>)` gives a parent more than one offspring,
+  from a column, a draw such as `rpois(n(), 2)`, or a number, replacing the flag
   column and repeated step that any fertility above one used to need. Each
   offspring is a row of its own before `inherit` is evaluated, so a mutation
   drawn there differs between siblings. `cost` is still evaluated once, in the
@@ -319,7 +319,7 @@ shape it wanted.
   old behaviour), a whole number for every *n*th tick plus the two ends,
   `"final"` for the last tick only, or `"globals"` for none of the populations.
   Globals are recorded every tick whatever it says. Nothing about the run
-  changes — the same seed gives the same final state at every setting — but a
+  changes, since the same seed gives the same final state at every setting, but a
   model whose population grows now slows down rather than running out of memory.
 * `abm_sequential()` is between one and two orders of magnitude faster. It was a
   `dplyr::mutate()` on a one-row tibble per agent per rule, plus a whole-column
@@ -327,7 +327,7 @@ shape it wanted.
   evaluates its rules against a plain data mask built from the agent's scalars
   and holds the group's columns as bare vectors for the duration of the loop. The
   bank run (model 52) at 200 depositors × 50 days went from 77.6 s to 1.75 s and
-  the result is bit-identical; the order book (model 43), whose sequential step
+  the result is bit-identical. The order book (model 43), whose sequential step
   is twenty-six rules, is identical too. The semantics are unchanged: rules still
   cascade within an agent, writes to globals are still visible to the next agent,
   and other agents' columns are still deliberately invisible.
@@ -335,14 +335,14 @@ shape it wanted.
 Two fixes came with them. A value looked up out of a keyed global
 (`price[good]`) arrives carrying the global's names, and an agent column is not a
 lookup table, so the names are dropped on assignment rather than travelling
-through the run and into the result. And printing a step with a qualifier —
-`.by`, `.order`, `.scope = "population"` — showed the qualifier's cli markup
-rather than the qualifier, because cli does not interpolate a second time; it is
+through the run and into the result. And printing a step with a qualifier
+(`.by`, `.order`, `.scope = "population"`) showed the qualifier's cli markup
+rather than the qualifier, because cli does not interpolate a second time. It is
 formatted before it is handed over now.
 
-Two entries stayed open on purpose. There is still no spatial primitive — that is
+Two entries stayed open on purpose. There is still no spatial primitive, that is
 a different project, and `pair = "nearest"` with a `cost` expression plus
 `abm_neighbours(within =)` covers the similarity-space models. And
-`resolve = "negotiate"` is still one bargaining protocol; an argument general
+`resolve = "negotiate"` is still one bargaining protocol. An argument general
 enough to take a protocol would be an argument that takes a function, and at that
 point the model may as well write the steps, which is what model 43 does.

@@ -7,30 +7,28 @@
 #' takes the model and the behavioural block, replays the block `ticks` times,
 #' and records the whole population after every tick.
 #'
-#' The result is one long tibble — `tick`, `.id`, `.group`, then every agent
-#' column — which is what you want for plotting and summarising. Tick 0 is the
+#' The result is one long tibble, `tick`, `.id`, `.group`, then every agent
+#' column, which is what you want for plotting and summarising. Tick 0 is the
 #' state produced by `abm_setup()`, before any step has run, so a run of `n`
-#' ticks returns `n + 1` snapshots. Global values are recorded alongside and are
-#' available with [abm_globals()].
+#' ticks returns `n + 1` snapshots. Global values are recorded alongside and
+#' are available with [abm_globals()].
 #'
-#' Agent-based models are stochastic, so `seed` is a first-class argument rather
-#' than something to arrange yourself: it makes the run reproducible without
-#' touching the global random state.
+#' Agent-based models are stochastic, so `seed` is a first-class argument
+#' rather than something to arrange yourself: it makes the run reproducible
+#' without touching the global random state.
 #'
 #' Every tick's whole population is recorded by default, which is right for a
 #' fixed population and wrong for a growing one -- a run that ends with fifty
 #' thousand agents has been keeping every one of them, every tick, since the
 #' start. `record` says how much to keep.
 #'
-#' It fixes the run, though, not the model. If the agents' starting columns were
-#' drawn at random, they were drawn when [abm_setup()] was called, and this seed
-#' comes too late to affect them. Seed both for an experiment that reproduces end
-#' to end:
+#' It fixes the run, though, not the model. If the agents' starting columns
+#' were drawn at random, they were drawn when [abm_setup()] was called, and
+#' this seed comes too late to affect them. Seed both for an experiment that
+#' reproduces end to end:
 #'
-#' ```
-#' m <- abm_setup(agents = abm_agents(n = 100, x = ~runif(n)), seed = 1)
-#' r <- abm_run(m, go, ticks = 100, seed = 1)
-#' ```
+#' ``` m <- abm_setup(agents = abm_agents(n = 100, x = ~runif(n)), seed = 1) r
+#' <- abm_run(m, go, ticks = 100, seed = 1) ```
 #'
 #' @param model An `abm_model` from [abm_setup()].
 #' @param go An `abm_go` sequence.
@@ -40,14 +38,13 @@
 #'   starting population also needs [abm_setup()]'s `seed`.
 #' @param record Which ticks' populations to keep. `"all"` (the default) keeps
 #'   every one; a positive whole number keeps every `record`-th tick, plus tick 0
-#'   and the last; `"final"` keeps only the last; `"globals"` keeps none.
-#'   Globals are recorded every tick whatever this says, since they are one row
-#'   each. A model whose population grows needs this: recording every agent of
-#'   every tick is what makes such a run die of memory rather than merely take a
-#'   while.
+#'   and the last; `"final"` keeps only the last; `"globals"` keeps none. Globals
+#'   are recorded every tick whatever this says, since they are one row each. A
+#'   model whose population grows needs this: recording every agent of every tick
+#'   is what makes such a run die of memory rather than merely take a while.
 #'
-#' @return An `abm_result`: a tibble of one row per agent per tick, carrying the
-#'   run's globals and final network as attributes.
+#' @return An `abm_result`: a tibble of one row per agent per tick, carrying
+#'   the run's globals and final network as attributes.
 #' @export
 #' @examples
 #' economy <- abm_setup(agents = abm_agents(n = 50, money = 100))

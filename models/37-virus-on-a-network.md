@@ -76,15 +76,15 @@ virus_run <- function(gain_resistance, ticks = 2000, seed = 1,
 
 | `gain_resistance` | infected | resistant |
 |---|---|---|
-| 0 — an SIS process | 0.977 | 0.000 |
-| 1 — an SIR process | 0.019 | 0.981 |
+| 0, an SIS process | 0.977 | 0.000 |
+| 1, an SIR process | 0.019 | 0.981 |
 
 Which is the model's teaching point: the same virus, the same network and the
 same spread rate give an endemic infection or a burnt-out one depending on
 nothing but whether recovery confers immunity.
 
 *Needed nothing new. Two things about it are worth writing down. The first is
-that NetLogo's* push *— every infected node rolling a die at every neighbour —
+that NetLogo's* push*, every infected node rolling a die at every neighbour,
 is exactly a* pull *in distribution: a susceptible node with `k` infected
 neighbours is infected with probability `1 - (1 - p)^k`, so
 `abm_neighbours(exposure ~ sum(state == "infected"))` followed by one rule says

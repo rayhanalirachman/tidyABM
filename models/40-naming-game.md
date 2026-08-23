@@ -66,7 +66,7 @@ naming_game <- function(n = 100, ticks = 6000, seed = 1) {
 
 Fitted exponents: peak names ~ N^**1.45**, convergence ~ N^**1.39**. Baronchelli
 et al. report 3/2 for both, and three sizes with three runs each is enough to
-show the exponent is nearer 1.5 than 1 or 2 and not much more than that — the
+show the exponent is nearer 1.5 than 1 or 2 and not much more than that, the
 shortfall is the usual finite-size drag at small N.
 
 The shape of the run is the point: the population first invents *far more* names
@@ -78,8 +78,8 @@ been the first entry under Open items since Part 3, and it turns out to have
 been a documentation gap rather than a code one: `abm_agents()` takes a list
 column, an `abm_rules()` right-hand side may return one, `partner_<col>` works
 for a list column, and the snapshot machinery carries it through. What the
-model does need is for the rules to be written over lists —* `Map()` *and*
-`lapply()` *where you would otherwise have written arithmetic — and for the
+model does need is for the rules to be written over lists,* `Map()` *and*
+`lapply()` *where you would otherwise have written arithmetic, and for the
 uttered word to be computed once per pair, which grouped evaluation inside a
 match already gives you.*
 

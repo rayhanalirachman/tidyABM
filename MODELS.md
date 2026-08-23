@@ -1,4 +1,4 @@
-# ABM Models Reference — tidyABM
+# ABM models reference: tidyABM
 
 This file has been split into a folder, kept alongside the package sources. Every model now has its own page, with the concept, the NetLogo
 original where one exists, the package code and the numbers the run produced.

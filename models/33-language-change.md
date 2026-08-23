@@ -54,7 +54,7 @@ result <- abm_run(pop, go, ticks = 100, seed = 1)
 | threshold → | 0.14 | 0.47 | 0.59 | 0.82 | 0.95 |
 | reward → | 0.02 | 0.32 | 0.36 | 0.44 | 0.50 |
 
-The threshold rule pushes a majority toward fixation and kills a minority; the
+The threshold rule pushes a majority toward fixation and kills a minority. The
 reward rule flattens every starting condition toward a middling weight. That is
 the contrast the model is built to show.
 

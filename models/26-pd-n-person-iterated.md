@@ -2,7 +2,7 @@
 
 **Concept**
 
-- Setup: N agents, each with one of six fixed strategies — random, cooperate,
+- Setup: N agents, each with one of six fixed strategies, random, cooperate,
   defect, tit-for-tat, unforgiving, unknown
 - Go: pair off, play one round of PD (T=5, R=3, P=1, S=0), remember what **this
   particular opponent** did
@@ -74,7 +74,7 @@ result <- abm_run(pop, go, ticks = 400, seed = 5)
 *The crossover is the model's signature curve and it comes out cleanly.*
 
 *This is the model that shows where the grammar hurts. Per-opponent memory is a
-**vector per agent**, and the only way to hold one is a column per element — N
+**vector per agent**, and the only way to hold one is a column per element, N
 columns for N possible opponents, so N² cells. It is workable at N = 24 with
 `do.call()` and hopeless at NetLogo's default of 60. This is the same gap El Farol
 hit from the other direction, and it is the one thing on this list that a future
@@ -85,8 +85,8 @@ meet sparsely, so opponents recur rarely and defect usually posts the best avera
 Here everyone is paired every tick out of 24, so each pair meets roughly every
 23 ticks and the retaliatory strategies get enough encounters to learn. In the
 all-six run, unforgiving (2.64) and tit-for-tat (2.52) beat defect (2.28). That
-difference **is** the game-theoretic point — retaliation pays when re-encounters
-are frequent — but it means the two implementations are answering slightly
+difference **is** the game-theoretic point, retaliation pays when re-encounters
+are frequent, but it means the two implementations are answering slightly
 different questions.*
 
 ---

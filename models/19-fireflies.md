@@ -46,7 +46,7 @@ result <- abm_run(ff, go, ticks = 120, seed = 1)
 **Result.** Flashing count goes from scattered noise (peaks ~200 of 600) to a
 clean sawtooth: 600 lit, then nine dark ticks, repeating.
 
-*Motivated `abm_neighbours()`. A match gives an agent **one** partner; this model
+*Motivated `abm_neighbours()`. A match gives an agent **one** partner. This model
 needs a count over the **whole** neighbourhood. Reading the flashes before
 advancing the clock reproduces NetLogo's two-loop structure, where everyone sees
 the pattern as it stood at the end of the previous tick.*

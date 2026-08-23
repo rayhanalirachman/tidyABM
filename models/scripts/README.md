@@ -3,7 +3,7 @@
 One script per model, at the size and seed that produced the numbers in the
 model's reference file. The `testthat` cases in
 `tidyABM/tests/testthat/test-models-3.R`, `test-models-4.R` and
-`test-models-5.R` run the same models at reduced scale so the suite stays quick;
+`test-models-5.R` run the same models at reduced scale so the suite stays quick.
 these are what reproduce the published tables.
 
 Run any of them with `Rscript <file>` from a session where tidyABM is
@@ -61,22 +61,22 @@ installed. Each one prints its table and nothing else.
 rate respectively, because both are slow enough to be worth splitting across
 sittings.
 
-Timings are from a two-core container and are wall-clock, not CPU; a laptop
+Timings are from a two-core container and are wall-clock, not CPU. A laptop
 will be faster. Sizes were chosen so that every script finishes in one sitting.
-Where that makes a run too short to settle — Kirman's ants, whose chain makes
+Where that makes a run too short to settle, as with Kirman's ants, whose chain makes
 only a handful of excursions between the two extremes in 4000 ticks, and the
-response-threshold stimulus, which is still climbing at 2000 — the model's
+response-threshold stimulus, which is still climbing at 2000, the model's
 reference file says so rather than quoting a converged number it did not reach.
 
 ## What Part 7 changed here
 
 Five of these scripts were rewritten against the primitives that closed the
 open items, and every one of them reproduces the table it produced before.
-`m29_hk.R` uses `abm_neighbours(within =)` instead of a hand-rolled `vapply()`;
-`m47_thresholds.R` uses `abm_global(.by =)` instead of one global per task;
+`m29_hk.R` uses `abm_neighbours(within =)` instead of a hand-rolled `vapply()`.
+`m47_thresholds.R` uses `abm_global(.by =)` instead of one global per task.
 `m30_axelrod_norms.R` uses `abm_draw()` so that the punishments handed out and
 the punishments received are the same events (its numbers moved slightly,
-because the random stream is not the same one, and its result did not);
+because the random stream is not the same one, and its result did not).
 `m56_predprey.R` passes `record = "globals"`, since everything it reports is a
 count per tick.
 
@@ -88,6 +88,6 @@ Two timings went the other way. `m29_hk.R` and `m47_thresholds.R` are slower
 than the versions they replace: `within =` builds an explicit (focal,
 candidate) view, which is the same O(n²) the `vapply()` was but with a tibble's
 constant factor, and `.by` evaluates its rule once per key against the whole
-population. Both are worth it — the models read as specifications now — but the
+population. Both are worth it, since the models read as specifications now, but the
 trade is real and worth knowing before reaching for `within =` on a very large
 population.

@@ -5,7 +5,7 @@
 - Setup: 1000 agents on a 6-regular network, one infected, a `timer` each
 - Go: each susceptible is infected with probability `1 - (1-β)^(infected neighbours)`;
   the infected recover after a fixed duration
-- Output: an epidemic threshold — below R₀ = 1 it dies out, above it takes off
+- Output: an epidemic threshold, below R₀ = 1 it dies out, above it takes off
 
 **Package**
 
@@ -33,7 +33,7 @@ result <- abm_run(sir, go, ticks = 100, seed = 2)
 β = 0.06 (R₀ ≈ 2.9) → 92%, peaking at 349 simultaneous cases around tick 33.
 
 *Needed nothing new once `abm_neighbours()` existed. A duration-based state
-machine is just a counter column plus two rules — the same shape as
+machine is just a counter column plus two rules, the same shape as
 Ethnocentrism's `resource`.*
 
 ---

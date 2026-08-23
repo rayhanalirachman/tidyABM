@@ -8,7 +8,7 @@
 - Output: the distribution of how many ants are at source A
 
 Nothing distinguishes the two sources. Nothing about the ants changes. And yet
-the colony does not sit at 50/50 — it spends long stretches almost entirely at
+the colony does not sit at 50/50. It spends long stretches almost entirely at
 one source, flips, and spends a long stretch at the other. Kirman's point, in
 an economics journal, was that herding and sustained majorities need no
 information, no leaders and no memory.
@@ -53,15 +53,15 @@ when c > 1.
 The c > 1 column matches the analytic distribution closely. The c < 1 column
 matches it in shape and in spread but undersamples the extremes, because a
 colony sitting at one source only leaves it when a spontaneous switch happens
-to catch on, and at ε = 0.0002 that is roughly once every eighty ticks — three
+to catch on, and at ε = 0.0002 that is roughly once every eighty ticks, three
 thousand ticks is a handful of excursions, not a converged sample. What is
 unambiguous is the contrast: the same colony, the same conversion rate, one
 number changed, and the middle of the distribution goes from being where the
 colony lives to being where it almost never is.
 
-*Needed nothing new. One tick here is a full sweep — every ant meets somebody —
-rather than the single meeting of Kirman's continuous-time process; with δ small
-enough that only a few ants convert per sweep the two agree, and since the
+*Needed nothing new. One tick here is a full sweep, with every ant meeting
+somebody, rather than the single meeting of Kirman's continuous-time process.
+With δ small enough that only a few ants convert per sweep the two agree, and since the
 stationary distribution depends on ε/δ and not on their scale, the scale is free
 to be chosen for how fast the chain mixes. `pair = "one_of"` is doing the real
 work: "bump into another ant at random" is NetLogo's `one-of other turtles` and

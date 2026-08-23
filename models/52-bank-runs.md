@@ -59,19 +59,19 @@ almost every day. Being late in the line is the whole of what those depositors
 know, and it is enough.
 
 The shuffled column is the same model with the sequential service constraint
-removed — everybody is served in a fresh random order each day. The panic is
+removed, everybody is served in a fresh random order each day. The panic is
 then *general* rather than local, because everyone gets to the empty till
 sometimes, and the total run rate is a third higher (0.684 against 0.507). A
 bank that serves its customers in an unpredictable order does not spread the
-risk out; it spreads the fear out, and ends up paying more of it. Diamond and
+risk out. It spreads the fear out, and ends up paying more of it. Diamond and
 Dybvig's sequential service constraint is usually discussed as a technical
 restriction on the contract. Here it is the thing that decides whether a run is
 a property of some depositors or of all of them.
 
 *Part 7 made this model forty-four times faster and changed nothing about it.*
 `abm_sequential()` was a `dplyr::mutate()` on a one-row tibble per agent per
-rule, plus a whole-column write per assignment. At 200 depositors × 50 days —
-50,000 agent-rules — this script took 77.6 s per run. It now evaluates its rules
+rule, plus a whole-column write per assignment. At 200 depositors × 50 days,
+which is 50,000 agent-rules, this script took 77.6 s per run. It now evaluates its rules
 against a plain data mask built from the agent's scalars and holds the group's
 columns as bare vectors for the duration of the loop, and the same run takes
 1.75 s. The result is bit-identical: the run rate at the 0.44 shock is 0.507,
@@ -88,15 +88,15 @@ One argument, and the two rows underneath every shock are the comparison it
 makes possible.*
 
 *It did not need `abm_tell()`. A till that empties is a global that depletes,
-which is what `abm_sequential()` was built for in model 13 — each depositor's
+which is what `abm_sequential()` was built for in model 13, each depositor's
 write is visible to everyone behind it. What is new is only that "behind" now
 means something.*
 
 *The model is Diamond and Dybvig's mechanism, not their contract. There is no
-second period and no optimal deposit contract here; `r₁ = 1.2` and a liquid
+second period and no optimal deposit contract here. `r₁ = 1.2` and a liquid
 reserve of half the deposits stand in for the demand-deposit contract, and the
-belief rule — an exponential average of "was the till empty when I got there" —
-is a learning story the original does not have, and is what makes the queue
+belief rule, an exponential average of "was the till empty when I got there",
+is a learning story the original does not have, and it is what makes the queue
 position informative rather than merely unlucky.*
 
 ---

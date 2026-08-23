@@ -43,9 +43,9 @@ tick 100, fair at 100% thereafter.
 *Motivated **births and deaths seeing the standing match**. `abm_death(when =
 appetite + partner_appetite > 6)` is the whole model, and until this it could not
 be written: `when` was evaluated against the bare agent tibble, with no
-`partner_*` columns. It is the same trade-off the greedy strategy faces —
-higher fitness conditional on surviving, exactly offset by a higher chance of a
-fatal encounter — and the fair split is what survives it.*
+`partner_*` columns. It is the same trade-off the greedy strategy faces: higher
+fitness conditional on surviving, exactly offset by a higher chance of a fatal
+encounter. The fair split is what survives it.*
 
 ---
 

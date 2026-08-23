@@ -2,7 +2,7 @@ library(tidyABM)
 
 # 36. Information cascade (Bikhchandani, Hirshleifer & Welch 1992) ----------
 # Agents decide one at a time. Each sees a private signal that is right with
-# probability p, and the *decisions* — not the signals — of everyone before it.
+# probability p, and the *decisions*, not the signals, of everyone before it.
 # Once the public tally leads by two, the signal stops mattering and everybody
 # after copies, right or wrong.
 

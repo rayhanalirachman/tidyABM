@@ -1,7 +1,7 @@
 # 15. Ethnocentrism, Hammond & Axelrod (2006)
 
-**What was missing.** Two things. Agents need *two* strategy bits — cooperate
-with your own tag, cooperate with others — or the tag does no work. And that alone
+**What was missing.** Two things. Agents need *two* strategy bits, cooperate
+with your own tag, cooperate with others, or the tag does no work. And that alone
 is not enough: in a well-mixed population egoists still win, which is the paper's
 own control condition. The result needs **local reproduction**, so that your
 neighbours are disproportionately your kin and "same tag" starts predicting "will
@@ -42,7 +42,7 @@ result <- abm_run(pop, go, ticks = 400, seed = 1)
 **Result.** Ethnocentrics ≈ 0.40, egoists ≈ 0.14, and 96% of edges join same-tag
 agents. Well-mixed, the same model gives egoists ≈ 0.35 and ethnocentrics ≈ 0.26.
 
-*Motivated `from = "parent"` — there was no way to put an offspring next to its
+*Motivated `from = "parent"`. There was no way to put an offspring next to its
 parent, and a lot of kin-structured models depend on it.*
 
 ---

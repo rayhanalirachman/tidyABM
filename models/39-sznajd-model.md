@@ -8,7 +8,7 @@
 - Output: the ring always reaches consensus; which consensus depends on where
   it started, but not linearly
 
-"United we stand, divided we fall" — the rule is *outflow* dynamics, and it is
+"United we stand, divided we fall", the rule is *outflow* dynamics, and it is
 the mirror image of every other opinion model in this corpus, all of which are
 inflow: an agent looks at its neighbours and updates itself.
 
@@ -45,18 +45,17 @@ sznajd <- function(n = 16, p_up = 0.5, ticks = 300, seed = 1) {
 | 0.50 | 0.93 | 0.39 | 79 |
 | 0.75 | 0.90 | 0.81 | 38 |
 
-The voter model would put the middle column at 0.25, 0.50 and 0.75 exactly —
-its exit probability is the initial density, because a voter update is a fair
-coin. Outflow dynamics are steeper than that: a minority is wiped out more often
+The voter model would put the middle column at 0.25, 0.50 and 0.75 exactly. Its
+exit probability is the initial density, because a voter update is a fair coin. Outflow dynamics are steeper than that: a minority is wiped out more often
 than its share, a majority runs away more often than its share. Whether the
 curve becomes a true step function as the ring grows is still argued over in the
-literature, and 16 agents is far too few to settle it; what the run does show
+literature, and 16 agents is far too few to settle it. What the run does show
 unambiguously is that the curve is not the straight line.
 
 *Forced `abm_tell(to = "neighbours")`, and it is the model that shows why
 `abm_neighbours()` was not enough. Whether you are persuaded here depends on a
-coincidence between two* other *agents — your neighbour and its neighbour on the
-far side — which is not visible from your own row at all, so there is no
+coincidence between two* other *agents, your neighbour and its neighbour on the
+far side, which is not visible from your own row at all, so there is no
 neighbourhood aggregate that computes it. The pair has to reach out. The second
 `abm_tell` in the block is a small trick worth noting: `pair = "network"` is
 directional, so only the picked agent knows it is in a pair, and

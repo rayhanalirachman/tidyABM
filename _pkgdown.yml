@@ -12,16 +12,16 @@ reference:
 - title: Declaring the world
   desc: The specifications you hand to `abm_setup()`.
   contents: [abm_agents, abm_network]
-- title: Steps — matching
+- title: "Steps: matching"
   desc: Who interacts with whom this tick.
   contents: [abm_match]
-- title: Steps — updating agents
+- title: "Steps: updating agents"
   contents: [abm_rules, abm_sequential, abm_global, abm_neighbours, abm_tell]
-- title: Steps — changing the population
+- title: "Steps: changing the population"
   contents: [abm_birth, abm_death]
-- title: Steps — changing the network
+- title: "Steps: changing the network"
   contents: [abm_link, abm_unlink, abm_draw]
-- title: Steps — control flow
+- title: "Steps: control flow"
   contents: [abm_repeat]
 - title: Working with results
   contents: [abm_globals, abm_edges, n_agents]

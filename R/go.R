@@ -12,12 +12,9 @@ new_abm_go <- function(steps) {
 #' dispatched by *type and position*, not by argument name, so a model with
 #' several phases is written flat and in order:
 #'
-#' ```
-#' abm_go(
-#'   abm_match(pair = "random"), abm_rules(payoff ~ ...),   # phase 1: play
-#'   abm_match(pair = "random"), abm_rules(strategy ~ ...)  # phase 2: imitate
-#' )
-#' ```
+#' ``` abm_go( abm_match(pair = "random"), abm_rules(payoff ~ ...),   # phase
+#' 1: play abm_match(pair = "random"), abm_rules(strategy ~ ...)  # phase 2:
+#' imitate ) ```
 #'
 #' The sequence is validated once, here, rather than on every tick. Three rules
 #' apply:
@@ -29,13 +26,12 @@ new_abm_go <- function(steps) {
 #'
 #' Everything else is allowed. In particular a model may use no matching at all
 #' (El Farol, or a pure redistribution model), and several update steps may
-#' follow a single match — the market model pairs once and then applies separate
+#' follow a single match, the market model pairs once and then applies separate
 #' rules to buyers and to sellers.
 #'
 #' @param ... Step objects: [abm_match()], [abm_rules()], [abm_sequential()],
 #'   [abm_global()], [abm_neighbours()], [abm_tell()], [abm_birth()],
-#'   [abm_death()], [abm_link()], [abm_unlink()], [abm_draw()],
-#'   [abm_repeat()].
+#'   [abm_death()], [abm_link()], [abm_unlink()], [abm_draw()], [abm_repeat()].
 #'
 #' @return An `abm_go` object.
 #' @export

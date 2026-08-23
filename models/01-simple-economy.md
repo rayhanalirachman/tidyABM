@@ -32,7 +32,7 @@ result <- abm_run(economy, go, ticks = 1000, seed = 1)
 ```
 
 *Introduced `role`. A transfer needs a direction, and the two conditions say which
-agent in each pair can take which side; a pair where neither can give is dropped.*
+agent in each pair can take which side. A pair where neither can give is dropped.*
 
 ---
 

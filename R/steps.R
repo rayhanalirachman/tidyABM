@@ -34,46 +34,46 @@ collect_rules <- function(dots, fn, call = rlang::caller_env()) {
 #' Update agent columns
 #'
 #' `abm_rules()` is the step that changes agents. Every rule is a two-sided
-#' formula: the left-hand side names the column to write, the right-hand side is
-#' an expression evaluated against the agent tibble, exactly as it would be
+#' formula: the left-hand side names the column to write, the right-hand side
+#' is an expression evaluated against the agent tibble, exactly as it would be
 #' inside [dplyr::mutate()].
 #'
 #' All rules in a single `abm_rules()` call are evaluated **simultaneously**,
-#' against the state at the start of the step. So in
-#' `abm_rules(a ~ b, b ~ a)` both sides see the old values — this is the
-#' synchronous update that agent-based models normally assume, and it is the one
-#' place where `abm_rules()` deliberately departs from `mutate()`'s sequential
-#' semantics. Write two `abm_rules()` calls if you want one rule to see the
-#' other's result.
+#' against the state at the start of the step. So in `abm_rules(a ~ b, b ~ a)`
+#' both sides see the old values, this is the synchronous update that
+#' agent-based models normally assume, and it is the one place where
+#' `abm_rules()` deliberately departs from `mutate()`'s sequential semantics.
+#' Write two `abm_rules()` calls if you want one rule to see the other's
+#' result.
 #'
 #' In a model with several agent groups, a rule is applied to a group only if
 #' every agent column it mentions exists in that group. That is how the market
-#' example routes `offer ~ ...` to buyers and `ask ~ ...` to sellers without any
-#' explicit test on agent type.
+#' example routes `offer ~ ...` to buyers and `ask ~ ...` to sellers without
+#' any explicit test on agent type.
 #'
-#' While a match is standing, rules are evaluated group by group — per pair, per
+#' While a match is standing, rules are evaluated group by group, per pair, per
 #' group, or per agent depending on the pairing mode. That is usually what you
 #' want, and it is what makes `sample(x, 1)` mean "once per pair". Occasionally
-#' a step in the middle of a tick is about the whole population instead — drawing
-#' the next generation from this one, say — and `.scope = "population"` evaluates
-#' it against every agent at once, ignoring the standing match.
+#' a step in the middle of a tick is about the whole population instead,
+#' drawing the next generation from this one, say, and `.scope = "population"`
+#' evaluates it against every agent at once, ignoring the standing match.
 #'
-#' @param ... One or more `column ~ expression` rules. The expression can use any
-#'   column of the agent tibble, any global, any `partner_<col>` produced by a
-#'   preceding [abm_match()], `.role`, and anything visible where the rule was
+#' @param ... One or more `column ~ expression` rules. The expression can use
+#'   any column of the agent tibble, any global, any `partner_<col>` produced by
+#'   a preceding [abm_match()], `.role`, and anything visible where the rule was
 #'   written.
 #' @param .scope `"match"` (the default) evaluates the rules within whatever
 #'   grouping the preceding [abm_match()] produced. `"population"` ignores it and
 #'   evaluates across all agents, so aggregates like `sum()` and draws like
 #'   `sample(x, n())` see everybody.
-#' @param .by A column naming a partition of the agents — a firm, a household, a
+#' @param .by A column naming a partition of the agents, a firm, a household, a
 #'   team, a cohort. The rules are evaluated once per distinct value, across the
 #'   whole population, so `sum(effort)` means "the total effort of my firm" and
-#'   the answer is written back to every member of it. This is the third
-#'   grouping a rule can have, alongside the standing match and the whole
-#'   population, and it is the only one the *agents themselves* can change: an
-#'   agent that writes a new value into the `.by` column has moved to a
-#'   different group. Cannot be combined with `.scope = "population"`.
+#'   the answer is written back to every member of it. This is the third grouping
+#'   a rule can have, alongside the standing match and the whole population, and
+#'   it is the only one the *agents themselves* can change: an agent that writes
+#'   a new value into the `.by` column has moved to a different group. Cannot be
+#'   combined with `.scope = "population"`.
 #'
 #' @return An `abm_rules` step object.
 #' @export
@@ -104,31 +104,31 @@ abm_rules <- function(..., .scope = c("match", "population"), .by = NULL) {
 
 #' Update agent columns one agent at a time
 #'
-#' `abm_sequential()` is the order-dependent sibling of [abm_rules()]. Agents are
-#' processed one at a time in a freshly shuffled order, and each agent's writes
-#' to **globals** are visible to every agent processed after it within the same
-#' step. This mirrors NetLogo's `ask turtles`, and it is what you need when
-#' agents compete for a shared resource that is *depleted* rather than merely
-#' divided — a bank's lendable reserves, say.
+#' `abm_sequential()` is the order-dependent sibling of [abm_rules()]. Agents
+#' are processed one at a time in a freshly shuffled order, and each agent's
+#' writes to **globals** are visible to every agent processed after it within
+#' the same step. This mirrors NetLogo's `ask turtles`, and it is what you need
+#' when agents compete for a shared resource that is *depleted* rather than
+#' merely divided, a bank's lendable reserves, say.
 #'
 #' Rules also cascade *within* each agent: the second rule sees what the first
 #' one just wrote, to the agent's own row and to the globals alike. That is the
 #' opposite of [abm_rules()], where every rule reads the state at the start of
-#' the step, and it is what "one agent at a time" already implies — an agent
-#' that draws a quote and then decides whether the quote crosses the book has to
-#' be able to read the number it just drew.
+#' the step, and it is what "one agent at a time" already implies, an agent
+#' that draws a quote and then decides whether the quote crosses the book has
+#' to be able to read the number it just drew.
 #'
-#' The step is deliberately narrow: during the per-agent loop a rule can read its
-#' own agent's columns and any global, and it can write its own agent's columns
-#' and any global. It cannot see other agents' column values — use [abm_tell()]
-#' to write into another agent's row. Use [abm_rules()] unless you specifically
-#' need the ordering, since sequential evaluation is both slower and harder to
-#' reason about.
+#' The step is deliberately narrow: during the per-agent loop a rule can read
+#' its own agent's columns and any global, and it can write its own agent's
+#' columns and any global. It cannot see other agents' column values, use
+#' [abm_tell()] to write into another agent's row. Use [abm_rules()] unless you
+#' specifically need the ordering, since sequential evaluation is both slower
+#' and harder to reason about.
 #'
 #' @param ... One or more `column ~ expression` rules. The left-hand side may
 #'   name either an agent column or a global.
-#' @param .order Optional expression, evaluated over the whole population, whose
-#'   ascending order is the order agents are processed in. The default is a
+#' @param .order Optional expression, evaluated over the whole population,
+#'   whose ascending order is the order agents are processed in. The default is a
 #'   fresh shuffle every step, which is right when the order is meant to be
 #'   arbitrary and wrong when it is part of the model: a queue at a counter, a
 #'   sequential-service constraint, a fixed speaking order. `NA` sits the agent
@@ -149,7 +149,7 @@ abm_sequential <- function(..., .order = NULL) {
 #' Update a shared, population-level value
 #'
 #' `abm_global()` writes to a value held once for the whole model rather than
-#' once per agent — El Farol's `last_attendance`, a zakah pool, a bank's ledger.
+#' once per agent, El Farol's `last_attendance`, a zakah pool, a bank's ledger.
 #' The right-hand side is an aggregate expression evaluated over the agent
 #' tibble, so it normally collapses to a single value.
 #'
@@ -171,14 +171,12 @@ abm_sequential <- function(..., .order = NULL) {
 #' value, not to the whole vector, so an update reads exactly as the scalar
 #' version does:
 #'
-#' ```
-#' abm_global(stimulus ~ stimulus + delta - alpha * sum(task == .key) / n(),
-#'            .by = 1:2)
-#' ```
+#' ``` abm_global(stimulus ~ stimulus + delta - alpha * sum(task == .key) /
+#' n(), .by = 1:2) ```
 #'
-#' Each key still sees the **whole population** — `n()` is everybody, not
-#' everybody on this task — because that is what a colony-level stimulus
-#' balance means.
+#' Each key still sees the **whole population**, `n()` is everybody, not
+#' everybody on this task, because that is what a colony-level stimulus balance
+#' means.
 #'
 #' `.by` names the index either way round. Give it a vector and the index is
 #' declared by the model, which is right when the categories are fixed and a
@@ -219,37 +217,37 @@ new_abm_birth <- function(when, n, times, cost, inherit, attach_via) {
 
 #' Add agents
 #'
-#' `abm_birth()` is one of the two steps that change the size of the population.
-#' It has two modes, and exactly one of them must be used:
+#' `abm_birth()` is one of the two steps that change the size of the
+#' population. It has two modes, and exactly one of them must be used:
 #'
 #' * `when = <condition>` clones every agent that satisfies the condition. The
 #'   newborn inherits all of its parent's columns.
-#' * `n = <count>` adds that many brand-new agents, whose columns are copied from
-#'   a randomly chosen existing agent of the same group.
+#' * `n = <count>` adds that many brand-new agents, whose columns are copied
+#'   from a randomly chosen existing agent of the same group.
 #'
-#' One parent, one offspring, unless `times` says otherwise. Any fertility above
-#' one — a clutch, a litter, a Poisson number of seeds — is `times`, and each
-#' offspring is evaluated separately, so a mutation drawn in `inherit` differs
-#' between siblings.
+#' One parent, one offspring, unless `times` says otherwise. Any fertility
+#' above one, a clutch, a litter, a Poisson number of seeds, is `times`, and
+#' each offspring is evaluated separately, so a mutation drawn in `inherit`
+#' differs between siblings.
 #'
 #' @param when A condition. Agents satisfying it reproduce.
 #' @param n A count of new agents to add unconditionally.
 #' @param times How many offspring each reproducing agent has. An expression
 #'   evaluated in the parent's row, so it can be a column, a draw
 #'   (`rpois(dplyr::n(), 2)`) or a number. `0` means that parent has none this
-#'   tick and `NA` is treated as `0`. Only used with `when`, since `n` is
-#'   already a count. Each offspring gets its own evaluation of `inherit`, so a
-#'   mutation drawn there differs from sibling to sibling.
+#'   tick and `NA` is treated as `0`. Only used with `when`, since `n` is already
+#'   a count. Each offspring gets its own evaluation of `inherit`, so a mutation
+#'   drawn there differs from sibling to sibling.
 #' @param cost One or more `column ~ expression` formulas applied to the parent
-#'   *and* the newborn after the split, expressing what reproduction costs — for
+#'   *and* the newborn after the split, expressing what reproduction costs, for
 #'   example `cost = resource ~ resource / 2` to halve a resource between them.
 #' @param inherit One or more `column ~ expression` formulas applied to the
 #'   newborn *only*, expressing what the offspring gets that the parent does not
-#'   keep: a reset age, a mutated trait, a sex drawn at birth. The expressions are
-#'   evaluated in the parent's row, so they can use the parent's columns and —
-#'   when an [abm_match()] is standing — the other parent's, as `partner_<col>`.
-#'   That is how two-parent inheritance is written:
-#'   `inherit = trait ~ (trait + partner_trait) / 2`.
+#'   keep: a reset age, a mutated trait, a sex drawn at birth. The expressions
+#'   are evaluated in the parent's row, so they can use the parent's columns and,
+#'   when an [abm_match()] is standing, the other parent's, as `partner_<col>`.
+#'   That is how two-parent inheritance is written: `inherit = trait ~ (trait +
+#'   partner_trait) / 2`.
 #' @param attach_via An [abm_match()] object with `pair = "network"`, used to
 #'   connect each newborn to an existing agent. This is the only way the network
 #'   grows during a run; `from = "random_edge"` gives degree-proportional

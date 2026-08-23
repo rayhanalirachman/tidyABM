@@ -23,7 +23,7 @@ result <- abm_run(elfarol, go, ticks = 20, seed = 2)
 ```
 
 *First model with no matching at all, and the first `abm_global()`. **It does not
-work** — one shared forecast makes the population behave as a single agent and it
+work**. One shared forecast makes the population behave as a single agent, and it
 locks into a 0/100 two-cycle. See model 14.*
 
 ---

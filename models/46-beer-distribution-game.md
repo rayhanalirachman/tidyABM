@@ -2,8 +2,8 @@
 
 **Concept**
 
-- Setup: four positions in a line — retailer, wholesaler, distributor, factory
-  — each holding stock, each filling the order from the position below it, each
+- Setup: four positions in a line (retailer, wholesaler, distributor, factory),
+  each holding stock, each filling the order from the position below it, each
   placing an order on the position above
 - Delays: shipments take two weeks to arrive, orders take a week to be seen
 - Go: receive, fill what you can, ship it down, then order using
@@ -66,7 +66,7 @@ result <- abm_run(m, go, ticks = 60, seed = 1)
 
 **Result** (60 weeks, α = 0.26, target stock 17)
 
-β = 0.34 — the supply line is accounted for:
+β = 0.34, the supply line is accounted for:
 
 | position | peak order | s.d. | amplification |
 |---|---|---|---|
@@ -75,7 +75,7 @@ result <- abm_run(m, go, ticks = 60, seed = 1)
 | distributor | 15.4 | 4.97 | 1.9× |
 | factory | 16.2 | 4.85 | 1.9× |
 
-β = 0 — the supply line is ignored:
+β = 0, the supply line is ignored:
 
 | position | peak order | s.d. | amplification |
 |---|---|---|---|
@@ -92,14 +92,14 @@ position correcting a stock gap whose cause it cannot see.
 The second table is Sterman's actual finding about *why* people play this game
 so badly. β is how much of the already-ordered-but-not-yet-arrived stock a
 position discounts, and the experimental subjects systematically fail to
-discount it — they reorder for a shortfall that is already on its way. Setting
+discount it, they reorder for a shortfall that is already on its way. Setting
 β to zero is that mistake and nothing else, and it multiplies the bullwhip by
 two and a half.
 
 *Needed `abm_tell(to = <an id>)`, and it is the model that shows what the step is
 for beyond the order book. Every other model in this corpus is a population of
-interchangeable agents; here each agent has a* place in a line *and writes to the
-specific agent above and below it — a shipment into the agent downstream, an
+interchangeable agents. Here each agent has a* place in a line *and writes to the
+specific agent above and below it, a shipment into the agent downstream, an
 order into the agent upstream, named by an `up` and a `down` column holding
 `.id`s. The pipeline delays need nothing special: `ship_in1` and `ship_in2` are
 two ordinary columns, and one simultaneous `abm_rules()` shuffles them up while

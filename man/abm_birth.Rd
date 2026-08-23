@@ -26,15 +26,16 @@ already a count. Each offspring gets its own evaluation of \code{inherit}, so a
 mutation drawn there differs from sibling to sibling.}
 
 \item{cost}{One or more \code{column ~ expression} formulas applied to the parent
-\emph{and} the newborn after the split, expressing what reproduction costs — for
-example \code{cost = resource ~ resource / 2} to halve a resource between them.}
+\emph{and} the newborn after the split, expressing what reproduction costs, for
+example \code{cost = resource ~ resource / 2} to halve a resource between
+them.}
 
 \item{inherit}{One or more \code{column ~ expression} formulas applied to the
-newborn \emph{only}, expressing what the offspring gets that the parent does not
-keep: a reset age, a mutated trait, a sex drawn at birth. The expressions are
-evaluated in the parent's row, so they can use the parent's columns and —
-when an \code{\link[=abm_match]{abm_match()}} is standing — the other parent's, as \verb{partner_<col>}.
-That is how two-parent inheritance is written:
+newborn \emph{only}, expressing what the offspring gets that the parent does
+not keep: a reset age, a mutated trait, a sex drawn at birth. The expressions
+are evaluated in the parent's row, so they can use the parent's columns and,
+when an \code{\link[=abm_match]{abm_match()}} is standing, the other parent's,
+as \verb{partner_<col>}. That is how two-parent inheritance is written:
 \code{inherit = trait ~ (trait + partner_trait) / 2}.}
 
 \item{attach_via}{An \code{\link[=abm_match]{abm_match()}} object with \code{pair = "network"}, used to
@@ -57,10 +58,10 @@ newborn inherits all of its parent's columns.
 a randomly chosen existing agent of the same group.
 }
 
-One parent, one offspring, unless \code{times} says otherwise. Any fertility above
-one — a clutch, a litter, a Poisson number of seeds — is \code{times}, and each
-offspring is evaluated separately, so a mutation drawn in \code{inherit} differs
-between siblings.
+One parent, one offspring, unless \code{times} says otherwise. Any fertility
+above one, a clutch, a litter, a Poisson number of seeds, is \code{times}, and
+each offspring is evaluated separately, so a mutation drawn in \code{inherit}
+differs between siblings.
 }
 \examples{
 abm_birth(when = resource > 20, cost = resource ~ resource / 2)

@@ -9,12 +9,12 @@ new_abm_link <- function(when, drop) {
 #'
 #' `abm_link()` turns the pairing produced by the preceding [abm_match()] into
 #' permanent edges. It is how a network grows during a run without anyone being
-#' born — random-graph percolation, tie formation, coalition building.
+#' born, random-graph percolation, tie formation, coalition building.
 #'
 #' An edge is added once per matched pair, and pairs that are already connected
 #' are left alone, so the network never gains a duplicate edge.
 #'
-#' After a match with `size > 2` the group is linked as a *clique* — every pair
+#' After a match with `size > 2` the group is linked as a *clique*, every pair
 #' inside it gains an edge. That is what a team, a committee or a coalition
 #' means once it is written as a network.
 #'
@@ -35,10 +35,10 @@ abm_link <- function(when = NULL) {
 
 #' Remove edges between matched agents
 #'
-#' `abm_unlink()` is the mirror of [abm_link()]: it deletes the edge joining each
-#' matched pair. Paired with `abm_match(pair = "network")` it detaches an agent
-#' from one of its neighbours, which — followed by a match and an [abm_link()] —
-#' is how you rewire a network.
+#' `abm_unlink()` is the mirror of [abm_link()]: it deletes the edge joining
+#' each matched pair. Paired with `abm_match(pair = "network")` it detaches an
+#' agent from one of its neighbours, which, followed by a match and an
+#' [abm_link()], is how you rewire a network.
 #'
 #' @param when Optional condition. Only pairs where it holds are unlinked.
 #'
@@ -130,44 +130,44 @@ run_unlink <- function(step, state) {
 #' Summarise each agent's neighbourhood
 #'
 #' A match gives an agent *one* partner. Plenty of models need the whole
-#' neighbourhood instead — how many of my neighbours are infected, what fraction
+#' neighbourhood instead, how many of my neighbours are infected, what fraction
 #' of them are flashing, what my neighbours believe on average.
-#' `abm_neighbours()` writes exactly that: for every agent, an aggregate over the
-#' agents around it.
+#' `abm_neighbours()` writes exactly that: for every agent, an aggregate over
+#' the agents around it.
 #'
-#' Each rule is `column ~ aggregate_expression`, and the expression is evaluated
-#' over the neighbours' rows, so `sum(infected)` means "how many of my neighbours
-#' are infected" and `mean(opinion)` means "what my neighbours think on average".
-#' An agent with no neighbours gets `NA`.
+#' Each rule is `column ~ aggregate_expression`, and the expression is
+#' evaluated over the neighbours' rows, so `sum(infected)` means "how many of
+#' my neighbours are infected" and `mean(opinion)` means "what my neighbours
+#' think on average". An agent with no neighbours gets `NA`.
 #'
 #' Alongside each neighbour column the expression also sees `own_<col>`, the
-#' focal agent's own value of that column, recycled down its neighbourhood. That
-#' is what makes a *comparison* possible — `sum(wealth > own_wealth)` is "how many
-#' of my neighbours are richer than me", which no aggregate over the neighbours
-#' alone can express.
+#' focal agent's own value of that column, recycled down its neighbourhood.
+#' That is what makes a *comparison* possible, `sum(wealth > own_wealth)` is
+#' "how many of my neighbours are richer than me", which no aggregate over the
+#' neighbours alone can express.
 #'
 #' # Two kinds of neighbourhood
 #'
 #' By default the neighbourhood is the model's [abm_network()]: the agents this
 #' one shares an edge with. `within =` replaces it with a neighbourhood in
-#' **attribute space** — everybody whose columns satisfy a condition, whether or
+#' **attribute space**, everybody whose columns satisfy a condition, whether or
 #' not the model has a network at all. The condition is evaluated once per
 #' (focal, candidate) pair, with the candidate's columns under their own names
 #' and the focal agent's under `own_<col>`, which is the same view
 #' `abm_match(cost =)` minimises over.
 #'
-#' ```
-#' abm_neighbours(opinion ~ mean(opinion), within = abs(opinion - own_opinion) <= eps)
-#' ```
+#' ``` abm_neighbours(opinion ~ mean(opinion), within = abs(opinion -
+#' own_opinion) <= eps) ```
 #'
 #' is Hegselmann–Krause's confidence set, and it is a step rather than a
 #' hand-rolled `vapply()` over the population.
 #'
-#' The two differ in one respect beyond how the neighbourhood is found: an agent
-#' is **part of its own** attribute neighbourhood whenever the condition holds of
-#' it, because "the mean opinion of everyone I take seriously" includes the
-#' agent's own. It is never part of its network neighbourhood, because an agent
-#' is not joined to itself. Write `within = ... & .id != own_.id` to exclude it.
+#' The two differ in one respect beyond how the neighbourhood is found: an
+#' agent is **part of its own** attribute neighbourhood whenever the condition
+#' holds of it, because "the mean opinion of everyone I take seriously"
+#' includes the agent's own. It is never part of its network neighbourhood,
+#' because an agent is not joined to itself. Write `within = ... & .id !=
+#' own_.id` to exclude it.
 #'
 #' They also differ in cost. The network form does work proportional to the
 #' number of edges; `within =` builds every (focal, candidate) pair and then

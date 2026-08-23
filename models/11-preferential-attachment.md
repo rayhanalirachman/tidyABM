@@ -29,7 +29,7 @@ result <- abm_run(pa, go, ticks = 300, seed = 11)
 ```
 
 *Introduced network growth during a run. `from = "random_edge"` reuses NetLogo's
-trick — pick an edge uniformly, then one of its endpoints — so selection is
+trick, pick an edge uniformly, then one of its endpoints, so selection is
 degree-proportional without anyone storing a degree.*
 
 ---

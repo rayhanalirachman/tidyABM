@@ -5,8 +5,8 @@
 - Setup: 100 organisations, each a string of 10 binary attributes; an NK
   landscape in which each attribute's contribution to fitness depends on itself
   and on K others
-- Go: each organisation tries a variant of itself — a single attribute flipped,
-  or with probability `jump` an entirely new string — and adopts it if it is
+- Go: each organisation tries a variant of itself, a single attribute flipped,
+  or with probability `jump` an entirely new string, and adopts it if it is
   fitter
 - Output: what fitness local search reaches, and how many distinct forms
   survive
@@ -51,7 +51,7 @@ result <- abm_run(m, go, ticks = 200, seed = 1)
 The first column of numbers is Levinthal's point about form. With no
 interaction between attributes there is one peak, and a hundred organisations
 searching independently all end up as the same organisation. Turn the
-interaction up and the landscape breaks into peaks; at K = 9 the same hundred
+interaction up and the landscape breaks into peaks. At K = 9 the same hundred
 organisations end up as fifty-five different ones, each sitting on a local
 optimum it cannot leave by changing one thing at a time. Diversity of
 organisational form here is not a difference in what the organisations want or
@@ -65,8 +65,8 @@ The gain is largest exactly where the landscape is roughest, which is the case
 for radical search being worth most in the industries where nothing can be
 changed on its own.
 
-*Needed no package change, and turned up a bug that did. The landscape — a
-10 × 2^(K+1) table of draws — is the natural thing to hold as a global, and
+*Needed no package change, and turned up a bug that did. The landscape, a
+10 × 2^(K+1) table of draws, is the natural thing to hold as a global, and
 `abm_setup(globals = list(nk = ...))` accepted one, but `abm_globals()` then
 logged one row per matrix row per tick and quietly corrupted the tick column.
 Globals were assumed to be scalars because the log is a tibble with one row per

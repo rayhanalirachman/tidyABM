@@ -3,7 +3,7 @@
 **Concept**
 
 - Setup: 101 agents, each holding S = 2 strategies. A strategy is a lookup
-  table from the last `m` winning sides — 2^m of them — to a prediction.
+  table from the last `m` winning sides, 2^m of them, to a prediction.
 - Go: everyone plays their currently best-scoring strategy; whoever ends up on
   the smaller side wins; every strategy is then scored on what it *would* have
   predicted, whether or not it was the one played.
@@ -74,7 +74,7 @@ The curve is the one the minority-game literature is built on. Coin-flipping
 agents would give σ²/N = 1 exactly. At large α the agents have so much memory
 relative to their number that they never see the same signal twice and the curve
 returns to 1 from below. At small α they all read the same short history, crowd
-onto the same prediction, and do **far worse than chance** — five and a half
+onto the same prediction, and do **far worse than chance**, five and a half
 times worse at m = 2. In between, at α ≈ 0.3, they coordinate *better* than
 chance without ever intending to, and the minimum sits right where the reported
 critical value α_c ≈ 0.34 says it should.
@@ -82,7 +82,7 @@ critical value α_c ≈ 0.34 says it should.
 *Needed nothing new, for the same reason the naming game did not: a list column
 holds each agent's 2^m × S strategy table and `abm_rules()` indexes into it.
 Between this and the naming game, "no set-valued agent state" comes off the Open
-items list — the El Farol and PD N-Person models that motivated the entry were
+items list, the El Farol and PD N-Person models that motivated the entry were
 written as seventy and n² scalar columns because nobody had tried a list column,
 not because the grammar refused one.*
 

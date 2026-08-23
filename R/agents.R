@@ -7,7 +7,7 @@ new_abm_agents <- function(n, cols) {
 #' Declare a group of agents
 #'
 #' `abm_agents()` describes one homogeneous group of agents: how many there are
-#' and what columns they start with. It is a *specification*, not a population —
+#' and what columns they start with. It is a *specification*, not a population,
 #' nothing is created until the spec is passed to [abm_setup()], which is where
 #' a model's first part is declared.
 #'

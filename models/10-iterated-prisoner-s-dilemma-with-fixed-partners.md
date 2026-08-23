@@ -28,7 +28,7 @@ result <- abm_run(ipd, go, ticks = 50, seed = 10)
 
 *Introduced nothing. `abm_network(degree = 1)` gives fixed partnerships and the
 `partner_*` convention already carries last tick's move forward. One round of
-memory comes free; anything longer needs an explicit column — see model 26.*
+memory comes free. Anything longer needs an explicit column (see model 26).*
 
 ---
 

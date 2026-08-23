@@ -24,9 +24,9 @@ new_abm_match <- function(pair, size, by, role, eligible, resolve, rounds,
 #' Match agents into pairs or groups
 #'
 #' `abm_match()` is the step that decides *who interacts with whom* this tick.
-#' It does not change any agent column; it only produces a partner (for
-#' `size = 2`) or a group (for `size > 2`), which the [abm_rules()] steps that
-#' follow it then use.
+#' It does not change any agent column; it only produces a partner (for `size =
+#' 2`) or a group (for `size > 2`), which the [abm_rules()] steps that follow
+#' it then use.
 #'
 #' After a match, every rule can see:
 #'
@@ -35,31 +35,33 @@ new_abm_match <- function(pair, size, by, role, eligible, resolve, rounds,
 #'   rule means "sum across this agent's group";
 #' * `.role`, when `role` is supplied.
 #'
-#' Each `pair` mode uses a fixed set of the other arguments, and passing one that
-#' the chosen mode does not use is an error rather than being ignored:
+#' Each `pair` mode uses a fixed set of the other arguments, and passing one
+#' that the chosen mode does not use is an error rather than being ignored:
 #'
-#' | mode               | uses                                                  |
+#' | mode               | uses
+#' |
 #' |--------------------|-------------------------------------------------------|
-#' | `"random"`         | `size`, `role`, `eligible`                            |
-#' | `"one_of"`         | `role`, `eligible`, `among`                           |
-#' | `"opposite_group"` | `by`, `role`, `eligible`, `resolve`, `rounds`, `positions`, `limits` |
-#' | `"nearest"`        | `by` *or* `cost`, `size`, `eligible`, `among`         |
-#' | `"network"`        | `from`, `eligible`                                    |
+#' | `"random"`         | `size`, `role`, `eligible`
+#' | | `"one_of"`         | `role`, `eligible`, `among`
+#' | | `"opposite_group"` | `by`, `role`, `eligible`, `resolve`, `rounds`,
+#' `positions`, `limits` | | `"nearest"`        | `by` *or* `cost`, `size`,
+#' `eligible`, `among`         | | `"network"`        | `from`, `eligible`
+#' |
 #'
 #' `eligible` and `among` ask different questions, and the difference only has
 #' teeth in the directional modes. `eligible` says who *takes part*; `among`
-#' says who may be *picked*. A consumer choosing the nearest shop wants
-#' `among = .group == "shops"`, or it will find that the nearest agent to it is
+#' says who may be *picked*. A consumer choosing the nearest shop wants `among
+#' = .group == "shops"`, or it will find that the nearest agent to it is
 #' another consumer.
 #'
-#' Two of the modes are *mutual*: `"random"` and `"opposite_group"` partition the
-#' eligible agents into pairs or groups, so being matched is symmetric and every
-#' agent appears once. The other three are *directional*: `"one_of"`,
+#' Two of the modes are *mutual*: `"random"` and `"opposite_group"` partition
+#' the eligible agents into pairs or groups, so being matched is symmetric and
+#' every agent appears once. The other three are *directional*: `"one_of"`,
 #' `"nearest"` and `"network"` give each agent a partner of its own, and your
-#' partner need not have picked you. `"one_of"` is NetLogo's
-#' `one-of other turtles`; `"random"` is a fresh shuffle of the whole population
-#' into couples. They are different models of who meets whom, and which one you
-#' want depends on the source you are porting.
+#' partner need not have picked you. `"one_of"` is NetLogo's `one-of other
+#' turtles`; `"random"` is a fresh shuffle of the whole population into
+#' couples. They are different models of who meets whom, and which one you want
+#' depends on the source you are porting.
 #'
 #' @param pair The pairing mode. `"random"` shuffles agents into groups of
 #'   `size`; `"one_of"` gives each agent one partner drawn uniformly from the
@@ -69,25 +71,26 @@ new_abm_match <- function(pair, size, by, role, eligible, resolve, rounds,
 #'   agent's neighbours in the model's [abm_network()].
 #' @param size Group size. Defaults to 2 (a pair). Only `"random"` and
 #'   `"nearest"` support `size > 2`; `"opposite_group"` is undefined above 2.
-#' @param by Column(s) defining the space or the split. For
-#'   `"opposite_group"` a single column that takes exactly two values (use
-#'   `.group` for a multi-group model); for `"nearest"` one or more numeric
-#'   columns, compared by Euclidean distance.
-#' @param role A named list of two conditions, e.g.
-#'   `list(giver = money > 0, receiver = TRUE)`. Within each pair, roles are
-#'   assigned so that each member satisfies its own role's condition; if no
-#'   assignment works the pair is dropped for this step. Rules then see `.role`.
-#' @param eligible A condition. Agents for which it is `FALSE` sit the step out.
+#' @param by Column(s) defining the space or the split. For `"opposite_group"`
+#'   a single column that takes exactly two values (use `.group` for a
+#'   multi-group model); for `"nearest"` one or more numeric columns, compared by
+#'   Euclidean distance.
+#' @param role A named list of two conditions, e.g. `list(giver = money > 0,
+#'   receiver = TRUE)`. Within each pair, roles are assigned so that each member
+#'   satisfies its own role's condition; if no assignment works the pair is
+#'   dropped for this step. Rules then see `.role`.
+#' @param eligible A condition. Agents for which it is `FALSE` sit the step
+#'   out.
 #' @param cost For `"nearest"`, an expression naming what the chooser is
-#'   minimising, used instead of `by`. It is evaluated once per
-#'   (chooser, candidate) pair: the candidate's columns are visible under their
-#'   own names and the chooser's under `own_<col>`, the same convention
-#'   [abm_neighbours()] uses. `.id` and `.group` are included, so a cost can be
-#'   a lookup into the chooser's own preference list as easily as a price. `by` is the special case
-#'   `cost = (x - own_x)^2`; anything else — a delivered price
-#'   `price + travel * abs(x - own_x)`, an energy deficit, a position in a
-#'   preference list — needs this. `NA` means the candidate is not acceptable to
-#'   that chooser, and a chooser with no acceptable candidate sits the step out.
+#'   minimising, used instead of `by`. It is evaluated once per (chooser,
+#'   candidate) pair: the candidate's columns are visible under their own names
+#'   and the chooser's under `own_<col>`, the same convention [abm_neighbours()]
+#'   uses. `.id` and `.group` are included, so a cost can be a lookup into the
+#'   chooser's own preference list as easily as a price. `by` is the special case
+#'   `cost = (x - own_x)^2`; anything else, a delivered price `price + travel *
+#'   abs(x - own_x)`, an energy deficit, a position in a preference list, needs
+#'   this. `NA` means the candidate is not acceptable to that chooser, and a
+#'   chooser with no acceptable candidate sits the step out.
 #' @param among A condition naming the agents that may be *chosen*, for the
 #'   directional modes `"one_of"` and `"nearest"`. Defaults to everybody. An
 #'   agent is never matched to itself.
@@ -98,14 +101,14 @@ new_abm_match <- function(pair, size, by, role, eligible, resolve, rounds,
 #' @param positions For `resolve = "negotiate"`, `c(<first group's bid column>,
 #'   <second group's ask column>)`.
 #' @param limits For `resolve = "negotiate"`, `c(<first group's reservation
-#'   column>, <second group's reservation column>)` — the bid never rises above
+#'   column>, <second group's reservation column>)`, the bid never rises above
 #'   the first, and the ask never falls below the second.
 #' @param from For `"network"`, `"neighbour"` (the default) picks a random
 #'   neighbour of the agent; `"random_edge"` picks a random edge of the whole
 #'   network and then one of its endpoints, which selects agents in proportion to
-#'   their degree (used by preferential attachment); `"parent"` is only meaningful
-#'   inside [abm_birth()]'s `attach_via` and links a newborn to the agent it was
-#'   cloned from, which is what puts offspring next to their kin.
+#'   their degree (used by preferential attachment); `"parent"` is only
+#'   meaningful inside [abm_birth()]'s `attach_via` and links a newborn to the
+#'   agent it was cloned from, which is what puts offspring next to their kin.
 #'
 #' @return An `abm_match` step object.
 #' @export

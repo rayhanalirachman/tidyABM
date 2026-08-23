@@ -13,10 +13,11 @@ abm_unlink(when = NULL)
 An \code{abm_unlink} step object.
 }
 \description{
-\code{abm_unlink()} is the mirror of \code{\link[=abm_link]{abm_link()}}: it deletes the edge joining each
-matched pair. Paired with \code{abm_match(pair = "network")} it detaches an agent
-from one of its neighbours, which — followed by a match and an \code{\link[=abm_link]{abm_link()}} —
-is how you rewire a network.
+\code{abm_unlink()} is the mirror of \code{\link[=abm_link]{abm_link()}}: it
+deletes the edge joining each matched pair. Paired with \code{abm_match(pair =
+"network")} it detaches an agent from one of its neighbours, which, followed by
+a match and an \code{\link[=abm_link]{abm_link()}}, is how you rewire a
+network.
 }
 \examples{
 # Watts-Strogatz rewiring: drop a neighbour, pick up a stranger

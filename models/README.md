@@ -1,13 +1,13 @@
-# ABM Models Reference — tidyABM
+# ABM models reference: tidyABM
 
 Fifty-six models implemented in tidyABM, one file each, with the concept, a
 NetLogo-style sketch of the original where one exists, the working package code
-and the numbers the run produced. Every model here runs; every one with a
+and the numbers the run produced. Every model here runs. Every one with a
 behavioural claim is pinned by a test in `tidyABM/tests/testthat/`.
 
-Every model here is written as the same three parts — `abm_setup()`, then
-`abm_go()`, then `abm_run()` — as three separate statements, so the code on each
-page shows the whole model rather than a fragment:
+Each is written as the same three parts, `abm_setup()` then `abm_go()` then
+`abm_run()`, kept as three separate statements, so the code on a page shows the
+whole model rather than a fragment:
 
 ```r
 world  <- abm_setup(...)                                # 1. who is in the model
@@ -35,8 +35,8 @@ tidyABM that is not in the founding thirteen exists because one of them asked
 for it.
 
 Part 7 adds no models. Each round left entries behind on
-[open items](open-items.md) — shapes a model had asked for that were too small
-to stop a stress test over — and by the end of Part 6 there were nine. That
+[open items](open-items.md), shapes a model had asked for that were too small to
+stop a stress test over, and by the end of Part 6 there were nine. That
 round was spent closing seven of them instead of collecting more models, so
 five of the pages here now show different code for the same result: 29 uses
 `abm_neighbours(within =)`, 30 uses `abm_draw()`, 47 uses `abm_global(.by =)`,
@@ -44,7 +44,7 @@ five of the pages here now show different code for the same result: 29 uses
 `abm_run(record =)`. [What each stress test changed](what-changed.md) says what
 that exercise showed that a stress test cannot.
 
-### Part 1 — the founding thirteen
+### Part 1: the founding thirteen
 
 The set the grammar was designed against.
 
@@ -52,11 +52,11 @@ The set the grammar was designed against.
 |---|---|
 | 1 | [Simple Economy (Wilensky & Rand, ch. 2)](01-simple-economy.md) |
 | 2 | [El Farol, short form (Arthur 1994)](02-el-farol-short.md) |
-| 3 | [PD Basic — well-mixed prisoner's dilemma with imitation](03-pd-basic-well-mixed-prisoner-s-dilemma-with-imitation.md) |
+| 3 | [PD Basic, a well-mixed prisoner's dilemma with imitation](03-pd-basic-well-mixed-prisoner-s-dilemma-with-imitation.md) |
 | 4 | [Ethnocentrism, short form](04-ethnocentrism-short.md) |
 | 5 | [Rumour Mill](05-rumour-mill.md) |
-| 6 | [Party — segregation without geography](06-party-segregation-without-geography.md) |
-| 7 | [Market — supply and demand (after Primer)](07-market-supply-and-demand.md) |
+| 6 | [Party, segregation without geography](06-party-segregation-without-geography.md) |
+| 7 | [Market, supply and demand (after Primer)](07-market-supply-and-demand.md) |
 | 8 | [Voter Model on a network](08-voter-model-on-a-network.md) |
 | 9 | [Public Goods Game](09-public-goods-game.md) |
 | 10 | [Iterated Prisoner's Dilemma with fixed partners](10-iterated-prisoner-s-dilemma-with-fixed-partners.md) |
@@ -64,7 +64,7 @@ The set the grammar was designed against.
 | 12 | [Random Consumption Zakah, short form (custom)](12-random-consumption-zakah-short.md) |
 | 13 | [Bank Reserves (Wilensky, NetLogo Social Science)](13-bank-reserves.md) |
 
-### Part 2 — three of those, corrected
+### Part 2: three of those, corrected
 
 Models 2, 4 and 12 run correctly and do not show the behaviour they are known for. In each case the description left out the mechanism that produces the result. Full workings in `vignette("corrections")`.
 
@@ -74,9 +74,9 @@ Models 2, 4 and 12 run correctly and do not show the behaviour they are known fo
 | 15 | [Ethnocentrism, Hammond & Axelrod (2006)](15-ethnocentrism-hammond-axelrod.md) |
 | 16 | [Zakah with a risk process](16-zakah-with-a-risk-process.md) |
 
-### Part 3 — the first stress test
+### Part 3: the first stress test
 
-Chosen so that each one asks something of the grammar the earlier models did not. Five needed a package addition; five did not. These produced `abm_link()` / `abm_unlink()` / `abm_neighbours()`, the `one_of` pairing mode, `.scope = "population"` and `abm_birth(inherit =)`.
+Chosen so that each one asks something of the grammar the earlier models did not. Five needed a package addition, five did not. These produced `abm_link()` / `abm_unlink()` / `abm_neighbours()`, the `one_of` pairing mode, `.scope = "population"` and `abm_birth(inherit =)`.
 
 | # | model |
 |---|---|
@@ -91,9 +91,9 @@ Chosen so that each one asks something of the grammar the earlier models did not
 | 25 | [Axelrod's cultural dissemination (Axelrod 1997)](25-axelrod-s-cultural-dissemination.md) |
 | 26 | [PD N-Person Iterated (NetLogo Social Science)](26-pd-n-person-iterated.md) |
 
-### Part 4 — the second stress test
+### Part 4: the second stress test
 
-Chosen the same way. Three needed a package addition; seven did not. These produced `own_<col>` inside `abm_neighbours()`, `abm_network(type = "complete")` and clique linking. Two of them are among the sharpest quantitative checks in the corpus.
+Chosen the same way. Three needed a package addition, seven did not. These produced `own_<col>` inside `abm_neighbours()`, `abm_network(type = "complete")` and clique linking. Two of them are among the sharpest quantitative checks in the corpus.
 
 | # | model |
 |---|---|
@@ -108,7 +108,7 @@ Chosen the same way. Three needed a package addition; seven did not. These produ
 | 35 | [Simple Genetic Algorithm (Wilensky 1998, NetLogo Computer Science)](35-simple-genetic-algorithm.md) |
 | 36 | [Information cascade (Bikhchandani, Hirshleifer & Welch 1992)](36-information-cascade.md) |
 
-### Part 5 — the third stress test
+### Part 5: the third stress test
 
 Chosen against the *Open items* list rather than against the grammar: each one was picked because something on that list said it could not be written. Four needed a package addition, and two of the additions closed entries that had been open since Part 3. Two more entries came off the list without any code changing at all.
 
@@ -125,10 +125,10 @@ Chosen against the *Open items* list rather than against the grammar: each one w
 | 45 | [Hotelling's Law (Hotelling 1929; NetLogo Social Science)](45-hotellings-law.md) |
 | 46 | [The Beer Distribution Game (Sterman 1989)](46-beer-distribution-game.md) |
 
-### Part 6 — the fourth stress test
+### Part 6: the fourth stress test
 
 Chosen to leave the corpus's home ground. The first forty-six models are mostly
-opinion dynamics, evolutionary games and network processes; these ten are
+opinion dynamics, evolutionary games and network processes. These ten are
 entomology, organization theory, industrial economics, organizational search,
 behavioural epidemiology, banking, cultural evolution, the evolution of
 cooperation, market design and ecology. Six needed a package addition, and two
@@ -152,13 +152,13 @@ of them found bugs rather than gaps.
 Every table in these files came from a script in
 [`scripts/`](scripts/README.md), run at the size and seed the script names.
 The `testthat` cases run the same models at reduced scale so the suite stays
-quick; the scripts are what reproduce the published tables.
+quick. The scripts are what reproduce the published tables.
 
 ```
 Rscript scripts/m43_zero_intelligence.R
 ```
 
-Most of the scripts take a few minutes; the longest is about twenty. Sizes were
+Most of the scripts take a few minutes. The longest is about twenty. Sizes were
 chosen so that each script finishes in one sitting, and where a run is too short
-to settle — Kirman's ants is the one case — the file says so rather than quoting
-a converged number it did not reach.
+to settle, which happens once, with Kirman's ants, the file says so rather than
+quoting a converged number it did not reach.

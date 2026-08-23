@@ -9,7 +9,7 @@
   that crosses the standing quote on the other side trades immediately at that
   quote; the two traders leave and the book clears. A shout that improves its
   own side becomes the new standing quote.
-- Output: allocative efficiency — the surplus actually realised, as a fraction
+- Output: allocative efficiency, the surplus actually realised, as a fraction
   of the surplus a perfectly informed planner would have arranged
 
 Gode & Sunder's traders have no strategy, no learning, no memory and no beliefs.
@@ -82,7 +82,7 @@ shout <- abm_go(
 result <- abm_run(m, shout, ticks = rounds, seed = 1)
 ```
 
-`cap` is the buyer's value and `floor_` the seller's cost under ZI-C; under ZI-U
+`cap` is the buyer's value and `floor_` the seller's cost under ZI-C. Under ZI-U
 they are the ends of the price range, which is the only difference between the
 two treatments.
 
@@ -90,16 +90,16 @@ two treatments.
 
 | | allocative efficiency | trades | of a possible | mean price |
 |---|---|---|---|---|
-| ZI-C — will not trade at a loss | **95.8%** | 6.8 | 7 | 100.2 |
-| ZI-U — unconstrained | **37.0%** | 12.0 | 7 | 104.7 |
+| ZI-C, will not trade at a loss | **95.8%** | 6.8 | 7 | 100.2 |
+| ZI-U, unconstrained | **37.0%** | 12.0 | 7 | 104.7 |
 
 The mean price of 100 is the competitive equilibrium price for these schedules,
 which nobody in the model knows or is trying to find. ZI-U's failure is not that
 it trades too little but that it trades too *much*: twelve trades where seven
 were worthwhile, most of them destroying surplus rather than creating it.
 
-*This is the model the corpus explicitly could not reach — "the order book is the
-model this corpus cannot reach", under Open items since Part 3 — and reaching it
+*This is the model the corpus explicitly could not reach. "The order book is the
+model this corpus cannot reach" sat under Open items from Part 3, and reaching it
 forced the two changes that this stress test is really about.*
 
 *The first is that a trade has to mark the counterparty, and the counterparty is
@@ -112,7 +112,7 @@ evaluated in the sender's row that names a recipient by `.id`.*
 quote crosses, inside one step. Rules inside `abm_sequential()` used to be
 simultaneous within the agent, so `buy_cross` would have read the previous
 tick's bid. They now cascade, which is what "one agent at a time" always
-implied. `abm_rules()` is unchanged and still simultaneous — the distinction
+implied. `abm_rules()` is unchanged and still simultaneous, the distinction
 between the two steps is now exactly the distinction between the two update
 semantics, rather than being about globals.*
 

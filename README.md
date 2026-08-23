@@ -34,20 +34,20 @@ result <- abm_run(world, go, ticks = ..., seed = ...)   # 3
 ```
 
 `abm_setup()` and `abm_go()` return objects, not arguments. Build each on its
-own line and you can print it, check it and reuse it — one go block against
-several worlds, or one world through several go blocks, which is what a
-parameter sweep is.
+own line and you can print it, check what it holds, and reuse it: one go block
+run against several worlds, or one world run through several go blocks. That
+second one is what a parameter sweep looks like here.
 
-Everything else in the grammar sits inside one of the three. `abm_agents()` and
-`abm_network()` are what you hand to `abm_setup()`; every other `abm_*()`
+Everything else in the grammar sits inside one of the three. You hand
+`abm_agents()` and `abm_network()` to `abm_setup()`. Every other `abm_*()`
 function is a step inside `abm_go()`.
 
 ## A whole model
 
 Wilensky and Rand's *Simple Economy*: 500 agents start with $100 each, and every
 tick anyone with money gives $1 to someone else. The wealth distribution starts
-as a spike and ends up exponential — no agent is doing anything clever, and
-inequality appears anyway.
+as a spike and ends up exponential. Nobody is doing anything clever, and
+inequality shows up anyway.
 
 ``` r
 library(tidyABM)
@@ -93,7 +93,7 @@ type and position rather than by argument name:
 | `abm_match()`      | decides who interacts with whom this tick           |
 | `abm_rules()`      | updates agent columns, all agents simultaneously    |
 | `abm_sequential()` | updates them one at a time, in shuffled order or an order you name |
-| `abm_neighbours()` | summarises each agent's neighbourhood — the network, or everyone `within` a condition |
+| `abm_neighbours()` | summarises each agent's neighbourhood, either the network or everyone `within` a condition |
 | `abm_draw()`       | attaches a value to every edge, readable from both ends |
 | `abm_tell()`       | writes a value into *another* agent's row           |
 | `abm_global()`     | updates a value shared by the whole population, or a table of them indexed by a category |
@@ -102,7 +102,7 @@ type and position rather than by argument name:
 | `abm_link()` / `abm_unlink()` | adds or removes network edges            |
 | `abm_repeat()`     | replays a block of steps until a condition holds     |
 
-So a two-phase model — play, then imitate — is written flat and in order:
+So a two-phase model (play, then imitate) is written flat and in order:
 
 ``` r
 go <- abm_go(
@@ -113,8 +113,8 @@ go <- abm_go(
 )
 ```
 
-The sequence is checked once, when `abm_go()` is called, rather than on every
-tick.
+The sequence is checked when `abm_go()` is called, not on every tick. Once, and
+then never again.
 
 ## What the matching modes give you
 
@@ -136,22 +136,27 @@ firm, a household or a team becomes a thing the model can add up.
 *Directional* modes give each agent a partner of its own, and your partner need
 not have picked you.
 
+Which one you want is rarely a matter of taste. A mutual mode guarantees
+exclusion, so two wolves cannot eat the same sheep. A directional one gives you
+no such promise. Where matching stands in for a rate rather than a rule, the
+mode *is* the model.
+
 ## Reproducibility
 
 `abm_run(..., seed =)` sets the seed for the whole run and restores your session's
 random state afterwards, so a model is reproducible without you having to arrange
 it.
 
-`abm_run(..., record =)` says how much to keep — every tick, every *n*th tick,
-the last one, or none of the populations at all. Globals are recorded every tick
-regardless. A fixed population can ignore it; a growing one cannot, because
-recording every agent of every tick is what makes such a run die of memory
-rather than merely take a while.
+`abm_run(..., record =)` controls how much of that to keep: every tick, every
+*n*th tick, only the last one, or none of the populations at all. Globals are
+recorded every tick whatever you pass. A fixed population can ignore the
+argument. A growing one can't, because keeping every agent of every tick is what
+turns a slow run into one the kernel stops.
 
 ## Status
 
 Experimental. The API is shaped by what porting models turns up, and it is still
-moving.
+moving. Build on it now and expect to edit that code later.
 
 Fifty-six models are implemented and documented in
 [`models/`](models/README.md), each on its own page with its code, the result
@@ -160,27 +165,30 @@ those rebuilt because the short version does not show what the model is known
 for, and four rounds of ten ported as stress tests.
 
 Every feature in the package that is not in the founding thirteen exists because
-one of those forty models asked for it — `abm_link()`, `abm_neighbours()`,
+one of those forty models asked for it: `abm_link()`, `abm_neighbours()`,
 `abm_tell()`, `abm_draw()`, `abm_repeat()`, the `one_of` pairing mode,
 `among =`, `cost =`, `within =`, `.by =`, `.order =`, `times =`, `record =`,
 `.scope = "population"`, clique linking, the Poisson and scale-free and ring
 networks, and the cascading semantics of `abm_sequential()`.
-[`models/what-changed.md`](models/what-changed.md) is the history;
-[`models/open-items.md`](models/open-items.md) is what is still out of reach.
+[`models/what-changed.md`](models/what-changed.md) is the history.
+[`models/open-items.md`](models/open-items.md) is what is still out of
+reach.
 
-Several validations are quantitative rather than qualitative. Hawks and Doves
-matches the analytic evolutionarily stable frequency `V/C` to three decimals
-across a twelve-fold range of the cost parameter; the information cascade matches
-`p² / (p² + (1-p)²)` at five values of the signal accuracy; Deffuant's cluster
-count matches `floor(1/(2d))` at six values of the threshold; Watts's cascade
-window matches its closed-form boundaries at both ends; the Minority Game
-reproduces the σ²/α curve with its minimum at the reported critical value; and
-the Naming Game's two scaling exponents come out at 1.45 and 1.39 against a
-reported 3/2. The fourth round adds three more: the division of labour settles
-at δ/α to two decimals whatever the thresholds are, the neutral model's variant
-counts land on the Ewens sampling formula across two orders of magnitude in the
-innovation rate, and deferred acceptance reproduces Pittel's `ln n` and
-`n / ln n` on the nose at n = 200.
+Several of the validations are quantitative rather than qualitative. Hawks and
+Doves matches the analytic evolutionarily stable frequency `V/C` to three
+decimals across a twelve-fold range of the cost parameter. The information
+cascade matches `p² / (p² + (1-p)²)` at five values of the signal accuracy, and
+Deffuant's cluster count matches `floor(1/(2d))` at six values of the threshold.
+Watts's cascade window comes out at its closed-form boundaries on both ends. The
+Minority Game reproduces the σ²/α curve with its minimum at the reported
+critical value, and the Naming Game's two scaling exponents land at 1.45 and
+1.39 against a reported 3/2.
+
+The fourth round added three more. Division of labour settles at δ/α to two
+decimals whatever the thresholds are. The neutral model's variant counts land on
+the Ewens sampling formula across two orders of magnitude in the innovation
+rate. Deferred acceptance reproduces Pittel's `ln n` and `n / ln n` on the nose
+at n = 200, which for a model this simple still surprises me.
 
 See `vignette("tidyABM")` to get started, `vignette("models")` for a tour of the
 grammar, and `vignette("corrections")` for the three models whose short form runs

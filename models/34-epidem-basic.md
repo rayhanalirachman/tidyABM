@@ -56,7 +56,7 @@ result <- abm_run(pop, go, ticks = 300, seed = 1)
 The epidemic threshold sits exactly where R₀ crosses 1.
 
 *Needed nothing new.* It is the first model to put a non-trivial estimator in an
-`abm_global()` — `R0_hat` reads the global it is writing, so it keeps its last
+`abm_global()`, `R0_hat` reads the global it is writing, so it keeps its last
 valid value once the susceptible pool empties.
 
 ---

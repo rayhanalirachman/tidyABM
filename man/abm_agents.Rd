@@ -17,10 +17,11 @@ Names beginning with \code{.} are reserved for the package.}
 An \code{abm_agents} specification object.
 }
 \description{
-\code{abm_agents()} describes one homogeneous group of agents: how many there are
-and what columns they start with. It is a \emph{specification}, not a population —
-nothing is created until the spec is passed to \code{\link[=abm_setup]{abm_setup()}}, which is where
-a model's first part is declared.
+\code{abm_agents()} describes one homogeneous group of agents: how many there
+are and what columns they start with. It is a \emph{specification}, not a
+population, nothing is created until the spec is passed to
+\code{\link[=abm_setup]{abm_setup()}}, which is where a model's first part is
+declared.
 }
 \details{
 Column values follow one rule:

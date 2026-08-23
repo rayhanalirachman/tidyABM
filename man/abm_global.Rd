@@ -21,8 +21,8 @@ An \code{abm_global} step object.
 }
 \description{
 \code{abm_global()} writes to a value held once for the whole model rather than
-once per agent — El Farol's \code{last_attendance}, a zakah pool, a bank's ledger.
-The right-hand side is an aggregate expression evaluated over the agent
+once per agent, El Farol's \code{last_attendance}, a zakah pool, a bank's
+ledger. The right-hand side is an aggregate expression evaluated over the agent
 tibble, so it normally collapses to a single value.
 }
 \details{
@@ -47,9 +47,9 @@ version does:
            .by = 1:2)
 }\if{html}{\out{</div>}}
 
-Each key still sees the \strong{whole population} — \code{n()} is everybody, not
-everybody on this task — because that is what a colony-level stimulus
-balance means.
+Each key still sees the \strong{whole population}, \code{n()} is everybody, not
+everybody on this task, because that is what a colony-level stimulus balance
+means.
 
 \code{.by} names the index either way round. Give it a vector and the index is
 declared by the model, which is right when the categories are fixed and a

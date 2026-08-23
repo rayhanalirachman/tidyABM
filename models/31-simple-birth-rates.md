@@ -8,7 +8,7 @@
 - Go: everybody reproduces, then the population is culled at random back to the
   carrying capacity
 - Output: a small fertility advantage is enough to drive the other population
-  extinct — and the culling is colour-blind, so nothing is selecting *against*
+  extinct, and the culling is colour-blind, so nothing is selecting *against*
   the losers
 
 **NetLogo**
@@ -56,12 +56,12 @@ result <- abm_run(pop, go, ticks = 40, seed = 1)
 | reds | 150 | 184 | 209 | 283 | 300 |
 
 Blues extinct at generation 38. With both on 3.0 the reds sit at 236 after 60
-generations and keep wandering — drift, not selection.
+generations and keep wandering, drift, not selection.
 
 *Needed nothing new, but it exposed a rough edge.* `abm_birth()` gives a parent
 **one** offspring, and this model needs three or four. The `parent` flag plus a
-repeated birth step does it — the flag keeps newborns out of the later births, so
-nobody becomes a grandparent inside a single generation — but `abm_birth(times =)`
+repeated birth step does it, the flag keeps newborns out of the later births, so
+nobody becomes a grandparent inside a single generation, but `abm_birth(times =)`
 would say it directly. The one expression `runif(n()) < pmin(fert - born, 1)`
 covers both the whole children and the fractional one.
 

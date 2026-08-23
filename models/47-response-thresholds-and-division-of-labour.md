@@ -61,7 +61,7 @@ result <- abm_run(pop, go, ticks = 2000, seed = 1)
 
 The colony puts exactly δ/α of itself on each task, and it does so whether the
 workers are identical or split into a responsive caste and a reluctant one. No
-worker measures how much work there is; the stimulus does the measuring, and
+worker measures how much work there is. The stimulus does the measuring, and
 the threshold rule reads it. That is the whole content of the model, and it is
 why the fraction is the same in both rows: the *number* of workers on a task is
 set by the stimulus balance, and the thresholds decide only *which* workers
@@ -69,7 +69,7 @@ they are.
 
 Which they are is the second result. With one caste everybody works about a
 third of the time. With two, the low-threshold workers are busy two thirds of
-the time and the high-threshold ones essentially never — a division of labour
+the time and the high-threshold ones essentially never, a division of labour
 with no allocation, no signalling and no difference in the rule any worker is
 following. The reserve caste is not idle by accident: it is what the colony
 would call on if the stimulus ever rose far enough, and the equilibrium
@@ -77,8 +77,8 @@ stimulus is a third of the homogeneous colony's (66 against 212) precisely
 because the responsive caste settles the work before it gets that high.
 
 *Forced `abm_global(.by =)`, one round later.* This was the third model in a
-row to want a global indexed by a category — a stimulus per task is a table, and
-`abm_global()` wrote a name — and when it was first written the two tasks were
+row to want a global indexed by a category, a stimulus per task is a table, and
+`abm_global()` wrote a name, and when it was first written the two tasks were
 `s_1` and `s_2`, with the stimulus rules assembled by `rlang::new_formula()` and
 `do.call()`. `.by` writes the table directly: the global is a named vector, the
 rule is evaluated once per key with `.key` naming it, and `s` inside the rule
@@ -89,8 +89,8 @@ are unchanged.
 *Two details are worth recording. `.by = j` declares the index rather than
 deriving it from an agent column, which matters here: a task nobody is working on
 still has to have its stimulus rise, and it would not appear in an index derived
-from the agents. And each key sees the* whole *population — `n()` is everybody,
-not everybody on this task — because a colony-level stimulus balance is about the
+from the agents. And each key sees the* whole *population, `n()` is everybody,
+not everybody on this task, because a colony-level stimulus balance is about the
 colony.*
 
 *What is left of the scaffolding is on the agent side. A worker carries one
@@ -102,7 +102,7 @@ does not say compactly.*
 rule has to be written so that a worker rolling against both tasks in the same
 tick takes* one *of them, not the first one that fires. Testing the tasks in
 order gives task 1 first refusal, and the asymmetry is invisible in the
-aggregate — the total active fraction is still δ/α — but it shows up in the
+aggregate, the total active fraction is still δ/α, but it shows up in the
 per-task split, which is the number the model is about. `choose_task()` picks
 uniformly among the tasks that fired.*
 

@@ -50,8 +50,9 @@ assignment works the pair is dropped for this step. Rules then see \code{.role}.
 
 \item{positions}{For \code{resolve = "negotiate"}, \verb{c(<first group's bid column>, <second group's ask column>)}.}
 
-\item{limits}{For \code{resolve = "negotiate"}, \verb{c(<first group's reservation column>, <second group's reservation column>)} — the bid never rises above
-the first, and the ask never falls below the second.}
+\item{limits}{For \code{resolve = "negotiate"}, \verb{c(<first group's
+reservation column>, <second group's reservation column>)}, the bid never rises
+above the first, and the ask never falls below the second.}
 
 \item{from}{For \code{"network"}, \code{"neighbour"} (the default) picks a random
 neighbour of the agent; \code{"random_edge"} picks a random edge of the whole
@@ -65,15 +66,16 @@ directional modes \code{"one_of"} and \code{"nearest"}. Defaults to everybody. A
 agent is never matched to itself.}
 
 \item{cost}{For \code{"nearest"}, an expression naming what the chooser is
-minimising, used instead of \code{by}. It is evaluated once per
-(chooser, candidate) pair: the candidate's columns are visible under their
-own names and the chooser's under \verb{own_<col>}, the same convention
-\code{\link[=abm_neighbours]{abm_neighbours()}} uses. \code{.id} and \code{.group} are included, so a cost can be
-a lookup into the chooser's own preference list as easily as a price. \code{by} is the special case
-\code{cost = (x - own_x)^2}; anything else — a delivered price
-\code{price + travel * abs(x - own_x)}, an energy deficit, a position in a
-preference list — needs this. \code{NA} means the candidate is not acceptable to
-that chooser, and a chooser with no acceptable candidate sits the step out.}
+minimising, used instead of \code{by}. It is evaluated once per (chooser,
+candidate) pair: the candidate's columns are visible under their own names and
+the chooser's under \verb{own_<col>}, the same convention
+\code{\link[=abm_neighbours]{abm_neighbours()}} uses. \code{.id} and
+\code{.group} are included, so a cost can be a lookup into the chooser's own
+preference list as easily as a price. \code{by} is the special case \code{cost
+= (x - own_x)^2}; anything else, a delivered price \code{price + travel * abs(x
+- own_x)}, an energy deficit, a position in a preference list, needs this.
+\code{NA} means the candidate is not acceptable to that chooser, and a chooser
+with no acceptable candidate sits the step out.}
 }
 \value{
 An \code{abm_match} step object.

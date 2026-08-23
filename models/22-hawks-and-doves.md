@@ -49,8 +49,9 @@ which drove hawks to fixation at every parameter value. This model is the
 package's best quantitative validation: the analytic ESS is matched to three
 decimals across a 12-fold range of C.*
 
-*Note also that pairwise imitation — "copy your partner if they did better" —
-does **not** reproduce V/C, because a single contest's payoff is not a fitness.
+*Note also that pairwise imitation, meaning "copy your partner if they did
+better", does **not** reproduce V/C, because a single contest's payoff is not a
+fitness.
 Both the symmetric version (both partners copying each other) and the
 one-directional version drift toward 0.5 regardless of C.*
 

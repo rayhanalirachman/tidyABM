@@ -246,8 +246,8 @@ cast_keys <- function(chr, like) {
 #' Run one abm_global step with a `.by` index
 #'
 #' The global becomes a named vector. Each key is evaluated against the whole
-#' population — a stimulus balance is about the colony, not about the workers on
-#' one task — with `.key` bound to the key and the global's own name bound to
+#' population, a stimulus balance is about the colony, not about the workers on
+#' one task, with `.key` bound to the key and the global's own name bound to
 #' that key's current value, so the rule reads exactly as the scalar version of
 #' it does.
 #' @noRd

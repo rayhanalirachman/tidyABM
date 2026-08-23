@@ -2,7 +2,7 @@
 
 **What was missing.** The short form gives every agent the same forecast, so the
 population is one agent chasing its own tail. Heterogeneous *fixed* forecasts do
-not help either — the map is still deterministic and still converges. Arthur's
+not help either, the map is still deterministic and still converges. Arthur's
 mechanism is inductive: each agent holds several candidate predictors, scores them
 against what actually happened, and acts on whichever has been working.
 
@@ -41,7 +41,7 @@ result <- abm_run(farol, go, ticks = 300, seed = 2)
 
 *Exposes a grammar gap: there is no compact way to give an agent a **set** of
 anything. Ten predictors over five lags is seventy columns, only bearable with
-`do.call()`. Sensitive too — three predictors instead of ten and it locks up
+`do.call()`. Sensitive too, three predictors instead of ten and it locks up
 again.*
 
 ---

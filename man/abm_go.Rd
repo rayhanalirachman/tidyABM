@@ -39,9 +39,9 @@ would be discarded unused;
 }
 
 Everything else is allowed. In particular a model may use no matching at all
-(El Farol, or a pure redistribution model), and several update steps may
-follow a single match — the market model pairs once and then applies separate
-rules to buyers and to sellers.
+(El Farol, or a pure redistribution model), and several update steps may follow
+a single match, the market model pairs once and then applies separate rules to
+buyers and to sellers.
 }
 \examples{
 # Every model is the same three parts: abm_setup(), abm_go(), abm_run().

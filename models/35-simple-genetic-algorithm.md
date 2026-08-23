@@ -6,7 +6,7 @@
 - Go: fitness is the number of ones; two parents are chosen by a tournament of
   three; single-point crossover with probability `crossover-rate`, otherwise a
   clone; then each bit mutates with probability `mutation-rate`
-- Output: the population climbs to all-ones — unless mutation is high enough to
+- Output: the population climbs to all-ones, unless mutation is high enough to
   destroy the answer faster than selection finds it
 
 **Package**

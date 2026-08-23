@@ -80,14 +80,14 @@ breaks the regular graph, and even at c = 0.8 it is a quarter higher.
 The reason is that on a heterogeneous graph the hubs are both the most exposed
 and the most copied. A hub that skips the vaccine is very likely to catch the
 disease, its payoff is visibly bad, and a large number of neighbours are
-watching. Degree does two jobs at once — it decides who gets infected and it
-decides whose behaviour spreads — and they point the same way. On a regular
+watching. Degree does two jobs at once, it decides who gets infected and it
+decides whose behaviour spreads, and they point the same way. On a regular
 graph nobody is either.
 
 *Forced `abm_repeat()`. A season has two timescales in it: an epidemic that
 runs for as long as it runs, and one round of social learning afterwards. The
 grammar had one loop, the tick, and the only way to write an inner phase was to
-repeat the steps a fixed number of times with `rep()` — which means either
+repeat the steps a fixed number of times with `rep()`, which means either
 guessing an upper bound and paying for it every season, or cutting the epidemic
 off mid-course and reporting a payoff that has not happened yet.
 `abm_repeat(..., until = sum(state == "I") == 0, max = 5000)` says the thing
@@ -102,7 +102,7 @@ for transmission that depends on the sender.*
 
 *The `"E"` state is not epidemiology. `abm_rules()` is simultaneous, so
 without it the agents infected in a pass would infect their own neighbours in
-the same pass; a one-step holding state and a second rule promoting it is how
+the same pass. A one-step holding state and a second rule promoting it is how
 you say "these become infectious next round" in a synchronous update.*
 
 ---

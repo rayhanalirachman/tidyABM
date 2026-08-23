@@ -44,8 +44,8 @@ go <- abm_go(
 result <- abm_run(m, go, ticks = 400, seed = 1)
 ```
 
-Output is `a·E + b·E²` in the firm's total effort `E`, so returns increase;
-compensation is an equal share; utility is `(O/n)^θ · (ω − e)^(1−θ)`.
+Output is `a·E + b·E²` in the firm's total effort `E`, so returns increase.
+Compensation is an equal share, and utility is `(O/n)^θ · (ω − e)^(1−θ)`.
 
 **Result** (500 agents, degree-4 friendship network, 400 periods, 5 seeds)
 
@@ -67,7 +67,7 @@ output rises faster than linearly in total effort, so joining someone makes the
 pot bigger. That is enough: a population that starts as five hundred
 one-person firms settles at about a hundred and sixty, most of them tiny and a
 few of them large, with a size distribution whose upper tail is close to a
-power law. The number of firms is stable and their identities are not — the
+power law. The number of firms is stable and their identities are not, the
 largest firm at each snapshot is a different firm, and it is a different size
 each time. Firms in this model have life cycles, and the aggregate is steady
 while every part of it is churning.
@@ -75,12 +75,12 @@ while every part of it is churning.
 The mechanism behind the churn is the free-rider problem, which is *why* the
 model is written this way. Equal shares mean a big firm's marginal product is
 diluted across its members, so the best response inside a large firm is to work
-less; the firm grows because joining is attractive, and then collapses because
+less. The firm grows because joining is attractive, and then collapses because
 being in it is not. It is the model's central claim that this is what firm
 turnover *is*, and it falls out of three utility comparisons.
 
-*Forced `.by =`. The whole model is one aggregate — my firm's total effort and
-how many of us share it — and a firm is not something the grammar had. Agent
+*Forced `.by =`. The whole model is one aggregate, my firm's total effort and
+how many of us share it, and a firm is not something the grammar had. Agent
 groups are fixed at setup, a match group lasts one step, and a network
 neighbourhood is not a partition. `abm_rules(E ~ sum(effort), sz ~ n(), .by =
 firm)` evaluates once per distinct value of an ordinary agent column and writes
@@ -90,16 +90,16 @@ the next step sees the new one. It is the only grouping in the grammar the
 agents themselves control, and teams, households, cohorts and coalitions all
 want it.*
 
-*It could have been written without the addition —
+*It could have been written without the addition.
 `E ~ ave(effort, firm, FUN = sum)` inside a population-scope rule does the same
-thing — in the same way Hegselmann–Krause (29) can be written with a
+thing, in the same way Hegselmann–Krause (29) can be written with a
 hand-rolled `vapply()`. The test the corpus uses is whether the model reads as
 a specification afterwards, and `ave()` fails it: the grouping disappears into
 a function argument instead of being the shape of the step.*
 
 *The ccdf slope of 1.76 is steeper than the Zipf exponent near 1 that US firm
-data show, and 500 agents is far too few for the tail to be measured properly;
-what the number is doing here is confirming a heavy tail, not matching one.*
+data show, and 500 agents is far too few for the tail to be measured properly.
+What the number is doing here is confirming a heavy tail, not matching one.*
 
 ---
 

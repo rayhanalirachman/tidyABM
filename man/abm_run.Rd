@@ -36,11 +36,11 @@ takes the model and the behavioural block, replays the block \code{ticks} times,
 and records the whole population after every tick.
 }
 \details{
-The result is one long tibble — \code{tick}, \code{.id}, \code{.group}, then every agent
-column — which is what you want for plotting and summarising. Tick 0 is the
-state produced by \code{abm_setup()}, before any step has run, so a run of \code{n}
-ticks returns \code{n + 1} snapshots. Global values are recorded alongside and are
-available with \code{\link[=abm_globals]{abm_globals()}}.
+The result is one long tibble, \code{tick}, \code{.id}, \code{.group}, then
+every agent column, which is what you want for plotting and summarising. Tick 0
+is the state produced by \code{abm_setup()}, before any step has run, so a run
+of \code{n} ticks returns \code{n + 1} snapshots. Global values are recorded
+alongside and are available with \code{\link[=abm_globals]{abm_globals()}}.
 
 Agent-based models are stochastic, so \code{seed} is a first-class argument rather
 than something to arrange yourself: it makes the run reproducible without

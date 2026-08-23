@@ -67,10 +67,10 @@ result <- abm_run(m, go, ticks = 40, seed = 1)
 
 Nowak and Sigmund's condition for indirect reciprocity to pay is `q > c/b`,
 which here is 0.1, and the table crosses over exactly there: with 2% of the
-population watching, the strategy that survives is `k = 3` — help almost
-nobody — and with 10% watching, 98% of the population will help anyone whose
-standing is not actively bad. Above the threshold nothing much changes;
-watching harder than you need to buys very little.
+population watching, the strategy that survives is `k = 3`, which is to help
+almost nobody. With 10% watching, 98% of the population will help anyone whose
+standing is not actively bad. Above the threshold nothing much changes.
+Watching harder than you need to buys very little.
 
 What makes it indirect is that the donor is never repaid by the person it
 helped. It is repaid by whoever happens to be its donor later, and that person
@@ -79,8 +79,8 @@ entire mechanism, and `q` is a measure of how much of a community is a
 community.
 
 *Forced `abm_tell(to = <a set>)`. What a donor does has to reach a group of
-agents that is neither its partner nor its neighbours — a fresh random audience
-each round — and `to =` accepted exactly one recipient or the whole
+agents that is neither its partner nor its neighbours, a fresh random audience
+each round, and `to =` accepted exactly one recipient or the whole
 neighbourhood. It now accepts a list column of ids, so
 `to = Map(function(a, p) unique(c(a, p)), aud, .partner)` sends the same message
 to the audience and the recipient. Reputation, gossip and broadcast media are
@@ -90,19 +90,19 @@ all this shape, and none of them is a network in the sense
 *Forced `.resolve = "collect"`. An onlooker may see several interactions in the
 same round, and every existing `.resolve` throws all but one of them away or
 adds them up. `"collect"` hands the recipient the list of what it was told and
-lets its own rule decide — here, `Map(apply_obs, view, inbox)` walks the list
+lets its own rule decide, here, `Map(apply_obs, view, inbox)` walks the list
 and moves the score of each donor it saw. That is more general than any fixed
 collision policy, and it is the beginning of an answer to the Open items entry
 about `abm_tell()` resolving collisions without ordering them: a recipient
 holding all its messages can put them in whatever order it likes.*
 
-*Each agent's `view` is a list column of length n — its private opinion of
-everyone — which is the same "list columns already work" finding as models 40
+*Each agent's `view` is a list column of length n, its private opinion of
+everyone, which is the same "list columns already work" finding as models 40
 and 41, at a larger size. There is no shared image score anywhere in the model.*
 
 *This is the individual-image version rather than the public-score one. Nowak
 and Sigmund's analytic condition `q > c/b` is derived for the variant where `q`
-is the probability that a donor knows the recipient's true score; here `q` is
+is the probability that a donor knows the recipient's true score. Here `q` is
 the fraction of the population that witnesses each interaction, and scores are
 built up privately from what each agent saw. The two are the same idea and not
 the same parameter, so the agreement of the crossover with `c/b` is a good deal

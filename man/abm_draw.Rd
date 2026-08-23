@@ -29,21 +29,21 @@ then readable inside every later \code{\link[=abm_neighbours]{abm_neighbours()}}
 from either endpoint, as a column of that name. Because both endpoints read
 the same number, two aggregates over it describe the same events.
 
-The right-hand side is evaluated over the \strong{edge table} — one row per edge,
-with \code{from} and \code{to} — so \code{n()} is the number of edges and
-\code{runif(n())} is "a uniform per edge". Globals are in scope. The values live
-until the next \code{abm_draw()} of that name replaces them, so a draw made once
-per tick lasts the tick and one made in \code{abm_setup()}'s first step lasts the
-run.
+The right-hand side is evaluated over the \strong{edge table}, one row per
+edge, with \code{from} and \code{to}, so \code{n()} is the number of edges and
+\code{runif(n())} is "a uniform per edge". Globals are in scope. The values
+live until the next \code{abm_draw()} of that name replaces them, so a draw
+made once per tick lasts the tick and one made in \code{abm_setup()}'s first
+step lasts the run.
 
 \code{.each} says who the value belongs to:
 \itemize{
-\item \code{"edge"} (the default) — one value for the edge. Both endpoints read the
-same number in the column of that name. This is a coin the \emph{pair} tosses:
-whether they met, what the encounter was worth.
-\item \code{"endpoint"} — one value each. The focal agent reads its own in the column
-of that name and its neighbour's as \verb{<name>_back}. This is a coin each of
-them tosses privately about the other, which is what an asymmetric
+\item \code{"edge"} (the default), one value for the edge. Both endpoints read
+the same number in the column of that name. This is a coin the \emph{pair}
+tosses: whether they met, what the encounter was worth.
+\item \code{"endpoint"}, one value each. The focal agent reads its own in the
+column of that name and its neighbour's as \verb{<name>_back}. This is a coin
+each of them tosses privately about the other, which is what an asymmetric
 interaction needs: whether I noticed \emph{you}, and separately whether you
 noticed \emph{me}.
 }

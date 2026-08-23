@@ -2,12 +2,12 @@
 
 **Concept**
 
-- Setup: 1000 agents with a sex, an age, and an inherited `mcc` — the probability
+- Setup: 1000 agents with a sex, an age, and an inherited `mcc`, the probability
   that this individual's children are male
 - Go: age and die past longevity; mature males and females pair off; each mated
   female bears one child whose `mcc` is the parents' average plus mutation and
   whose sex is drawn from that average
-- Output: the adult sex ratio converges on 1/2 from any starting point — Fisher's
+- Output: the adult sex ratio converges on 1/2 from any starting point, Fisher's
   principle
 
 **Package**
@@ -40,9 +40,9 @@ result <- abm_run(pop, go, ticks = 1200, seed = 2)
 **Result.** Starting at 25% male: 0.24 → 0.47 → 0.48, with mean `mcc` moving
 0.25 → 0.47. Starting at 75% male: 0.74 → 0.49, with `mcc` moving 0.75 → 0.50.
 
-*Motivated `abm_birth(inherit =)`. `cost` applies to the parent **and** the child;
-a newborn that differs from its parent — a reset age, a mutated trait, a sex drawn
-at birth — had no expression. Because `inherit` is evaluated in the parent's row
+*Motivated `abm_birth(inherit =)`. `cost` applies to the parent **and** the
+child, so a newborn that differs from its parent, whether by a reset age, a
+mutated trait or a sex drawn at birth, had no expression. Because `inherit` is evaluated in the parent's row
 with the match standing, `partner_mcc` is available, and that is what makes
 two-parent inheritance a one-liner.*
 

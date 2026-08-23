@@ -19,7 +19,8 @@ abm_tell(
   ...,
   to,
   when = NULL,
-  .resolve = c("last", "first", "sum", "mean", "max", "min", "collect", "error")
+  .resolve = c("last", "first", "sum", "mean", "max", "min", "collect", "error"),
+  .order = NULL
 )
 ```
 
@@ -48,7 +49,18 @@ abm_tell(
   step: `"last"` (an arbitrary one wins), `"first"`, `"sum"`, `"mean"`,
   `"max"`, `"min"`, `"collect"` — which hands the recipient a list of
   everything it was told, so the recipient's own rule decides what to
-  make of them, including in what order — or `"error"` to stop.
+  make of them — or `"error"` to stop.
+
+- .order:
+
+  Optional expression, evaluated in the **sender's** row, whose
+  ascending order is the order the messages are considered in. Without
+  it a recipient's messages arrive in whatever order the senders
+  happened to be stored in, which makes `"first"`, `"last"` and the list
+  `"collect"` hands over arbitrary. With it they are determinate:
+  `.order = arrival` with `.resolve = "first"` is *the first person to
+  reach the counter*, and `"collect"` hands the recipient its messages
+  already in that order. `NA` sits the sender out of the step.
 
 ## Value
 
@@ -87,6 +99,14 @@ anyway; `"sum"` is right for anything additive, like a dose or an order
 quantity; `"error"` says the collision is a modelling mistake and should
 stop the run.
 
+Three of those resolutions — `"first"`, `"last"` and `"collect"` — pick
+out a message rather than combining them all, so they only mean
+something once the messages have an order. `.order` gives them one: an
+expression evaluated in the sender's row whose ascending order the
+messages are considered in. That is what *the first person to reach the
+counter* needs, and without it the counter has to reconstruct the queue
+from something the senders wrote down.
+
 ## Examples
 
 ``` r
@@ -108,4 +128,13 @@ abm_tell(dose ~ dose + load, to = "neighbours", when = infected, .resolve = "sum
 #> • `dose ~ dose + load`
 #> • when = `infected`
 #> • resolve = "sum"
+
+# whoever got there first is the one the counter serves
+abm_tell(serving ~ .id, to = counter, when = queueing,
+         .resolve = "first", .order = arrived_at)
+#> <abm_tell> to counter
+#> • `serving ~ .id`
+#> • when = `queueing`
+#> • resolve = "first"
+#> • order = `arrived_at`
 ```

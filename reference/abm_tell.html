@@ -70,7 +70,8 @@ has to mark the counterparty — cannot be written without it.</p>
 <span>  <span class="va">...</span>,</span>
 <span>  <span class="va">to</span>,</span>
 <span>  when <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  .resolve <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"last"</span>, <span class="st">"first"</span>, <span class="st">"sum"</span>, <span class="st">"mean"</span>, <span class="st">"max"</span>, <span class="st">"min"</span>, <span class="st">"collect"</span>, <span class="st">"error"</span><span class="op">)</span></span>
+<span>  .resolve <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"last"</span>, <span class="st">"first"</span>, <span class="st">"sum"</span>, <span class="st">"mean"</span>, <span class="st">"max"</span>, <span class="st">"min"</span>, <span class="st">"collect"</span>, <span class="st">"error"</span><span class="op">)</span>,</span>
+<span>  .order <span class="op">=</span> <span class="cn">NULL</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -101,7 +102,18 @@ in one step:
 <code>"last"</code> (an arbitrary one wins), <code>"first"</code>, <code>"sum"</code>,
 <code>"mean"</code>, <code>"max"</code>, <code>"min"</code>, <code>"collect"</code> — which hands the recipient a list
 of everything it was told, so the recipient's own rule decides what to make
-of them, including in what order — or <code>"error"</code> to stop.</p></dd>
+of them — or <code>"error"</code> to stop.</p></dd>
+
+
+<dt id="arg--order">.order<a class="anchor" aria-label="anchor" href="#arg--order"></a></dt>
+<dd><p>Optional expression, evaluated in the <strong>sender's</strong> row, whose
+ascending order is the order the messages are considered in. Without it a
+recipient's messages arrive in whatever order the senders happened to be
+stored in, which makes <code>"first"</code>, <code>"last"</code> and the list <code>"collect"</code> hands
+over arbitrary. With it they are determinate: <code>.order = arrival</code> with
+<code>.resolve = "first"</code> is <em>the first person to reach the counter</em>, and
+<code>"collect"</code> hands the recipient its messages already in that order. <code>NA</code>
+sits the sender out of the step.</p></dd>
 
 </dl></div>
     <div class="section level2">
@@ -128,6 +140,12 @@ what happens then. The default, <code>"last"</code>, takes an arbitrary one of t
 which is right for a persuasion rule where the senders all agree anyway;
 <code>"sum"</code> is right for anything additive, like a dose or an order quantity;
 <code>"error"</code> says the collision is a modelling mistake and should stop the run.</p>
+<p>Three of those resolutions — <code>"first"</code>, <code>"last"</code> and <code>"collect"</code> — pick out a
+message rather than combining them all, so they only mean something once the
+messages have an order. <code>.order</code> gives them one: an expression evaluated in
+the sender's row whose ascending order the messages are considered in. That is
+what <em>the first person to reach the counter</em> needs, and without it the counter
+has to reconstruct the queue from something the senders wrote down.</p>
     </div>
 
     <div class="section level2">
@@ -150,6 +168,15 @@ which is right for a persuasion rule where the senders all agree anyway;
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">•</span> `dose ~ dose + load`</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">•</span> when = `infected`</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">•</span> resolve = <span style="color: #0000BB;">"sum"</span></span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co"># whoever got there first is the one the counter serves</span></span></span>
+<span class="r-in"><span><span class="fu">abm_tell</span><span class="op">(</span><span class="va">serving</span> <span class="op">~</span> <span class="va">.id</span>, to <span class="op">=</span> <span class="va">counter</span>, when <span class="op">=</span> <span class="va">queueing</span>,</span></span>
+<span class="r-in"><span>         .resolve <span class="op">=</span> <span class="st">"first"</span>, .order <span class="op">=</span> <span class="va">arrived_at</span><span class="op">)</span></span></span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #0000BB;">&lt;abm_tell&gt;</span> to <span style="font-style: italic;">counter</span></span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">•</span> `serving ~ .id`</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">•</span> when = `queueing`</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">•</span> resolve = <span style="color: #0000BB;">"first"</span></span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">•</span> order = `arrived_at`</span>
 </code></pre></div>
     </div>
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>

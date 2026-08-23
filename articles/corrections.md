@@ -32,12 +32,15 @@ attendance — and differs only in the threshold each will tolerate:
 
 ``` r
 
-short <- abm_run(
-  abm_setup(agents  = abm_agents(n = 100, threshold = ~runif(n, 40, 80)),
-            globals = list(last_attendance = 60)),
-  abm_go(abm_rules(go_today ~ last_attendance < threshold),
-         abm_global(last_attendance ~ sum(go_today))),
-  ticks = 40, seed = 2)
+short_pop <- abm_setup(
+  agents  = abm_agents(n = 100, threshold = ~runif(n, 40, 80)),
+  globals = list(last_attendance = 60))
+
+short_go <- abm_go(
+  abm_rules(go_today ~ last_attendance < threshold),
+  abm_global(last_attendance ~ sum(go_today)))
+
+short <- abm_run(short_pop, short_go, ticks = 40, seed = 2)
 
 tail(abm_globals(short)$last_attendance, 12)
 #>  [1]   0 100   0 100   0 100   0 100   0 100   0 100
@@ -119,8 +122,9 @@ switch_to_best <- abm_rules(f("active", paste0(
                 1:(N_STRAT - 1)), collapse = ", "),
   ", TRUE ~ ", N_STRAT, "L)")))
 
-r <- abm_run(farol, abm_go(forecast, act, observe, rescore, switch_to_best),
-             ticks = 300, seed = 2)
+go <- abm_go(forecast, act, observe, rescore, switch_to_best)
+
+r <- abm_run(farol, go, ticks = 300, seed = 2)
 
 attendance <- abm_globals(r)$att1[-(1:100)]
 c(mean = round(mean(attendance), 1), sd = round(sd(attendance), 1),
@@ -195,14 +199,16 @@ carries no information, and the cheapest strategy wins:
 
 ``` r
 
-mixed <- abm_run(start_pop(), abm_go(
+well_mixed_go <- abm_go(
   abm_match(pair = "random"),
   abm_rules(give ~ if_else(partner_tag == tag, coop_in, coop_out)),
   abm_rules(ptr ~ BASE_PTR - COST * give + BENEFIT * partner_give),
   abm_birth(when = runif(n()) < ptr),
   abm_death(when = runif(n()) < DEATH + 0.25 * pmax(0, (n() - CAPACITY) / CAPACITY)),
   do.call(abm_birth, list(n = 8, cost = random_traits))
-), ticks = 400, seed = 1)
+)
+
+mixed <- abm_run(start_pop(), well_mixed_go, ticks = 400, seed = 1)
 
 shares(mixed, 400)
 #> x
@@ -224,7 +230,7 @@ closes that gap.
 
 ``` r
 
-local <- abm_run(start_pop(abm_network(type = "random", degree = 4)), abm_go(
+local_go <- abm_go(
   abm_match(pair = "network"),
   abm_rules(give ~ if_else(partner_tag == tag, coop_in, coop_out)),
   abm_rules(ptr ~ BASE_PTR - COST * give + BENEFIT * partner_give),
@@ -233,7 +239,10 @@ local <- abm_run(start_pop(abm_network(type = "random", degree = 4)), abm_go(
   abm_death(when = runif(n()) < DEATH + 0.25 * pmax(0, (n() - CAPACITY) / CAPACITY)),
   do.call(abm_birth, list(n = 8, attach_via = abm_match(pair = "network"),
                           cost = random_traits))
-), ticks = 400, seed = 1)
+)
+
+local <- abm_run(start_pop(abm_network(type = "random", degree = 4)), local_go,
+                 ticks = 400, seed = 1)
 
 shares(local, 400)
 #> x
@@ -268,16 +277,19 @@ working after about ten ticks:
 NISAB <- 100
 consume <- abm_rules(wealth ~ wealth + income - (0.6 * income + 0.02 * wealth))
 
-short <- abm_run(
-  abm_setup(agents  = abm_agents(n = 500, wealth = ~rlnorm(n, 4, 0.5),
-                                 income = ~rlnorm(n, 3, 0.4)),
-            globals = list(zakah_pool = 0)),
-  abm_go(consume,
-         abm_global(zakah_pool ~ sum(if_else(wealth > NISAB, wealth * 0.025, 0))),
-         abm_rules(wealth ~ if_else(wealth > NISAB, wealth * 0.975, wealth)),
-         abm_rules(wealth ~ if_else(wealth < 30,
-                                    wealth + zakah_pool / sum(wealth < 30), wealth))),
-  ticks = 100, seed = 12)
+short_pop <- abm_setup(
+  agents  = abm_agents(n = 500, wealth = ~rlnorm(n, 4, 0.5),
+                       income = ~rlnorm(n, 3, 0.4)),
+  globals = list(zakah_pool = 0))
+
+short_go <- abm_go(
+  consume,
+  abm_global(zakah_pool ~ sum(if_else(wealth > NISAB, wealth * 0.025, 0))),
+  abm_rules(wealth ~ if_else(wealth > NISAB, wealth * 0.975, wealth)),
+  abm_rules(wealth ~ if_else(wealth < 30,
+                             wealth + zakah_pool / sum(wealth < 30), wealth)))
+
+short <- abm_run(short_pop, short_go, ticks = 100, seed = 12)
 
 # how many households are below the poverty line, over time?
 tapply(short$wealth < 30, short$tick, sum)[c("0", "5", "10", "50", "100")]
@@ -317,16 +329,19 @@ start <- function() abm_setup(
   agents  = abm_agents(n = 500, wealth = ~rlnorm(n, 4, 0.5), income = ~rlnorm(n, 3, 0.4)),
   globals = list(zakah_pool = 0, poverty_line = 30))
 
-with_zakah <- abm_run(start(), abm_go(
+zakah_go <- abm_go(
   shocks, consume, line,
   abm_global(zakah_pool ~ sum(if_else(wealth > NISAB, wealth * 0.025, 0))),
   abm_rules(wealth ~ if_else(wealth > NISAB, wealth * 0.975, wealth)),
   abm_rules(wealth ~ if_else(wealth < poverty_line,
                              wealth + zakah_pool / pmax(1, sum(wealth < poverty_line)),
                              wealth))
-), ticks = 300, seed = 12)
+)
 
-baseline <- abm_run(start(), abm_go(shocks, consume, line), ticks = 300, seed = 12)
+baseline_go <- abm_go(shocks, consume, line)
+
+with_zakah <- abm_run(start(), zakah_go,    ticks = 300, seed = 12)
+baseline   <- abm_run(start(), baseline_go, ticks = 300, seed = 12)
 ```
 
 ``` r

@@ -26,6 +26,7 @@ abm_go(...)
   [`abm_death()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_death.md),
   [`abm_link()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_link.md),
   [`abm_unlink()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_unlink.md),
+  [`abm_draw()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_draw.md),
   [`abm_repeat()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_repeat.md).
 
 ## Value
@@ -61,11 +62,29 @@ separate rules to buyers and to sellers.
 ## Examples
 
 ``` r
-abm_go(
+# Every model is the same three parts: agents, a go block, a run.
+rumour <- abm_setup(agents = abm_agents(
+  n = 200, state = ~c("spreader", rep("ignorant", n - 1))))
+
+go <- abm_go(
   abm_match(pair = "random"),
   abm_rules(state ~ ifelse(partner_state == "spreader", "spreader", state))
 )
-#> <abm_go> 2 steps, 1 match phase
-#> 1. match random
-#> 2. rules 1 rule(s)
+
+abm_run(rumour, go, ticks = 10, seed = 1)
+#> <abm_result> 10 ticks, 200 agents seen, 2200 rows
+#> # A tibble: 2,200 × 4
+#>     tick   .id .group state   
+#>    <int> <int> <chr>  <chr>   
+#>  1     0     1 agents spreader
+#>  2     0     2 agents ignorant
+#>  3     0     3 agents ignorant
+#>  4     0     4 agents ignorant
+#>  5     0     5 agents ignorant
+#>  6     0     6 agents ignorant
+#>  7     0     7 agents ignorant
+#>  8     0     8 agents ignorant
+#>  9     0     9 agents ignorant
+#> 10     0    10 agents ignorant
+#> # ℹ 2,190 more rows
 ```

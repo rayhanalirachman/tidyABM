@@ -23,7 +23,7 @@
 - [`abm_global()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_global.md)
   : Update a shared, population-level value
 - [`abm_neighbours()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_neighbours.md)
-  : Summarise each agent's network neighbours
+  : Summarise each agent's neighbourhood
 - [`abm_tell()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_tell.md)
   : Write a value into another agent's row
 
@@ -40,6 +40,8 @@
   : Add edges between matched agents
 - [`abm_unlink()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_unlink.md)
   : Remove edges between matched agents
+- [`abm_draw()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_draw.md)
+  : Attach a value to every edge, visible from both ends
 
 ## Running a model
 

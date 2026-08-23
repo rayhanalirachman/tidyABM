@@ -51,6 +51,7 @@ It has two modes, and exactly one of them must be used:</p>
     <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">abm_birth</span><span class="op">(</span></span>
 <span>  when <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  n <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  times <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  cost <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  inherit <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  attach_via <span class="op">=</span> <span class="cn">NULL</span></span>
@@ -67,6 +68,15 @@ It has two modes, and exactly one of them must be used:</p>
 
 <dt id="arg-n">n<a class="anchor" aria-label="anchor" href="#arg-n"></a></dt>
 <dd><p>A count of new agents to add unconditionally.</p></dd>
+
+
+<dt id="arg-times">times<a class="anchor" aria-label="anchor" href="#arg-times"></a></dt>
+<dd><p>How many offspring each reproducing agent has. An expression
+evaluated in the parent's row, so it can be a column, a draw
+(<code>rpois(dplyr::n(), 2)</code>) or a number. <code>0</code> means that parent has none this
+tick and <code>NA</code> is treated as <code>0</code>. Only used with <code>when</code>, since <code>n</code> is
+already a count. Each offspring gets its own evaluation of <code>inherit</code>, so a
+mutation drawn there differs from sibling to sibling.</p></dd>
 
 
 <dt id="arg-cost">cost<a class="anchor" aria-label="anchor" href="#arg-cost"></a></dt>
@@ -103,7 +113,11 @@ grows during a run; <code>from = "random_edge"</code> gives degree-proportional
 newborn inherits all of its parent's columns.</p></li>
 <li><p><code>n = &lt;count&gt;</code> adds that many brand-new agents, whose columns are copied from
 a randomly chosen existing agent of the same group.</p></li>
-</ul></div>
+</ul><p>One parent, one offspring, unless <code>times</code> says otherwise. Any fertility above
+one — a clutch, a litter, a Poisson number of seeds — is <code>times</code>, and each
+offspring is evaluated separately, so a mutation drawn in <code>inherit</code> differs
+between siblings.</p>
+    </div>
 
     <div class="section level2">
     <h2 id="ref-examples">Examples<a class="anchor" aria-label="anchor" href="#ref-examples"></a></h2>
@@ -111,6 +125,13 @@ a randomly chosen existing agent of the same group.</p></li>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #0000BB;">&lt;abm_birth&gt;</span></span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">•</span> when = `resource &gt; 20`</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">•</span> cost = `resource ~ resource/2`</span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co"># a clutch rather than a single offspring</span></span></span>
+<span class="r-in"><span><span class="fu">abm_birth</span><span class="op">(</span>when <span class="op">=</span> <span class="va">mature</span>, times <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/stats/Poisson.html" class="external-link">rpois</a></span><span class="op">(</span><span class="fu">dplyr</span><span class="fu">::</span><span class="fu"><a href="https://dplyr.tidyverse.org/reference/context.html" class="external-link">n</a></span><span class="op">(</span><span class="op">)</span>, <span class="fl">2</span><span class="op">)</span>, inherit <span class="op">=</span> <span class="va">age</span> <span class="op">~</span> <span class="fl">0</span><span class="op">)</span></span></span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #0000BB;">&lt;abm_birth&gt;</span></span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">•</span> when = `mature`</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">•</span> times = `rpois(dplyr::n(), 2)`</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">•</span> inherit = `age ~ 0`</span>
 <span class="r-in"><span><span class="fu">abm_birth</span><span class="op">(</span>n <span class="op">=</span> <span class="fl">1</span>, attach_via <span class="op">=</span> <span class="fu"><a href="abm_match.html">abm_match</a></span><span class="op">(</span>pair <span class="op">=</span> <span class="st">"network"</span>, from <span class="op">=</span> <span class="st">"random_edge"</span><span class="op">)</span><span class="op">)</span></span></span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #0000BB;">&lt;abm_birth&gt;</span></span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">•</span> n = 1</span>

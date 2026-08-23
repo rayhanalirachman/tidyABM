@@ -83,11 +83,11 @@ abm_rules(opinion ~ partner_opinion)
 # the next generation, drawn from this one in proportion to fitness
 abm_rules(strategy ~ sample(strategy, n(), replace = TRUE, prob = fitness),
           .scope = "population")
-#> <abm_rules> 1 rule {.emph (population scope)}
+#> <abm_rules> 1 rule (population scope)
 #> • `strategy ~ sample(strategy, n(), replace = TRUE, prob = fitness)`
 
 # every member of a firm is paid an equal share of what the firm produces
 abm_rules(pay ~ output(sum(effort)) / n(), .by = firm)
-#> <abm_rules> 1 rule {.emph (by firm)}
+#> <abm_rules> 1 rule (by firm)
 #> • `pay ~ output(sum(effort))/n()`
 ```

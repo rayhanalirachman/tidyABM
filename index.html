@@ -69,19 +69,64 @@
 <span><span class="fu">pak</span><span class="fu">::</span><span class="fu"><a href="https://pak.r-lib.org/reference/pak.html" class="external-link">pak</a></span><span class="op">(</span><span class="st">"rayhanalirachman/tidyABM"</span><span class="op">)</span></span></code></pre></div>
 </div>
 <div class="section level2">
+<h2 id="three-parts">Three parts<a class="anchor" aria-label="anchor" href="#three-parts"></a>
+</h2>
+<p>Every tidyABM model is written as the same three components, in the same order, each one a named object you can print, reuse and pass around:</p>
+<table class="table">
+<colgroup>
+<col width="21%">
+<col width="35%">
+<col width="42%">
+</colgroup>
+<thead><tr>
+<th>part</th>
+<th>function</th>
+<th>what it is</th>
+</tr></thead>
+<tbody>
+<tr>
+<td>1. the agents</td>
+<td>
+<code><a href="reference/abm_agents.html">abm_agents()</a></code> — inside <code><a href="reference/abm_setup.html">abm_setup()</a></code>
+</td>
+<td>who is in the model and what they start with</td>
+</tr>
+<tr>
+<td>2. the go block</td>
+<td><code><a href="reference/abm_go.html">abm_go()</a></code></td>
+<td>the ordered steps replayed once per tick</td>
+</tr>
+<tr>
+<td>3. the run</td>
+<td><code><a href="reference/abm_run.html">abm_run()</a></code></td>
+<td>the two above, plus <code>ticks</code>, <code>seed</code> and <code>record</code>
+</td>
+</tr>
+</tbody>
+</table>
+<p>Keep them as three statements. <code><a href="reference/abm_go.html">abm_go()</a></code> is a first-class object, not an argument you build inside the call to <code><a href="reference/abm_run.html">abm_run()</a></code>, and writing it that way is what lets you print it, validate it once, reuse one go block across several populations, or swap one population through several go blocks.</p>
+<div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">agents</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/abm_setup.html">abm_setup</a></span><span class="op">(</span>agents <span class="op">=</span> <span class="fu"><a href="reference/abm_agents.html">abm_agents</a></span><span class="op">(</span><span class="va">...</span><span class="op">)</span><span class="op">)</span>   <span class="co"># 1</span></span>
+<span><span class="va">go</span>     <span class="op">&lt;-</span> <span class="fu"><a href="reference/abm_go.html">abm_go</a></span><span class="op">(</span><span class="va">...</span><span class="op">)</span>                           <span class="co"># 2</span></span>
+<span><span class="va">result</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/abm_run.html">abm_run</a></span><span class="op">(</span><span class="va">agents</span>, <span class="va">go</span>, ticks <span class="op">=</span> <span class="va">...</span>, seed <span class="op">=</span> <span class="va">...</span><span class="op">)</span>   <span class="co"># 3</span></span></code></pre></div>
+</div>
+<div class="section level2">
 <h2 id="a-whole-model">A whole model<a class="anchor" aria-label="anchor" href="#a-whole-model"></a>
 </h2>
-<p>Wilensky and Rand’s <em>Simple Economy</em>: 500 agents start with $100 each, and every tick anyone with money gives $1 to someone else. The wealth distribution starts as a spike and ends up exponential — no agent is doing anything clever, and inequality appears anyway.</p>
-<div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
+<p>Wilensky and Rand’s <em>Simple Economy</em>: 500 agents start with $100 each, and every tick anyone with money gives $1 to someone else. The wealth distribution starts as a spike and ends up exponential — no agent is doing anything clever, and inequality appears anyway. The three parts are numbered in the comments.</p>
+<div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://github.com/rayhanalirachman/tidyABM" class="external-link">tidyABM</a></span><span class="op">)</span></span>
 <span></span>
+<span><span class="co"># 1. the agents</span></span>
 <span><span class="va">economy</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/abm_setup.html">abm_setup</a></span><span class="op">(</span>agents <span class="op">=</span> <span class="fu"><a href="reference/abm_agents.html">abm_agents</a></span><span class="op">(</span>n <span class="op">=</span> <span class="fl">500</span>, money <span class="op">=</span> <span class="fl">100</span><span class="op">)</span><span class="op">)</span></span>
 <span></span>
+<span><span class="co"># 2. the go block</span></span>
 <span><span class="va">go</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/abm_go.html">abm_go</a></span><span class="op">(</span></span>
 <span>  <span class="fu"><a href="reference/abm_match.html">abm_match</a></span><span class="op">(</span>pair <span class="op">=</span> <span class="st">"random"</span>, role <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>giver <span class="op">=</span> <span class="va">money</span> <span class="op">&gt;</span> <span class="fl">0</span>, receiver <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span><span class="op">)</span>,</span>
 <span>  <span class="fu"><a href="reference/abm_rules.html">abm_rules</a></span><span class="op">(</span><span class="va">money</span> <span class="op">~</span> <span class="fu"><a href="https://dplyr.tidyverse.org/reference/if_else.html" class="external-link">if_else</a></span><span class="op">(</span><span class="va">.role</span> <span class="op">==</span> <span class="st">"giver"</span>, <span class="va">money</span> <span class="op">-</span> <span class="fl">1</span>, <span class="va">money</span> <span class="op">+</span> <span class="fl">1</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="op">)</span></span>
 <span></span>
+<span><span class="co"># 3. the run</span></span>
 <span><span class="va">result</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/abm_run.html">abm_run</a></span><span class="op">(</span><span class="va">economy</span>, <span class="va">go</span>, ticks <span class="op">=</span> <span class="fl">1000</span>, seed <span class="op">=</span> <span class="fl">1</span><span class="op">)</span></span>
 <span><span class="va">result</span></span>
 <span><span class="co">#&gt; &lt;abm_result&gt; 1000 ticks, 500 agents seen, 500500 rows</span></span>
@@ -142,7 +187,11 @@
 </tr>
 <tr>
 <td><code><a href="reference/abm_neighbours.html">abm_neighbours()</a></code></td>
-<td>summarises each agent’s network neighbourhood</td>
+<td>summarises each agent’s neighbourhood — the network, or everyone <code>within</code> a condition</td>
+</tr>
+<tr>
+<td><code><a href="reference/abm_draw.html">abm_draw()</a></code></td>
+<td>attaches a value to every edge, readable from both ends</td>
 </tr>
 <tr>
 <td><code><a href="reference/abm_tell.html">abm_tell()</a></code></td>
@@ -150,11 +199,11 @@
 </tr>
 <tr>
 <td><code><a href="reference/abm_global.html">abm_global()</a></code></td>
-<td>updates a value shared by the whole population</td>
+<td>updates a value shared by the whole population, or a table of them indexed by a category</td>
 </tr>
 <tr>
 <td><code><a href="reference/abm_birth.html">abm_birth()</a></code></td>
-<td>adds agents</td>
+<td>adds agents, one or <code>times</code> many</td>
 </tr>
 <tr>
 <td><code><a href="reference/abm_death.html">abm_death()</a></code></td>
@@ -173,8 +222,8 @@
 </tbody>
 </table>
 <p>So a two-phase model — play, then imitate — is written flat and in order:</p>
-<div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu"><a href="reference/abm_go.html">abm_go</a></span><span class="op">(</span></span>
+<div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">go</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/abm_go.html">abm_go</a></span><span class="op">(</span></span>
 <span>  <span class="fu"><a href="reference/abm_match.html">abm_match</a></span><span class="op">(</span>pair <span class="op">=</span> <span class="st">"random"</span><span class="op">)</span>,</span>
 <span>  <span class="fu"><a href="reference/abm_rules.html">abm_rules</a></span><span class="op">(</span><span class="va">payoff</span> <span class="op">~</span> <span class="fu"><a href="https://dplyr.tidyverse.org/reference/case-and-replace-when.html" class="external-link">case_when</a></span><span class="op">(</span><span class="va">...</span><span class="op">)</span><span class="op">)</span>,</span>
 <span>  <span class="fu"><a href="reference/abm_match.html">abm_match</a></span><span class="op">(</span>pair <span class="op">=</span> <span class="st">"random"</span><span class="op">)</span>,</span>
@@ -231,13 +280,14 @@
 <h2 id="reproducibility">Reproducibility<a class="anchor" aria-label="anchor" href="#reproducibility"></a>
 </h2>
 <p><code>abm_run(..., seed =)</code> sets the seed for the whole run and restores your session’s random state afterwards, so a model is reproducible without you having to arrange it.</p>
+<p><code>abm_run(..., record =)</code> says how much to keep — every tick, every <em>n</em>th tick, the last one, or none of the populations at all. Globals are recorded every tick regardless. A fixed population can ignore it; a growing one cannot, because recording every agent of every tick is what makes such a run die of memory rather than merely take a while.</p>
 </div>
 <div class="section level2">
 <h2 id="status">Status<a class="anchor" aria-label="anchor" href="#status"></a>
 </h2>
 <p>Experimental. The API is shaped by what porting models turns up, and it is still moving.</p>
-<p>Fifty-six models are implemented and documented in <a href="../models/README.html"><code>models/</code></a>, each on its own page with its code, the result it reproduces and its source: thirteen the grammar was designed against, three of those rebuilt because the short version does not show what the model is known for, and four rounds of ten ported as stress tests.</p>
-<p>Every feature in the package that is not in the founding thirteen exists because one of those forty models asked for it — <code><a href="reference/abm_link.html">abm_link()</a></code>, <code><a href="reference/abm_neighbours.html">abm_neighbours()</a></code>, <code><a href="reference/abm_tell.html">abm_tell()</a></code>, <code><a href="reference/abm_repeat.html">abm_repeat()</a></code>, the <code>one_of</code> pairing mode, <code>among =</code>, <code>cost =</code>, <code>.by =</code>, <code>.order =</code>, <code>.scope = "population"</code>, clique linking, the Poisson and scale-free and ring networks, and the cascading semantics of <code><a href="reference/abm_sequential.html">abm_sequential()</a></code>. <a href="../models/what-changed.html"><code>models/what-changed.md</code></a> is the history; <a href="../models/open-items.html"><code>models/open-items.md</code></a> is what is still out of reach.</p>
+<p>Fifty-six models are implemented and documented in <a href="models/README.html"><code>models/</code></a>, each on its own page with its code, the result it reproduces and its source: thirteen the grammar was designed against, three of those rebuilt because the short version does not show what the model is known for, and four rounds of ten ported as stress tests.</p>
+<p>Every feature in the package that is not in the founding thirteen exists because one of those forty models asked for it — <code><a href="reference/abm_link.html">abm_link()</a></code>, <code><a href="reference/abm_neighbours.html">abm_neighbours()</a></code>, <code><a href="reference/abm_tell.html">abm_tell()</a></code>, <code><a href="reference/abm_draw.html">abm_draw()</a></code>, <code><a href="reference/abm_repeat.html">abm_repeat()</a></code>, the <code>one_of</code> pairing mode, <code>among =</code>, <code>cost =</code>, <code>within =</code>, <code>.by =</code>, <code>.order =</code>, <code>times =</code>, <code>record =</code>, <code>.scope = "population"</code>, clique linking, the Poisson and scale-free and ring networks, and the cascading semantics of <code><a href="reference/abm_sequential.html">abm_sequential()</a></code>. <a href="models/what-changed.html"><code>models/what-changed.md</code></a> is the history; <a href="models/open-items.html"><code>models/open-items.md</code></a> is what is still out of reach.</p>
 <p>Several validations are quantitative rather than qualitative. Hawks and Doves matches the analytic evolutionarily stable frequency <code>V/C</code> to three decimals across a twelve-fold range of the cost parameter; the information cascade matches <code>p² / (p² + (1-p)²)</code> at five values of the signal accuracy; Deffuant’s cluster count matches <code>floor(1/(2d))</code> at six values of the threshold; Watts’s cascade window matches its closed-form boundaries at both ends; the Minority Game reproduces the σ²/α curve with its minimum at the reported critical value; and the Naming Game’s two scaling exponents come out at 1.45 and 1.39 against a reported 3/2. The fourth round adds three more: the division of labour settles at δ/α to two decimals whatever the thresholds are, the neutral model’s variant counts land on the Ewens sampling formula across two orders of magnitude in the innovation rate, and deferred acceptance reproduces Pittel’s <code>ln n</code> and <code>n / ln n</code> on the nose at n = 200.</p>
 <p>See <code><a href="articles/tidyABM.html">vignette("tidyABM")</a></code> to get started, <code><a href="articles/models.html">vignette("models")</a></code> for a tour of the grammar, and <code><a href="articles/corrections.html">vignette("corrections")</a></code> for the three models whose short form runs but is wrong.</p>
 </div>

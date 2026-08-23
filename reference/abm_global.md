@@ -8,7 +8,7 @@ over the agent tibble, so it normally collapses to a single value.
 ## Usage
 
 ``` r
-abm_global(...)
+abm_global(..., .by = NULL)
 ```
 
 ## Arguments
@@ -18,6 +18,13 @@ abm_global(...)
   One or more `global_name ~ aggregate_expression` rules. The expression
   can use agent columns and other globals; each rule sees the globals as
   updated by the rules before it in the same call.
+
+- .by:
+
+  Optional index. Either a vector of keys or the name of an agent column
+  whose distinct values are the keys. The global becomes a named vector,
+  `.key` is in scope, and the global's own name refers to that key's
+  value.
 
 ## Value
 
@@ -29,10 +36,47 @@ Unlike the other update steps, `abm_global()` does not need a preceding
 [`abm_match()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_match.md):
 a population-level summary does not depend on who was paired with whom.
 
+## A global indexed by a category
+
+Models keep wanting a shared *table* rather than a shared number: a
+stimulus per task, a price per good, a queue length per counter. `.by`
+writes one. The rules are evaluated once per key and the global becomes
+a **named vector** indexed by them, which an ordinary rule reads back
+with `price[good]`.
+
+Two things are in scope during that evaluation and nowhere else. `.key`
+is the key being written, so `sum(task == .key)` is "how many agents are
+on *this* task". And the global's own name is bound to **this key's**
+current value, not to the whole vector, so an update reads exactly as
+the scalar version does:
+
+    abm_global(stimulus ~ stimulus + delta - alpha * sum(task == .key) / n(),
+               .by = 1:2)
+
+Each key still sees the **whole population** —
+[`n()`](https://dplyr.tidyverse.org/reference/context.html) is
+everybody, not everybody on this task — because that is what a
+colony-level stimulus balance means.
+
+`.by` names the index either way round. Give it a vector and the index
+is declared by the model, which is right when the categories are fixed
+and a key with nobody in it still has to be updated. Give it an agent
+column and the index is whatever values the agents currently hold, which
+is right when the categories come and go. A key the global already has
+stays in the index and is still updated even when no agent holds it this
+tick, so a task nobody is working on has its stimulus rise rather than
+dropping out of the table.
+
 ## Examples
 
 ``` r
 abm_global(last_attendance ~ sum(go_today))
 #> <abm_global> 1 rule
 #> • `last_attendance ~ sum(go_today)`
+
+# one stimulus per task, decaying with the number of workers on it
+abm_global(stimulus ~ pmax(0, stimulus + 1 - 3 * sum(task == .key) / n()),
+           .by = 1:2)
+#> <abm_global> 1 rule (by 1:2)
+#> • `stimulus ~ pmax(0, stimulus + 1 - 3 * sum(task == .key)/n())`
 ```

@@ -123,12 +123,12 @@ it against every agent at once, ignoring the standing match.</p>
 <span class="r-in"><span><span class="co"># the next generation, drawn from this one in proportion to fitness</span></span></span>
 <span class="r-in"><span><span class="fu">abm_rules</span><span class="op">(</span><span class="va">strategy</span> <span class="op">~</span> <span class="fu"><a href="https://rdrr.io/r/base/sample.html" class="external-link">sample</a></span><span class="op">(</span><span class="va">strategy</span>, <span class="fu"><a href="https://dplyr.tidyverse.org/reference/context.html" class="external-link">n</a></span><span class="op">(</span><span class="op">)</span>, replace <span class="op">=</span> <span class="cn">TRUE</span>, prob <span class="op">=</span> <span class="va">fitness</span><span class="op">)</span>,</span></span>
 <span class="r-in"><span>          .scope <span class="op">=</span> <span class="st">"population"</span><span class="op">)</span></span></span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #0000BB;">&lt;abm_rules&gt;</span> 1 rule {.emph (population scope)}</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #0000BB;">&lt;abm_rules&gt;</span> 1 rule <span style="font-style: italic;">(population scope)</span></span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">•</span> `strategy ~ sample(strategy, n(), replace = TRUE, prob = fitness)`</span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co"># every member of a firm is paid an equal share of what the firm produces</span></span></span>
 <span class="r-in"><span><span class="fu">abm_rules</span><span class="op">(</span><span class="va">pay</span> <span class="op">~</span> <span class="fu">output</span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/sum.html" class="external-link">sum</a></span><span class="op">(</span><span class="va">effort</span><span class="op">)</span><span class="op">)</span> <span class="op">/</span> <span class="fu"><a href="https://dplyr.tidyverse.org/reference/context.html" class="external-link">n</a></span><span class="op">(</span><span class="op">)</span>, .by <span class="op">=</span> <span class="va">firm</span><span class="op">)</span></span></span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #0000BB;">&lt;abm_rules&gt;</span> 1 rule {.emph (by firm)}</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #0000BB;">&lt;abm_rules&gt;</span> 1 rule <span style="font-style: italic;">(by firm)</span></span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">•</span> `pay ~ output(sum(effort))/n()`</span>
 </code></pre></div>
     </div>

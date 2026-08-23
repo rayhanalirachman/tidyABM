@@ -87,14 +87,30 @@ column defined before it, so <code>abm_agents(n = 200, wtp = ~rnorm(n, 50, 10), 
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #0000BB;">&lt;abm_agents&gt;</span> <span style="font-weight: bold;">500</span> agents</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">•</span> <span style="color: #00BB00;">money</span> = `100`</span>
 <span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="fu">abm_agents</span><span class="op">(</span></span></span>
-<span class="r-in"><span>  n <span class="op">=</span> <span class="fl">100</span>,</span></span>
-<span class="r-in"><span>  strategy <span class="op">=</span> <span class="op">~</span><span class="fu"><a href="https://rdrr.io/r/base/sample.html" class="external-link">sample</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"cooperate"</span>, <span class="st">"defect"</span><span class="op">)</span>, <span class="va">n</span>, replace <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span>,</span></span>
-<span class="r-in"><span>  payoff <span class="op">=</span> <span class="fl">0</span></span></span>
+<span class="r-in"><span><span class="co"># A spec becomes a population in abm_setup(), and a run needs all three parts.</span></span></span>
+<span class="r-in"><span><span class="va">economy</span> <span class="op">&lt;-</span> <span class="fu"><a href="abm_setup.html">abm_setup</a></span><span class="op">(</span>agents <span class="op">=</span> <span class="fu">abm_agents</span><span class="op">(</span>n <span class="op">=</span> <span class="fl">500</span>, money <span class="op">=</span> <span class="fl">100</span><span class="op">)</span><span class="op">)</span></span></span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="va">go</span> <span class="op">&lt;-</span> <span class="fu"><a href="abm_go.html">abm_go</a></span><span class="op">(</span></span></span>
+<span class="r-in"><span>  <span class="fu"><a href="abm_match.html">abm_match</a></span><span class="op">(</span>pair <span class="op">=</span> <span class="st">"random"</span>, role <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>giver <span class="op">=</span> <span class="va">money</span> <span class="op">&gt;</span> <span class="fl">0</span>, receiver <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span><span class="op">)</span>,</span></span>
+<span class="r-in"><span>  <span class="fu"><a href="abm_rules.html">abm_rules</a></span><span class="op">(</span><span class="va">money</span> <span class="op">~</span> <span class="fu"><a href="https://dplyr.tidyverse.org/reference/if_else.html" class="external-link">if_else</a></span><span class="op">(</span><span class="va">.role</span> <span class="op">==</span> <span class="st">"giver"</span>, <span class="va">money</span> <span class="op">-</span> <span class="fl">1</span>, <span class="va">money</span> <span class="op">+</span> <span class="fl">1</span><span class="op">)</span><span class="op">)</span></span></span>
 <span class="r-in"><span><span class="op">)</span></span></span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #0000BB;">&lt;abm_agents&gt;</span> <span style="font-weight: bold;">100</span> agents</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">•</span> <span style="color: #00BB00;">strategy</span> = `~sample(c("cooperate", "defect"), n, replace = TRUE)`</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">•</span> <span style="color: #00BB00;">payoff</span> = `0`</span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="fu"><a href="abm_run.html">abm_run</a></span><span class="op">(</span><span class="va">economy</span>, <span class="va">go</span>, ticks <span class="op">=</span> <span class="fl">10</span>, seed <span class="op">=</span> <span class="fl">1</span><span class="op">)</span></span></span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #0000BB;">&lt;abm_result&gt;</span> 10 ticks, 500 agents seen, 5500 rows</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #949494;"># A tibble: 5,500 × 4</span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>     tick   .id .group money</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>    <span style="color: #949494; font-style: italic;">&lt;int&gt;</span> <span style="color: #949494; font-style: italic;">&lt;int&gt;</span> <span style="color: #949494; font-style: italic;">&lt;chr&gt;</span>  <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;"> 1</span>     0     1 agents   100</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;"> 2</span>     0     2 agents   100</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;"> 3</span>     0     3 agents   100</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;"> 4</span>     0     4 agents   100</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;"> 5</span>     0     5 agents   100</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;"> 6</span>     0     6 agents   100</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;"> 7</span>     0     7 agents   100</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;"> 8</span>     0     8 agents   100</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;"> 9</span>     0     9 agents   100</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">10</span>     0    10 agents   100</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #949494;"># ℹ 5,490 more rows</span></span>
 </code></pre></div>
     </div>
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>

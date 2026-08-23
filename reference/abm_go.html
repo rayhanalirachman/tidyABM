@@ -61,7 +61,8 @@ argument name, so a model with several phases is written flat and in order:</p>
 <dl><dt id="arg--">...<a class="anchor" aria-label="anchor" href="#arg--"></a></dt>
 <dd><p>Step objects: <code><a href="abm_match.html">abm_match()</a></code>, <code><a href="abm_rules.html">abm_rules()</a></code>, <code><a href="abm_sequential.html">abm_sequential()</a></code>,
 <code><a href="abm_global.html">abm_global()</a></code>, <code><a href="abm_neighbours.html">abm_neighbours()</a></code>, <code><a href="abm_tell.html">abm_tell()</a></code>, <code><a href="abm_birth.html">abm_birth()</a></code>,
-<code><a href="abm_death.html">abm_death()</a></code>, <code><a href="abm_link.html">abm_link()</a></code>, <code><a href="abm_unlink.html">abm_unlink()</a></code>, <code><a href="abm_repeat.html">abm_repeat()</a></code>.</p></dd>
+<code><a href="abm_death.html">abm_death()</a></code>, <code><a href="abm_link.html">abm_link()</a></code>, <code><a href="abm_unlink.html">abm_unlink()</a></code>, <code><a href="abm_draw.html">abm_draw()</a></code>,
+<code><a href="abm_repeat.html">abm_repeat()</a></code>.</p></dd>
 
 </dl></div>
     <div class="section level2">
@@ -87,13 +88,31 @@ rules to buyers and to sellers.</p>
 
     <div class="section level2">
     <h2 id="ref-examples">Examples<a class="anchor" aria-label="anchor" href="#ref-examples"></a></h2>
-    <div class="sourceCode"><pre class="sourceCode r"><code><span class="r-in"><span><span class="fu">abm_go</span><span class="op">(</span></span></span>
+    <div class="sourceCode"><pre class="sourceCode r"><code><span class="r-in"><span><span class="co"># Every model is the same three parts: agents, a go block, a run.</span></span></span>
+<span class="r-in"><span><span class="va">rumour</span> <span class="op">&lt;-</span> <span class="fu"><a href="abm_setup.html">abm_setup</a></span><span class="op">(</span>agents <span class="op">=</span> <span class="fu"><a href="abm_agents.html">abm_agents</a></span><span class="op">(</span></span></span>
+<span class="r-in"><span>  n <span class="op">=</span> <span class="fl">200</span>, state <span class="op">=</span> <span class="op">~</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"spreader"</span>, <span class="fu"><a href="https://rdrr.io/r/base/rep.html" class="external-link">rep</a></span><span class="op">(</span><span class="st">"ignorant"</span>, <span class="va">n</span> <span class="op">-</span> <span class="fl">1</span><span class="op">)</span><span class="op">)</span><span class="op">)</span><span class="op">)</span></span></span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="va">go</span> <span class="op">&lt;-</span> <span class="fu">abm_go</span><span class="op">(</span></span></span>
 <span class="r-in"><span>  <span class="fu"><a href="abm_match.html">abm_match</a></span><span class="op">(</span>pair <span class="op">=</span> <span class="st">"random"</span><span class="op">)</span>,</span></span>
 <span class="r-in"><span>  <span class="fu"><a href="abm_rules.html">abm_rules</a></span><span class="op">(</span><span class="va">state</span> <span class="op">~</span> <span class="fu"><a href="https://rdrr.io/r/base/ifelse.html" class="external-link">ifelse</a></span><span class="op">(</span><span class="va">partner_state</span> <span class="op">==</span> <span class="st">"spreader"</span>, <span class="st">"spreader"</span>, <span class="va">state</span><span class="op">)</span><span class="op">)</span></span></span>
 <span class="r-in"><span><span class="op">)</span></span></span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #0000BB;">&lt;abm_go&gt;</span> 2 steps, 1 match phase</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="font-style: italic;">1.</span> match random</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="font-style: italic;">2.</span> rules 1 rule(s)</span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="fu"><a href="abm_run.html">abm_run</a></span><span class="op">(</span><span class="va">rumour</span>, <span class="va">go</span>, ticks <span class="op">=</span> <span class="fl">10</span>, seed <span class="op">=</span> <span class="fl">1</span><span class="op">)</span></span></span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #0000BB;">&lt;abm_result&gt;</span> 10 ticks, 200 agents seen, 2200 rows</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #949494;"># A tibble: 2,200 × 4</span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>     tick   .id .group state   </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>    <span style="color: #949494; font-style: italic;">&lt;int&gt;</span> <span style="color: #949494; font-style: italic;">&lt;int&gt;</span> <span style="color: #949494; font-style: italic;">&lt;chr&gt;</span>  <span style="color: #949494; font-style: italic;">&lt;chr&gt;</span>   </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;"> 1</span>     0     1 agents spreader</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;"> 2</span>     0     2 agents ignorant</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;"> 3</span>     0     3 agents ignorant</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;"> 4</span>     0     4 agents ignorant</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;"> 5</span>     0     5 agents ignorant</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;"> 6</span>     0     6 agents ignorant</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;"> 7</span>     0     7 agents ignorant</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;"> 8</span>     0     8 agents ignorant</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;"> 9</span>     0     9 agents ignorant</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">10</span>     0    10 agents ignorant</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #949494;"># ℹ 2,190 more rows</span></span>
 </code></pre></div>
     </div>
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>

@@ -49,12 +49,28 @@ abm_agents(n = 500, money = 100)
 #> <abm_agents> 500 agents
 #> • money = `100`
 
-abm_agents(
-  n = 100,
-  strategy = ~sample(c("cooperate", "defect"), n, replace = TRUE),
-  payoff = 0
+# A spec becomes a population in abm_setup(), and a run needs all three parts.
+economy <- abm_setup(agents = abm_agents(n = 500, money = 100))
+
+go <- abm_go(
+  abm_match(pair = "random", role = list(giver = money > 0, receiver = TRUE)),
+  abm_rules(money ~ if_else(.role == "giver", money - 1, money + 1))
 )
-#> <abm_agents> 100 agents
-#> • strategy = `~sample(c("cooperate", "defect"), n, replace = TRUE)`
-#> • payoff = `0`
+
+abm_run(economy, go, ticks = 10, seed = 1)
+#> <abm_result> 10 ticks, 500 agents seen, 5500 rows
+#> # A tibble: 5,500 × 4
+#>     tick   .id .group money
+#>    <int> <int> <chr>  <dbl>
+#>  1     0     1 agents   100
+#>  2     0     2 agents   100
+#>  3     0     3 agents   100
+#>  4     0     4 agents   100
+#>  5     0     5 agents   100
+#>  6     0     6 agents   100
+#>  7     0     7 agents   100
+#>  8     0     8 agents   100
+#>  9     0     9 agents   100
+#> 10     0    10 agents   100
+#> # ℹ 5,490 more rows
 ```

@@ -24,8 +24,9 @@ A tibble of `from`/`to` edges, or `NULL` if the model had no network.
 ``` r
 m <- abm_setup(agents = abm_agents(n = 10, x = 1),
                network = abm_network(type = "random", degree = 2))
-r <- abm_run(m, abm_go(abm_match(pair = "network"),
-                       abm_rules(x ~ partner_x)), ticks = 2, seed = 1)
+go <- abm_go(abm_match(pair = "network"),
+             abm_rules(x ~ partner_x))
+r  <- abm_run(m, go, ticks = 2, seed = 1)
 abm_edges(r)
 #> # A tibble: 10 × 2
 #>     from    to

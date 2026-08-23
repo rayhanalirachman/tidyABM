@@ -10,7 +10,7 @@ every tick.
 ## Usage
 
 ``` r
-abm_run(model, go, ticks, seed = NULL)
+abm_run(model, go, ticks, seed = NULL, record = "all")
 ```
 
 ## Arguments
@@ -36,6 +36,16 @@ abm_run(model, go, ticks, seed = NULL)
   [`abm_setup()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_setup.md)'s
   `seed`.
 
+- record:
+
+  Which ticks' populations to keep. `"all"` (the default) keeps every
+  one; a positive whole number keeps every `record`-th tick, plus tick 0
+  and the last; `"final"` keeps only the last; `"globals"` keeps none.
+  Globals are recorded every tick whatever this says, since they are one
+  row each. A model whose population grows needs this: recording every
+  agent of every tick is what makes such a run die of memory rather than
+  merely take a while.
+
 ## Value
 
 An `abm_result`: a tibble of one row per agent per tick, carrying the
@@ -54,6 +64,11 @@ snapshots. Global values are recorded alongside and are available with
 Agent-based models are stochastic, so `seed` is a first-class argument
 rather than something to arrange yourself: it makes the run reproducible
 without touching the global random state.
+
+Every tick's whole population is recorded by default, which is right for
+a fixed population and wrong for a growing one – a run that ends with
+fifty thousand agents has been keeping every one of them, every tick,
+since the start. `record` says how much to keep.
 
 It fixes the run, though, not the model. If the agents' starting columns
 were drawn at random, they were drawn when

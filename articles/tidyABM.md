@@ -15,6 +15,39 @@ mechanism rather than as bookkeeping; mistakes in the structure are
 caught once, when you build the model, rather than on tick 400; and the
 output is tidy data, so analysing a run is ordinary dplyr.
 
+## The three parts
+
+Every model in this package is the same three components, written as
+three statements:
+
+1.  **the agents** —
+    [`abm_agents()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_agents.md),
+    wrapped in
+    [`abm_setup()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_setup.md)
+    along with any network and globals. Who is in the model and what
+    they start with.
+2.  **the go block** —
+    [`abm_go()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_go.md).
+    The ordered steps replayed once per tick.
+3.  **the run** —
+    [`abm_run()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_run.md).
+    The two above, plus `ticks`, `seed` and `record`.
+
+``` r
+
+agents <- abm_setup(agents = abm_agents(...))            # 1
+go     <- abm_go(...)                                    # 2
+result <- abm_run(agents, go, ticks = ..., seed = ...)   # 3
+```
+
+Keep them apart.
+[`abm_go()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_go.md)
+returns an object you can print and inspect, and every example below
+builds it on its own line rather than inside the call to
+[`abm_run()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_run.md)
+— which is what lets you reuse one go block across several populations,
+or run one population through several go blocks.
+
 ## The whole game
 
 Wilensky and Rand’s *Simple Economy* is the smallest interesting model
@@ -23,6 +56,7 @@ everyone who has money gives \$1 to someone else. Nothing else happens.
 
 ``` r
 
+# 1. the agents
 economy <- abm_setup(agents = abm_agents(n = 500, money = 100))
 economy
 #> <abm_model> 500 agents in 1 group
@@ -39,6 +73,7 @@ Now the behaviour:
 
 ``` r
 
+# 2. the go block
 go <- abm_go(
   abm_match(pair = "random", role = list(giver = money > 0, receiver = TRUE)),
   abm_rules(money ~ if_else(.role == "giver", money - 1, money + 1))
@@ -60,6 +95,7 @@ then moves the dollar.
 
 ``` r
 
+# 3. the run
 result <- abm_run(economy, go, ticks = 500, seed = 1)
 result
 #> <abm_result> 500 ticks, 500 agents seen, 250500 rows
@@ -241,7 +277,7 @@ rumour <- abm_setup(
   agents = abm_agents(n = 100, state = ~c("spreader", rep("ignorant", n - 1)))
 )
 
-r <- abm_run(rumour, abm_go(
+rumour_go <- abm_go(
   abm_match(pair = "random"),
   abm_rules(state ~ case_when(
     state == "ignorant" & partner_state == "spreader" ~ "spreader",
@@ -249,7 +285,9 @@ r <- abm_run(rumour, abm_go(
     state == "spreader" & partner_state == "stifler"  ~ "stifler",
     TRUE ~ state
   ))
-), ticks = 100, seed = 1)
+)
+
+r <- abm_run(rumour, rumour_go, ticks = 100, seed = 1)
 
 table(r$state[r$tick == 100])
 #> 
@@ -267,10 +305,12 @@ pgg <- abm_setup(agents = abm_agents(
   n = 100, contribution = ~sample(c(0, 1), n, replace = TRUE), payoff = 0
 ))
 
-r <- abm_run(pgg, abm_go(
+pgg_go <- abm_go(
   abm_match(pair = "random", size = 4),
   abm_rules(payoff ~ sum(contribution) * 2 / 4)
-), ticks = 10, seed = 1)
+)
+
+r <- abm_run(pgg, pgg_go, ticks = 10, seed = 1)
 
 table(r$payoff[r$tick == 10])
 #> 
@@ -295,7 +335,9 @@ deliberately differs from
 ``` r
 
 swap <- abm_setup(agents = abm_agents(n = 3, a = 1, b = 2))
-abm_run(swap, abm_go(abm_rules(a ~ b, b ~ a)), ticks = 1)
+swap_go <- abm_go(abm_rules(a ~ b, b ~ a))
+
+abm_run(swap, swap_go, ticks = 1)
 #> <abm_result> 1 tick, 3 agents seen, 6 rows
 #> # A tibble: 6 × 5
 #>    tick   .id .group     a     b
@@ -318,10 +360,12 @@ globals are visible to the agents after it:
 
 pot <- abm_setup(agents = abm_agents(n = 20, got = 0), globals = list(pot = 10))
 
-seq_run <- abm_run(pot, abm_go(abm_sequential(
+pot_go <- abm_go(abm_sequential(
   got ~ if_else(pot > 0, 1, 0),
   pot ~ if_else(pot > 0, pot - 1, pot)
-)), ticks = 1, seed = 1)
+))
+
+seq_run <- abm_run(pot, pot_go, ticks = 1, seed = 1)
 
 sum(seq_run$got[seq_run$tick == 1])  # exactly the 10 units that existed
 #> [1] 10
@@ -345,11 +389,13 @@ order instead:
 queue <- abm_setup(agents = abm_agents(n = 20, place = ~sample(n), got = 0),
                    globals = list(pot = 10))
 
-abm_run(queue, abm_go(abm_sequential(
+queue_go <- abm_go(abm_sequential(
   got ~ if_else(pot > 0, 1, 0),
   pot ~ if_else(pot > 0, pot - 1, pot),
   .order = place
-)), ticks = 1, seed = 1) -> q
+))
+
+q <- abm_run(queue, queue_go, ticks = 1, seed = 1)
 sum(q$got[q$tick == 1 & q$place <= 10])   # the front of the queue, every time
 #> [1] 10
 ```
@@ -367,9 +413,11 @@ replays a block until a condition holds:
 ``` r
 
 grow <- abm_setup(agents = abm_agents(n = 5, x = 0))
-r <- abm_run(grow, abm_go(
+grow_go <- abm_go(
   abm_repeat(abm_rules(x ~ x + 1), until = mean(x) >= 4, max = 100)
-), ticks = 1, seed = 1)
+)
+
+r <- abm_run(grow, grow_go, ticks = 1, seed = 1)
 unique(r$x[r$tick == 1])
 #> [1] 4
 ```
@@ -377,6 +425,87 @@ unique(r$x[r$tick == 1])
 `until` is checked after each pass, so the block always runs at least
 once, and `max` is required — a condition that never becomes true would
 otherwise hang the run.
+
+## Neighbourhoods
+
+A match gives an agent one partner.
+[`abm_neighbours()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_neighbours.md)
+gives it an aggregate over the agents *around* it, which is what a model
+needs when the question is “how many of them” rather than “what did mine
+do”. Each rule is `column ~ aggregate`, evaluated over the neighbours’
+rows, with the focal agent’s own columns visible as `own_<col>` so that
+comparisons are expressible:
+
+``` r
+
+town <- abm_setup(
+  agents  = abm_agents(n = 40, wealth = ~round(runif(n, 0, 100))),
+  network = abm_network(type = "poisson", degree = 4),
+  seed    = 1
+)
+town_go <- abm_go(
+  abm_neighbours(richer ~ sum(wealth > own_wealth))
+)
+
+r <- abm_run(town, town_go, ticks = 1, seed = 1)
+table(r$richer[r$tick == 1], useNA = "ifany")
+#> 
+#>    0    1    2    3    4    5    6 <NA> 
+#>    9    9    8    5    2    4    2    1
+```
+
+The neighbourhood is the network by default. `within =` makes it a
+neighbourhood in *attribute space* instead — everybody whose columns
+satisfy a condition, network or no network. Hegselmann and Krause’s
+bounded confidence model is one step:
+
+``` r
+
+crowd <- abm_setup(agents = abm_agents(n = 200, opinion = ~runif(n)),
+                   globals = list(eps = 0.15), seed = 42)
+crowd_go <- abm_go(
+  abm_neighbours(opinion ~ mean(opinion),
+                 within = abs(opinion - own_opinion) <= eps)
+)
+
+hk <- abm_run(crowd, crowd_go, ticks = 30)
+round(sort(unique(round(hk$opinion[hk$tick == 30], 4))), 3)
+#> [1] 0.190 0.478 0.752
+```
+
+One difference is worth knowing: an agent is inside its own *attribute*
+neighbourhood whenever the condition holds of it — “the mean opinion of
+everyone I take seriously” includes its own — and never inside its own
+*network* one. Write `within = ... & .id != own_.id` if you want it out.
+
+Two
+[`abm_neighbours()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_neighbours.md)
+passes draw their random numbers independently, which is right when each
+is a separate event and wrong when it is one event seen from two sides.
+[`abm_draw()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_draw.md)
+puts the draw on the edge instead, where both endpoints read the same
+number:
+
+``` r
+
+pairs <- abm_setup(agents = abm_agents(n = 30, met = 0L),
+                   network = abm_network(type = "poisson", degree = 4),
+                   seed = 2)
+pairs_go <- abm_go(
+  abm_draw(happened ~ runif(n()) < 0.5),
+  abm_neighbours(met ~ sum(happened))
+)
+
+r <- abm_run(pairs, pairs_go, ticks = 1, seed = 1)
+# every meeting is counted by both of the agents in it, so the total is even
+sum(r$met[r$tick == 1], na.rm = TRUE)
+#> [1] 58
+```
+
+`.each = "endpoint"` gives the two ends one draw each instead, read as
+`name` from an agent’s own side and `name_back` from the other — which
+is what an asymmetric interaction needs, since whether I noticed you and
+whether you noticed me are different questions about the same edge.
 
 ## Changing the population
 
@@ -393,7 +522,7 @@ ethno <- abm_setup(agents = abm_agents(
   resource = 10
 ))
 
-r <- abm_run(ethno, abm_go(
+ethno_go <- abm_go(
   abm_match(pair = "random"),
   abm_rules(resource ~ case_when(
     strategy == "cooperate" & partner_strategy == "cooperate" ~ resource + 2,
@@ -403,7 +532,9 @@ r <- abm_run(ethno, abm_go(
   ) - 1),
   abm_birth(when = resource > 20, cost = resource ~ resource / 2),
   abm_death(when = resource <= 0)
-), ticks = 20, seed = 1)
+)
+
+r <- abm_run(ethno, ethno_go, ticks = 20, seed = 1)
 
 table(r$tick)[c(1, 11, 21)]
 #> 
@@ -414,6 +545,28 @@ table(r$tick)[c(1, 11, 21)]
 `cost` says what reproduction costs, as ordinary `column ~ expression`
 formulas applied to the parent and the newborn alike — halving a
 resource splits it between them.
+
+One parent, one offspring, unless `times` says otherwise. It takes an
+expression evaluated in the parent’s row, so a fertility can be a
+column, a number, or a draw:
+
+``` r
+
+seeds <- abm_setup(agents = abm_agents(n = 10, age = 5), seed = 1)
+seeds_go <- abm_go(
+  abm_birth(when = age > 0, times = rpois(n(), 2), inherit = age ~ 0)
+)
+
+r <- abm_run(seeds, seeds_go, ticks = 1, seed = 1)
+table(r$tick)
+#> 
+#>  0  1 
+#> 10 31
+```
+
+Each offspring is a row of its own before `inherit` is evaluated, so a
+mutation drawn there differs from sibling to sibling rather than being
+drawn once and copied.
 
 ## Reproducibility
 
@@ -454,8 +607,10 @@ start from different populations:
 ``` r
 
 random_pop <- function() abm_setup(agents = abm_agents(n = 50, x = ~runif(n)))
-set.seed(1); one <- abm_run(random_pop(), abm_go(abm_rules(x ~ x)), 1, seed = 5)
-set.seed(2); two <- abm_run(random_pop(), abm_go(abm_rules(x ~ x)), 1, seed = 5)
+noop_go <- abm_go(abm_rules(x ~ x))
+
+set.seed(1); one <- abm_run(random_pop(), noop_go, ticks = 1, seed = 5)
+set.seed(2); two <- abm_run(random_pop(), noop_go, ticks = 1, seed = 5)
 identical(one$x, two$x)
 #> [1] FALSE
 ```
@@ -466,7 +621,8 @@ Seed both, and the whole experiment reproduces:
 
 experiment <- function() {
   m <- abm_setup(agents = abm_agents(n = 50, x = ~runif(n)), seed = 4)
-  abm_run(m, abm_go(abm_rules(x ~ x)), ticks = 1, seed = 5)
+  noop_go <- abm_go(abm_rules(x ~ x))
+  abm_run(m, noop_go, ticks = 1, seed = 5)
 }
 set.seed(1); one <- experiment()
 set.seed(2); two <- experiment()
@@ -478,6 +634,35 @@ One further caveat: a seed fixes a run given a version of the package,
 not across versions. Reordering an internal random draw changes the
 exact numbers without changing the model, so compare runs by their
 statistical behaviour rather than by exact equality when you upgrade.
+
+## How much to record
+
+By default
+[`abm_run()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_run.md)
+keeps every agent of every tick, which is right for a fixed population
+and wrong for a growing one — a run that ends with fifty thousand agents
+has been keeping every one of them since the start. `record` says how
+much to keep:
+
+``` r
+
+sizes <- c(
+  all      = nrow(abm_run(economy, go, ticks = 20, record = "all")),
+  every_5  = nrow(abm_run(economy, go, ticks = 20, record = 5)),
+  final    = nrow(abm_run(economy, go, ticks = 20, record = "final")),
+  globals  = nrow(abm_run(economy, go, ticks = 20, record = "globals"))
+)
+sizes
+#>     all every_5   final globals 
+#>   10500    2500     500       0
+```
+
+A whole number keeps every *n*th tick plus the two ends; `"final"` keeps
+the last tick only; `"globals"` keeps none of the populations. Globals
+are recorded every tick whatever you say, since they are one row each,
+so `"globals"` is the setting for a model whose output is an aggregate.
+Nothing about the run itself changes — the same seed gives the same
+final state at any setting.
 
 ## Where to go next
 

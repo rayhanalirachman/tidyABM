@@ -16,24 +16,54 @@ is tidy data.
 pak::pak("rayhanalirachman/tidyABM")
 ```
 
+## Three parts
+
+Every tidyABM model is written as the same three components, in the same
+order, each one a named object you can print, reuse and pass around:
+
+| part | function | what it is |
+|----|----|----|
+| 1\. the agents | [`abm_agents()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_agents.md) — inside [`abm_setup()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_setup.md) | who is in the model and what they start with |
+| 2\. the go block | [`abm_go()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_go.md) | the ordered steps replayed once per tick |
+| 3\. the run | [`abm_run()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_run.md) | the two above, plus `ticks`, `seed` and `record` |
+
+Keep them as three statements.
+[`abm_go()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_go.md)
+is a first-class object, not an argument you build inside the call to
+[`abm_run()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_run.md),
+and writing it that way is what lets you print it, validate it once,
+reuse one go block across several populations, or swap one population
+through several go blocks.
+
+``` r
+
+agents <- abm_setup(agents = abm_agents(...))   # 1
+go     <- abm_go(...)                           # 2
+result <- abm_run(agents, go, ticks = ..., seed = ...)   # 3
+```
+
 ## A whole model
 
 Wilensky and Rand’s *Simple Economy*: 500 agents start with \$100 each,
 and every tick anyone with money gives \$1 to someone else. The wealth
 distribution starts as a spike and ends up exponential — no agent is
-doing anything clever, and inequality appears anyway.
+doing anything clever, and inequality appears anyway. The three parts
+are numbered in the comments.
 
 ``` r
 
 library(tidyABM)
 
+# 1. the agents
 economy <- abm_setup(agents = abm_agents(n = 500, money = 100))
 
+# 2. the go block
 go <- abm_go(
   abm_match(pair = "random", role = list(giver = money > 0, receiver = TRUE)),
   abm_rules(money ~ if_else(.role == "giver", money - 1, money + 1))
 )
 
+# 3. the run
 result <- abm_run(economy, go, ticks = 1000, seed = 1)
 result
 #> <abm_result> 1000 ticks, 500 agents seen, 500500 rows
@@ -67,10 +97,11 @@ type and position rather than by argument name:
 | [`abm_match()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_match.md) | decides who interacts with whom this tick |
 | [`abm_rules()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_rules.md) | updates agent columns, all agents simultaneously |
 | [`abm_sequential()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_sequential.md) | updates them one at a time, in shuffled order or an order you name |
-| [`abm_neighbours()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_neighbours.md) | summarises each agent’s network neighbourhood |
+| [`abm_neighbours()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_neighbours.md) | summarises each agent’s neighbourhood — the network, or everyone `within` a condition |
+| [`abm_draw()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_draw.md) | attaches a value to every edge, readable from both ends |
 | [`abm_tell()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_tell.md) | writes a value into *another* agent’s row |
-| [`abm_global()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_global.md) | updates a value shared by the whole population |
-| [`abm_birth()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_birth.md) | adds agents |
+| [`abm_global()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_global.md) | updates a value shared by the whole population, or a table of them indexed by a category |
+| [`abm_birth()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_birth.md) | adds agents, one or `times` many |
 | [`abm_death()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_death.md) | removes them |
 | [`abm_link()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_link.md) / [`abm_unlink()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_unlink.md) | adds or removes network edges |
 | [`abm_repeat()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_repeat.md) | replays a block of steps until a condition holds |
@@ -80,7 +111,7 @@ order:
 
 ``` r
 
-abm_go(
+go <- abm_go(
   abm_match(pair = "random"),
   abm_rules(payoff ~ case_when(...)),
   abm_match(pair = "random"),
@@ -119,31 +150,39 @@ your partner need not have picked you.
 session’s random state afterwards, so a model is reproducible without
 you having to arrange it.
 
+`abm_run(..., record =)` says how much to keep — every tick, every *n*th
+tick, the last one, or none of the populations at all. Globals are
+recorded every tick regardless. A fixed population can ignore it; a
+growing one cannot, because recording every agent of every tick is what
+makes such a run die of memory rather than merely take a while.
+
 ## Status
 
 Experimental. The API is shaped by what porting models turns up, and it
 is still moving.
 
 Fifty-six models are implemented and documented in
-[`models/`](https://rayhanalirachman.github.io/models/README.md), each
-on its own page with its code, the result it reproduces and its source:
-thirteen the grammar was designed against, three of those rebuilt
-because the short version does not show what the model is known for, and
-four rounds of ten ported as stress tests.
+[`models/`](https://rayhanalirachman.github.io/tidyABM/models/README.md),
+each on its own page with its code, the result it reproduces and its
+source: thirteen the grammar was designed against, three of those
+rebuilt because the short version does not show what the model is known
+for, and four rounds of ten ported as stress tests.
 
 Every feature in the package that is not in the founding thirteen exists
 because one of those forty models asked for it —
 [`abm_link()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_link.md),
 [`abm_neighbours()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_neighbours.md),
 [`abm_tell()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_tell.md),
+[`abm_draw()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_draw.md),
 [`abm_repeat()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_repeat.md),
-the `one_of` pairing mode, `among =`, `cost =`, `.by =`, `.order =`,
-`.scope = "population"`, clique linking, the Poisson and scale-free and
-ring networks, and the cascading semantics of
+the `one_of` pairing mode, `among =`, `cost =`, `within =`, `.by =`,
+`.order =`, `times =`, `record =`, `.scope = "population"`, clique
+linking, the Poisson and scale-free and ring networks, and the cascading
+semantics of
 [`abm_sequential()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_sequential.md).
-[`models/what-changed.md`](https://rayhanalirachman.github.io/models/what-changed.md)
+[`models/what-changed.md`](https://rayhanalirachman.github.io/tidyABM/models/what-changed.md)
 is the history;
-[`models/open-items.md`](https://rayhanalirachman.github.io/models/open-items.md)
+[`models/open-items.md`](https://rayhanalirachman.github.io/tidyABM/models/open-items.md)
 is what is still out of reach.
 
 Several validations are quantitative rather than qualitative. Hawks and

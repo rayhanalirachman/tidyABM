@@ -54,7 +54,7 @@ tibble, so it normally collapses to a single value.</p>
 
     <div class="section level2">
     <h2 id="ref-usage">Usage<a class="anchor" aria-label="anchor" href="#ref-usage"></a></h2>
-    <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">abm_global</span><span class="op">(</span><span class="va">...</span><span class="op">)</span></span></code></pre></div>
+    <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">abm_global</span><span class="op">(</span><span class="va">...</span>, .by <span class="op">=</span> <span class="cn">NULL</span><span class="op">)</span></span></code></pre></div>
     </div>
 
     <div class="section level2">
@@ -65,6 +65,13 @@ tibble, so it normally collapses to a single value.</p>
 <dd><p>One or more <code>global_name ~ aggregate_expression</code> rules. The
 expression can use agent columns and other globals; each rule sees the
 globals as updated by the rules before it in the same call.</p></dd>
+
+
+<dt id="arg--by">.by<a class="anchor" aria-label="anchor" href="#arg--by"></a></dt>
+<dd><p>Optional index. Either a vector of keys or the name of an agent
+column whose distinct values are the keys. The global becomes a named
+vector, <code>.key</code> is in scope, and the global's own name refers to that key's
+value.</p></dd>
 
 </dl></div>
     <div class="section level2">
@@ -77,12 +84,43 @@ globals as updated by the rules before it in the same call.</p></dd>
 <code><a href="abm_match.html">abm_match()</a></code>: a population-level summary does not depend on who was paired
 with whom.</p>
     </div>
+    <div class="section level2">
+    <h2 id="a-global-indexed-by-a-category">A global indexed by a category<a class="anchor" aria-label="anchor" href="#a-global-indexed-by-a-category"></a></h2>
+    <p>Models keep wanting a shared <em>table</em> rather than a shared number: a stimulus
+per task, a price per good, a queue length per counter. <code>.by</code> writes one.
+The rules are evaluated once per key and the global becomes a <strong>named
+vector</strong> indexed by them, which an ordinary rule reads back with
+<code>price[good]</code>.</p>
+<p>Two things are in scope during that evaluation and nowhere else. <code>.key</code> is
+the key being written, so <code>sum(task == .key)</code> is "how many agents are on
+<em>this</em> task". And the global's own name is bound to <strong>this key's</strong> current
+value, not to the whole vector, so an update reads exactly as the scalar
+version does:</p>
+<p></p><div class="sourceCode"><pre><code><span id="cb1-1"><a href="#cb1-1" tabindex="-1"></a><span class="fu">abm_global</span>(stimulus <span class="sc">~</span> stimulus <span class="sc">+</span> delta <span class="sc">-</span> alpha <span class="sc">*</span> <span class="fu">sum</span>(task <span class="sc">==</span> .key) <span class="sc">/</span> <span class="fu">n</span>(),</span>
+<span id="cb1-2"><a href="#cb1-2" tabindex="-1"></a>           <span class="at">.by =</span> <span class="dv">1</span><span class="sc">:</span><span class="dv">2</span>)</span></code></pre><p></p></div>
+<p>Each key still sees the <strong>whole population</strong> — <code><a href="https://dplyr.tidyverse.org/reference/context.html" class="external-link">n()</a></code> is everybody, not
+everybody on this task — because that is what a colony-level stimulus
+balance means.</p>
+<p><code>.by</code> names the index either way round. Give it a vector and the index is
+declared by the model, which is right when the categories are fixed and a
+key with nobody in it still has to be updated. Give it an agent column and
+the index is whatever values the agents currently hold, which is right when
+the categories come and go. A key the global already has stays in the index
+and is still updated even when no agent holds it this tick, so a task nobody
+is working on has its stimulus rise rather than dropping out of the table.</p>
+    </div>
 
     <div class="section level2">
     <h2 id="ref-examples">Examples<a class="anchor" aria-label="anchor" href="#ref-examples"></a></h2>
     <div class="sourceCode"><pre class="sourceCode r"><code><span class="r-in"><span><span class="fu">abm_global</span><span class="op">(</span><span class="va">last_attendance</span> <span class="op">~</span> <span class="fu"><a href="https://rdrr.io/r/base/sum.html" class="external-link">sum</a></span><span class="op">(</span><span class="va">go_today</span><span class="op">)</span><span class="op">)</span></span></span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #0000BB;">&lt;abm_global&gt;</span> 1 rule</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">•</span> `last_attendance ~ sum(go_today)`</span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co"># one stimulus per task, decaying with the number of workers on it</span></span></span>
+<span class="r-in"><span><span class="fu">abm_global</span><span class="op">(</span><span class="va">stimulus</span> <span class="op">~</span> <span class="fu"><a href="https://rdrr.io/r/base/Extremes.html" class="external-link">pmax</a></span><span class="op">(</span><span class="fl">0</span>, <span class="va">stimulus</span> <span class="op">+</span> <span class="fl">1</span> <span class="op">-</span> <span class="fl">3</span> <span class="op">*</span> <span class="fu"><a href="https://rdrr.io/r/base/sum.html" class="external-link">sum</a></span><span class="op">(</span><span class="va">task</span> <span class="op">==</span> <span class="va">.key</span><span class="op">)</span> <span class="op">/</span> <span class="fu"><a href="https://dplyr.tidyverse.org/reference/context.html" class="external-link">n</a></span><span class="op">(</span><span class="op">)</span><span class="op">)</span>,</span></span>
+<span class="r-in"><span>           .by <span class="op">=</span> <span class="fl">1</span><span class="op">:</span><span class="fl">2</span><span class="op">)</span></span></span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #0000BB;">&lt;abm_global&gt;</span> 1 rule <span style="font-style: italic;">(by 1:2)</span></span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">•</span> `stimulus ~ pmax(0, stimulus + 1 - 3 * sum(task == .key)/n())`</span>
 </code></pre></div>
     </div>
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>

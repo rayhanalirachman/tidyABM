@@ -22,8 +22,9 @@ A tibble with one row per tick and one column per global.
 ## Examples
 
 ``` r
-m <- abm_setup(agents = abm_agents(n = 20, x = 1), globals = list(total = 0))
-r <- abm_run(m, abm_go(abm_global(total ~ sum(x))), ticks = 3, seed = 1)
+m  <- abm_setup(agents = abm_agents(n = 20, x = 1), globals = list(total = 0))
+go <- abm_go(abm_global(total ~ sum(x)))
+r  <- abm_run(m, go, ticks = 3, seed = 1)
 abm_globals(r)
 #> # A tibble: 4 × 2
 #>    tick total

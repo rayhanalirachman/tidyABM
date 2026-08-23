@@ -9,6 +9,7 @@ population. It has two modes, and exactly one of them must be used:
 abm_birth(
   when = NULL,
   n = NULL,
+  times = NULL,
   cost = NULL,
   inherit = NULL,
   attach_via = NULL
@@ -24,6 +25,15 @@ abm_birth(
 - n:
 
   A count of new agents to add unconditionally.
+
+- times:
+
+  How many offspring each reproducing agent has. An expression evaluated
+  in the parent's row, so it can be a column, a draw
+  (`rpois(dplyr::n(), 2)`) or a number. `0` means that parent has none
+  this tick and `NA` is treated as `0`. Only used with `when`, since `n`
+  is already a count. Each offspring gets its own evaluation of
+  `inherit`, so a mutation drawn there differs from sibling to sibling.
 
 - cost:
 
@@ -65,6 +75,11 @@ An `abm_birth` step object.
 - `n = <count>` adds that many brand-new agents, whose columns are
   copied from a randomly chosen existing agent of the same group.
 
+One parent, one offspring, unless `times` says otherwise. Any fertility
+above one — a clutch, a litter, a Poisson number of seeds — is `times`,
+and each offspring is evaluated separately, so a mutation drawn in
+`inherit` differs between siblings.
+
 ## Examples
 
 ``` r
@@ -72,6 +87,13 @@ abm_birth(when = resource > 20, cost = resource ~ resource / 2)
 #> <abm_birth>
 #> • when = `resource > 20`
 #> • cost = `resource ~ resource/2`
+
+# a clutch rather than a single offspring
+abm_birth(when = mature, times = rpois(dplyr::n(), 2), inherit = age ~ 0)
+#> <abm_birth>
+#> • when = `mature`
+#> • times = `rpois(dplyr::n(), 2)`
+#> • inherit = `age ~ 0`
 abm_birth(n = 1, attach_via = abm_match(pair = "network", from = "random_edge"))
 #> <abm_birth>
 #> • n = 1

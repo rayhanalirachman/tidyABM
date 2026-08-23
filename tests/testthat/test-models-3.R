@@ -308,24 +308,29 @@ test_that("the metanorm keeps vengefulness alive where the bare norm does not", 
       abm_global(n_def ~ sum(defected)),
       abm_rules(payoff ~ payoff + if_else(defected, T_, 0) +
                           H_ * (n_def - as.integer(defected))),
-      abm_neighbours(witnessed ~ sum(defected & runif(n()) < seen)),
-      abm_rules(witnessed   ~ coalesce(witnessed, 0L)),
-      abm_rules(punish_acts ~ rbinom(n(), witnessed, vengefulness / 7)),
+      # one coin per (observer, observed) pair, read from both ends, so that
+      # punishments handed out and punishments received are the same events
+      abm_draw(saw ~ runif(n()), zeal ~ runif(n()), .each = "endpoint"),
+      abm_neighbours(witnessed   ~ sum(defected & saw < seen),
+                     punish_acts ~ sum(defected & saw < seen &
+                                       zeal < own_vengefulness / 7)),
+      abm_rules(witnessed   ~ coalesce(witnessed, 0L),
+                punish_acts ~ coalesce(punish_acts, 0L)),
       abm_rules(shirked ~ witnessed - punish_acts,
                 payoff  ~ payoff + E_ * punish_acts),
-      abm_neighbours(punishers ~ sum(rbinom(n(), 1, own_seen) *
-                                     rbinom(n(), 1, vengefulness / 7))),
+      abm_neighbours(punishers ~ sum(own_defected & saw_back < own_seen &
+                                     zeal_back < vengefulness / 7)),
       abm_rules(payoff ~ payoff +
                           P_ * coalesce(punishers, 0L) * as.integer(defected)))
     if (!metanorms) return(steps)
     c(steps, list(
-      abm_neighbours(meta_hits ~ sum(rbinom(n(), 1, own_seen) *
-                                     rbinom(n(), 1, vengefulness / 7))),
+      abm_draw(msaw ~ runif(n()), mzeal ~ runif(n()), .each = "endpoint"),
+      abm_neighbours(meta_hits ~ sum(own_shirked > 0 & msaw_back < own_seen &
+                                     mzeal_back < vengefulness / 7),
+                     meta_acts ~ sum(shirked > 0 & msaw < seen &
+                                     mzeal < own_vengefulness / 7)),
       abm_rules(payoff ~ payoff + P_ * coalesce(meta_hits, 0L) * shirked),
-      abm_neighbours(meta_seen ~ sum(shirked * rbinom(n(), 1, seen))),
-      abm_rules(meta_acts ~ rbinom(n(), coalesce(meta_seen, 0L),
-                                   vengefulness / 7)),
-      abm_rules(payoff   ~ payoff + E_ * meta_acts)))
+      abm_rules(payoff ~ payoff + E_ * coalesce(meta_acts, 0L))))
   }
   evolution <- list(
     abm_global(mu_p ~ mean(payoff), sd_p ~ stats::sd(payoff)),
@@ -353,4 +358,26 @@ test_that("the metanorm keeps vengefulness alive where the bare norm does not", 
   meta  <- vapply(1:3, function(s) axelrod(TRUE,  s), numeric(2))
   expect_true(all(norms["n", ] == 20))          # the resample holds n fixed
   expect_gt(mean(meta["v", ]), mean(norms["v", ]))
+})
+
+test_that("edge draws make enforcement balance agent by agent, not on average", {
+  # the property `abm_draw()` exists for: with the punishing coins on the edge,
+  # the punishments handed out and the punishments received are one set of
+  # events counted twice, so the two totals are equal rather than merely
+  # equal in distribution
+  m <- abm_setup(
+    agents = abm_agents(n = 25, seen = ~runif(n), vengefulness = ~runif(n) * 7,
+                        defected = ~runif(n) < 0.5, acts = 0L, hits = 0L),
+    network = abm_network(type = "complete"), seed = 11)
+  go <- abm_go(
+    abm_draw(saw ~ runif(n()), zeal ~ runif(n()), .each = "endpoint"),
+    abm_neighbours(acts ~ sum(defected & saw < seen &
+                                zeal < own_vengefulness / 7)),
+    abm_neighbours(hits ~ sum(own_defected & saw_back < own_seen &
+                                zeal_back < vengefulness / 7))
+  )
+  for (s in 1:5) {
+    last <- dplyr::filter(abm_run(m, go, ticks = 1, seed = s), tick == 1)
+    expect_equal(sum(last$acts), sum(last$hits))
+  }
 })

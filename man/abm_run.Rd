@@ -4,7 +4,7 @@
 \alias{abm_run}
 \title{Run a model}
 \usage{
-abm_run(model, go, ticks, seed = NULL)
+abm_run(model, go, ticks, seed = NULL, record = "all")
 }
 \arguments{
 \item{model}{An \code{abm_model} from \code{\link[=abm_setup]{abm_setup()}}.}
@@ -16,6 +16,14 @@ abm_run(model, go, ticks, seed = NULL)
 \item{seed}{Optional integer seed for the run. Set locally, so the caller's
 random state is left untouched. See the details above on why a random
 starting population also needs \code{\link[=abm_setup]{abm_setup()}}'s \code{seed}.}
+
+\item{record}{Which ticks' populations to keep. \code{"all"} (the default) keeps
+every one; a positive whole number keeps every \code{record}-th tick, plus tick 0
+and the last; \code{"final"} keeps only the last; \code{"globals"} keeps none.
+Globals are recorded every tick whatever this says, since they are one row
+each. A model whose population grows needs this: recording every agent of
+every tick is what makes such a run die of memory rather than merely take a
+while.}
 }
 \value{
 An \code{abm_result}: a tibble of one row per agent per tick, carrying the
@@ -36,6 +44,11 @@ available with \code{\link[=abm_globals]{abm_globals()}}.
 Agent-based models are stochastic, so \code{seed} is a first-class argument rather
 than something to arrange yourself: it makes the run reproducible without
 touching the global random state.
+
+Every tick's whole population is recorded by default, which is right for a
+fixed population and wrong for a growing one -- a run that ends with fifty
+thousand agents has been keeping every one of them, every tick, since the
+start. \code{record} says how much to keep.
 
 It fixes the run, though, not the model. If the agents' starting columns were
 drawn at random, they were drawn when \code{\link[=abm_setup]{abm_setup()}} was called, and this seed

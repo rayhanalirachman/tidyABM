@@ -1,8 +1,8 @@
 # Writing into other agents' rows ----------------------------------------
 
-new_abm_tell <- function(rules, to, to_quo, when, resolve) {
+new_abm_tell <- function(rules, to, to_quo, when, resolve, order) {
   structure(list(rules = rules, to = to, to_quo = to_quo, when = when,
-                 resolve = resolve),
+                 resolve = resolve, order = order),
             class = c("abm_tell", "abm_step"))
 }
 
@@ -40,6 +40,13 @@ new_abm_tell <- function(rules, to, to_quo, when, resolve) {
 #' `"sum"` is right for anything additive, like a dose or an order quantity;
 #' `"error"` says the collision is a modelling mistake and should stop the run.
 #'
+#' Three of those resolutions — `"first"`, `"last"` and `"collect"` — pick out a
+#' message rather than combining them all, so they only mean something once the
+#' messages have an order. `.order` gives them one: an expression evaluated in
+#' the sender's row whose ascending order the messages are considered in. That is
+#' what *the first person to reach the counter* needs, and without it the counter
+#' has to reconstruct the queue from something the senders wrote down.
+#'
 #' @param ... One or more `column ~ expression` rules. The expression is
 #'   evaluated in the sender's row; the result is written to the recipient's
 #'   column of the same name. The column must already exist on the recipient.
@@ -53,7 +60,15 @@ new_abm_tell <- function(rules, to, to_quo, when, resolve) {
 #'   `"last"` (an arbitrary one wins), `"first"`, `"sum"`,
 #'   `"mean"`, `"max"`, `"min"`, `"collect"` — which hands the recipient a list
 #'   of everything it was told, so the recipient's own rule decides what to make
-#'   of them, including in what order — or `"error"` to stop.
+#'   of them — or `"error"` to stop.
+#' @param .order Optional expression, evaluated in the **sender's** row, whose
+#'   ascending order is the order the messages are considered in. Without it a
+#'   recipient's messages arrive in whatever order the senders happened to be
+#'   stored in, which makes `"first"`, `"last"` and the list `"collect"` hands
+#'   over arbitrary. With it they are determinate: `.order = arrival` with
+#'   `.resolve = "first"` is *the first person to reach the counter*, and
+#'   `"collect"` hands the recipient its messages already in that order. `NA`
+#'   sits the sender out of the step.
 #'
 #' @return An `abm_tell` step object.
 #' @export
@@ -66,9 +81,14 @@ new_abm_tell <- function(rules, to, to_quo, when, resolve) {
 #'
 #' # contagion that carries a dose, summed over everyone who coughed on you
 #' abm_tell(dose ~ dose + load, to = "neighbours", when = infected, .resolve = "sum")
+#'
+#' # whoever got there first is the one the counter serves
+#' abm_tell(serving ~ .id, to = counter, when = queueing,
+#'          .resolve = "first", .order = arrived_at)
 abm_tell <- function(..., to, when = NULL,
                      .resolve = c("last", "first", "sum", "mean", "max", "min",
-                                  "collect", "error")) {
+                                  "collect", "error"),
+                     .order = NULL) {
   .resolve <- rlang::arg_match(.resolve)
   rules <- collect_rules(rlang::list2(...), "abm_tell")
 
@@ -92,7 +112,8 @@ abm_tell <- function(..., to, when = NULL,
   }
 
   new_abm_tell(rules, mode, if (mode == "id") to_quo else NULL,
-               enquo_or_null(rlang::enquo(when)), .resolve)
+               enquo_or_null(rlang::enquo(when)), .resolve,
+               enquo_or_null(rlang::enquo(.order)))
 }
 
 #' Collapse several messages to the same recipient into one value
@@ -183,6 +204,20 @@ run_tell <- function(step, state) {
   }
   if (!length(sender_row)) return(state)
 
+  if (!is.null(step$order)) {
+    # messages are considered in the order the model names, so that "first" and
+    # "last" mean something and the list "collect" hands over is sorted
+    key <- eval_rule(list(quo = step$order), aug, state$globals,
+                     grouped = FALSE)
+    if (length(key) == 1L) key <- rep(key, nrow(aug))
+    key <- key[sender_row]
+    keep <- !is.na(key)
+    if (!any(keep)) return(state)
+    ord <- order(key[keep])
+    sender_row <- sender_row[keep][ord]
+    recipient  <- recipient[keep][ord]
+  }
+
   for (r in step$rules) {
     value <- eval_rule(r, aug, state$globals, grouped = FALSE)
     if (length(value) == 1L) value <- rep(value, nrow(aug))
@@ -230,6 +265,9 @@ print.abm_tell <- function(x, ...) {
     bits <- c(bits, "when = {.code {deparse1(rlang::quo_get_expr(x$when))}}")
   }
   if (x$resolve != "last") bits <- c(bits, "resolve = {.val {x$resolve}}")
+  if (!is.null(x$order)) {
+    bits <- c(bits, "order = {.code {deparse1(rlang::quo_get_expr(x$order))}}")
+  }
   cli::cli_bullets(stats::setNames(bits, rep("*", length(bits))))
   invisible(x)
 }

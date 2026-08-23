@@ -216,9 +216,15 @@ neighbour_table <- function(edges) {
   if (is.null(edges) || nrow(edges) == 0L) {
     return(tibble::tibble(.id = integer(), .neighbour = integer()))
   }
+  # `.edge` and `.forward` say which edge this row came from and which way round
+  # it is being read, so that a value attached to the edge by [abm_draw()] can be
+  # handed to whichever endpoint is looking at it.
+  n <- nrow(edges)
   tibble::tibble(
     .id        = c(edges$from, edges$to),
-    .neighbour = c(edges$to,   edges$from)
+    .neighbour = c(edges$to,   edges$from),
+    .edge      = c(seq_len(n), seq_len(n)),
+    .forward   = c(rep(TRUE, n), rep(FALSE, n))
   )
 }
 

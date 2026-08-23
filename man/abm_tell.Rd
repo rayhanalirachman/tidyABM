@@ -8,7 +8,8 @@ abm_tell(
   ...,
   to,
   when = NULL,
-  .resolve = c("last", "first", "sum", "mean", "max", "min", "collect", "error")
+  .resolve = c("last", "first", "sum", "mean", "max", "min", "collect", "error"),
+  .order = NULL
 )
 }
 \arguments{
@@ -28,7 +29,16 @@ in one step:
 \code{"last"} (an arbitrary one wins), \code{"first"}, \code{"sum"},
 \code{"mean"}, \code{"max"}, \code{"min"}, \code{"collect"} — which hands the recipient a list
 of everything it was told, so the recipient's own rule decides what to make
-of them, including in what order — or \code{"error"} to stop.}
+of them — or \code{"error"} to stop.}
+
+\item{.order}{Optional expression, evaluated in the \strong{sender's} row, whose
+ascending order is the order the messages are considered in. Without it a
+recipient's messages arrive in whatever order the senders happened to be
+stored in, which makes \code{"first"}, \code{"last"} and the list \code{"collect"} hands
+over arbitrary. With it they are determinate: \code{.order = arrival} with
+\code{.resolve = "first"} is \emph{the first person to reach the counter}, and
+\code{"collect"} hands the recipient its messages already in that order. \code{NA}
+sits the sender out of the step.}
 }
 \value{
 An \code{abm_tell} step object.
@@ -67,6 +77,13 @@ what happens then. The default, \code{"last"}, takes an arbitrary one of them,
 which is right for a persuasion rule where the senders all agree anyway;
 \code{"sum"} is right for anything additive, like a dose or an order quantity;
 \code{"error"} says the collision is a modelling mistake and should stop the run.
+
+Three of those resolutions — \code{"first"}, \code{"last"} and \code{"collect"} — pick out a
+message rather than combining them all, so they only mean something once the
+messages have an order. \code{.order} gives them one: an expression evaluated in
+the sender's row whose ascending order the messages are considered in. That is
+what \emph{the first person to reach the counter} needs, and without it the counter
+has to reconstruct the queue from something the senders wrote down.
 }
 \examples{
 # a matched pair pushes its shared opinion onto everyone around it
@@ -77,4 +94,8 @@ abm_tell(filled ~ TRUE, to = best_bid_holder, when = ask <= best_bid)
 
 # contagion that carries a dose, summed over everyone who coughed on you
 abm_tell(dose ~ dose + load, to = "neighbours", when = infected, .resolve = "sum")
+
+# whoever got there first is the one the counter serves
+abm_tell(serving ~ .id, to = counter, when = queueing,
+         .resolve = "first", .order = arrived_at)
 }

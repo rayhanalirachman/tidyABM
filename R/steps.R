@@ -157,23 +157,63 @@ abm_sequential <- function(..., .order = NULL) {
 #' [abm_match()]: a population-level summary does not depend on who was paired
 #' with whom.
 #'
+#' # A global indexed by a category
+#'
+#' Models keep wanting a shared *table* rather than a shared number: a stimulus
+#' per task, a price per good, a queue length per counter. `.by` writes one.
+#' The rules are evaluated once per key and the global becomes a **named
+#' vector** indexed by them, which an ordinary rule reads back with
+#' `price[good]`.
+#'
+#' Two things are in scope during that evaluation and nowhere else. `.key` is
+#' the key being written, so `sum(task == .key)` is "how many agents are on
+#' *this* task". And the global's own name is bound to **this key's** current
+#' value, not to the whole vector, so an update reads exactly as the scalar
+#' version does:
+#'
+#' ```
+#' abm_global(stimulus ~ stimulus + delta - alpha * sum(task == .key) / n(),
+#'            .by = 1:2)
+#' ```
+#'
+#' Each key still sees the **whole population** — `n()` is everybody, not
+#' everybody on this task — because that is what a colony-level stimulus
+#' balance means.
+#'
+#' `.by` names the index either way round. Give it a vector and the index is
+#' declared by the model, which is right when the categories are fixed and a
+#' key with nobody in it still has to be updated. Give it an agent column and
+#' the index is whatever values the agents currently hold, which is right when
+#' the categories come and go. A key the global already has stays in the index
+#' and is still updated even when no agent holds it this tick, so a task nobody
+#' is working on has its stimulus rise rather than dropping out of the table.
+#'
 #' @param ... One or more `global_name ~ aggregate_expression` rules. The
 #'   expression can use agent columns and other globals; each rule sees the
 #'   globals as updated by the rules before it in the same call.
+#' @param .by Optional index. Either a vector of keys or the name of an agent
+#'   column whose distinct values are the keys. The global becomes a named
+#'   vector, `.key` is in scope, and the global's own name refers to that key's
+#'   value.
 #'
 #' @return An `abm_global` step object.
 #' @export
 #' @examples
 #' abm_global(last_attendance ~ sum(go_today))
-abm_global <- function(...) {
-  new_rule_step(collect_rules(rlang::list2(...), "abm_global"), "abm_global")
+#'
+#' # one stimulus per task, decaying with the number of workers on it
+#' abm_global(stimulus ~ pmax(0, stimulus + 1 - 3 * sum(task == .key) / n()),
+#'            .by = 1:2)
+abm_global <- function(..., .by = NULL) {
+  new_rule_step(collect_rules(rlang::list2(...), "abm_global"), "abm_global",
+                by = enquo_or_null(rlang::enquo(.by)))
 }
 
 # Population -------------------------------------------------------------
 
-new_abm_birth <- function(when, n, cost, inherit, attach_via) {
-  structure(list(when = when, n = n, cost = cost, inherit = inherit,
-                 attach_via = attach_via),
+new_abm_birth <- function(when, n, times, cost, inherit, attach_via) {
+  structure(list(when = when, n = n, times = times, cost = cost,
+                 inherit = inherit, attach_via = attach_via),
             class = c("abm_birth", "abm_step"))
 }
 
@@ -187,8 +227,19 @@ new_abm_birth <- function(when, n, cost, inherit, attach_via) {
 #' * `n = <count>` adds that many brand-new agents, whose columns are copied from
 #'   a randomly chosen existing agent of the same group.
 #'
+#' One parent, one offspring, unless `times` says otherwise. Any fertility above
+#' one — a clutch, a litter, a Poisson number of seeds — is `times`, and each
+#' offspring is evaluated separately, so a mutation drawn in `inherit` differs
+#' between siblings.
+#'
 #' @param when A condition. Agents satisfying it reproduce.
 #' @param n A count of new agents to add unconditionally.
+#' @param times How many offspring each reproducing agent has. An expression
+#'   evaluated in the parent's row, so it can be a column, a draw
+#'   (`rpois(dplyr::n(), 2)`) or a number. `0` means that parent has none this
+#'   tick and `NA` is treated as `0`. Only used with `when`, since `n` is
+#'   already a count. Each offspring gets its own evaluation of `inherit`, so a
+#'   mutation drawn there differs from sibling to sibling.
 #' @param cost One or more `column ~ expression` formulas applied to the parent
 #'   *and* the newborn after the split, expressing what reproduction costs — for
 #'   example `cost = resource ~ resource / 2` to halve a resource between them.
@@ -208,6 +259,9 @@ new_abm_birth <- function(when, n, cost, inherit, attach_via) {
 #' @export
 #' @examples
 #' abm_birth(when = resource > 20, cost = resource ~ resource / 2)
+#'
+#' # a clutch rather than a single offspring
+#' abm_birth(when = mature, times = rpois(dplyr::n(), 2), inherit = age ~ 0)
 #' abm_birth(n = 1, attach_via = abm_match(pair = "network", from = "random_edge"))
 #'
 #' # a child of two parents, with its own age and a mutated trait
@@ -215,9 +269,10 @@ new_abm_birth <- function(when, n, cost, inherit, attach_via) {
 #'   when = sex == "female",
 #'   inherit = list(age ~ 0, trait ~ (trait + partner_trait) / 2 + rnorm(n(), 0, 0.01))
 #' )
-abm_birth <- function(when = NULL, n = NULL, cost = NULL, inherit = NULL,
-                      attach_via = NULL) {
+abm_birth <- function(when = NULL, n = NULL, times = NULL, cost = NULL,
+                      inherit = NULL, attach_via = NULL) {
   when <- enquo_or_null(rlang::enquo(when))
+  times <- enquo_or_null(rlang::enquo(times))
 
   if (is.null(when) && is.null(n)) {
     abm_abort(
@@ -229,6 +284,13 @@ abm_birth <- function(when = NULL, n = NULL, cost = NULL, inherit = NULL,
   if (!is.null(when) && !is.null(n)) {
     abm_abort("Supply either {.arg when} or {.arg n}, not both.",
               class = "tidyABM_conflicting_args")
+  }
+  if (!is.null(times) && !is.null(n)) {
+    abm_abort(
+      c("{.arg times} says how many offspring each parent has, and {.arg n} is already a count.",
+        "i" = "Use {.arg times} with {.arg when}."),
+      class = "tidyABM_conflicting_args"
+    )
   }
   if (!is.null(n) && (!rlang::is_scalar_integerish(n) || n < 0)) {
     abm_abort("{.arg n} must be a single non-negative whole number.",
@@ -250,8 +312,8 @@ abm_birth <- function(when = NULL, n = NULL, cost = NULL, inherit = NULL,
       )
     }
   }
-  new_abm_birth(when, if (is.null(n)) NULL else as.integer(n), cost, inherit,
-                attach_via)
+  new_abm_birth(when, if (is.null(n)) NULL else as.integer(n), times, cost,
+                inherit, attach_via)
 }
 
 new_abm_death <- function(when, prune_edges) {
@@ -304,12 +366,17 @@ print.abm_sequential <- function(x, ...) print_rule_step(x, "abm_sequential")
 print.abm_global <- function(x, ...) print_rule_step(x, "abm_global")
 
 print_rule_step <- function(x, cls) {
-  scope <- if (identical(x$scope, "population")) ' {.emph (population scope)}'
-    else if (!is.null(x$by))
-      paste0(' {.emph (by ', deparse1(rlang::quo_get_expr(x$by)), ')}')
-    else if (!is.null(x$order))
-      paste0(' {.emph (in order of ', deparse1(rlang::quo_get_expr(x$order)), ')}')
-    else ""
+  # cli does not interpolate a second time, so the qualifier is formatted here
+  # rather than handed to cli_text() as a string full of braces
+  scope <- if (identical(x$scope, "population")) {
+    cli::format_inline(" {.emph (population scope)}")
+  } else if (!is.null(x$by)) {
+    cli::format_inline(" {.emph (by {deparse1(rlang::quo_get_expr(x$by))})}")
+  } else if (!is.null(x$order)) {
+    cli::format_inline(" {.emph (in order of {deparse1(rlang::quo_get_expr(x$order))})}")
+  } else if (!is.null(x$within)) {
+    cli::format_inline(" {.emph (within {deparse1(rlang::quo_get_expr(x$within))})}")
+  } else ""
   cli::cli_text("{.cls {cls}} {length(x$rules)} rule{?s}{scope}")
   labs <- rule_labels(x)
   cli::cli_bullets(stats::setNames(paste0("{.code ", labs, "}"),
@@ -323,6 +390,7 @@ print.abm_birth <- function(x, ...) {
   bits <- c(
     if (!is.null(x$when)) "when = {.code {deparse1(rlang::quo_get_expr(x$when))}}",
     if (!is.null(x$n)) "n = {x$n}",
+    if (!is.null(x$times)) "times = {.code {deparse1(rlang::quo_get_expr(x$times))}}",
     if (!is.null(x$cost)) "cost = {.code {rule_labels(list(rules = x$cost))}}",
     if (!is.null(x$inherit)) "inherit = {.code {rule_labels(list(rules = x$inherit))}}",
     if (!is.null(x$attach_via)) 'attach_via = network ({.val {x$attach_via$from}})'

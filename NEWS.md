@@ -269,3 +269,80 @@ Two fixes came with them:
 `abm_rules()` on an empty population is now a quiet no-op rather than an error,
 so a model whose agents all die reports the extinction rather than a message
 about columns no group has.
+
+## The maintenance round (Part 7)
+
+No new models. Seven of the nine entries on *Open items* were closed instead,
+each of which had been left there by an earlier round with a model naming the
+shape it wanted.
+
+* `abm_neighbours(..., within = <condition>)` aggregates over a neighbourhood in
+  **attribute space** rather than over the network — everybody whose columns
+  satisfy the condition, whether or not the model has a network. The condition is
+  evaluated once per (focal, candidate) pair with the candidate's columns under
+  their own names and the focal agent's under `own_<col>`, which is the view
+  `abm_match(cost =)` minimises over. Hegselmann–Krause (model 29) is now a step
+  rather than a hand-rolled O(n²) `vapply()`, and produces the same trajectory
+  agent for agent. An agent is inside its own attribute neighbourhood whenever
+  the condition holds of it, where it is never inside its own network one;
+  `within = ... & .id != own_.id` excludes it.
+* `abm_global(..., .by = <keys or column>)` makes a global a **named vector**
+  indexed by a category — a stimulus per task, a price per good, a queue length
+  per counter — and evaluates the rule once per key. `.key` is the key being
+  written and the global's own name is bound to that key's current value, so the
+  update reads exactly as the scalar version does; an ordinary rule reads the
+  table back with `price[good]`. Each key sees the whole population. Give `.by` a
+  vector to declare the index (a task nobody is working on still has its stimulus
+  rise) or an agent column to derive it (model 47).
+* `abm_draw(name ~ expression, .each =)` is a new step that attaches a value to
+  every **edge**, readable under that name inside every later `abm_neighbours()`
+  rule from either endpoint. Two neighbourhood passes over the same network used
+  to draw independently, so a model that has to see one encounter from both sides
+  could only get the payoffs to balance on average. `.each = "edge"` gives the
+  pair one value between them; `.each = "endpoint"` gives them one each, read as
+  `name` from an agent's own side and `name_back` from the other. Axelrod's
+  metanorms (model 30) is the case, and its test is now an identity rather than a
+  comparison of means.
+* `abm_tell(..., .order = <expression>)` fixes the order messages are considered
+  in, evaluated in the sender's row. `"first"`, `"last"` and the list `"collect"`
+  hands over were all arbitrary for the same reason; all three become determinate
+  at once, so *the first person to reach the counter* is
+  `.resolve = "first", .order = arrived_at`. `NA` sits a sender out, as in
+  `abm_sequential(.order =)`.
+* `abm_birth(..., times = <expression>)` gives a parent more than one offspring —
+  a column, a draw such as `rpois(n(), 2)`, or a number — replacing the flag
+  column and repeated step that any fertility above one used to need. Each
+  offspring is a row of its own before `inherit` is evaluated, so a mutation
+  drawn there differs between siblings. `cost` is still evaluated once, in the
+  parent's row: reproduction is paid for per parent, not per child.
+* `abm_run(..., record =)` says how much to keep: `"all"` (the default and the
+  old behaviour), a whole number for every *n*th tick plus the two ends,
+  `"final"` for the last tick only, or `"globals"` for none of the populations.
+  Globals are recorded every tick whatever it says. Nothing about the run
+  changes — the same seed gives the same final state at every setting — but a
+  model whose population grows now slows down rather than running out of memory.
+* `abm_sequential()` is between one and two orders of magnitude faster. It was a
+  `dplyr::mutate()` on a one-row tibble per agent per rule, plus a whole-column
+  write per assignment, which made the step quadratic in the population. It now
+  evaluates its rules against a plain data mask built from the agent's scalars
+  and holds the group's columns as bare vectors for the duration of the loop. The
+  bank run (model 52) at 200 depositors × 50 days went from 77.6 s to 1.75 s and
+  the result is bit-identical; the order book (model 43), whose sequential step
+  is twenty-six rules, is identical too. The semantics are unchanged: rules still
+  cascade within an agent, writes to globals are still visible to the next agent,
+  and other agents' columns are still deliberately invisible.
+
+Two fixes came with them. A value looked up out of a keyed global
+(`price[good]`) arrives carrying the global's names, and an agent column is not a
+lookup table, so the names are dropped on assignment rather than travelling
+through the run and into the result. And printing a step with a qualifier —
+`.by`, `.order`, `.scope = "population"` — showed the qualifier's cli markup
+rather than the qualifier, because cli does not interpolate a second time; it is
+formatted before it is handed over now.
+
+Two entries stayed open on purpose. There is still no spatial primitive — that is
+a different project, and `pair = "nearest"` with a `cost` expression plus
+`abm_neighbours(within =)` covers the similarity-space models. And
+`resolve = "negotiate"` is still one bargaining protocol; an argument general
+enough to take a protocol would be an argument that takes a function, and at that
+point the model may as well write the steps, which is what model 43 does.

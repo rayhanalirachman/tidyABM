@@ -13,7 +13,7 @@ reference:
 - title: Changing the population
   contents: [abm_birth, abm_death]
 - title: Changing the network
-  contents: [abm_link, abm_unlink]
+  contents: [abm_link, abm_unlink, abm_draw]
 - title: Running a model
   contents: [abm_go, abm_repeat, abm_run]
 - title: Working with results

@@ -32,15 +32,22 @@ new_abm_go <- function(steps) {
 #'
 #' @param ... Step objects: [abm_match()], [abm_rules()], [abm_sequential()],
 #'   [abm_global()], [abm_neighbours()], [abm_tell()], [abm_birth()],
-#'   [abm_death()], [abm_link()], [abm_unlink()], [abm_repeat()].
+#'   [abm_death()], [abm_link()], [abm_unlink()], [abm_draw()],
+#'   [abm_repeat()].
 #'
 #' @return An `abm_go` object.
 #' @export
 #' @examples
-#' abm_go(
+#' # Every model is the same three parts: agents, a go block, a run.
+#' rumour <- abm_setup(agents = abm_agents(
+#'   n = 200, state = ~c("spreader", rep("ignorant", n - 1))))
+#'
+#' go <- abm_go(
 #'   abm_match(pair = "random"),
 #'   abm_rules(state ~ ifelse(partner_state == "spreader", "spreader", state))
 #' )
+#'
+#' abm_run(rumour, go, ticks = 10, seed = 1)
 abm_go <- function(...) {
   steps <- rlang::list2(...)
   validate_steps(steps, "abm_go")
@@ -113,6 +120,7 @@ print.abm_go <- function(x, ...) {
       abm_tell       = paste0("tell   ", length(s$rules), " rule(s)"),
       abm_birth      = "birth",
       abm_death      = "death",
+      abm_draw       = paste0("draw   ", length(s$rules), " value(s) per ", s$each),
       abm_link       = "link",
       abm_unlink     = "unlink",
       abm_repeat     = paste0("repeat ", length(s$steps), " step(s), max ", s$max)

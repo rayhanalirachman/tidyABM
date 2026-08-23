@@ -30,11 +30,15 @@ new_abm_agents <- function(n, cols) {
 #' @examples
 #' abm_agents(n = 500, money = 100)
 #'
-#' abm_agents(
-#'   n = 100,
-#'   strategy = ~sample(c("cooperate", "defect"), n, replace = TRUE),
-#'   payoff = 0
+#' # A spec becomes a population in abm_setup(), and a run needs all three parts.
+#' economy <- abm_setup(agents = abm_agents(n = 500, money = 100))
+#'
+#' go <- abm_go(
+#'   abm_match(pair = "random", role = list(giver = money > 0, receiver = TRUE)),
+#'   abm_rules(money ~ if_else(.role == "giver", money - 1, money + 1))
 #' )
+#'
+#' abm_run(economy, go, ticks = 10, seed = 1)
 abm_agents <- function(n, ...) {
   if (!rlang::is_scalar_integerish(n) || is.na(n) || n < 0) {
     abm_abort(

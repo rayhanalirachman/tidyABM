@@ -18,23 +18,48 @@ dplyr-style formulas, and the output is tidy data.
 pak::pak("rayhanalirachman/tidyABM")
 ```
 
+## Three parts
+
+Every tidyABM model is written as the same three components, in the same order,
+each one a named object you can print, reuse and pass around:
+
+| part | function | what it is |
+|------|----------|------------|
+| 1. the agents | `abm_agents()` — inside `abm_setup()` | who is in the model and what they start with |
+| 2. the go block | `abm_go()` | the ordered steps replayed once per tick |
+| 3. the run | `abm_run()` | the two above, plus `ticks`, `seed` and `record` |
+
+Keep them as three statements. `abm_go()` is a first-class object, not an
+argument you build inside the call to `abm_run()`, and writing it that way is
+what lets you print it, validate it once, reuse one go block across several
+populations, or swap one population through several go blocks.
+
+``` r
+agents <- abm_setup(agents = abm_agents(...))   # 1
+go     <- abm_go(...)                           # 2
+result <- abm_run(agents, go, ticks = ..., seed = ...)   # 3
+```
+
 ## A whole model
 
 Wilensky and Rand's *Simple Economy*: 500 agents start with $100 each, and every
 tick anyone with money gives $1 to someone else. The wealth distribution starts
 as a spike and ends up exponential — no agent is doing anything clever, and
-inequality appears anyway.
+inequality appears anyway. The three parts are numbered in the comments.
 
 ``` r
 library(tidyABM)
 
+# 1. the agents
 economy <- abm_setup(agents = abm_agents(n = 500, money = 100))
 
+# 2. the go block
 go <- abm_go(
   abm_match(pair = "random", role = list(giver = money > 0, receiver = TRUE)),
   abm_rules(money ~ if_else(.role == "giver", money - 1, money + 1))
 )
 
+# 3. the run
 result <- abm_run(economy, go, ticks = 1000, seed = 1)
 result
 #> <abm_result> 1000 ticks, 500 agents seen, 500500 rows
@@ -66,10 +91,11 @@ type and position rather than by argument name:
 | `abm_match()`      | decides who interacts with whom this tick           |
 | `abm_rules()`      | updates agent columns, all agents simultaneously    |
 | `abm_sequential()` | updates them one at a time, in shuffled order or an order you name |
-| `abm_neighbours()` | summarises each agent's network neighbourhood       |
+| `abm_neighbours()` | summarises each agent's neighbourhood — the network, or everyone `within` a condition |
+| `abm_draw()`       | attaches a value to every edge, readable from both ends |
 | `abm_tell()`       | writes a value into *another* agent's row           |
-| `abm_global()`     | updates a value shared by the whole population      |
-| `abm_birth()`      | adds agents                                         |
+| `abm_global()`     | updates a value shared by the whole population, or a table of them indexed by a category |
+| `abm_birth()`      | adds agents, one or `times` many                    |
 | `abm_death()`      | removes them                                        |
 | `abm_link()` / `abm_unlink()` | adds or removes network edges            |
 | `abm_repeat()`     | replays a block of steps until a condition holds     |
@@ -77,7 +103,7 @@ type and position rather than by argument name:
 So a two-phase model — play, then imitate — is written flat and in order:
 
 ``` r
-abm_go(
+go <- abm_go(
   abm_match(pair = "random"),
   abm_rules(payoff ~ case_when(...)),
   abm_match(pair = "random"),
@@ -114,25 +140,31 @@ not have picked you.
 random state afterwards, so a model is reproducible without you having to arrange
 it.
 
+`abm_run(..., record =)` says how much to keep — every tick, every *n*th tick,
+the last one, or none of the populations at all. Globals are recorded every tick
+regardless. A fixed population can ignore it; a growing one cannot, because
+recording every agent of every tick is what makes such a run die of memory
+rather than merely take a while.
+
 ## Status
 
 Experimental. The API is shaped by what porting models turns up, and it is still
 moving.
 
 Fifty-six models are implemented and documented in
-[`models/`](../models/README.md), each on its own page with its code, the result
+[`models/`](models/README.md), each on its own page with its code, the result
 it reproduces and its source: thirteen the grammar was designed against, three of
 those rebuilt because the short version does not show what the model is known
 for, and four rounds of ten ported as stress tests.
 
 Every feature in the package that is not in the founding thirteen exists because
 one of those forty models asked for it — `abm_link()`, `abm_neighbours()`,
-`abm_tell()`, `abm_repeat()`, the `one_of` pairing mode, `among =`, `cost =`,
-`.by =`, `.order =`, `.scope = "population"`, clique linking, the Poisson and
-scale-free and ring networks, and the cascading semantics of
-`abm_sequential()`.
-[`models/what-changed.md`](../models/what-changed.md) is the history;
-[`models/open-items.md`](../models/open-items.md) is what is still out of reach.
+`abm_tell()`, `abm_draw()`, `abm_repeat()`, the `one_of` pairing mode,
+`among =`, `cost =`, `within =`, `.by =`, `.order =`, `times =`, `record =`,
+`.scope = "population"`, clique linking, the Poisson and scale-free and ring
+networks, and the cascading semantics of `abm_sequential()`.
+[`models/what-changed.md`](models/what-changed.md) is the history;
+[`models/open-items.md`](models/open-items.md) is what is still out of reach.
 
 Several validations are quantitative rather than qualitative. Hawks and Doves
 matches the analytic evolutionarily stable frequency `V/C` to three decimals

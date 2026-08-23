@@ -97,3 +97,11 @@ bind_groups <- function(groups) {
 #' Shorthand for a tibble of NA-padded columns
 #' @noRd
 `%||%` <- function(x, y) if (is.null(x)) y else x
+
+#' Edges without the internal columns `abm_draw()` attaches to them
+#' @noRd
+strip_draws <- function(edges) {
+  if (is.null(edges)) return(NULL)
+  keep <- !startsWith(names(edges), ".draw_") & !startsWith(names(edges), ".back_")
+  edges[, keep, drop = FALSE]
+}

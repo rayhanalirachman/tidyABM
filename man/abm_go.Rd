@@ -9,7 +9,8 @@ abm_go(...)
 \arguments{
 \item{...}{Step objects: \code{\link[=abm_match]{abm_match()}}, \code{\link[=abm_rules]{abm_rules()}}, \code{\link[=abm_sequential]{abm_sequential()}},
 \code{\link[=abm_global]{abm_global()}}, \code{\link[=abm_neighbours]{abm_neighbours()}}, \code{\link[=abm_tell]{abm_tell()}}, \code{\link[=abm_birth]{abm_birth()}},
-\code{\link[=abm_death]{abm_death()}}, \code{\link[=abm_link]{abm_link()}}, \code{\link[=abm_unlink]{abm_unlink()}}, \code{\link[=abm_repeat]{abm_repeat()}}.}
+\code{\link[=abm_death]{abm_death()}}, \code{\link[=abm_link]{abm_link()}}, \code{\link[=abm_unlink]{abm_unlink()}}, \code{\link[=abm_draw]{abm_draw()}},
+\code{\link[=abm_repeat]{abm_repeat()}}.}
 }
 \value{
 An \code{abm_go} object.
@@ -41,8 +42,14 @@ follow a single match — the market model pairs once and then applies separate
 rules to buyers and to sellers.
 }
 \examples{
-abm_go(
+# Every model is the same three parts: agents, a go block, a run.
+rumour <- abm_setup(agents = abm_agents(
+  n = 200, state = ~c("spreader", rep("ignorant", n - 1))))
+
+go <- abm_go(
   abm_match(pair = "random"),
   abm_rules(state ~ ifelse(partner_state == "spreader", "spreader", state))
 )
+
+abm_run(rumour, go, ticks = 10, seed = 1)
 }

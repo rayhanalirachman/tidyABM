@@ -26,10 +26,12 @@ grammar grew to fit them, not the other way round.
 ```{r}
 economy <- abm_setup(agents = abm_agents(n = 500, money = 100))
 
-r <- abm_run(economy, abm_go(
+go <- abm_go(
   abm_match(pair = "random", role = list(giver = money > 0, receiver = TRUE)),
   abm_rules(money ~ if_else(.role == "giver", money - 1, money + 1))
-), ticks = 500, seed = 1)
+)
+
+r <- abm_run(economy, go, ticks = 500, seed = 1)
 
 round(quantile(r$money[r$tick == 500]))
 ```
@@ -49,10 +51,12 @@ elfarol <- abm_setup(
   globals = list(last_attendance = 60)
 )
 
-r <- abm_run(elfarol, abm_go(
+go <- abm_go(
   abm_rules(go_today ~ last_attendance < threshold),
   abm_global(last_attendance ~ sum(go_today))
-), ticks = 20, seed = 2)
+)
+
+r <- abm_run(elfarol, go, ticks = 20, seed = 2)
 
 abm_globals(r)$last_attendance
 ```
@@ -78,7 +82,7 @@ pd <- abm_setup(agents = abm_agents(
   payoff = 0
 ))
 
-r <- abm_run(pd, abm_go(
+go <- abm_go(
   abm_match(pair = "random"),
   abm_rules(payoff ~ case_when(
     strategy == "cooperate" & partner_strategy == "cooperate" ~ 3,
@@ -88,7 +92,9 @@ r <- abm_run(pd, abm_go(
   )),
   abm_match(pair = "random"),
   abm_rules(strategy ~ if_else(partner_payoff > payoff, partner_strategy, strategy))
-), ticks = 100, seed = 3)
+)
+
+r <- abm_run(pd, go, ticks = 100, seed = 3)
 
 mean(r$strategy[r$tick == 100] == "cooperate")
 ```
@@ -108,7 +114,7 @@ ethno <- abm_setup(agents = abm_agents(
   resource = 10
 ))
 
-r <- abm_run(ethno, abm_go(
+go <- abm_go(
   abm_match(pair = "random"),
   abm_rules(resource ~ case_when(
     strategy == "cooperate" & partner_strategy == "cooperate" ~ resource + 2,
@@ -118,7 +124,9 @@ r <- abm_run(ethno, abm_go(
   ) - 1),
   abm_birth(when = resource > 20, cost = resource ~ resource / 2),
   abm_death(when = resource <= 0)
-), ticks = 30, seed = 4)
+)
+
+r <- abm_run(ethno, go, ticks = 30, seed = 4)
 
 as.integer(table(r$tick))[c(1, 11, 21, 31)]
 ```
@@ -142,7 +150,7 @@ rumour <- abm_setup(agents = abm_agents(
   n = 200, state = ~c("spreader", rep("ignorant", n - 1))
 ))
 
-r <- abm_run(rumour, abm_go(
+go <- abm_go(
   abm_match(pair = "random"),
   abm_rules(state ~ case_when(
     state == "ignorant" & partner_state == "spreader" ~ "spreader",
@@ -150,7 +158,9 @@ r <- abm_run(rumour, abm_go(
     state == "spreader" & partner_state == "stifler"  ~ "stifler",
     TRUE ~ state
   ))
-), ticks = 100, seed = 5)
+)
+
+r <- abm_run(rumour, go, ticks = 100, seed = 5)
 
 table(r$state[r$tick == 100])
 ```
@@ -168,11 +178,13 @@ neighbour is close enough.
 ```{r}
 party <- abm_setup(agents = abm_agents(n = 200, opinion = ~runif(n, 0, 1)))
 
-r <- abm_run(party, abm_go(
+go <- abm_go(
   abm_match(pair = "nearest", by = opinion),
   abm_rules(opinion ~ if_else(abs(opinion - partner_opinion) > 0.05,
                               runif(1), opinion))
-), ticks = 100, seed = 6)
+)
+
+r <- abm_run(party, go, ticks = 100, seed = 6)
 
 mean_gap <- function(x) mean(diff(sort(x)))
 c(start = mean_gap(r$opinion[r$tick == 0]),
@@ -195,12 +207,14 @@ market <- abm_setup(agents = list(
   sellers = abm_agents(n = 200, wta = ~rnorm(n, 40, 10), ask   = ~wta * 1.2)
 ))
 
-r <- abm_run(market, abm_go(
+go <- abm_go(
   abm_match(pair = "opposite_group", by = .group, resolve = "negotiate",
             rounds = 5, positions = c(offer, ask), limits = c(wtp, wta)),
   abm_rules(offer ~ if_else(traded, offer * 0.98, offer * 1.02)),
   abm_rules(ask   ~ if_else(traded, ask * 1.02,   ask * 0.98))
-), ticks = 200, seed = 7)
+)
+
+r <- abm_run(market, go, ticks = 200, seed = 7)
 
 price <- tapply(r$price, r$tick, function(z) mean(z, na.rm = TRUE))
 round(price[c("1", "50", "200")], 2)
@@ -221,10 +235,12 @@ voter <- abm_setup(
   network = abm_network(type = "random", degree = 4)
 )
 
-r <- abm_run(voter, abm_go(
+go <- abm_go(
   abm_match(pair = "network"),
   abm_rules(opinion ~ partner_opinion)
-), ticks = 200, seed = 8)
+)
+
+r <- abm_run(voter, go, ticks = 200, seed = 8)
 
 round(c(start = mean(r$opinion[r$tick == 0]),
         end   = mean(r$opinion[r$tick == 200])), 2)
@@ -242,10 +258,12 @@ pgg <- abm_setup(agents = abm_agents(
   n = 100, contribution = ~sample(c(0, 1), n, replace = TRUE), payoff = 0
 ))
 
-r <- abm_run(pgg, abm_go(
+go <- abm_go(
   abm_match(pair = "random", size = 4),
   abm_rules(payoff ~ sum(contribution) * 2 / 4)
-), ticks = 20, seed = 9)
+)
+
+r <- abm_run(pgg, go, ticks = 20, seed = 9)
 
 table(r$payoff[r$tick == 20])
 ```
@@ -264,7 +282,7 @@ ipd <- abm_setup(
   network = abm_network(type = "random", degree = 1)
 )
 
-r <- abm_run(ipd, abm_go(
+go <- abm_go(
   abm_match(pair = "network"),
   abm_rules(payoff ~ case_when(
     move == "cooperate" & partner_move == "cooperate" ~ 3,
@@ -273,7 +291,9 @@ r <- abm_run(ipd, abm_go(
     move == "cooperate" & partner_move == "defect"    ~ 0
   )),
   abm_rules(move ~ partner_move)
-), ticks = 50, seed = 10)
+)
+
+r <- abm_run(ipd, go, ticks = 50, seed = 10)
 
 table(r$move[r$tick == 50])
 ```
@@ -293,9 +313,11 @@ pa <- abm_setup(
   network = abm_network(type = "manual", edges = data.frame(from = 1, to = 2))
 )
 
-r <- abm_run(pa, abm_go(
+go <- abm_go(
   abm_birth(n = 1, attach_via = abm_match(pair = "network", from = "random_edge"))
-), ticks = 300, seed = 11)
+)
+
+r <- abm_run(pa, go, ticks = 300, seed = 11)
 
 deg <- table(c(abm_edges(r)$from, abm_edges(r)$to))
 c(max_degree = max(deg), median_degree = median(deg))
@@ -321,14 +343,16 @@ zakah <- abm_setup(
   globals = list(zakah_pool = 0)
 )
 
-r <- abm_run(zakah, abm_go(
+go <- abm_go(
   abm_rules(wealth ~ wealth + income - (0.6 * income + 0.02 * wealth)),
   abm_global(zakah_pool ~ sum(if_else(wealth > nisab, wealth * 0.025, 0))),
   abm_rules(wealth ~ if_else(wealth > nisab, wealth * 0.975, wealth)),
   abm_rules(wealth ~ if_else(wealth < poverty_line,
                              wealth + zakah_pool / sum(wealth < poverty_line),
                              wealth))
-), ticks = 50, seed = 12)
+)
+
+r <- abm_run(zakah, go, ticks = 50, seed = 12)
 
 round(tail(abm_globals(r)$zakah_pool, 3), 1)
 ```
@@ -362,7 +386,7 @@ bankres <- abm_setup(
   globals = list(bank_deposits = 0, bank_loans = 0, bank_reserves = 0)
 )
 
-r <- abm_run(bankres, abm_go(
+go <- abm_go(
   abm_match(pair = "random", role = list(giver = TRUE, receiver = TRUE)),
   abm_rules(gift ~ sample(c(0, 2, 5), 1)),
   abm_rules(wallet ~ if_else(.role == "giver", wallet - gift, wallet + partner_gift)),
@@ -380,7 +404,9 @@ r <- abm_run(bankres, abm_go(
   ),
   abm_global(bank_loans    ~ sum(loan)),
   abm_global(bank_reserves ~ bank_deposits * reserve_ratio - bank_loans)
-), ticks = 100, seed = 13)
+)
+
+r <- abm_run(bankres, go, ticks = 100, seed = 13)
 
 round(tail(abm_globals(r), 3), 2)
 ```

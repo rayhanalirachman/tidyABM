@@ -80,6 +80,10 @@ eval_rule <- function(rule, aug, globals, grouped, by = NULL) {
 #' Write a computed vector into a group column, for participating rows only
 #' @noRd
 assign_rule <- function(g, target, value, rows) {
+  # a value looked up out of a named global (`price[good]`) arrives carrying the
+  # global's names; an agent column is not a lookup table, so they come off here
+  # rather than travelling through the whole run and into the result.
+  if (!is.list(value) && !is.null(names(value))) value <- unname(value)
   if (length(value) == 1L) value <- rep(value, nrow(g))
   if (!target %in% names(g)) {
     g[[target]] <- vctrs::vec_init(value, nrow(g))
@@ -176,6 +180,7 @@ run_rules_by <- function(step, state, combined) {
 #' @noRd
 run_global <- function(step, state) {
   combined <- bind_groups(state$groups)
+  if (!is.null(step$by)) return(run_global_by(step, state, combined))
   for (r in step$rules) {
     # Globals go through the same dplyr mask as rules, so `n()` means the
     # population size here just as it does inside `abm_rules()`.
@@ -198,10 +203,113 @@ run_global <- function(step, state) {
   state
 }
 
+#' The keys a `.by` index names
+#'
+#' Either a vector given straight, or the distinct values of an agent column.
+#' A column-derived index keeps the keys the global already has, so a category
+#' that empties this tick keeps its last value instead of disappearing.
+#' @noRd
+global_keys <- function(by_quo, combined, current, globals) {
+  expr <- rlang::quo_get_expr(by_quo)
+  if (rlang::is_symbol(expr) && rlang::as_string(expr) %in% names(combined)) {
+    vals <- combined[[rlang::as_string(expr)]]
+    keys <- sort(unique(vals[!is.na(vals)]))
+    if (!is.null(names(current))) {
+      keys <- unique(c(cast_keys(names(current), keys), keys))
+    }
+    return(keys)
+  }
+  env <- rlang::quo_get_env(by_quo)
+  if (length(globals)) env <- rlang::new_environment(globals, parent = env)
+  keys <- rlang::eval_tidy(rlang::quo_set_env(by_quo, env), data = combined)
+  if (!length(keys)) {
+    abm_abort("{.arg .by} named no keys.", class = "tidyABM_empty_by")
+  }
+  keys
+}
+
+#' Character keys, back in the type of the keys found in the data
+#' @noRd
+cast_keys <- function(chr, like) {
+  out <- switch(
+    class(like)[[1]],
+    integer   = suppressWarnings(as.integer(chr)),
+    numeric   = suppressWarnings(as.numeric(chr)),
+    logical   = as.logical(chr),
+    character = chr,
+    factor    = chr,
+    NULL
+  )
+  if (is.null(out) || anyNA(out)) chr[0] else out
+}
+
+#' Run one abm_global step with a `.by` index
+#'
+#' The global becomes a named vector. Each key is evaluated against the whole
+#' population — a stimulus balance is about the colony, not about the workers on
+#' one task — with `.key` bound to the key and the global's own name bound to
+#' that key's current value, so the rule reads exactly as the scalar version of
+#' it does.
+#' @noRd
+run_global_by <- function(step, state, combined) {
+  for (r in step$rules) {
+    current <- state$globals[[r$target]]
+    if (!is.null(current) && length(current) > 1L && is.null(names(current))) {
+      abm_abort(
+        c("{.arg .by} needs the global to be a named vector or a single value.",
+          "x" = "{.field {r$target}} holds {length(current)} unnamed values."),
+        class = "tidyABM_bad_global"
+      )
+    }
+    keys <- global_keys(step$by, combined, current, state$globals)
+    out <- if (is.null(names(current))) NULL else current
+
+    for (k in keys) {
+      key_chr <- as.character(k)
+      here <- if (is.null(names(current))) {
+        if (length(current) == 1L) current else NA
+      } else if (key_chr %in% names(current)) {
+        current[[key_chr]]
+      } else {
+        NA
+      }
+      scope <- c(state$globals, stats::setNames(list(here, k),
+                                                c(r$target, ".key")))
+      quo <- rlang::quo_set_env(
+        r$quo, rlang::new_environment(scope, parent = rlang::quo_get_env(r$quo))
+      )
+      val <- dplyr::pull(dplyr::reframe(combined, .abm_value = !!quo),
+                         ".abm_value")
+      if (length(val) != 1L) {
+        abm_abort(
+          c("{.fn abm_global} rules must collapse to a single value per key.",
+            "x" = "{.code {r$target} ~ {deparse1(rlang::quo_get_expr(r$quo))}} returned {length(val)} values for key {.val {k}}.",
+            "i" = "Wrap it in an aggregate such as {.fn sum} or {.fn mean}."),
+          class = "tidyABM_bad_global"
+        )
+      }
+      if (is.null(out)) {
+        out <- stats::setNames(val, key_chr)
+      } else {
+        out[[key_chr]] <- val
+      }
+    }
+    state$globals[[r$target]] <- out
+  }
+  state
+}
+
 #' Run one abm_sequential step
+#'
+#' The step is a loop over agents, so the cost of one agent-rule is the cost of
+#' the whole thing. It used to be a `dplyr::mutate()` on a one-row tibble, which
+#' is a few hundred microseconds of machinery for what is usually one arithmetic
+#' operation on one number. Nothing about the semantics needs that: an agent's
+#' row is a handful of scalars, so the rules are evaluated against a plain data
+#' mask built from them, and the group's columns are held as bare vectors for the
+#' duration of the loop rather than rebuilt as a tibble on every write.
 #' @noRd
 run_sequential <- function(step, state) {
-  all_cols <- setdiff(model_columns(state$groups), c(".id", ".group"))
   order_ids <- unlist(lapply(state$groups, function(g) g$.id), use.names = FALSE)
   if (!length(order_ids)) return(state)
   if (is.null(step$order)) {
@@ -224,33 +332,97 @@ run_sequential <- function(step, state) {
   names(group_of) <- unlist(lapply(state$groups, function(g) g$.id),
                             use.names = FALSE)
 
+  # each rule gets an environment of its own, holding the globals. Writing a
+  # global assigns into those environments rather than rebuilding a mask, which
+  # is what keeps "the next agent sees what I just spent" cheap.
+  envs <- lapply(step$rules, function(r) {
+    rlang::new_environment(state$globals, parent = rlang::quo_get_env(r$quo))
+  })
+  quos <- Map(function(r, e) rlang::quo_set_env(r$quo, e), step$rules, envs)
+  is_global <- vapply(step$rules, function(r) r$target %in% names(state$globals),
+                      logical(1))
+
+  cols <- lapply(state$groups, function(g) as.list(g))
+  sizes <- vapply(state$groups, nrow, integer(1))
+  index <- lapply(state$groups, function(g) stats::setNames(seq_len(nrow(g)), g$.id))
+  todo <- stats::setNames(vector("list", length(cols)), names(cols))
+
   for (id in order_ids) {
     gname <- group_of[[as.character(id)]]
-    g <- state$groups[[gname]]
-    i <- match(id, g$.id)
+    v <- cols[[gname]]
+    i <- index[[gname]][[as.character(id)]]
     if (is.na(i)) next
-    row <- g[i, , drop = FALSE]
 
-    # A rule whose target is a global still has to be routed: a rule written
-    # for buyers must not be evaluated in a seller's row just because the
-    # thing it writes to happens to be shared.
-    todo <- Filter(function(r) rule_applies(r, g, all_cols, state$globals),
-                   step$rules)
-    if (!length(todo)) next
+    if (is.null(todo[[gname]])) {
+      todo[[gname]] <- applicable_rules(step, names(v), cols, state$globals)
+    }
+    which_rules <- todo[[gname]]
+    if (!length(which_rules)) next
 
-    # Rules cascade *within* the agent: this is the one-agent-at-a-time step,
-    # so a rule sees what the rule above it just wrote, both to the agent's own
-    # row and to the globals. (`abm_rules()` is the simultaneous one.)
-    for (r in todo) {
-      value <- eval_rule(r, row, state$globals, grouped = FALSE)
-      if (r$target %in% names(state$globals)) {
-        state$globals[[r$target]] <- value[[1]]
+    # one mask per agent, kept up to date in place: a rule sees what the rule
+    # above it wrote, which is what "one agent at a time" already implies
+    data <- lapply(v, function(x) x[[i]])
+    if (!"n" %in% names(data)) data$n <- function() 1L
+
+    for (k in which_rules) {
+      value <- rlang::eval_tidy(quos[[k]], data = data)
+      target <- step$rules[[k]]$target
+      if (is_global[[k]]) {
+        val <- value[[1]]
+        state$globals[[target]] <- val
+        for (e in envs) assign(target, val, envir = e)
       } else {
-        g <- assign_rule(g, r$target, value, rows = seq_len(nrow(g)) == i)
-        row <- g[i, , drop = FALSE]
+        new_col <- !target %in% names(v)
+        v[[target]] <- write_at(v[[target]], i, value, sizes[[gname]])
+        data[[target]] <- value[[1]]
+        if (new_col) todo[[gname]] <- NULL
       }
     }
-    state$groups[[gname]] <- g
+    cols[[gname]] <- v
+    if (is.null(todo[[gname]])) {
+      todo[[gname]] <- applicable_rules(step, names(v), cols, state$globals)
+    }
+  }
+
+  for (nm in names(cols)) {
+    state$groups[[nm]] <- tibble::new_tibble(cols[[nm]], nrow = sizes[[nm]])
   }
   state
+}
+
+#' Which of a step's rules apply to a group with these columns?
+#' @noRd
+applicable_rules <- function(step, group_names, cols, globals) {
+  all_cols <- setdiff(unique(unlist(lapply(cols, names), use.names = FALSE)),
+                      c(".id", ".group"))
+  g <- stats::setNames(vector("list", length(group_names)), group_names)
+  which(vapply(step$rules, rule_applies, logical(1),
+               g = g, all_cols = all_cols, globals = globals))
+}
+
+#' Write one value into one slot of a bare column vector
+#'
+#' `NULL` creates the column. A value of a type the column cannot hold widens the
+#' column, the way [assign_rule()] does for the whole-population steps.
+#' @noRd
+write_at <- function(column, i, value, n) {
+  if (length(value) != 1L) {
+    abm_abort(
+      c("An {.fn abm_sequential} rule must give one value per agent.",
+        "x" = "It returned {length(value)}."),
+      class = "tidyABM_bad_sequential"
+    )
+  }
+  if (is.null(column)) column <- vctrs::vec_init(value, n)
+  if (is.list(column)) {
+    column[i] <- list(value[[1]])
+    return(column)
+  }
+  if (!identical(class(column), class(value))) {
+    both <- vctrs::vec_cast_common(column, value)
+    column <- both[[1]]
+    value <- both[[2]]
+  }
+  column[[i]] <- value[[1]]
+  column
 }

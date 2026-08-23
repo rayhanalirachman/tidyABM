@@ -127,13 +127,13 @@ run_unlink <- function(step, state) {
 
 # Neighbourhood aggregates ------------------------------------------------
 
-#' Summarise each agent's network neighbours
+#' Summarise each agent's neighbourhood
 #'
 #' A match gives an agent *one* partner. Plenty of models need the whole
 #' neighbourhood instead — how many of my neighbours are infected, what fraction
 #' of them are flashing, what my neighbours believe on average.
 #' `abm_neighbours()` writes exactly that: for every agent, an aggregate over the
-#' agents it is connected to in the model's [abm_network()].
+#' agents around it.
 #'
 #' Each rule is `column ~ aggregate_expression`, and the expression is evaluated
 #' over the neighbours' rows, so `sum(infected)` means "how many of my neighbours
@@ -146,43 +146,133 @@ run_unlink <- function(step, state) {
 #' of my neighbours are richer than me", which no aggregate over the neighbours
 #' alone can express.
 #'
+#' # Two kinds of neighbourhood
+#'
+#' By default the neighbourhood is the model's [abm_network()]: the agents this
+#' one shares an edge with. `within =` replaces it with a neighbourhood in
+#' **attribute space** — everybody whose columns satisfy a condition, whether or
+#' not the model has a network at all. The condition is evaluated once per
+#' (focal, candidate) pair, with the candidate's columns under their own names
+#' and the focal agent's under `own_<col>`, which is the same view
+#' `abm_match(cost =)` minimises over.
+#'
+#' ```
+#' abm_neighbours(opinion ~ mean(opinion), within = abs(opinion - own_opinion) <= eps)
+#' ```
+#'
+#' is Hegselmann–Krause's confidence set, and it is a step rather than a
+#' hand-rolled `vapply()` over the population.
+#'
+#' The two differ in one respect beyond how the neighbourhood is found: an agent
+#' is **part of its own** attribute neighbourhood whenever the condition holds of
+#' it, because "the mean opinion of everyone I take seriously" includes the
+#' agent's own. It is never part of its network neighbourhood, because an agent
+#' is not joined to itself. Write `within = ... & .id != own_.id` to exclude it.
+#'
+#' They also differ in cost. The network form does work proportional to the
+#' number of edges; `within =` builds every (focal, candidate) pair and then
+#' filters, so it is quadratic in the population. That is the same order as the
+#' `vapply()` it replaces, with a tibble's constant factor on top, and it is
+#' worth knowing before reaching for it on a very large population.
+#'
 #' @param ... One or more `column ~ aggregate_expression` rules. The expression
 #'   sees the neighbours' agent columns, the focal agent's own columns as
-#'   `own_<col>`, and any global.
+#'   `own_<col>`, any column [abm_draw()] attached to the edge, and any global.
+#' @param within Optional condition defining a neighbourhood in attribute space
+#'   rather than in the network. Evaluated once per (focal, candidate) pair, with
+#'   the candidate's columns under their own names and the focal agent's under
+#'   `own_<col>`. When it is supplied the model needs no network.
 #'
 #' @return An `abm_neighbours` step object.
 #' @export
 #' @examples
 #' abm_neighbours(infected_neighbours ~ sum(state == "infected"))
 #' abm_neighbours(richer_neighbours ~ sum(wealth > own_wealth))
-abm_neighbours <- function(...) {
-  new_rule_step(collect_rules(rlang::list2(...), "abm_neighbours"),
-                "abm_neighbours")
+#'
+#' # a neighbourhood in opinion space rather than in a network
+#' abm_neighbours(opinion ~ mean(opinion), within = abs(opinion - own_opinion) <= 0.2)
+abm_neighbours <- function(..., within = NULL) {
+  step <- new_rule_step(collect_rules(rlang::list2(...), "abm_neighbours"),
+                        "abm_neighbours")
+  step$within <- enquo_or_null(rlang::enquo(within))
+  step
+}
+
+#' One row per (focal, candidate) pair, carrying both sides' columns
+#'
+#' The candidate's columns keep their own names and the focal agent's are
+#' prefixed `own_`. `.of` names the focal agent. This is the view
+#' `abm_match(cost =)` minimises over and the one `abm_neighbours()` aggregates
+#' over, so a comparison written for one means the same thing in the other.
+#' @noRd
+pair_view <- function(combined, focal_idx, cand_idx) {
+  cols <- names(combined)
+  view <- combined[cand_idx, cols, drop = FALSE]
+  own <- combined[focal_idx, cols, drop = FALSE]
+  names(own) <- paste0("own_", cols)
+  view <- dplyr::bind_cols(view, own)
+  view$.of <- combined$.id[focal_idx]
+  view
+}
+
+#' Evaluate one quosure against a pair view, with the globals in scope
+#' @noRd
+eval_over_view <- function(quo, view, globals) {
+  env <- rlang::quo_get_env(quo)
+  if (length(globals)) env <- rlang::new_environment(globals, parent = env)
+  quo <- rlang::quo_set_env(quo, env)
+  dplyr::pull(dplyr::mutate(view, .abm_value = !!quo), ".abm_value")
+}
+
+#' The (focal, neighbour) view for a network neighbourhood
+#' @noRd
+network_view <- function(combined, state) {
+  nb <- neighbour_table(state$edges)
+  keep <- nb$.id %in% combined$.id & nb$.neighbour %in% combined$.id
+  nb <- nb[keep, , drop = FALSE]
+  view <- pair_view(combined, match(nb$.id, combined$.id),
+                    match(nb$.neighbour, combined$.id))
+  attach_edge_columns(view, state$edges, nb)
+}
+
+#' The (focal, candidate) view for a neighbourhood in attribute space
+#' @noRd
+attribute_view <- function(step, combined, globals) {
+  n <- nrow(combined)
+  ci <- rep(seq_len(n), times = n)
+  si <- rep(seq_len(n), each = n)
+  view <- pair_view(combined, si, ci)
+  keep <- eval_over_view(step$within, view, globals)
+  if (!is.logical(keep)) {
+    abm_abort(
+      c("{.arg within} must be a condition.",
+        "x" = "{.code {deparse1(rlang::quo_get_expr(step$within))}} returned {.cls {class(keep)[[1]]}}."),
+      class = "tidyABM_bad_within"
+    )
+  }
+  if (length(keep) == 1L) keep <- rep(keep, nrow(view))
+  keep[is.na(keep)] <- FALSE
+  view[keep, , drop = FALSE]
 }
 
 #' @noRd
 run_neighbours <- function(step, state) {
-  if (is.null(state$edges)) {
-    abm_abort(
-      c("{.fn abm_neighbours} needs a network.",
-        "i" = "Add one with {.code abm_setup(..., network = abm_network(...))}."),
-      class = "tidyABM_no_network"
-    )
-  }
   combined <- bind_groups(state$groups)
-  nb <- neighbour_table(state$edges)
-  nb <- nb[nb$.id %in% combined$.id & nb$.neighbour %in% combined$.id, ,
-           drop = FALSE]
+  if (nrow(combined) == 0L) return(state)
 
-  # one row per (agent, neighbour), carrying the neighbour's columns and, as
-  # `own_<col>`, the focal agent's own — so a rule can compare the two.
-  cols <- setdiff(names(combined), c(".id", ".group"))
-  idx <- match(nb$.neighbour, combined$.id)
-  view <- combined[idx, cols, drop = FALSE]
-  own <- combined[match(nb$.id, combined$.id), cols, drop = FALSE]
-  names(own) <- paste0("own_", cols)
-  view <- dplyr::bind_cols(view, own)
-  view$.of <- nb$.id
+  if (!is.null(step$within)) {
+    view <- attribute_view(step, combined, state$globals)
+  } else {
+    if (is.null(state$edges)) {
+      abm_abort(
+        c("{.fn abm_neighbours} needs a network.",
+          "i" = "Add one with {.code abm_setup(..., network = abm_network(...))}.",
+          "i" = "Or give it a {.arg within} condition, which needs no network."),
+        class = "tidyABM_no_network"
+      )
+    }
+    view <- network_view(combined, state)
+  }
 
   for (r in step$rules) {
     env <- rlang::quo_get_env(r$quo)

@@ -2,14 +2,19 @@
 % Please edit documentation in R/network-steps.R
 \name{abm_neighbours}
 \alias{abm_neighbours}
-\title{Summarise each agent's network neighbours}
+\title{Summarise each agent's neighbourhood}
 \usage{
-abm_neighbours(...)
+abm_neighbours(..., within = NULL)
 }
 \arguments{
 \item{...}{One or more \code{column ~ aggregate_expression} rules. The expression
 sees the neighbours' agent columns, the focal agent's own columns as
-\verb{own_<col>}, and any global.}
+\verb{own_<col>}, any column \code{\link[=abm_draw]{abm_draw()}} attached to the edge, and any global.}
+
+\item{within}{Optional condition defining a neighbourhood in attribute space
+rather than in the network. Evaluated once per (focal, candidate) pair, with
+the candidate's columns under their own names and the focal agent's under
+\verb{own_<col>}. When it is supplied the model needs no network.}
 }
 \value{
 An \code{abm_neighbours} step object.
@@ -19,7 +24,7 @@ A match gives an agent \emph{one} partner. Plenty of models need the whole
 neighbourhood instead — how many of my neighbours are infected, what fraction
 of them are flashing, what my neighbours believe on average.
 \code{abm_neighbours()} writes exactly that: for every agent, an aggregate over the
-agents it is connected to in the model's \code{\link[=abm_network]{abm_network()}}.
+agents around it.
 }
 \details{
 Each rule is \code{column ~ aggregate_expression}, and the expression is evaluated
@@ -33,7 +38,38 @@ is what makes a \emph{comparison} possible — \code{sum(wealth > own_wealth)} i
 of my neighbours are richer than me", which no aggregate over the neighbours
 alone can express.
 }
+\section{Two kinds of neighbourhood}{
+By default the neighbourhood is the model's \code{\link[=abm_network]{abm_network()}}: the agents this
+one shares an edge with. \verb{within =} replaces it with a neighbourhood in
+\strong{attribute space} — everybody whose columns satisfy a condition, whether or
+not the model has a network at all. The condition is evaluated once per
+(focal, candidate) pair, with the candidate's columns under their own names
+and the focal agent's under \verb{own_<col>}, which is the same view
+\code{abm_match(cost =)} minimises over.
+
+\if{html}{\out{<div class="sourceCode">}}\preformatted{abm_neighbours(opinion ~ mean(opinion), within = abs(opinion - own_opinion) <= eps)
+}\if{html}{\out{</div>}}
+
+is Hegselmann–Krause's confidence set, and it is a step rather than a
+hand-rolled \code{vapply()} over the population.
+
+The two differ in one respect beyond how the neighbourhood is found: an agent
+is \strong{part of its own} attribute neighbourhood whenever the condition holds of
+it, because "the mean opinion of everyone I take seriously" includes the
+agent's own. It is never part of its network neighbourhood, because an agent
+is not joined to itself. Write \code{within = ... & .id != own_.id} to exclude it.
+
+They also differ in cost. The network form does work proportional to the
+number of edges; \verb{within =} builds every (focal, candidate) pair and then
+filters, so it is quadratic in the population. That is the same order as the
+\code{vapply()} it replaces, with a tibble's constant factor on top, and it is
+worth knowing before reaching for it on a very large population.
+}
+
 \examples{
 abm_neighbours(infected_neighbours ~ sum(state == "infected"))
 abm_neighbours(richer_neighbours ~ sum(wealth > own_wealth))
+
+# a neighbourhood in opinion space rather than in a network
+abm_neighbours(opinion ~ mean(opinion), within = abs(opinion - own_opinion) <= 0.2)
 }

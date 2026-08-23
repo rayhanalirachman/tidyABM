@@ -22,32 +22,59 @@ birth_by_condition <- function(step, state) {
     parents <- eval_condition(step$when, aug, state$globals)
     if (!any(parents)) next
 
-    kids <- g[parents, , drop = FALSE]
+    pg <- aug[parents, , drop = FALSE]
+    reps <- offspring_counts(step, pg, state$globals)
+    if (!sum(reps)) next
+    # one row per offspring, so a parent having three of them is three rows and
+    # `inherit` is evaluated once for each -- siblings mutate separately
+    kid_rows <- rep(which(parents), reps)
+    kids <- g[kid_rows, , drop = FALSE]
     kids$.id <- state$next_id + seq_len(nrow(kids)) - 1L
     state$next_id <- state$next_id + nrow(kids)
 
     if (!is.null(step$cost)) {
-      pg <- aug[parents, , drop = FALSE]
       for (r in step$cost) {
         val <- eval_rule(r, pg, state$globals, grouped = FALSE)
         if (length(val) == 1L) val <- rep(val, nrow(pg))
         g[[r$target]][parents] <- val
-        kids[[r$target]] <- val
+        kids[[r$target]] <- rep(val, reps)
       }
     }
     if (!is.null(step$inherit)) {
-      pg <- aug[parents, , drop = FALSE]
+      kg <- aug[kid_rows, , drop = FALSE]
       for (r in step$inherit) {
-        val <- eval_rule(r, pg, state$globals, grouped = FALSE)
-        if (length(val) == 1L) val <- rep(val, nrow(pg))
+        val <- eval_rule(r, kg, state$globals, grouped = FALSE)
+        if (length(val) == 1L) val <- rep(val, nrow(kg))
         kids[[r$target]] <- val
       }
     }
     state$groups[[nm]] <- dplyr::bind_rows(g, kids)
     newborns <- c(newborns, kids$.id)
-    parents_of <- c(parents_of, g$.id[parents])
+    parents_of <- c(parents_of, rep(g$.id[parents], reps))
   }
   attach_newborns(step, state, newborns, parents_of)
+}
+
+#' How many offspring each reproducing parent has
+#'
+#' One each unless `times` says otherwise. `NA` and negative counts are no
+#' offspring rather than an error, so that a fertility drawn from a distribution
+#' does not have to be clamped by the model.
+#' @noRd
+offspring_counts <- function(step, pg, globals) {
+  if (is.null(step$times)) return(rep(1L, nrow(pg)))
+  val <- eval_rule(list(quo = step$times), pg, globals, grouped = FALSE)
+  if (length(val) == 1L) val <- rep(val, nrow(pg))
+  if (!is.numeric(val)) {
+    abm_abort(
+      c("{.arg times} must be a count.",
+        "x" = "{.code {deparse1(rlang::quo_get_expr(step$times))}} returned {.cls {class(val)[[1]]}}."),
+      class = "tidyABM_bad_times"
+    )
+  }
+  val <- as.integer(round(val))
+  val[is.na(val) | val < 0L] <- 0L
+  val
 }
 
 birth_by_count <- function(step, state) {

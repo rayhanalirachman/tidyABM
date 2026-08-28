@@ -80,8 +80,7 @@ Two are *mutual*. They partition the eligible agents, so being matched is
 symmetric:
 
 - `"random"` shuffles into groups of `size` (default 2)
-- `"opposite_group"` pairs across a two-valued split named by `by`, and supports
-  `resolve = "negotiate"` with `rounds`, `positions` and `limits`
+- `"opposite_group"` pairs across a two-valued split named by `by`
 
 Three are *directional*. Each agent gets a partner of its own, and your partner
 need not have picked you:

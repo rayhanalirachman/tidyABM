@@ -5,18 +5,15 @@
 match_relevant_args <- list(
   random          = c("size", "role", "eligible"),
   one_of          = c("role", "eligible", "among"),
-  opposite_group  = c("size", "by", "role", "eligible", "resolve", "rounds",
-                      "positions", "limits"),
+  opposite_group  = c("size", "by", "role", "eligible"),
   nearest         = c("by", "cost", "size", "eligible", "among"),
   network         = c("from", "eligible")
 )
 
-new_abm_match <- function(pair, size, by, role, eligible, resolve, rounds,
-                          positions, limits, from, among, cost) {
+new_abm_match <- function(pair, size, by, role, eligible, from, among, cost) {
   structure(
     list(pair = pair, size = size, by = by, role = role, eligible = eligible,
-         resolve = resolve, rounds = rounds, positions = positions,
-         limits = limits, from = from, among = among, cost = cost),
+         from = from, among = among, cost = cost),
     class = c("abm_match", "abm_step")
   )
 }
@@ -42,7 +39,7 @@ new_abm_match <- function(pair, size, by, role, eligible, resolve, rounds,
 #' |--------------------|-----------------------------------------------------------------------|
 #' | `"random"`         | `size`, `role`, `eligible`                                            |
 #' | `"one_of"`         | `role`, `eligible`, `among`                                           |
-#' | `"opposite_group"` | `by`, `role`, `eligible`, `resolve`, `rounds`, `positions`, `limits`  |
+#' | `"opposite_group"` | `by`, `role`, `eligible`                                              |
 #' | `"nearest"`        | `by` *or* `cost`, `size`, `eligible`, `among`                         |
 #' | `"network"`        | `from`, `eligible`                                                    |
 #'
@@ -92,15 +89,6 @@ new_abm_match <- function(pair, size, by, role, eligible, resolve, rounds,
 #' @param among A condition naming the agents that may be *chosen*, for the
 #'   directional modes `"one_of"` and `"nearest"`. Defaults to everybody. An
 #'   agent is never matched to itself.
-#' @param resolve For `"opposite_group"`, `"none"` (the default) or
-#'   `"negotiate"`, which runs `rounds` rounds of offer/counter-offer and sets
-#'   `traded` and `price` columns.
-#' @param rounds Number of negotiation rounds when `resolve = "negotiate"`.
-#' @param positions For `resolve = "negotiate"`, `c(<first group's bid column>,
-#'   <second group's ask column>)`.
-#' @param limits For `resolve = "negotiate"`, `c(<first group's reservation
-#'   column>, <second group's reservation column>)`, the bid never rises above
-#'   the first, and the ask never falls below the second.
 #' @param from For `"network"`, `"neighbour"` (the default) picks a random
 #'   neighbour of the agent; `"random_edge"` picks a random edge of the whole
 #'   network and then one of its endpoints, which selects agents in proportion to
@@ -125,16 +113,13 @@ new_abm_match <- function(pair, size, by, role, eligible, resolve, rounds,
 abm_match <- function(pair = c("random", "one_of", "opposite_group", "nearest",
                                 "network"),
                       size = NULL, by = NULL, role = NULL, eligible = NULL,
-                      resolve = NULL, rounds = NULL, positions = NULL,
-                      limits = NULL, from = NULL, among = NULL, cost = NULL) {
+                      from = NULL, among = NULL, cost = NULL) {
   pair <- rlang::arg_match(pair)
 
   by        <- enquo_or_null(rlang::enquo(by))
   cost      <- enquo_or_null(rlang::enquo(cost))
   role      <- enquo_or_null(rlang::enquo(role))
   eligible  <- enquo_or_null(rlang::enquo(eligible))
-  positions <- enquo_or_null(rlang::enquo(positions))
-  limits    <- enquo_or_null(rlang::enquo(limits))
   among     <- enquo_or_null(rlang::enquo(among))
 
   supplied <- c(
@@ -142,10 +127,6 @@ abm_match <- function(pair = c("random", "one_of", "opposite_group", "nearest",
     if (!is.null(by))        "by",
     if (!is.null(role))      "role",
     if (!is.null(eligible))  "eligible",
-    if (!is.null(resolve))   "resolve",
-    if (!is.null(rounds))    "rounds",
-    if (!is.null(positions)) "positions",
-    if (!is.null(limits))    "limits",
     if (!is.null(from))      "from",
     if (!is.null(among))     "among",
     if (!is.null(cost))      "cost"
@@ -196,23 +177,6 @@ abm_match <- function(pair = c("random", "one_of", "opposite_group", "nearest",
     )
   }
 
-  resolve <- resolve %||% "none"
-  resolve <- rlang::arg_match0(resolve, c("none", "negotiate"),
-                               arg_nm = "resolve")
-  if (resolve == "negotiate") {
-    if (is.null(positions) || is.null(limits)) {
-      abm_abort(
-        c('{.arg positions} and {.arg limits} are required when {.code resolve = "negotiate"}.',
-          "i" = 'For example {.code positions = c(offer, ask), limits = c(wtp, wta)}.'),
-        class = "tidyABM_missing_arg"
-      )
-    }
-    rounds <- rounds %||% 5L
-  } else if (!is.null(rounds)) {
-    abm_abort('{.arg rounds} is only used when {.code resolve = "negotiate"}.',
-              class = "tidyABM_irrelevant_arg")
-  }
-
   from <- from %||% "neighbour"
   from <- rlang::arg_match0(from, c("neighbour", "random_edge", "parent"),
                             arg_nm = "from")
@@ -229,8 +193,7 @@ abm_match <- function(pair = c("random", "one_of", "opposite_group", "nearest",
     }
   }
 
-  new_abm_match(pair, size, by, role, eligible, resolve, rounds,
-                positions, limits, from, among, cost)
+  new_abm_match(pair, size, by, role, eligible, from, among, cost)
 }
 
 #' @export
@@ -242,7 +205,6 @@ print.abm_match <- function(x, ...) {
     if (!is.null(x$role)) "roles = {.val {names(as.list(rlang::quo_get_expr(x$role))[-1])}}",
     if (!is.null(x$eligible)) "eligible = {.code {deparse1(rlang::quo_get_expr(x$eligible))}}",
     if (!is.null(x$among)) "among = {.code {deparse1(rlang::quo_get_expr(x$among))}}",
-    if (x$resolve != "none") "resolve = {.val {x$resolve}} ({x$rounds} rounds)",
     if (x$pair == "network" && x$from != "neighbour") "from = {.val {x$from}}"
   )
   cli::cli_text('{.cls abm_match} pair = {.val {x$pair}}')

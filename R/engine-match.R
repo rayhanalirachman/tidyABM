@@ -54,9 +54,8 @@ assign_roles <- function(role_quo, agents, globals, a_idx, b_idx) {
 
 #' Run one abm_match step
 #'
-#' Returns a list with `match` (a tibble of .id/.partner/.role/.group_id for
-#' participating agents only) and `updates` (a tibble of .id plus any columns the
-#' match itself wrote, e.g. from negotiation).
+#' Returns a tibble of .id/.partner/.role/.group_id, for participating agents
+#' only. A match decides who meets whom; it never writes an agent column.
 #' @noRd
 run_match <- function(spec, agents, edges, globals, call = rlang::caller_env()) {
   eligible <- eval_condition(spec$eligible, agents, globals)
@@ -79,7 +78,7 @@ run_match <- function(spec, agents, edges, globals, call = rlang::caller_env()) 
 match_random <- function(spec, agents, globals, pool) {
   pool <- shuffle(pool)
   ch <- chunk_ids(pool, spec$size)
-  if (length(ch$ids) == 0L) return(list(match = empty_match(), updates = NULL))
+  if (length(ch$ids) == 0L) return(empty_match())
 
   if (spec$size == 2L) {
     a <- ch$ids[c(TRUE, FALSE)]
@@ -100,18 +99,18 @@ match_random <- function(spec, agents, globals, pool) {
         .group_id = rep(seq_len(sum(keep)), 2)
       )
     }
-    return(list(match = m, updates = NULL))
+    return(m)
   }
 
   m <- tibble::tibble(.id = ch$ids, .partner = NA_integer_,
                       .role = NA_character_, .group_id = ch$gid)
-  list(match = m, updates = NULL)
+  m
 }
 
 match_one_of <- function(spec, agents, globals, pool, candidates = NULL) {
   candidates <- candidates %||% agents$.id
   if (length(pool) == 0L || length(candidates) == 0L) {
-    return(list(match = empty_match(), updates = NULL))
+    return(empty_match())
   }
   # NetLogo's `one-of other turtles`: each eligible agent draws a partner from
   # the candidate pool, itself excluded. Directional, so A may pick B while B
@@ -119,7 +118,7 @@ match_one_of <- function(spec, agents, globals, pool, candidates = NULL) {
   # An agent that is its own only candidate has nobody to pick and sits out.
   usable <- pool[!(pool %in% candidates) | length(candidates) > 1L]
   pool <- usable
-  if (length(pool) == 0L) return(list(match = empty_match(), updates = NULL))
+  if (length(pool) == 0L) return(empty_match())
   idx <- match(pool, agents$.id)
   draw <- draw_from(candidates, length(pool))
   clash <- draw == pool
@@ -141,7 +140,7 @@ match_one_of <- function(spec, agents, globals, pool, candidates = NULL) {
     .id = pool[keep], .partner = draw[keep], .role = role_a[keep],
     .group_id = seq_len(sum(keep))
   )
-  list(match = m, updates = NULL)
+  m
 }
 
 match_opposite <- function(spec, agents, globals, pool, call) {
@@ -171,12 +170,12 @@ match_opposite <- function(spec, agents, globals, pool, call) {
   sub <- agents[agents$.id %in% pool, , drop = FALSE]
   vals <- all_vals
   if (length(all_vals) < 2L || length(unique(sub[[by]])) < 2L) {
-    return(list(match = empty_match(), updates = NULL))
+    return(empty_match())
   }
   g1 <- shuffle(sub$.id[sub[[by]] == vals[[1]]])
   g2 <- shuffle(sub$.id[sub[[by]] == vals[[2]]])
   k <- min(length(g1), length(g2))
-  if (k == 0L) return(list(match = empty_match(), updates = NULL))
+  if (k == 0L) return(empty_match())
   a <- g1[seq_len(k)]; b <- g2[seq_len(k)]
   a_idx <- match(a, agents$.id); b_idx <- match(b, agents$.id)
 
@@ -193,54 +192,7 @@ match_opposite <- function(spec, agents, globals, pool, call) {
     .group_id = rep(seq_len(sum(keep)), 2)
   )
 
-  updates <- NULL
-  if (spec$resolve == "negotiate") {
-    updates <- negotiate(spec, agents, a[keep], b[keep], call)
-  }
-  list(match = m, updates = updates)
-}
-
-#' Offer/counter-offer resolution for opposite-group pairs
-#' @noRd
-negotiate <- function(spec, agents, a, b, call) {
-  pos <- by_columns(spec$positions, call)
-  lim <- by_columns(spec$limits, call)
-  if (length(pos) != 2L || length(lim) != 2L) {
-    abm_abort("{.arg positions} and {.arg limits} must each name two columns.",
-              class = "tidyABM_bad_by", call = call)
-  }
-  missing <- setdiff(c(pos, lim), names(agents))
-  if (length(missing)) {
-    abm_abort("Column{?s} {.field {missing}} not found.",
-              class = "tidyABM_missing_column", call = call)
-  }
-  a_idx <- match(a, agents$.id); b_idx <- match(b, agents$.id)
-
-  # Whichever side actually holds the bid column is the buyer.
-  a_is_buyer <- !is.na(agents[[pos[[1]]]][a_idx])
-  buyer <- ifelse(a_is_buyer, a_idx, b_idx)
-  seller <- ifelse(a_is_buyer, b_idx, a_idx)
-
-  bid <- agents[[pos[[1]]]][buyer]
-  ask <- agents[[pos[[2]]]][seller]
-  lim_b <- agents[[lim[[1]]]][buyer]
-  lim_s <- agents[[lim[[2]]]][seller]
-
-  for (r in seq_len(spec$rounds)) {
-    open <- bid < ask
-    if (!any(open, na.rm = TRUE)) break
-    gap <- (ask - bid) / (spec$rounds - r + 1)
-    bid[open] <- pmin(bid[open] + gap[open] / 2, lim_b[open])
-    ask[open] <- pmax(ask[open] - gap[open] / 2, lim_s[open])
-  }
-  traded <- !is.na(bid) & !is.na(ask) & bid >= ask
-  price <- ifelse(traded, (bid + ask) / 2, NA_real_)
-
-  tibble::tibble(
-    .id    = c(agents$.id[buyer], agents$.id[seller]),
-    traded = c(traded, traded),
-    price  = c(price, price)
-  )
+  m
 }
 
 match_nearest <- function(spec, agents, globals, pool, candidates, call) {
@@ -257,7 +209,7 @@ match_nearest <- function(spec, agents, globals, pool, candidates, call) {
   sub <- agents[agents$.id %in% pool, , drop = FALSE]
   cand <- agents[agents$.id %in% candidates, , drop = FALSE]
   if (nrow(sub) == 0L || nrow(cand) == 0L) {
-    return(list(match = empty_match(), updates = NULL))
+    return(empty_match())
   }
 
   a <- as.matrix(sub[, by, drop = FALSE])
@@ -267,14 +219,14 @@ match_nearest <- function(spec, agents, globals, pool, candidates, call) {
   d <- outer(rowSums(a^2), rowSums(b^2), "+") - 2 * (a %*% t(b))
   d[outer(sub$.id, cand$.id, "==")] <- Inf   # never yourself
   ok <- is.finite(matrixStats_rowMins(d))
-  if (!any(ok)) return(list(match = empty_match(), updates = NULL))
+  if (!any(ok)) return(empty_match())
   nearest <- max.col(-d, ties.method = "first")
 
   m <- tibble::tibble(
     .id = sub$.id[ok], .partner = cand$.id[nearest[ok]],
     .role = NA_character_, .group_id = seq_len(sum(ok))
   )
-  list(match = m, updates = NULL)
+  m
 }
 
 #' `pair = "nearest"` with a cost expression rather than a coordinate
@@ -289,7 +241,7 @@ match_cheapest <- function(spec, agents, globals, pool, candidates, call) {
   sub  <- agents[agents$.id %in% pool, , drop = FALSE]
   cand <- agents[agents$.id %in% candidates, , drop = FALSE]
   if (nrow(sub) == 0L || nrow(cand) == 0L) {
-    return(list(match = empty_match(), updates = NULL))
+    return(empty_match())
   }
   # every column, `.id` and `.group` included, so a cost can say "my rank of
   # this candidate" (`own_rank[[.]][.id]`) as well as "the price it charges"
@@ -319,7 +271,7 @@ match_cheapest <- function(spec, agents, globals, pool, candidates, call) {
   }
   val[view$.chooser == view$.candidate] <- NA_real_   # never yourself
   keep <- !is.na(val)
-  if (!any(keep)) return(list(match = empty_match(), updates = NULL))
+  if (!any(keep)) return(empty_match())
 
   ord <- order(view$.chooser[keep], val[keep])
   ch  <- view$.chooser[keep][ord]
@@ -329,7 +281,7 @@ match_cheapest <- function(spec, agents, globals, pool, candidates, call) {
     .id = ch[first], .partner = cd[first],
     .role = NA_character_, .group_id = seq_len(sum(first))
   )
-  list(match = m, updates = NULL)
+  m
 }
 
 #' Row minima of a matrix, without a dependency
@@ -342,7 +294,7 @@ matrixStats_rowMins <- function(x) {
 match_network <- function(spec, agents, edges, pool) {
   nb <- neighbour_table(edges)
   nb <- nb[nb$.id %in% pool & nb$.neighbour %in% agents$.id, , drop = FALSE]
-  if (nrow(nb) == 0L) return(list(match = empty_match(), updates = NULL))
+  if (nrow(nb) == 0L) return(empty_match())
 
   nb <- nb[sample.int(nrow(nb)), , drop = FALSE]
   pick <- !duplicated(nb$.id)
@@ -352,7 +304,7 @@ match_network <- function(spec, agents, edges, pool) {
     .id = chosen$.id, .partner = chosen$.neighbour,
     .role = NA_character_, .group_id = seq_len(nrow(chosen))
   )
-  list(match = m, updates = NULL)
+  m
 }
 
 #' Pick a target agent for a newborn, given an `attach_via` match spec

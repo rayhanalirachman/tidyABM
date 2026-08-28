@@ -93,8 +93,7 @@ through the run and into the result.
 
 ## Still open
 
-Two entries, and neither is a request for expressiveness. They are the two the
-seventh round deliberately did not close.
+One entry, and it is not a request for expressiveness.
 
 - **No spatial primitive.** Every model here is aspatial or network-based by
   design. A lattice or continuous space would be a different project, not an
@@ -103,12 +102,3 @@ seventh round deliberately did not close.
   condition, it covers rather more of them than it did. That is as close as this
   grammar gets, and going further would mean deciding what a neighbourhood, a
   boundary and a move are, which is a design project of its own.
-- **`resolve = "negotiate"` is narrow.** It implements one bargaining protocol:
-  symmetric concessions bounded by reservation values. Model 43 shows the way
-  round it, an order book written with `abm_sequential()` and `abm_tell()`, but
-  that is twenty rules, not an argument. The reason this one stays open is
-  that the alternative is not obvious: bargaining protocols do not form a family
-  with a shared shape the way the pairing modes do, and an argument that took a
-  *protocol* would be an argument that took a function, at which point the model
-  may as well write the steps. It stays here as a known narrowness rather than
-  as work waiting to be done.

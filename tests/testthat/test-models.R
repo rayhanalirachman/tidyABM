@@ -103,21 +103,38 @@ test_that("party clusters opinions", {
 
 test_that("market prices converge toward the clearing price", {
   withr::local_seed(1007)
+  market <- abm_setup(agents = list(
+    buyers  = abm_agents(n = 200, wtp = ~rnorm(n, 50, 10), offer = ~wtp * 0.8),
+    sellers = abm_agents(n = 200, wta = ~rnorm(n, 40, 10), ask   = ~wta * 1.2)),
+    seed = 7)
   r <- abm_run(
-    abm_setup(agents = list(
-      buyers  = abm_agents(n = 200, wtp = ~rnorm(n, 50, 10), offer = ~wtp * 0.8),
-      sellers = abm_agents(n = 200, wta = ~rnorm(n, 40, 10), ask   = ~wta * 1.2))),
-    abm_go(abm_match(pair = "opposite_group", by = .group, resolve = "negotiate",
-                     rounds = 5, positions = c(offer, ask), limits = c(wtp, wta)),
-           abm_rules(offer ~ if_else(traded, offer * 0.98, offer * 1.02)),
-           abm_rules(ask   ~ if_else(traded, ask * 1.02,   ask * 0.98))),
+    market,
+    abm_go(abm_match(pair = "opposite_group", by = .group),
+           abm_rules(price  ~ (offer + partner_ask) / 2,
+                     price  ~ (partner_offer + ask) / 2),
+           abm_rules(traded ~ price <= wtp & price >= partner_wta,
+                     traded ~ price >= wta & price <= partner_wtp),
+           abm_rules(price  ~ if_else(traded, price, NA_real_)),
+           abm_rules(offer  ~ pmin(if_else(traded, offer * 0.98, offer * 1.02), wtp)),
+           abm_rules(ask    ~ pmax(if_else(traded, ask * 1.02,   ask * 0.98),   wta))),
     ticks = 200, seed = 7)
-  price <- tapply(r$price, r$tick, function(z) mean(z, na.rm = TRUE))
+
   expect_true(all(is.na(r$price[r$tick == 0])))
-  final <- price[["200"]]
-  expect_true(final > 40 && final < 50)
-  # trades happen on both sides of the market
   expect_true(any(r$traded[r$tick == 200], na.rm = TRUE))
+
+  # the clearing price for N(50, 10) buyers against N(40, 10) sellers is 45
+  price <- tapply(r$price, r$tick, function(z) mean(z, na.rm = TRUE))
+  expect_equal(price[["200"]], 45, tolerance = 0.1)
+
+  # and the prices tighten around it rather than merely passing through
+  spread <- tapply(r$price, r$tick, function(z) stats::sd(z, na.rm = TRUE))
+  expect_lt(spread[["200"]], spread[["1"]])
+
+  # nobody trades outside their own valuation, which is what the pmin/pmax buy
+  b <- !is.na(r$offer); s <- !is.na(r$ask)
+  expect_true(all(r$offer[b] <= r$wtp[b] + 1e-9))
+  expect_true(all(r$ask[s]   >= r$wta[s] - 1e-9))
+  expect_true(all(r$price[b & r$traded %in% TRUE] <= r$wtp[b & r$traded %in% TRUE] + 1e-9))
 })
 
 test_that("the voter model moves toward consensus along the network", {

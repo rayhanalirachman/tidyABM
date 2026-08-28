@@ -10,10 +10,6 @@ abm_match(
   by = NULL,
   role = NULL,
   eligible = NULL,
-  resolve = NULL,
-  rounds = NULL,
-  positions = NULL,
-  limits = NULL,
   from = NULL,
   among = NULL,
   cost = NULL
@@ -41,17 +37,6 @@ dropped for this step. Rules then see \code{.role}.}
 
 \item{eligible}{A condition. Agents for which it is \code{FALSE} sit the step
 out.}
-
-\item{resolve}{For \code{"opposite_group"}, \code{"none"} (the default) or
-\code{"negotiate"}, which runs \code{rounds} rounds of offer/counter-offer and sets
-\code{traded} and \code{price} columns.}
-
-\item{rounds}{Number of negotiation rounds when \code{resolve = "negotiate"}.}
-
-\item{positions}{For \code{resolve = "negotiate"}, \verb{c(<first group's bid column>, <second group's ask column>)}.}
-
-\item{limits}{For \code{resolve = "negotiate"}, \verb{c(<first group's reservation column>, <second group's reservation column>)}, the bid never rises above
-the first, and the ask never falls below the second.}
 
 \item{from}{For \code{"network"}, \code{"neighbour"} (the default) picks a random
 neighbour of the agent; \code{"random_edge"} picks a random edge of the whole
@@ -96,7 +81,7 @@ that the chosen mode does not use is an error rather than being ignored:\tabular
    mode \tab uses \cr
    \code{"random"} \tab \code{size}, \code{role}, \code{eligible} \cr
    \code{"one_of"} \tab \code{role}, \code{eligible}, \code{among} \cr
-   \code{"opposite_group"} \tab \code{by}, \code{role}, \code{eligible}, \code{resolve}, \code{rounds}, \code{positions}, \code{limits} \cr
+   \code{"opposite_group"} \tab \code{by}, \code{role}, \code{eligible} \cr
    \code{"nearest"} \tab \code{by} \emph{or} \code{cost}, \code{size}, \code{eligible}, \code{among} \cr
    \code{"network"} \tab \code{from}, \code{eligible} \cr
 }

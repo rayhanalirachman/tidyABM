@@ -32,6 +32,11 @@ whole population, with the globals in scope, and must collapse to a single
 at least once. \code{max} is required, because a condition that never becomes
 true would otherwise hang the run.
 
+If a match is standing when the block runs, \code{until} also sees \code{.role} and
+\verb{partner_<col>}, as a rule does. A phase is usually a phase \emph{of an
+encounter}, and its stopping condition is usually about the pair rather than
+about either agent alone.
+
 The same idea covers early stopping for a whole model: a block wrapped in
 \verb{abm_repeat(until = <absorbed>, max = <ticks>)} and run for a single tick
 stops as soon as the model reaches its absorbing state, instead of
@@ -44,6 +49,13 @@ abm_repeat(
   abm_rules(state ~ ifelse(state == "I", "R", state)),
   until = sum(state == "I") == 0,
   max = 500
+)
+
+# a bargaining phase, which stops when every pair has met or given up
+abm_repeat(
+  abm_rules(bid ~ pmin(bid + step, reservation)),
+  until = all(bid >= partner_ask | bid >= reservation),
+  max = 20
 )
 }
 \seealso{

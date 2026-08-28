@@ -76,7 +76,7 @@ test_that("one_of gives every eligible agent its own partner, itself excluded", 
   withr::local_seed(2003)
   m <- abm_setup(agents = abm_agents(n = 50, x = ~seq_len(n)))
   res <- run_match(abm_match(pair = "one_of"), m$groups$agents, NULL, list())
-  mm <- res$match
+  mm <- res
   expect_equal(sort(mm$.id), 1:50)             # everyone gets one
   expect_false(any(mm$.id == mm$.partner))     # nobody meets themselves
   # ...and it is directional, so partnership is not generally symmetric
@@ -89,8 +89,8 @@ test_that("one_of, unlike random, can leave an odd population fully matched", {
   m <- abm_setup(agents = abm_agents(n = 7, x = 1))
   a <- run_match(abm_match(pair = "random"), m$groups$agents, NULL, list())
   b <- run_match(abm_match(pair = "one_of"), m$groups$agents, NULL, list())
-  expect_equal(nrow(a$match), 6)   # one agent is left over
-  expect_equal(nrow(b$match), 7)   # everybody draws somebody
+  expect_equal(nrow(a), 6)   # one agent is left over
+  expect_equal(nrow(b), 7)   # everybody draws somebody
 })
 
 test_that(".scope = 'population' ignores a standing match", {

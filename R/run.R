@@ -150,9 +150,8 @@ run_step <- function(step, state) {
   switch(
     class(step)[[1]],
     abm_match = {
-      res <- run_match(step, bind_groups(state$groups), state$edges, state$globals)
-      state$match <- list(match = res$match, size = step$size)
-      if (!is.null(res$updates)) state <- apply_updates(state, res$updates)
+      m <- run_match(step, bind_groups(state$groups), state$edges, state$globals)
+      state$match <- list(match = m, size = step$size)
       state
     },
     abm_rules      = run_rules(step, state),
@@ -169,21 +168,6 @@ run_step <- function(step, state) {
     abm_abort("Unknown step type {.cls {class(step)[[1]]}}.",
               class = "tidyABM_unknown_step")
   )
-}
-
-#' Write columns produced by a match (e.g. negotiation results) back into groups
-#' @noRd
-apply_updates <- function(state, updates) {
-  cols <- setdiff(names(updates), ".id")
-  for (nm in names(state$groups)) {
-    g <- state$groups[[nm]]
-    idx <- match(g$.id, updates$.id)
-    for (cl in cols) {
-      g[[cl]] <- updates[[cl]][idx]
-    }
-    state$groups[[nm]] <- g
-  }
-  state
 }
 
 snapshot <- function(state, t) {

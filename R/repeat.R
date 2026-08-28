@@ -20,6 +20,11 @@ new_abm_repeat <- function(steps, until, max) {
 #' at least once. `max` is required, because a condition that never becomes
 #' true would otherwise hang the run.
 #'
+#' If a match is standing when the block runs, `until` also sees `.role` and
+#' `partner_<col>`, as a rule does. A phase is usually a phase *of an
+#' encounter*, and its stopping condition is usually about the pair rather than
+#' about either agent alone.
+#'
 #' The same idea covers early stopping for a whole model: a block wrapped in
 #' `abm_repeat(until = <absorbed>, max = <ticks>)` and run for a single tick
 #' stops as soon as the model reaches its absorbing state, instead of
@@ -43,6 +48,13 @@ new_abm_repeat <- function(steps, until, max) {
 #'   until = sum(state == "I") == 0,
 #'   max = 500
 #' )
+#'
+#' # a bargaining phase, which stops when every pair has met or given up
+#' abm_repeat(
+#'   abm_rules(bid ~ pmin(bid + step, reservation)),
+#'   until = all(bid >= partner_ask | bid >= reservation),
+#'   max = 20
+#' )
 abm_repeat <- function(..., until = NULL, max) {
   steps <- rlang::list2(...)
   if (missing(max)) {
@@ -65,7 +77,11 @@ run_repeat <- function(step, state) {
   for (i in seq_len(step$max)) {
     for (s in step$steps) state <- run_step(s, state)
     if (is.null(step$until)) next
+    # a phase inside a tick usually runs on a standing match, and its stopping
+    # condition is about the pairing ("until nobody's bid is still under their
+    # partner's ask"), so `until` sees `.role` and `partner_<col>` as a rule does
     combined <- bind_groups(state$groups)
+    combined <- augment_group(combined, state$match, combined)
     quo <- rlang::quo_set_env(
       step$until,
       rlang::new_environment(state$globals,

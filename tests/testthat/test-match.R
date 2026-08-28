@@ -4,7 +4,7 @@ test_that("each mode rejects arguments it does not use", {
   expect_error(abm_match(pair = "nearest", by = x, role = list(a = TRUE, b = TRUE)),
                class = "tidyABM_irrelevant_arg")
   expect_error(abm_match(pair = "network", size = 3), class = "tidyABM_irrelevant_arg")
-  expect_error(abm_match(pair = "random", resolve = "negotiate"),
+  expect_error(abm_match(pair = "opposite_group", by = g, among = x > 0),
                class = "tidyABM_irrelevant_arg")
 })
 
@@ -23,12 +23,15 @@ test_that("size > 2 is refused by the modes that cannot support it", {
   expect_s3_class(abm_match(pair = "random", size = 4), "abm_match")
 })
 
-test_that("negotiation needs positions and limits", {
+test_that("a match decides who meets whom and writes no agent column", {
   withr::local_seed(1004)
-  expect_error(
-    abm_match(pair = "opposite_group", by = g, resolve = "negotiate"),
-    class = "tidyABM_missing_arg"
-  )
+  m <- abm_setup(agents = list(
+    a = abm_agents(n = 6, x = 1),
+    b = abm_agents(n = 6, y = 2)))
+  r <- abm_run(m, abm_go(abm_match(pair = "opposite_group", by = .group),
+                         abm_rules(x ~ x + partner_y)),
+               ticks = 1, seed = 4)
+  expect_setequal(setdiff(names(r), c("tick", ".id", ".group")), c("x", "y"))
 })
 
 test_that("role must be a named list of two conditions", {
@@ -43,7 +46,7 @@ test_that("random pairing partitions the population", {
   withr::local_seed(1006)
   m <- abm_setup(agents = abm_agents(n = 10, x = 1))
   res <- run_match(abm_match(pair = "random"), m$groups$agents, NULL, list())
-  mm <- res$match
+  mm <- res
   expect_equal(sort(mm$.id), 1:10)
   # partnership is symmetric
   expect_equal(mm$.partner[match(mm$.partner, mm$.id)], mm$.id)
@@ -56,8 +59,8 @@ test_that("roles are only assigned where both conditions can hold", {
                     role = list(giver = money > 0, receiver = TRUE))
   res <- run_match(spec, m$groups$agents, NULL, list())
   # only one agent can give, so exactly one pair survives
-  expect_equal(nrow(res$match), 2)
-  expect_setequal(res$match$.role, c("giver", "receiver"))
+  expect_equal(nrow(res), 2)
+  expect_setequal(res$.role, c("giver", "receiver"))
 })
 
 test_that("eligible filters agents out of the step", {
@@ -65,9 +68,9 @@ test_that("eligible filters agents out of the step", {
   m <- abm_setup(agents = abm_agents(n = 10, ok = ~rep(c(TRUE, FALSE), each = 5)))
   res <- run_match(abm_match(pair = "random", eligible = ok),
                    m$groups$agents, NULL, list())
-  expect_true(all(res$match$.id %in% 1:5))
+  expect_true(all(res$.id %in% 1:5))
   # an odd eligible pool leaves one agent over
-  expect_equal(nrow(res$match), 4)
+  expect_equal(nrow(res), 4)
 })
 
 test_that("network matching only draws partners from a agent's own edges", {
@@ -76,8 +79,8 @@ test_that("network matching only draws partners from a agent's own edges", {
   m <- abm_setup(agents = abm_agents(n = 4, x = 1),
                  network = abm_network(type = "manual", edges = edges))
   res <- run_match(abm_match(pair = "network"), m$groups$agents, m$edges, list())
-  pairs <- paste(pmin(res$match$.id, res$match$.partner),
-                 pmax(res$match$.id, res$match$.partner))
+  pairs <- paste(pmin(res$.id, res$.partner),
+                 pmax(res$.id, res$.partner))
   expect_true(all(pairs %in% c("1 2", "3 4")))
 })
 

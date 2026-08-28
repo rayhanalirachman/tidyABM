@@ -91,6 +91,10 @@ whole population, with the globals in scope, and must collapse to a single
 <code>TRUE</code> or <code>FALSE</code>. It is checked <em>after</em> each pass, so the block always runs
 at least once. <code>max</code> is required, because a condition that never becomes
 true would otherwise hang the run.</p>
+<p>If a match is standing when the block runs, <code>until</code> also sees <code>.role</code> and
+<code>partner_&lt;col&gt;</code>, as a rule does. A phase is usually a phase <em>of an
+encounter</em>, and its stopping condition is usually about the pair rather than
+about either agent alone.</p>
 <p>The same idea covers early stopping for a whole model: a block wrapped in
 <code>abm_repeat(until = &lt;absorbed&gt;, max = &lt;ticks&gt;)</code> and run for a single tick
 stops as soon as the model reaches its absorbing state, instead of
@@ -114,6 +118,15 @@ tick.</p></div>
 <span class="r-in"><span><span class="op">)</span></span></span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #0000BB;">&lt;abm_repeat&gt;</span> 2 steps, at most 500 passes</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">•</span> until = `sum(state == "I") == 0`</span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co"># a bargaining phase, which stops when every pair has met or given up</span></span></span>
+<span class="r-in"><span><span class="fu">abm_repeat</span><span class="op">(</span></span></span>
+<span class="r-in"><span>  <span class="fu"><a href="abm_rules.html">abm_rules</a></span><span class="op">(</span><span class="va">bid</span> <span class="op">~</span> <span class="fu"><a href="https://rdrr.io/r/base/Extremes.html" class="external-link">pmin</a></span><span class="op">(</span><span class="va">bid</span> <span class="op">+</span> <span class="va">step</span>, <span class="va">reservation</span><span class="op">)</span><span class="op">)</span>,</span></span>
+<span class="r-in"><span>  until <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/all.html" class="external-link">all</a></span><span class="op">(</span><span class="va">bid</span> <span class="op">&gt;=</span> <span class="va">partner_ask</span> <span class="op">|</span> <span class="va">bid</span> <span class="op">&gt;=</span> <span class="va">reservation</span><span class="op">)</span>,</span></span>
+<span class="r-in"><span>  max <span class="op">=</span> <span class="fl">20</span></span></span>
+<span class="r-in"><span><span class="op">)</span></span></span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #0000BB;">&lt;abm_repeat&gt;</span> 1 step, at most 20 passes</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">•</span> until = `all(bid &gt;= partner_ask | bid &gt;= reservation)`</span>
 </code></pre></div>
     </div>
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>

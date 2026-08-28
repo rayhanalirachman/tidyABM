@@ -57,10 +57,6 @@ it then use.</p>
 <span>  by <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  role <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  eligible <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  resolve <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  rounds <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  positions <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  limits <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  from <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  among <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  cost <span class="op">=</span> <span class="cn">NULL</span></span>
@@ -103,25 +99,6 @@ dropped for this step. Rules then see <code>.role</code>.</p></dd>
 out.</p></dd>
 
 
-<dt id="arg-resolve">resolve<a class="anchor" aria-label="anchor" href="#arg-resolve"></a></dt>
-<dd><p>For <code>"opposite_group"</code>, <code>"none"</code> (the default) or
-<code>"negotiate"</code>, which runs <code>rounds</code> rounds of offer/counter-offer and sets
-<code>traded</code> and <code>price</code> columns.</p></dd>
-
-
-<dt id="arg-rounds">rounds<a class="anchor" aria-label="anchor" href="#arg-rounds"></a></dt>
-<dd><p>Number of negotiation rounds when <code>resolve = "negotiate"</code>.</p></dd>
-
-
-<dt id="arg-positions">positions<a class="anchor" aria-label="anchor" href="#arg-positions"></a></dt>
-<dd><p>For <code>resolve = "negotiate"</code>, <code>c(&lt;first group's bid column&gt;, &lt;second group's ask column&gt;)</code>.</p></dd>
-
-
-<dt id="arg-limits">limits<a class="anchor" aria-label="anchor" href="#arg-limits"></a></dt>
-<dd><p>For <code>resolve = "negotiate"</code>, <code>c(&lt;first group's reservation column&gt;, &lt;second group's reservation column&gt;)</code>, the bid never rises above
-the first, and the ask never falls below the second.</p></dd>
-
-
 <dt id="arg-from">from<a class="anchor" aria-label="anchor" href="#arg-from"></a></dt>
 <dd><p>For <code>"network"</code>, <code>"neighbour"</code> (the default) picks a random
 neighbour of the agent; <code>"random_edge"</code> picks a random edge of the whole
@@ -160,7 +137,7 @@ chooser with no acceptable candidate sits the step out.</p></dd>
 rule means "sum across this agent's group";</p></li>
 <li><p><code>.role</code>, when <code>role</code> is supplied.</p></li>
 </ul><p>Each <code>pair</code> mode uses a fixed set of the other arguments, and passing one
-that the chosen mode does not use is an error rather than being ignored:</p><table class="table table"><tr><td>mode</td><td>uses</td></tr><tr><td><code>"random"</code></td><td><code>size</code>, <code>role</code>, <code>eligible</code></td></tr><tr><td><code>"one_of"</code></td><td><code>role</code>, <code>eligible</code>, <code>among</code></td></tr><tr><td><code>"opposite_group"</code></td><td><code>by</code>, <code>role</code>, <code>eligible</code>, <code>resolve</code>, <code>rounds</code>, <code>positions</code>, <code>limits</code></td></tr><tr><td><code>"nearest"</code></td><td><code>by</code> <em>or</em> <code>cost</code>, <code>size</code>, <code>eligible</code>, <code>among</code></td></tr><tr><td><code>"network"</code></td><td><code>from</code>, <code>eligible</code></td></tr></table><p><code>eligible</code> and <code>among</code> ask different questions, and the difference only has
+that the chosen mode does not use is an error rather than being ignored:</p><table class="table table"><tr><td>mode</td><td>uses</td></tr><tr><td><code>"random"</code></td><td><code>size</code>, <code>role</code>, <code>eligible</code></td></tr><tr><td><code>"one_of"</code></td><td><code>role</code>, <code>eligible</code>, <code>among</code></td></tr><tr><td><code>"opposite_group"</code></td><td><code>by</code>, <code>role</code>, <code>eligible</code></td></tr><tr><td><code>"nearest"</code></td><td><code>by</code> <em>or</em> <code>cost</code>, <code>size</code>, <code>eligible</code>, <code>among</code></td></tr><tr><td><code>"network"</code></td><td><code>from</code>, <code>eligible</code></td></tr></table><p><code>eligible</code> and <code>among</code> ask different questions, and the difference only has
 teeth in the directional modes. <code>eligible</code> says who <em>takes part</em>; <code>among</code>
 says who may be <em>picked</em>. A consumer choosing the nearest shop wants <code>among = .group == "shops"</code>, or it will find that the nearest agent to it is
 another consumer.</p>

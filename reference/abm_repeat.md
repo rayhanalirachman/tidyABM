@@ -46,6 +46,11 @@ scope, and must collapse to a single `TRUE` or `FALSE`. It is checked
 required, because a condition that never becomes true would otherwise
 hang the run.
 
+If a match is standing when the block runs, `until` also sees `.role`
+and `partner_<col>`, as a rule does. A phase is usually a phase *of an
+encounter*, and its stopping condition is usually about the pair rather
+than about either agent alone.
+
 The same idea covers early stopping for a whole model: a block wrapped
 in `abm_repeat(until = <absorbed>, max = <ticks>)` and run for a single
 tick stops as soon as the model reaches its absorbing state, instead of
@@ -71,4 +76,13 @@ abm_repeat(
 )
 #> <abm_repeat> 2 steps, at most 500 passes
 #> • until = `sum(state == "I") == 0`
+
+# a bargaining phase, which stops when every pair has met or given up
+abm_repeat(
+  abm_rules(bid ~ pmin(bid + step, reservation)),
+  until = all(bid >= partner_ask | bid >= reservation),
+  max = 20
+)
+#> <abm_repeat> 1 step, at most 20 passes
+#> • until = `all(bid >= partner_ask | bid >= reservation)`
 ```

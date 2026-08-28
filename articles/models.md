@@ -217,7 +217,8 @@ therefore drawn once per agent rather than once for the population.
 ## Market
 
 *After Primer’s “Simulating Supply and Demand”.* Buyers and sellers with
-private valuations haggle, and the price finds its own level.
+private valuations meet one at a time, and the price finds its own
+level.
 
 ``` r
 
@@ -227,10 +228,14 @@ market <- abm_setup(agents = list(
 ))
 
 go <- abm_go(
-  abm_match(pair = "opposite_group", by = .group, resolve = "negotiate",
-            rounds = 5, positions = c(offer, ask), limits = c(wtp, wta)),
-  abm_rules(offer ~ if_else(traded, offer * 0.98, offer * 1.02)),
-  abm_rules(ask   ~ if_else(traded, ask * 1.02,   ask * 0.98))
+  abm_match(pair = "opposite_group", by = .group),
+  abm_rules(price  ~ (offer + partner_ask) / 2,
+            price  ~ (partner_offer + ask) / 2),
+  abm_rules(traded ~ price <= wtp & price >= partner_wta,
+            traded ~ price >= wta & price <= partner_wtp),
+  abm_rules(price  ~ if_else(traded, price, NA_real_)),
+  abm_rules(offer  ~ pmin(if_else(traded, offer * 0.98, offer * 1.02), wtp)),
+  abm_rules(ask    ~ pmax(if_else(traded, ask * 1.02,   ask * 0.98),   wta))
 )
 
 r <- abm_run(market, go, ticks = 200, seed = 7)
@@ -238,13 +243,16 @@ r <- abm_run(market, go, ticks = 200, seed = 7)
 price <- tapply(r$price, r$tick, function(z) mean(z, na.rm = TRUE))
 round(price[c("1", "50", "200")], 2)
 #>     1    50   200 
-#> 42.95 43.80 47.91
+#> 42.95 44.47 43.20
 ```
 
 **What it introduced:** several agent groups, and rule routing by column
 existence. The `offer` rule mentions a column only buyers have, so it
 applies only to buyers, the `ask` rule only to sellers. No `type ==`
-test, no merging of the two tibbles.
+test, no merging of the two tibbles. The `price` and `traded` steps take
+it one further: two rules with the same target, one routed to each
+group, which is how a pair of groups say the same thing from their own
+side.
 
 ## Voter model
 

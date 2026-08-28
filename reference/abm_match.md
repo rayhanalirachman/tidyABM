@@ -15,10 +15,6 @@ abm_match(
   by = NULL,
   role = NULL,
   eligible = NULL,
-  resolve = NULL,
-  rounds = NULL,
-  positions = NULL,
-  limits = NULL,
   from = NULL,
   among = NULL,
   cost = NULL
@@ -60,28 +56,6 @@ abm_match(
 - eligible:
 
   A condition. Agents for which it is `FALSE` sit the step out.
-
-- resolve:
-
-  For `"opposite_group"`, `"none"` (the default) or `"negotiate"`, which
-  runs `rounds` rounds of offer/counter-offer and sets `traded` and
-  `price` columns.
-
-- rounds:
-
-  Number of negotiation rounds when `resolve = "negotiate"`.
-
-- positions:
-
-  For `resolve = "negotiate"`,
-  `c(<first group's bid column>, <second group's ask column>)`.
-
-- limits:
-
-  For `resolve = "negotiate"`,
-  `c(<first group's reservation column>, <second group's reservation column>)`,
-  the bid never rises above the first, and the ask never falls below the
-  second.
 
 - from:
 
@@ -134,14 +108,14 @@ Each `pair` mode uses a fixed set of the other arguments, and passing
 one that the chosen mode does not use is an error rather than being
 ignored:
 
-|  |  |
-|----|----|
-| mode | uses |
-| `"random"` | `size`, `role`, `eligible` |
-| `"one_of"` | `role`, `eligible`, `among` |
-| `"opposite_group"` | `by`, `role`, `eligible`, `resolve`, `rounds`, `positions`, `limits` |
-| `"nearest"` | `by` *or* `cost`, `size`, `eligible`, `among` |
-| `"network"` | `from`, `eligible` |
+|                    |                                               |
+|--------------------|-----------------------------------------------|
+| mode               | uses                                          |
+| `"random"`         | `size`, `role`, `eligible`                    |
+| `"one_of"`         | `role`, `eligible`, `among`                   |
+| `"opposite_group"` | `by`, `role`, `eligible`                      |
+| `"nearest"`        | `by` *or* `cost`, `size`, `eligible`, `among` |
+| `"network"`        | `from`, `eligible`                            |
 
 `eligible` and `among` ask different questions, and the difference only
 has teeth in the directional modes. `eligible` says who *takes part*;

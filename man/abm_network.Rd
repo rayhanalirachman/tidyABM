@@ -30,10 +30,11 @@ yourself, or \code{"empty"} for a network that starts with no edges (useful with
 An \code{abm_network} specification object.
 }
 \description{
-A network is an edge list that lives alongside the agent tibble for the whole
-run. It is built once at \code{\link[=abm_setup]{abm_setup()}} time and is read-only thereafter, with
-one exception: \code{\link[=abm_birth]{abm_birth()}}'s \code{attach_via} argument can append one edge per
-newborn agent, and \code{\link[=abm_death]{abm_death()}} prunes the edges of agents that are removed.
+A network is an edge list that lives alongside the agent tibble for the
+whole run. It is built once at \code{\link[=abm_setup]{abm_setup()}} time and is read-only
+thereafter, with one exception: \code{\link[=abm_birth]{abm_birth()}}'s \code{attach_via} argument can
+append one edge per newborn agent, and \code{\link[=abm_death]{abm_death()}} prunes the edges of
+agents that are removed.
 }
 \details{
 \code{type = "random"} builds a \code{degree}-regular random graph with
@@ -46,17 +47,16 @@ well-mixed population written as a graph, and it is what lets
 \code{\link[=abm_neighbours]{abm_neighbours()}} mean "over everybody else" in a model with no spatial or
 social structure at all.
 
-The degree distribution is not a detail. \code{"random"} is \emph{regular},
-every agent has exactly \code{degree} neighbours, and a threshold model on a
-regular graph behaves quite differently from the same model on a graph with the
-same mean degree but a spread of degrees, because the low-degree agents are the
+The degree distribution is not a detail. \code{"random"} is \emph{regular}, every
+agent has exactly \code{degree} neighbours, and a threshold model on a regular
+graph behaves quite differently from the same model on a graph with the same
+mean degree but a spread of degrees, because the low-degree agents are the
 ones a cascade can get started on. \code{"poisson"} is the Erdos-Renyi graph
-\code{G(n, p)} with \code{p} chosen to give mean degree \code{degree}, and it
-is what the random-graph literature means by "a random graph".
-\code{"scale_free"} grows a Barabasi-Albert graph attaching \code{degree} edges
-per new agent, giving the heavy tail. \code{"ring"} is the one-dimensional
-lattice, each agent joined to the \code{degree / 2} agents on either side of
-it.
+\code{G(n, p)} with \code{p} chosen to give mean degree \code{degree}, and it is what the
+random-graph literature means by "a random graph". \code{"scale_free"} grows a
+Barabasi-Albert graph attaching \code{degree} edges per new agent, giving the
+heavy tail. \code{"ring"} is the one-dimensional lattice, each agent joined to
+the \code{degree / 2} agents on either side of it.
 }
 \examples{
 abm_network(type = "random", degree = 4)

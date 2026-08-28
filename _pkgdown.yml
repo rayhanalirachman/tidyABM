@@ -3,6 +3,31 @@ url: https://rayhanalirachman.github.io/tidyABM/
 template:
   bootstrap: 5
 
+home:
+  links:
+  - text: The 56-model corpus
+    href: https://github.com/rayhanalirachman/tidyABM/blob/main/models/README.md
+  - text: What each stress test changed
+    href: https://github.com/rayhanalirachman/tidyABM/blob/main/models/what-changed.md
+  - text: What the grammar still cannot say
+    href: https://github.com/rayhanalirachman/tidyABM/blob/main/models/open-items.md
+
+navbar:
+  structure:
+    left: [intro, reference, articles, news]
+    right: [search, github]
+  components:
+    intro:
+      text: Get started
+      href: articles/tidyABM.html
+    articles:
+      text: Articles
+      menu:
+      - text: Model gallery
+        href: articles/models.html
+      - text: Corrections
+        href: articles/corrections.html
+
 reference:
 - title: The three parts
   desc: >
@@ -12,16 +37,30 @@ reference:
 - title: Declaring the world
   desc: The specifications you hand to `abm_setup()`.
   contents: [abm_agents, abm_network]
-- title: "Steps: matching"
-  desc: Who interacts with whom this tick.
+- title: "Steps: interaction and matching"
+  desc: >
+    Who interacts with whom this tick. Runs first, because the steps below
+    read the pairing it leaves standing.
   contents: [abm_match]
 - title: "Steps: updating agents"
-  contents: [abm_rules, abm_sequential, abm_global, abm_neighbours, abm_tell]
-- title: "Steps: changing the population"
+  desc: >
+    All five write a value somewhere; the only difference is which row is
+    written. Ordered by reach: the agent itself, the agent itself in a given
+    order, its neighbourhood, one other agent, the whole population.
+  contents: [abm_rules, abm_sequential, abm_neighbours, abm_tell, abm_global]
+- title: "Steps: network topology"
+  desc: Changing what is connected to what.
+  contents: [abm_link, abm_unlink]
+- title: "Steps: edge data"
+  desc: >
+    Attaching a value to edges that already exist, without touching the
+    topology.
+  contents: [abm_draw]
+- title: "Steps: demographics"
+  desc: The only steps that change the size of the population.
   contents: [abm_birth, abm_death]
-- title: "Steps: changing the network"
-  contents: [abm_link, abm_unlink, abm_draw]
 - title: "Steps: control flow"
+  desc: Replaying a block of the steps above within a single tick.
   contents: [abm_repeat]
 - title: Working with results
   contents: [abm_globals, abm_edges, n_agents]

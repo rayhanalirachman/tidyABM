@@ -31,6 +31,9 @@ new_abm_repeat <- function(steps, until, max) {
 #' @param max The maximum number of passes. Required.
 #'
 #' @return An `abm_repeat` step object.
+#' @seealso [abm_go()], which lists every step and fixes the order they run
+#'   in. The block it wraps is validated exactly as [abm_go()] validates a
+#'   tick.
 #' @export
 #' @examples
 #' # an epidemic that burns out before the tick ends

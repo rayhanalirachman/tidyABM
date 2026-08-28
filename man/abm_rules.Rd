@@ -7,9 +7,9 @@
 abm_rules(..., .scope = c("match", "population"), .by = NULL)
 }
 \arguments{
-\item{...}{One or more \code{column ~ expression} rules. The expression can use any
-column of the agent tibble, any global, any \verb{partner_<col>} produced by a
-preceding \code{\link[=abm_match]{abm_match()}}, \code{.role}, and anything visible where the rule was
+\item{...}{One or more \code{column ~ expression} rules. The expression can use
+any column of the agent tibble, any global, any \verb{partner_<col>} produced by
+a preceding \code{\link[=abm_match]{abm_match()}}, \code{.role}, and anything visible where the rule was
 written.}
 
 \item{.scope}{\code{"match"} (the default) evaluates the rules within whatever
@@ -20,10 +20,10 @@ evaluates across all agents, so aggregates like \code{sum()} and draws like
 \item{.by}{A column naming a partition of the agents, a firm, a household, a
 team, a cohort. The rules are evaluated once per distinct value, across the
 whole population, so \code{sum(effort)} means "the total effort of my firm" and
-the answer is written back to every member of it. This is the third grouping a
-rule can have, alongside the standing match and the whole population, and it is
-the only one the \emph{agents themselves} can change: an agent that writes a
-new value into the \code{.by} column has moved to a different group. Cannot be
+the answer is written back to every member of it. This is the third grouping
+a rule can have, alongside the standing match and the whole population, and
+it is the only one the \emph{agents themselves} can change: an agent that writes
+a new value into the \code{.by} column has moved to a different group. Cannot be
 combined with \code{.scope = "population"}.}
 }
 \value{
@@ -31,31 +31,30 @@ An \code{abm_rules} step object.
 }
 \description{
 \code{abm_rules()} is the step that changes agents. Every rule is a two-sided
-formula: the left-hand side names the column to write, the right-hand side is
-an expression evaluated against the agent tibble, exactly as it would be
+formula: the left-hand side names the column to write, the right-hand side
+is an expression evaluated against the agent tibble, exactly as it would be
 inside \code{\link[dplyr:mutate]{dplyr::mutate()}}.
 }
 \details{
-All rules in a single \code{abm_rules()} call are evaluated
-\strong{simultaneously}, against the state at the start of the step. So in
-\code{abm_rules(a ~ b, b ~ a)} both sides see the old values, this is the
-synchronous update that agent-based models normally assume, and it is the one
-place where \code{abm_rules()} deliberately departs from \code{mutate()}'s
-sequential semantics. Write two \code{abm_rules()} calls if you want one rule
-to see the other's result.
+All rules in a single \code{abm_rules()} call are evaluated \strong{simultaneously},
+against the state at the start of the step. So in \code{abm_rules(a ~ b, b ~ a)}
+both sides see the old values, this is the synchronous update that
+agent-based models normally assume, and it is the one place where
+\code{abm_rules()} deliberately departs from \code{mutate()}'s sequential semantics.
+Write two \code{abm_rules()} calls if you want one rule to see the other's
+result.
 
 In a model with several agent groups, a rule is applied to a group only if
 every agent column it mentions exists in that group. That is how the market
-example routes \code{offer ~ ...} to buyers and \code{ask ~ ...} to sellers without any
-explicit test on agent type.
+example routes \code{offer ~ ...} to buyers and \code{ask ~ ...} to sellers without
+any explicit test on agent type.
 
 While a match is standing, rules are evaluated group by group, per pair, per
 group, or per agent depending on the pairing mode. That is usually what you
-want, and it is what makes \code{sample(x, 1)} mean "once per pair".
-Occasionally a step in the middle of a tick is about the whole population
-instead, drawing the next generation from this one, say, and \code{.scope =
-"population"} evaluates it against every agent at once, ignoring the standing
-match.
+want, and it is what makes \code{sample(x, 1)} mean "once per pair". Occasionally
+a step in the middle of a tick is about the whole population instead,
+drawing the next generation from this one, say, and \code{.scope = "population"}
+evaluates it against every agent at once, ignoring the standing match.
 }
 \examples{
 abm_rules(money ~ ifelse(.role == "giver", money - 1, money + 1))
@@ -68,3 +67,14 @@ abm_rules(strategy ~ sample(strategy, n(), replace = TRUE, prob = fitness),
 # every member of a firm is paid an equal share of what the firm produces
 abm_rules(pay ~ output(sum(effort)) / n(), .by = firm)
 }
+\seealso{
+\code{\link[=abm_go]{abm_go()}}, which lists every step and fixes the order they run
+in.
+
+Other agent update steps:
+\code{\link[=abm_global]{abm_global()}},
+\code{\link[=abm_neighbours]{abm_neighbours()}},
+\code{\link[=abm_sequential]{abm_sequential()}},
+\code{\link[=abm_tell]{abm_tell()}}
+}
+\concept{agent update steps}

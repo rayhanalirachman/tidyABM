@@ -76,6 +76,9 @@ collect_rules <- function(dots, fn, call = rlang::caller_env()) {
 #'   combined with `.scope = "population"`.
 #'
 #' @return An `abm_rules` step object.
+#' @seealso [abm_go()], which lists every step and fixes the order they run
+#'   in.
+#' @family agent update steps
 #' @export
 #' @examples
 #' abm_rules(money ~ ifelse(.role == "giver", money - 1, money + 1))
@@ -135,6 +138,9 @@ abm_rules <- function(..., .scope = c("match", "population"), .by = NULL) {
 #'   out of the step.
 #'
 #' @return An `abm_sequential` step object.
+#' @seealso [abm_go()], which lists every step and fixes the order they run
+#'   in.
+#' @family agent update steps
 #' @export
 #' @examples
 #' abm_sequential(
@@ -195,6 +201,9 @@ abm_sequential <- function(..., .order = NULL) {
 #'   value.
 #'
 #' @return An `abm_global` step object.
+#' @seealso [abm_go()], which lists every step and fixes the order they run
+#'   in.
+#' @family agent update steps
 #' @export
 #' @examples
 #' abm_global(last_attendance ~ sum(go_today))
@@ -254,6 +263,9 @@ new_abm_birth <- function(when, n, times, cost, inherit, attach_via) {
 #'   (preferential) attachment.
 #'
 #' @return An `abm_birth` step object.
+#' @seealso [abm_go()], which lists every step and fixes the order they run
+#'   in.
+#' @family demographic steps
 #' @export
 #' @examples
 #' abm_birth(when = resource > 20, cost = resource ~ resource / 2)
@@ -331,6 +343,9 @@ new_abm_death <- function(when, prune_edges) {
 #'   deliberately outlives its agents.
 #'
 #' @return An `abm_death` step object.
+#' @seealso [abm_go()], which lists every step and fixes the order they run
+#'   in.
+#' @family demographic steps
 #' @export
 #' @examples
 #' abm_death(when = resource <= 0)

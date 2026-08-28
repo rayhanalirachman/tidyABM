@@ -18,17 +18,17 @@ evaluated in the sender's row; the result is written to the recipient's
 column of the same name. The column must already exist on the recipient.}
 
 \item{to}{\code{"neighbours"}, or an expression naming the recipient's \code{.id}. If
-the expression returns a list column, each element is a vector of \code{.id}s
-and the sender writes to all of them.}
+the expression returns a list column, each element is a vector of \code{.id}s and
+the sender writes to all of them.}
 
 \item{when}{Optional condition on the sender. Only agents for which it holds
 send anything.}
 
 \item{.resolve}{What to do when several senders write to the same recipient
-in one step: \code{"last"} (an arbitrary one wins), \code{"first"},
-\code{"sum"}, \code{"mean"}, \code{"max"}, \code{"min"}, \code{"collect"},
-which hands the recipient a list of everything it was told, so the recipient's
-own rule decides what to make of them, or \code{"error"} to stop.}
+in one step: \code{"last"} (an arbitrary one wins), \code{"first"}, \code{"sum"}, \code{"mean"},
+\code{"max"}, \code{"min"}, \code{"collect"}, which hands the recipient a list of
+everything it was told, so the recipient's own rule decides what to make of
+them, or \code{"error"} to stop.}
 
 \item{.order}{Optional expression, evaluated in the \strong{sender's} row, whose
 ascending order is the order the messages are considered in. Without it a
@@ -44,36 +44,32 @@ An \code{abm_tell} step object.
 }
 \description{
 Every other update step writes to the agent it is evaluated on:
-\code{\link[=abm_rules]{abm_rules()}} changes your own columns,
-\code{\link[=abm_neighbours]{abm_neighbours()}} \emph{reads} your neighbours'
-and writes the summary to you. \code{abm_tell()} is the one that goes the other
-way, a sender computes a value and writes it into a \emph{recipient's} row.
-That is the difference between "how many of my neighbours are shouting" and "I
-shout at my neighbours", and models built on the second shape, outward
-persuasion, contagion carrying a dose, an order book where a trade has to mark
-the counterparty, cannot be written without it.
+\code{\link[=abm_rules]{abm_rules()}} changes your own columns, \code{\link[=abm_neighbours]{abm_neighbours()}} \emph{reads} your
+neighbours' and writes the summary to you. \code{abm_tell()} is the one that goes
+the other way, a sender computes a value and writes it into a \emph{recipient's}
+row. That is the difference between "how many of my neighbours are shouting"
+and "I shout at my neighbours", and models built on the second shape,
+outward persuasion, contagion carrying a dose, an order book where a trade
+has to mark the counterparty, cannot be written without it.
 }
 \details{
 Who receives is set by \code{to}:
 \itemize{
-\item \code{to = "neighbours"}, every agent the sender is joined to in the
-model's \code{\link[=abm_network]{abm_network()}}. This is the broadcast: one
-sender, many recipients.
-\item \verb{to = <expression>}, an expression evaluated in the sender's row
-that names the recipient by \code{.id}. A list column names \emph{several}: one
-sender, a set of recipients chosen however the model likes, which is what a
-broadcast to an audience that is not the network needs. \code{to = .partner}
-writes to the partner a preceding \code{\link[=abm_match]{abm_match()}} gave
-you; \code{to = best_bid_holder} writes to whichever agent a global names.
-\code{NA} means the sender says nothing.
+\item \code{to = "neighbours"}, every agent the sender is joined to in the model's
+\code{\link[=abm_network]{abm_network()}}. This is the broadcast: one sender, many recipients.
+\item \verb{to = <expression>}, an expression evaluated in the sender's row that
+names the recipient by \code{.id}. A list column names \emph{several}: one sender, a
+set of recipients chosen however the model likes, which is what a broadcast
+to an audience that is not the network needs. \code{to = .partner} writes to the
+partner a preceding \code{\link[=abm_match]{abm_match()}} gave you; \code{to = best_bid_holder} writes to
+whichever agent a global names. \code{NA} means the sender says nothing.
 }
 
-The right-hand side of each rule is evaluated in the \strong{sender's} row, so
-it sees the sender's columns, \verb{partner_<col>}, \code{.role} and the
-globals, exactly as \code{\link[=abm_rules]{abm_rules()}} would. The value it
-produces is then written into the recipient's column of that name. An agent
-that no one wrote to keeps the value it already had, \code{abm_tell()} never
-touches a silent agent's row.
+The right-hand side of each rule is evaluated in the \strong{sender's} row, so it
+sees the sender's columns, \verb{partner_<col>}, \code{.role} and the globals, exactly
+as \code{\link[=abm_rules]{abm_rules()}} would. The value it produces is then written into the
+recipient's column of that name. An agent that no one wrote to keeps the
+value it already had, \code{abm_tell()} never touches a silent agent's row.
 
 Two senders can address the same recipient in one step, and \code{.resolve} says
 what happens then. The default, \code{"last"}, takes an arbitrary one of them,
@@ -81,13 +77,12 @@ which is right for a persuasion rule where the senders all agree anyway;
 \code{"sum"} is right for anything additive, like a dose or an order quantity;
 \code{"error"} says the collision is a modelling mistake and should stop the run.
 
-Three of those resolutions, \code{"first"}, \code{"last"} and \code{"collect"},
-pick out a message rather than combining them all, so they only mean something
-once the messages have an order. \code{.order} gives them one: an expression
-evaluated in the sender's row whose ascending order the messages are considered
-in. That is what \emph{the first person to reach the counter} needs, and
-without it the counter has to reconstruct the queue from something the senders
-wrote down.
+Three of those resolutions, \code{"first"}, \code{"last"} and \code{"collect"}, pick out a
+message rather than combining them all, so they only mean something once the
+messages have an order. \code{.order} gives them one: an expression evaluated in
+the sender's row whose ascending order the messages are considered in. That
+is what \emph{the first person to reach the counter} needs, and without it the
+counter has to reconstruct the queue from something the senders wrote down.
 }
 \examples{
 # a matched pair pushes its shared opinion onto everyone around it
@@ -103,3 +98,14 @@ abm_tell(dose ~ dose + load, to = "neighbours", when = infected, .resolve = "sum
 abm_tell(serving ~ .id, to = counter, when = queueing,
          .resolve = "first", .order = arrived_at)
 }
+\seealso{
+\code{\link[=abm_go]{abm_go()}}, which lists every step and fixes the order they run
+in.
+
+Other agent update steps:
+\code{\link[=abm_global]{abm_global()}},
+\code{\link[=abm_neighbours]{abm_neighbours()}},
+\code{\link[=abm_rules]{abm_rules()}},
+\code{\link[=abm_sequential]{abm_sequential()}}
+}
+\concept{agent update steps}

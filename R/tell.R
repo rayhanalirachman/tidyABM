@@ -70,6 +70,9 @@ new_abm_tell <- function(rules, to, to_quo, when, resolve, order) {
 #'   sits the sender out of the step.
 #'
 #' @return An `abm_tell` step object.
+#' @seealso [abm_go()], which lists every step and fixes the order they run
+#'   in.
+#' @family agent update steps
 #' @export
 #' @examples
 #' # a matched pair pushes its shared opinion onto everyone around it

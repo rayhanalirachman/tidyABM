@@ -26,12 +26,11 @@ clears. \code{abm_repeat()} is that phase. It holds a block of steps and replays
 it until \code{until} is true, or \code{max} times, whichever comes first.
 }
 \details{
-\code{until} is evaluated the way an \code{\link[=abm_global]{abm_global()}}
-right-hand side is, over the whole population, with the globals in scope, and
-must collapse to a single \code{TRUE} or \code{FALSE}. It is checked
-\emph{after} each pass, so the block always runs at least once. \code{max} is
-required, because a condition that never becomes true would otherwise hang the
-run.
+\code{until} is evaluated the way an \code{\link[=abm_global]{abm_global()}} right-hand side is, over the
+whole population, with the globals in scope, and must collapse to a single
+\code{TRUE} or \code{FALSE}. It is checked \emph{after} each pass, so the block always runs
+at least once. \code{max} is required, because a condition that never becomes
+true would otherwise hang the run.
 
 The same idea covers early stopping for a whole model: a block wrapped in
 \verb{abm_repeat(until = <absorbed>, max = <ticks>)} and run for a single tick
@@ -46,4 +45,9 @@ abm_repeat(
   until = sum(state == "I") == 0,
   max = 500
 )
+}
+\seealso{
+\code{\link[=abm_go]{abm_go()}}, which lists every step and fixes the order they run
+in. The block it wraps is validated exactly as \code{\link[=abm_go]{abm_go()}} validates a
+tick.
 }

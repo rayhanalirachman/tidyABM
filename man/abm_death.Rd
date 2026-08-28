@@ -24,3 +24,11 @@ those agents' edges from the network, because leaving them in would make
 \examples{
 abm_death(when = resource <= 0)
 }
+\seealso{
+\code{\link[=abm_go]{abm_go()}}, which lists every step and fixes the order they run
+in.
+
+Other demographic steps:
+\code{\link[=abm_birth]{abm_birth()}}
+}
+\concept{demographic steps}

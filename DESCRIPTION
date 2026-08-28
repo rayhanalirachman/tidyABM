@@ -20,7 +20,7 @@ Roxygen: list(markdown = TRUE)
 Depends: R (>= 4.1)
 Imports: cli, dplyr (>= 1.1.0), igraph, rlang (>= 1.1.0), stats,
         tibble, utils, vctrs
-Suggests: knitr, rmarkdown, testthat (>= 3.0.0), withr
+Suggests: ggplot2, knitr, rmarkdown, testthat (>= 3.0.0), withr
 Config/testthat/edition: 3
 VignetteBuilder: knitr
 URL: https://github.com/rayhanalirachman/tidyABM

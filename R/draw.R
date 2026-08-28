@@ -43,6 +43,9 @@ new_abm_draw <- function(rules, each) {
 #'   `"endpoint"` for one value per endpoint, read as `name` and `name_back`.
 #'
 #' @return An `abm_draw` step object.
+#' @seealso [abm_go()], which lists every step and fixes the order they run
+#'   in. [abm_neighbours()] reads the values this step attaches;
+#'   [abm_link()] and [abm_unlink()] change the edges it writes onto.
 #' @export
 #' @examples
 #' # did this pair meet this tick? Both of them agree on the answer.

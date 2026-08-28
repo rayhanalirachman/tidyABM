@@ -14,18 +14,17 @@ use the agent's own columns, \verb{partner_<col>}, \code{.role}, and any global.
 An \code{abm_link} step object.
 }
 \description{
-\code{abm_link()} turns the pairing produced by the preceding
-\code{\link[=abm_match]{abm_match()}} into permanent edges. It is how a network
-grows during a run without anyone being born, random-graph percolation, tie
-formation, coalition building.
+\code{abm_link()} turns the pairing produced by the preceding \code{\link[=abm_match]{abm_match()}} into
+permanent edges. It is how a network grows during a run without anyone being
+born, random-graph percolation, tie formation, coalition building.
 }
 \details{
 An edge is added once per matched pair, and pairs that are already connected
 are left alone, so the network never gains a duplicate edge.
 
-After a match with \code{size > 2} the group is linked as a \emph{clique},
-every pair inside it gains an edge. That is what a team, a committee or a
-coalition means once it is written as a network.
+After a match with \code{size > 2} the group is linked as a \emph{clique}, every pair
+inside it gains an edge. That is what a team, a committee or a coalition
+means once it is written as a network.
 }
 \examples{
 # a random graph that grows one batch of edges per tick
@@ -34,3 +33,11 @@ abm_go(
   abm_link()
 )
 }
+\seealso{
+\code{\link[=abm_go]{abm_go()}}, which lists every step and fixes the order they run
+in.
+
+Other network topology steps:
+\code{\link[=abm_unlink]{abm_unlink()}}
+}
+\concept{network topology steps}

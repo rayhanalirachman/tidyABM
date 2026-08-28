@@ -21,13 +21,13 @@ An \code{abm_global} step object.
 }
 \description{
 \code{abm_global()} writes to a value held once for the whole model rather than
-once per agent, El Farol's \code{last_attendance}, a zakah pool, a bank's
-ledger. The right-hand side is an aggregate expression evaluated over the agent
+once per agent, El Farol's \code{last_attendance}, a zakah pool, a bank's ledger.
+The right-hand side is an aggregate expression evaluated over the agent
 tibble, so it normally collapses to a single value.
 }
 \details{
 Unlike the other update steps, \code{abm_global()} does not need a preceding
-\code{\link[=abm_match]{abm_match()}}: a population-level summary does not depend on who was paired
+[abm_match()]: a population-level summary does not depend on who was paired
 with whom.
 }
 \section{A global indexed by a category}{
@@ -43,21 +43,23 @@ the key being written, so \code{sum(task == .key)} is "how many agents are on
 value, not to the whole vector, so an update reads exactly as the scalar
 version does:
 
-\if{html}{\out{<div class="sourceCode">}}\preformatted{abm_global(stimulus ~ stimulus + delta - alpha * sum(task == .key) / n(),
-           .by = 1:2)
-}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="sourceCode abm_global(stimulus ~ stimulus + delta - alpha * sum(task == .key) /">}}\preformatted{n(), .by = 1:2) ```
 
-Each key still sees the \strong{whole population}, \code{n()} is everybody, not
+Each key still sees the **whole population**, `n()` is everybody, not
 everybody on this task, because that is what a colony-level stimulus balance
 means.
 
-\code{.by} names the index either way round. Give it a vector and the index is
+`.by` names the index either way round. Give it a vector and the index is
 declared by the model, which is right when the categories are fixed and a
 key with nobody in it still has to be updated. Give it an agent column and
 the index is whatever values the agents currently hold, which is right when
 the categories come and go. A key the global already has stays in the index
 and is still updated even when no agent holds it this tick, so a task nobody
 is working on has its stimulus rise rather than dropping out of the table.
+
+[abm_match()]: R:abm_match()
+[good]: R:good
+}\if{html}{\out{</div>}}
 }
 
 \examples{
@@ -67,3 +69,14 @@ abm_global(last_attendance ~ sum(go_today))
 abm_global(stimulus ~ pmax(0, stimulus + 1 - 3 * sum(task == .key) / n()),
            .by = 1:2)
 }
+\seealso{
+\code{\link[=abm_go]{abm_go()}}, which lists every step and fixes the order they run
+in.
+
+Other agent update steps:
+\code{\link[=abm_neighbours]{abm_neighbours()}},
+\code{\link[=abm_rules]{abm_rules()}},
+\code{\link[=abm_sequential]{abm_sequential()}},
+\code{\link[=abm_tell]{abm_tell()}}
+}
+\concept{agent update steps}

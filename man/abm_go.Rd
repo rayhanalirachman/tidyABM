@@ -9,8 +9,7 @@ abm_go(...)
 \arguments{
 \item{...}{Step objects: \code{\link[=abm_match]{abm_match()}}, \code{\link[=abm_rules]{abm_rules()}}, \code{\link[=abm_sequential]{abm_sequential()}},
 \code{\link[=abm_global]{abm_global()}}, \code{\link[=abm_neighbours]{abm_neighbours()}}, \code{\link[=abm_tell]{abm_tell()}}, \code{\link[=abm_birth]{abm_birth()}},
-\code{\link[=abm_death]{abm_death()}}, \code{\link[=abm_link]{abm_link()}}, \code{\link[=abm_unlink]{abm_unlink()}}, \code{\link[=abm_draw]{abm_draw()}},
-\code{\link[=abm_repeat]{abm_repeat()}}.}
+\code{\link[=abm_death]{abm_death()}}, \code{\link[=abm_link]{abm_link()}}, \code{\link[=abm_unlink]{abm_unlink()}}, \code{\link[=abm_draw]{abm_draw()}}, \code{\link[=abm_repeat]{abm_repeat()}}.}
 }
 \value{
 An \code{abm_go} object.
@@ -23,25 +22,25 @@ dispatched by \emph{type and position}, not by argument name, so a model with
 several phases is written flat and in order:
 }
 \details{
-\if{html}{\out{<div class="sourceCode">}}\preformatted{abm_go(
-  abm_match(pair = "random"), abm_rules(payoff ~ ...),   # phase 1: play
-  abm_match(pair = "random"), abm_rules(strategy ~ ...)  # phase 2: imitate
-)
-}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="sourceCode abm_go( abm_match(pair = "random"), abm_rules(payoff ~ ...),   # phase">}}\preformatted{1: play abm_match(pair = "random"), abm_rules(strategy ~ ...)  # phase 2:
+imitate ) ```
 
 The sequence is validated once, here, rather than on every tick. Three rules
 apply:
-\itemize{
-\item it cannot be empty;
-\item no two \code{\link[=abm_match]{abm_match()}} steps may sit next to each other, since the first
-would be discarded unused;
-\item it cannot end on an \code{\link[=abm_match]{abm_match()}}, for the same reason.
-}
+
+* it cannot be empty;
+* no two [abm_match()] steps may sit next to each other, since the first
+  would be discarded unused;
+* it cannot end on an [abm_match()], for the same reason.
 
 Everything else is allowed. In particular a model may use no matching at all
-(El Farol, or a pure redistribution model), and several update steps may follow
-a single match, the market model pairs once and then applies separate rules to
-buyers and to sellers.
+(El Farol, or a pure redistribution model), and several update steps may
+follow a single match, the market model pairs once and then applies separate
+rules to buyers and to sellers.
+
+[abm_match()]: R:abm_match()
+[abm_match()]: R:abm_match()
+}\if{html}{\out{</div>}}
 }
 \examples{
 # Every model is the same three parts: abm_setup(), abm_go(), abm_run().

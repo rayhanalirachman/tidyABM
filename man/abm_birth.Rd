@@ -21,22 +21,20 @@ abm_birth(
 \item{times}{How many offspring each reproducing agent has. An expression
 evaluated in the parent's row, so it can be a column, a draw
 (\code{rpois(dplyr::n(), 2)}) or a number. \code{0} means that parent has none this
-tick and \code{NA} is treated as \code{0}. Only used with \code{when}, since \code{n} is
-already a count. Each offspring gets its own evaluation of \code{inherit}, so a
-mutation drawn there differs from sibling to sibling.}
+tick and \code{NA} is treated as \code{0}. Only used with \code{when}, since \code{n} is already
+a count. Each offspring gets its own evaluation of \code{inherit}, so a mutation
+drawn there differs from sibling to sibling.}
 
 \item{cost}{One or more \code{column ~ expression} formulas applied to the parent
 \emph{and} the newborn after the split, expressing what reproduction costs, for
-example \code{cost = resource ~ resource / 2} to halve a resource between
-them.}
+example \code{cost = resource ~ resource / 2} to halve a resource between them.}
 
 \item{inherit}{One or more \code{column ~ expression} formulas applied to the
-newborn \emph{only}, expressing what the offspring gets that the parent does
-not keep: a reset age, a mutated trait, a sex drawn at birth. The expressions
+newborn \emph{only}, expressing what the offspring gets that the parent does not
+keep: a reset age, a mutated trait, a sex drawn at birth. The expressions
 are evaluated in the parent's row, so they can use the parent's columns and,
-when an \code{\link[=abm_match]{abm_match()}} is standing, the other parent's,
-as \verb{partner_<col>}. That is how two-parent inheritance is written:
-\code{inherit = trait ~ (trait + partner_trait) / 2}.}
+when an \code{\link[=abm_match]{abm_match()}} is standing, the other parent's, as \verb{partner_<col>}.
+That is how two-parent inheritance is written: \code{inherit = trait ~ (trait + partner_trait) / 2}.}
 
 \item{attach_via}{An \code{\link[=abm_match]{abm_match()}} object with \code{pair = "network"}, used to
 connect each newborn to an existing agent. This is the only way the network
@@ -47,15 +45,15 @@ grows during a run; \code{from = "random_edge"} gives degree-proportional
 An \code{abm_birth} step object.
 }
 \description{
-\code{abm_birth()} is one of the two steps that change the size of the population.
-It has two modes, and exactly one of them must be used:
+\code{abm_birth()} is one of the two steps that change the size of the
+population. It has two modes, and exactly one of them must be used:
 }
 \details{
 \itemize{
 \item \verb{when = <condition>} clones every agent that satisfies the condition. The
 newborn inherits all of its parent's columns.
-\item \verb{n = <count>} adds that many brand-new agents, whose columns are copied from
-a randomly chosen existing agent of the same group.
+\item \verb{n = <count>} adds that many brand-new agents, whose columns are copied
+from a randomly chosen existing agent of the same group.
 }
 
 One parent, one offspring, unless \code{times} says otherwise. Any fertility
@@ -76,3 +74,11 @@ abm_birth(
   inherit = list(age ~ 0, trait ~ (trait + partner_trait) / 2 + rnorm(n(), 0, 0.01))
 )
 }
+\seealso{
+\code{\link[=abm_go]{abm_go()}}, which lists every step and fixes the order they run
+in.
+
+Other demographic steps:
+\code{\link[=abm_death]{abm_death()}}
+}
+\concept{demographic steps}

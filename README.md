@@ -45,9 +45,9 @@ function is a step inside `abm_go()`.
 ## A whole model
 
 Wilensky and Rand's *Simple Economy*: 500 agents start with $100 each, and every
-tick anyone with money gives $1 to someone else. The wealth distribution starts
-as a spike and ends up exponential. Nobody is doing anything clever, and
-inequality shows up anyway.
+tick anyone with money gives $1 to someone else. Nobody is doing anything
+clever, and inequality shows up anyway: the starting spike spreads, and run far
+enough past the thousand ticks below it relaxes into an exponential.
 
 ``` r
 library(tidyABM)
@@ -75,6 +75,9 @@ result
 
 `result` is a plain long tibble, so the analysis is ordinary dplyr and ggplot2.
 
+The rest of this page is the map. [`vignette("tidyABM")`](https://rayhanalirachman.github.io/tidyABM/articles/tidyABM.html)
+is the walkthrough, and works the same example line by line.
+
 ## The grammar
 
 `abm_setup()` declares the world, out of two other specifications and a list:
@@ -86,20 +89,55 @@ result
 | `globals =` | a plain `list()`| values the whole population can read              |
 
 `abm_go()` declares what happens each tick, as a sequence of steps dispatched by
-type and position rather than by argument name:
+type and position rather than by argument name. There are twelve of them, in six
+groups. The [reference index](https://rayhanalirachman.github.io/tidyABM/reference/index.html) uses the same six, in the
+same order, which is the order a tick works through them.
+
+**1. Interaction and matching.** Who interacts with whom this tick. It comes
+first, because everything below reads the pairing it leaves standing.
 
 | step               | what it does                                        |
 |--------------------|-----------------------------------------------------|
 | `abm_match()`      | decides who interacts with whom this tick           |
+
+**2. Updating agents.** All five write a value somewhere, and the only thing
+separating them is *whose row* gets written. They are listed by reach: the agent
+itself, the agent itself in an order you control, its neighbourhood, one other
+agent, everybody.
+
+| step               | what it does                                        |
+|--------------------|-----------------------------------------------------|
 | `abm_rules()`      | updates agent columns, all agents simultaneously    |
 | `abm_sequential()` | updates them one at a time, in shuffled order or an order you name |
 | `abm_neighbours()` | summarises each agent's neighbourhood, either the network or everyone `within` a condition |
-| `abm_draw()`       | attaches a value to every edge, readable from both ends |
 | `abm_tell()`       | writes a value into *another* agent's row           |
 | `abm_global()`     | updates a value shared by the whole population, or a table of them indexed by a category |
+
+**3. Network topology.** What is connected to what.
+
+| step               | what it does                                        |
+|--------------------|-----------------------------------------------------|
+| `abm_link()`       | adds an edge between matched agents                 |
+| `abm_unlink()`     | removes one                                         |
+
+**4. Edge data.** A value carried by edges that already exist. The topology is
+left alone, which is why this is not part of the group above.
+
+| step               | what it does                                        |
+|--------------------|-----------------------------------------------------|
+| `abm_draw()`       | attaches a value to every edge, readable from both ends |
+
+**5. Demographics.** The only steps that change how many agents there are.
+
+| step               | what it does                                        |
+|--------------------|-----------------------------------------------------|
 | `abm_birth()`      | adds agents, one or `times` many                    |
 | `abm_death()`      | removes them                                        |
-| `abm_link()` / `abm_unlink()` | adds or removes network edges            |
+
+**6. Control flow.** Replaying a block of the steps above inside a single tick.
+
+| step               | what it does                                        |
+|--------------------|-----------------------------------------------------|
 | `abm_repeat()`     | replays a block of steps until a condition holds     |
 
 So a two-phase model (play, then imitate) is written flat and in order:
@@ -159,10 +197,11 @@ Experimental. The API is shaped by what porting models turns up, and it is still
 moving. Build on it now and expect to edit that code later.
 
 Fifty-six models are implemented and documented in
-[`models/`](models/README.md), each on its own page with its code, the result
-it reproduces and its source: thirteen the grammar was designed against, three of
-those rebuilt because the short version does not show what the model is known
-for, and four rounds of ten ported as stress tests.
+[`models/`](https://github.com/rayhanalirachman/tidyABM/blob/main/models/README.md), each on its
+own page with its code, the result it reproduces and its source: thirteen the
+grammar was designed against, three of those rebuilt because the short version
+does not show what the model is known for, and four rounds of ten ported as
+stress tests.
 
 Every feature in the package that is not in the founding thirteen exists because
 one of those forty models asked for it: `abm_link()`, `abm_neighbours()`,
@@ -170,9 +209,10 @@ one of those forty models asked for it: `abm_link()`, `abm_neighbours()`,
 `among =`, `cost =`, `within =`, `.by =`, `.order =`, `times =`, `record =`,
 `.scope = "population"`, clique linking, the Poisson and scale-free and ring
 networks, and the cascading semantics of `abm_sequential()`.
-[`models/what-changed.md`](models/what-changed.md) is the history.
-[`models/open-items.md`](models/open-items.md) is what is still out of
-reach.
+[`models/what-changed.md`](https://github.com/rayhanalirachman/tidyABM/blob/main/models/what-changed.md)
+is the history.
+[`models/open-items.md`](https://github.com/rayhanalirachman/tidyABM/blob/main/models/open-items.md)
+is what is still out of reach.
 
 Several of the validations are quantitative rather than qualitative. Hawks and
 Doves matches the analytic evolutionarily stable frequency `V/C` to three
@@ -190,6 +230,7 @@ the Ewens sampling formula across two orders of magnitude in the innovation
 rate. Deferred acceptance reproduces Pittel's `ln n` and `n / ln n` on the nose
 at n = 200, which for a model this simple still surprises me.
 
-See `vignette("tidyABM")` to get started, `vignette("models")` for a tour of the
-grammar, and `vignette("corrections")` for the three models whose short form runs
-but is wrong.
+See [`vignette("tidyABM")`](https://rayhanalirachman.github.io/tidyABM/articles/tidyABM.html) to get started,
+[`vignette("models")`](https://rayhanalirachman.github.io/tidyABM/articles/models.html) for a tour of the grammar, and
+[`vignette("corrections")`](https://rayhanalirachman.github.io/tidyABM/articles/corrections.html) for the three models
+whose short form runs but is wrong.

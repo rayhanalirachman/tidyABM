@@ -30,17 +30,17 @@ agent's neighbours in the model's \code{\link[=abm_network]{abm_network()}}.}
 \item{size}{Group size. Defaults to 2 (a pair). Only \code{"random"} and
 \code{"nearest"} support \code{size > 2}; \code{"opposite_group"} is undefined above 2.}
 
-\item{by}{Column(s) defining the space or the split. For
-\code{"opposite_group"} a single column that takes exactly two values (use
-\code{.group} for a multi-group model); for \code{"nearest"} one or more numeric
-columns, compared by Euclidean distance.}
+\item{by}{Column(s) defining the space or the split. For \code{"opposite_group"}
+a single column that takes exactly two values (use \code{.group} for a
+multi-group model); for \code{"nearest"} one or more numeric columns, compared by
+Euclidean distance.}
 
-\item{role}{A named list of two conditions, e.g.
-\code{list(giver = money > 0, receiver = TRUE)}. Within each pair, roles are
-assigned so that each member satisfies its own role's condition; if no
-assignment works the pair is dropped for this step. Rules then see \code{.role}.}
+\item{role}{A named list of two conditions, e.g. \code{list(giver = money > 0, receiver = TRUE)}. Within each pair, roles are assigned so that each member
+satisfies its own role's condition; if no assignment works the pair is
+dropped for this step. Rules then see \code{.role}.}
 
-\item{eligible}{A condition. Agents for which it is \code{FALSE} sit the step out.}
+\item{eligible}{A condition. Agents for which it is \code{FALSE} sit the step
+out.}
 
 \item{resolve}{For \code{"opposite_group"}, \code{"none"} (the default) or
 \code{"negotiate"}, which runs \code{rounds} rounds of offer/counter-offer and sets
@@ -50,16 +50,15 @@ assignment works the pair is dropped for this step. Rules then see \code{.role}.
 
 \item{positions}{For \code{resolve = "negotiate"}, \verb{c(<first group's bid column>, <second group's ask column>)}.}
 
-\item{limits}{For \code{resolve = "negotiate"}, \verb{c(<first group's
-reservation column>, <second group's reservation column>)}, the bid never rises
-above the first, and the ask never falls below the second.}
+\item{limits}{For \code{resolve = "negotiate"}, \verb{c(<first group's reservation column>, <second group's reservation column>)}, the bid never rises above
+the first, and the ask never falls below the second.}
 
 \item{from}{For \code{"network"}, \code{"neighbour"} (the default) picks a random
 neighbour of the agent; \code{"random_edge"} picks a random edge of the whole
 network and then one of its endpoints, which selects agents in proportion to
-their degree (used by preferential attachment); \code{"parent"} is only meaningful
-inside \code{\link[=abm_birth]{abm_birth()}}'s \code{attach_via} and links a newborn to the agent it was
-cloned from, which is what puts offspring next to their kin.}
+their degree (used by preferential attachment); \code{"parent"} is only
+meaningful inside \code{\link[=abm_birth]{abm_birth()}}'s \code{attach_via} and links a newborn to the
+agent it was cloned from, which is what puts offspring next to their kin.}
 
 \item{among}{A condition naming the agents that may be \emph{chosen}, for the
 directional modes \code{"one_of"} and \code{"nearest"}. Defaults to everybody. An
@@ -67,24 +66,21 @@ agent is never matched to itself.}
 
 \item{cost}{For \code{"nearest"}, an expression naming what the chooser is
 minimising, used instead of \code{by}. It is evaluated once per (chooser,
-candidate) pair: the candidate's columns are visible under their own names and
-the chooser's under \verb{own_<col>}, the same convention
-\code{\link[=abm_neighbours]{abm_neighbours()}} uses. \code{.id} and
-\code{.group} are included, so a cost can be a lookup into the chooser's own
-preference list as easily as a price. \code{by} is the special case \code{cost
-= (x - own_x)^2}; anything else, a delivered price \code{price + travel * abs(x
-- own_x)}, an energy deficit, a position in a preference list, needs this.
-\code{NA} means the candidate is not acceptable to that chooser, and a chooser
-with no acceptable candidate sits the step out.}
+candidate) pair: the candidate's columns are visible under their own names
+and the chooser's under \verb{own_<col>}, the same convention \code{\link[=abm_neighbours]{abm_neighbours()}}
+uses. \code{.id} and \code{.group} are included, so a cost can be a lookup into the
+chooser's own preference list as easily as a price. \code{by} is the special case
+\code{cost = (x - own_x)^2}; anything else, a delivered price \code{price + travel * abs(x - own_x)}, an energy deficit, a position in a preference list, needs
+this. \code{NA} means the candidate is not acceptable to that chooser, and a
+chooser with no acceptable candidate sits the step out.}
 }
 \value{
 An \code{abm_match} step object.
 }
 \description{
 \code{abm_match()} is the step that decides \emph{who interacts with whom} this tick.
-It does not change any agent column; it only produces a partner (for
-\code{size = 2}) or a group (for \code{size > 2}), which the \code{\link[=abm_rules]{abm_rules()}} steps that
-follow it then use.
+It does not change any agent column; it only produces a partner (for \code{size = 2}) or a group (for \code{size > 2}), which the \code{\link[=abm_rules]{abm_rules()}} steps that follow
+it then use.
 }
 \details{
 After a match, every rule can see:
@@ -95,8 +91,8 @@ rule means "sum across this agent's group";
 \item \code{.role}, when \code{role} is supplied.
 }
 
-Each \code{pair} mode uses a fixed set of the other arguments, and passing one that
-the chosen mode does not use is an error rather than being ignored:\tabular{ll}{
+Each \code{pair} mode uses a fixed set of the other arguments, and passing one
+that the chosen mode does not use is an error rather than being ignored:\tabular{ll}{
    mode \tab uses \cr
    \code{"random"} \tab \code{size}, \code{role}, \code{eligible} \cr
    \code{"one_of"} \tab \code{role}, \code{eligible}, \code{among} \cr
@@ -108,18 +104,16 @@ the chosen mode does not use is an error rather than being ignored:\tabular{ll}{
 
 \code{eligible} and \code{among} ask different questions, and the difference only has
 teeth in the directional modes. \code{eligible} says who \emph{takes part}; \code{among}
-says who may be \emph{picked}. A consumer choosing the nearest shop wants
-\code{among = .group == "shops"}, or it will find that the nearest agent to it is
+says who may be \emph{picked}. A consumer choosing the nearest shop wants \code{among = .group == "shops"}, or it will find that the nearest agent to it is
 another consumer.
 
-Two of the modes are \emph{mutual}: \code{"random"} and \code{"opposite_group"} partition the
-eligible agents into pairs or groups, so being matched is symmetric and every
-agent appears once. The other three are \emph{directional}: \code{"one_of"},
+Two of the modes are \emph{mutual}: \code{"random"} and \code{"opposite_group"} partition
+the eligible agents into pairs or groups, so being matched is symmetric and
+every agent appears once. The other three are \emph{directional}: \code{"one_of"},
 \code{"nearest"} and \code{"network"} give each agent a partner of its own, and your
-partner need not have picked you. \code{"one_of"} is NetLogo's
-\verb{one-of other turtles}; \code{"random"} is a fresh shuffle of the whole population
-into couples. They are different models of who meets whom, and which one you
-want depends on the source you are porting.
+partner need not have picked you. \code{"one_of"} is NetLogo's \verb{one-of other turtles}; \code{"random"} is a fresh shuffle of the whole population into
+couples. They are different models of who meets whom, and which one you want
+depends on the source you are porting.
 }
 \examples{
 abm_match(pair = "random")
@@ -130,4 +124,9 @@ abm_match(pair = "nearest", by = position, among = .group == "shops")
 abm_match(pair = "nearest", cost = price + abs(x - own_x),
           among = .group == "shops")
 abm_match(pair = "random", role = list(giver = money > 0, receiver = TRUE))
+}
+\seealso{
+\code{\link[=abm_go]{abm_go()}}, which lists every step and fixes the order they run
+in. \code{\link[=abm_link]{abm_link()}}, \code{\link[=abm_unlink]{abm_unlink()}} and \code{\link[=abm_draw]{abm_draw()}} also read the pairing
+a match leaves standing.
 }

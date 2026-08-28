@@ -38,15 +38,13 @@ new_abm_match <- function(pair, size, by, role, eligible, resolve, rounds,
 #' Each `pair` mode uses a fixed set of the other arguments, and passing one
 #' that the chosen mode does not use is an error rather than being ignored:
 #'
-#' | mode               | uses
-#' |
-#' |--------------------|-------------------------------------------------------|
-#' | `"random"`         | `size`, `role`, `eligible`
-#' | | `"one_of"`         | `role`, `eligible`, `among`
-#' | | `"opposite_group"` | `by`, `role`, `eligible`, `resolve`, `rounds`,
-#' `positions`, `limits` | | `"nearest"`        | `by` *or* `cost`, `size`,
-#' `eligible`, `among`         | | `"network"`        | `from`, `eligible`
-#' |
+#' | mode               | uses                                                                  |
+#' |--------------------|-----------------------------------------------------------------------|
+#' | `"random"`         | `size`, `role`, `eligible`                                            |
+#' | `"one_of"`         | `role`, `eligible`, `among`                                           |
+#' | `"opposite_group"` | `by`, `role`, `eligible`, `resolve`, `rounds`, `positions`, `limits`  |
+#' | `"nearest"`        | `by` *or* `cost`, `size`, `eligible`, `among`                         |
+#' | `"network"`        | `from`, `eligible`                                                    |
 #'
 #' `eligible` and `among` ask different questions, and the difference only has
 #' teeth in the directional modes. `eligible` says who *takes part*; `among`
@@ -111,6 +109,9 @@ new_abm_match <- function(pair, size, by, role, eligible, resolve, rounds,
 #'   agent it was cloned from, which is what puts offspring next to their kin.
 #'
 #' @return An `abm_match` step object.
+#' @seealso [abm_go()], which lists every step and fixes the order they run
+#'   in. [abm_link()], [abm_unlink()] and [abm_draw()] also read the pairing
+#'   a match leaves standing.
 #' @export
 #' @examples
 #' abm_match(pair = "random")

@@ -22,6 +22,9 @@ new_abm_link <- function(when, drop) {
 #'   use the agent's own columns, `partner_<col>`, `.role`, and any global.
 #'
 #' @return An `abm_link` step object.
+#' @seealso [abm_go()], which lists every step and fixes the order they run
+#'   in.
+#' @family network topology steps
 #' @export
 #' @examples
 #' # a random graph that grows one batch of edges per tick
@@ -43,6 +46,9 @@ abm_link <- function(when = NULL) {
 #' @param when Optional condition. Only pairs where it holds are unlinked.
 #'
 #' @return An `abm_unlink` step object.
+#' @seealso [abm_go()], which lists every step and fixes the order they run
+#'   in.
+#' @family network topology steps
 #' @export
 #' @examples
 #' # Watts-Strogatz rewiring: drop a neighbour, pick up a stranger
@@ -184,6 +190,9 @@ run_unlink <- function(step, state) {
 #'   `own_<col>`. When it is supplied the model needs no network.
 #'
 #' @return An `abm_neighbours` step object.
+#' @seealso [abm_go()], which lists every step and fixes the order they run
+#'   in.
+#' @family agent update steps
 #' @export
 #' @examples
 #' abm_neighbours(infected_neighbours ~ sum(state == "infected"))

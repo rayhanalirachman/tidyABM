@@ -136,9 +136,32 @@ round(summary(end))
 #>      42      86     100     100     114     160
 ```
 
-Money is conserved, because no rule creates or destroys any, but the
-distribution has gone from a spike at 100 to something with a long right
-tail. That is the whole point of the model.
+Money is conserved, because no rule creates or destroys any. The spike
+at \$100 is gone, though, and a summary is a poor way to look at a
+distribution:
+
+``` r
+
+library(ggplot2)
+
+ggplot(data.frame(money = end), aes(money)) +
+  geom_histogram(binwidth = 10, boundary = 0) +
+  labs(x = "money at tick 500", y = "agents")
+```
+
+![Histogram of agent wealth after 500 ticks: a broad, roughly symmetric
+spread centred near 100
+dollars.](tidyABM_files/figure-html/wealth-histogram-1.png)
+
+Five hundred ticks of a fair coin have spread the population out, but
+the shape is still roughly symmetric. The exponential distribution this
+model is known for arrives much later, and the reason is worth knowing:
+the tail comes from the floor at zero, and the floor cannot bind until
+the spread is comparable to what everyone started with. After *t* ticks
+of \$1 steps that spread is about `sqrt(t)`, so \$100 of starting money
+needs some ten thousand ticks, not five hundred. Run it that far and the
+right tail is unmistakable. It is also a minute of compute, which is why
+this vignette stops here.
 
 ## Setup: agents, networks, globals
 

@@ -70,6 +70,17 @@ population instead, drawing the next generation from this one, say, and
 `.scope = "population"` evaluates it against every agent at once,
 ignoring the standing match.
 
+## See also
+
+[`abm_go()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_go.md),
+which lists every step and fixes the order they run in.
+
+Other agent update steps:
+[`abm_global()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_global.md),
+[`abm_neighbours()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_neighbours.md),
+[`abm_sequential()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_sequential.md),
+[`abm_tell()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_tell.md)
+
 ## Examples
 
 ``` r

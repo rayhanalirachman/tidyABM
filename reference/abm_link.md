@@ -32,6 +32,14 @@ After a match with `size > 2` the group is linked as a *clique*, every
 pair inside it gains an edge. That is what a team, a committee or a
 coalition means once it is written as a network.
 
+## See also
+
+[`abm_go()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_go.md),
+which lists every step and fixes the order they run in.
+
+Other network topology steps:
+[`abm_unlink()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_unlink.md)
+
 ## Examples
 
 ``` r

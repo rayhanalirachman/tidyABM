@@ -62,6 +62,17 @@ first step lasts the run.
   asymmetric interaction needs: whether I noticed *you*, and separately
   whether you noticed *me*.
 
+## See also
+
+[`abm_go()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_go.md),
+which lists every step and fixes the order they run in.
+[`abm_neighbours()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_neighbours.md)
+reads the values this step attaches;
+[`abm_link()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_link.md)
+and
+[`abm_unlink()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_unlink.md)
+change the edges it writes onto.
+
 ## Examples
 
 ``` r

@@ -39,30 +39,6 @@ An `abm_go` object.
 
 ## Details
 
-    abm_go(
-      abm_match(pair = "random"), abm_rules(payoff ~ ...),   # phase 1: play
-      abm_match(pair = "random"), abm_rules(strategy ~ ...)  # phase 2: imitate
-    )
-
-The sequence is validated once, here, rather than on every tick. Three
-rules apply:
-
-- it cannot be empty;
-
-- no two
-  [`abm_match()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_match.md)
-  steps may sit next to each other, since the first would be discarded
-  unused;
-
-- it cannot end on an
-  [`abm_match()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_match.md),
-  for the same reason.
-
-Everything else is allowed. In particular a model may use no matching at
-all (El Farol, or a pure redistribution model), and several update steps
-may follow a single match, the market model pairs once and then applies
-separate rules to buyers and to sellers.
-
 ## Examples
 
 ``` r

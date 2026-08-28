@@ -29,8 +29,8 @@ it until until is true, or max times, whichever comes first."></head><body>
 <li class="active nav-item"><a class="nav-link" href="../reference/index.html">Reference</a></li>
 <li class="nav-item dropdown">
   <button class="nav-link dropdown-toggle" type="button" id="dropdown-articles" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">Articles</button>
-  <ul class="dropdown-menu" aria-labelledby="dropdown-articles"><li><a class="dropdown-item" href="../articles/corrections.html">Three models that need more than the sketch</a></li>
-    <li><a class="dropdown-item" href="../articles/models.html">Model gallery</a></li>
+  <ul class="dropdown-menu" aria-labelledby="dropdown-articles"><li><a class="dropdown-item" href="../articles/models.html">Model gallery</a></li>
+    <li><a class="dropdown-item" href="../articles/corrections.html">Corrections</a></li>
   </ul></li>
 <li class="nav-item"><a class="nav-link" href="../news/index.html">Changelog</a></li>
       </ul><ul class="navbar-nav"><li class="nav-item"><form class="form-inline" role="search">
@@ -86,16 +86,21 @@ logical value. <code>NULL</code> (the default) means always run <code>max</code>
     </div>
     <div class="section level2">
     <h2 id="details">Details<a class="anchor" aria-label="anchor" href="#details"></a></h2>
-    <p><code>until</code> is evaluated the way an <code><a href="abm_global.html">abm_global()</a></code>
-right-hand side is, over the whole population, with the globals in scope, and
-must collapse to a single <code>TRUE</code> or <code>FALSE</code>. It is checked
-<em>after</em> each pass, so the block always runs at least once. <code>max</code> is
-required, because a condition that never becomes true would otherwise hang the
-run.</p>
+    <p><code>until</code> is evaluated the way an <code><a href="abm_global.html">abm_global()</a></code> right-hand side is, over the
+whole population, with the globals in scope, and must collapse to a single
+<code>TRUE</code> or <code>FALSE</code>. It is checked <em>after</em> each pass, so the block always runs
+at least once. <code>max</code> is required, because a condition that never becomes
+true would otherwise hang the run.</p>
 <p>The same idea covers early stopping for a whole model: a block wrapped in
 <code>abm_repeat(until = &lt;absorbed&gt;, max = &lt;ticks&gt;)</code> and run for a single tick
 stops as soon as the model reaches its absorbing state, instead of
 recomputing a fixed point for the rest of the run.</p>
+    </div>
+    <div class="section level2">
+    <h2 id="see-also">See also<a class="anchor" aria-label="anchor" href="#see-also"></a></h2>
+    <div class="dont-index"><p><code><a href="abm_go.html">abm_go()</a></code>, which lists every step and fixes the order they run
+in. The block it wraps is validated exactly as <code><a href="abm_go.html">abm_go()</a></code> validates a
+tick.</p></div>
     </div>
 
     <div class="section level2">

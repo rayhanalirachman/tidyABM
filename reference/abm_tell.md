@@ -107,6 +107,17 @@ messages are considered in. That is what *the first person to reach the
 counter* needs, and without it the counter has to reconstruct the queue
 from something the senders wrote down.
 
+## See also
+
+[`abm_go()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_go.md),
+which lists every step and fixes the order they run in.
+
+Other agent update steps:
+[`abm_global()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_global.md),
+[`abm_neighbours()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_neighbours.md),
+[`abm_rules()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_rules.md),
+[`abm_sequential()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_sequential.md)
+
 ## Examples
 
 ``` r

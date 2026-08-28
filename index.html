@@ -36,8 +36,8 @@
 <li class="nav-item dropdown">
   <button class="nav-link dropdown-toggle" type="button" id="dropdown-articles" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">Articles</button>
   <ul class="dropdown-menu" aria-labelledby="dropdown-articles">
-<li><a class="dropdown-item" href="articles/corrections.html">Three models that need more than the sketch</a></li>
-    <li><a class="dropdown-item" href="articles/models.html">Model gallery</a></li>
+<li><a class="dropdown-item" href="articles/models.html">Model gallery</a></li>
+    <li><a class="dropdown-item" href="articles/corrections.html">Corrections</a></li>
   </ul>
 </li>
 <li class="nav-item"><a class="nav-link" href="news/index.html">Changelog</a></li>
@@ -112,7 +112,7 @@
 <div class="section level2">
 <h2 id="a-whole-model">A whole model<a class="anchor" aria-label="anchor" href="#a-whole-model"></a>
 </h2>
-<p>Wilensky and Rand’s <em>Simple Economy</em>: 500 agents start with $100 each, and every tick anyone with money gives $1 to someone else. The wealth distribution starts as a spike and ends up exponential. Nobody is doing anything clever, and inequality shows up anyway.</p>
+<p>Wilensky and Rand’s <em>Simple Economy</em>: 500 agents start with $100 each, and every tick anyone with money gives $1 to someone else. Nobody is doing anything clever, and inequality shows up anyway: the starting spike spreads, and run far enough past the thousand ticks below it relaxes into an exponential.</p>
 <div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://github.com/rayhanalirachman/tidyABM" class="external-link">tidyABM</a></span><span class="op">)</span></span>
 <span></span>
@@ -136,6 +136,7 @@
 <span><span class="co">#&gt;  2     0     2 agents   100</span></span>
 <span><span class="co">#&gt;  ...</span></span></code></pre></div>
 <p><code>result</code> is a plain long tibble, so the analysis is ordinary dplyr and ggplot2.</p>
+<p>The rest of this page is the map. <a href="https://rayhanalirachman.github.io/tidyABM/articles/tidyABM.html"><code>vignette("tidyABM")</code></a> is the walkthrough, and works the same example line by line.</p>
 </div>
 <div class="section level2">
 <h2 id="the-grammar">The grammar<a class="anchor" aria-label="anchor" href="#the-grammar"></a>
@@ -171,7 +172,23 @@
 </tr>
 </tbody>
 </table>
-<p><code><a href="reference/abm_go.html">abm_go()</a></code> declares what happens each tick, as a sequence of steps dispatched by type and position rather than by argument name:</p>
+<p><code><a href="reference/abm_go.html">abm_go()</a></code> declares what happens each tick, as a sequence of steps dispatched by type and position rather than by argument name. There are twelve of them, in six groups. The <a href="https://rayhanalirachman.github.io/tidyABM/reference/index.html">reference index</a> uses the same six, in the same order, which is the order a tick works through them.</p>
+<p><strong>1. Interaction and matching.</strong> Who interacts with whom this tick. It comes first, because everything below reads the pairing it leaves standing.</p>
+<table class="table">
+<colgroup>
+<col width="27%">
+<col width="72%">
+</colgroup>
+<thead><tr>
+<th>step</th>
+<th>what it does</th>
+</tr></thead>
+<tbody><tr>
+<td><code><a href="reference/abm_match.html">abm_match()</a></code></td>
+<td>decides who interacts with whom this tick</td>
+</tr></tbody>
+</table>
+<p><strong>2. Updating agents.</strong> All five write a value somewhere, and the only thing separating them is <em>whose row</em> gets written. They are listed by reach: the agent itself, the agent itself in an order you control, its neighbourhood, one other agent, everybody.</p>
 <table class="table">
 <colgroup>
 <col width="27%">
@@ -182,10 +199,6 @@
 <th>what it does</th>
 </tr></thead>
 <tbody>
-<tr>
-<td><code><a href="reference/abm_match.html">abm_match()</a></code></td>
-<td>decides who interacts with whom this tick</td>
-</tr>
 <tr>
 <td><code><a href="reference/abm_rules.html">abm_rules()</a></code></td>
 <td>updates agent columns, all agents simultaneously</td>
@@ -199,10 +212,6 @@
 <td>summarises each agent’s neighbourhood, either the network or everyone <code>within</code> a condition</td>
 </tr>
 <tr>
-<td><code><a href="reference/abm_draw.html">abm_draw()</a></code></td>
-<td>attaches a value to every edge, readable from both ends</td>
-</tr>
-<tr>
 <td><code><a href="reference/abm_tell.html">abm_tell()</a></code></td>
 <td>writes a value into <em>another</em> agent’s row</td>
 </tr>
@@ -210,6 +219,55 @@
 <td><code><a href="reference/abm_global.html">abm_global()</a></code></td>
 <td>updates a value shared by the whole population, or a table of them indexed by a category</td>
 </tr>
+</tbody>
+</table>
+<p><strong>3. Network topology.</strong> What is connected to what.</p>
+<table class="table">
+<colgroup>
+<col width="27%">
+<col width="72%">
+</colgroup>
+<thead><tr>
+<th>step</th>
+<th>what it does</th>
+</tr></thead>
+<tbody>
+<tr>
+<td><code><a href="reference/abm_link.html">abm_link()</a></code></td>
+<td>adds an edge between matched agents</td>
+</tr>
+<tr>
+<td><code><a href="reference/abm_unlink.html">abm_unlink()</a></code></td>
+<td>removes one</td>
+</tr>
+</tbody>
+</table>
+<p><strong>4. Edge data.</strong> A value carried by edges that already exist. The topology is left alone, which is why this is not part of the group above.</p>
+<table class="table">
+<colgroup>
+<col width="27%">
+<col width="72%">
+</colgroup>
+<thead><tr>
+<th>step</th>
+<th>what it does</th>
+</tr></thead>
+<tbody><tr>
+<td><code><a href="reference/abm_draw.html">abm_draw()</a></code></td>
+<td>attaches a value to every edge, readable from both ends</td>
+</tr></tbody>
+</table>
+<p><strong>5. Demographics.</strong> The only steps that change how many agents there are.</p>
+<table class="table">
+<colgroup>
+<col width="27%">
+<col width="72%">
+</colgroup>
+<thead><tr>
+<th>step</th>
+<th>what it does</th>
+</tr></thead>
+<tbody>
 <tr>
 <td><code><a href="reference/abm_birth.html">abm_birth()</a></code></td>
 <td>adds agents, one or <code>times</code> many</td>
@@ -218,17 +276,22 @@
 <td><code><a href="reference/abm_death.html">abm_death()</a></code></td>
 <td>removes them</td>
 </tr>
-<tr>
-<td>
-<code><a href="reference/abm_link.html">abm_link()</a></code> / <code><a href="reference/abm_unlink.html">abm_unlink()</a></code>
-</td>
-<td>adds or removes network edges</td>
-</tr>
-<tr>
+</tbody>
+</table>
+<p><strong>6. Control flow.</strong> Replaying a block of the steps above inside a single tick.</p>
+<table class="table">
+<colgroup>
+<col width="27%">
+<col width="72%">
+</colgroup>
+<thead><tr>
+<th>step</th>
+<th>what it does</th>
+</tr></thead>
+<tbody><tr>
 <td><code><a href="reference/abm_repeat.html">abm_repeat()</a></code></td>
 <td>replays a block of steps until a condition holds</td>
-</tr>
-</tbody>
+</tr></tbody>
 </table>
 <p>So a two-phase model (play, then imitate) is written flat and in order:</p>
 <div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
@@ -296,11 +359,11 @@
 <h2 id="status">Status<a class="anchor" aria-label="anchor" href="#status"></a>
 </h2>
 <p>Experimental. The API is shaped by what porting models turns up, and it is still moving. Build on it now and expect to edit that code later.</p>
-<p>Fifty-six models are implemented and documented in <a href="models/README.html"><code>models/</code></a>, each on its own page with its code, the result it reproduces and its source: thirteen the grammar was designed against, three of those rebuilt because the short version does not show what the model is known for, and four rounds of ten ported as stress tests.</p>
-<p>Every feature in the package that is not in the founding thirteen exists because one of those forty models asked for it: <code><a href="reference/abm_link.html">abm_link()</a></code>, <code><a href="reference/abm_neighbours.html">abm_neighbours()</a></code>, <code><a href="reference/abm_tell.html">abm_tell()</a></code>, <code><a href="reference/abm_draw.html">abm_draw()</a></code>, <code><a href="reference/abm_repeat.html">abm_repeat()</a></code>, the <code>one_of</code> pairing mode, <code>among =</code>, <code>cost =</code>, <code>within =</code>, <code>.by =</code>, <code>.order =</code>, <code>times =</code>, <code>record =</code>, <code>.scope = "population"</code>, clique linking, the Poisson and scale-free and ring networks, and the cascading semantics of <code><a href="reference/abm_sequential.html">abm_sequential()</a></code>. <a href="models/what-changed.html"><code>models/what-changed.md</code></a> is the history. <a href="models/open-items.html"><code>models/open-items.md</code></a> is what is still out of reach.</p>
+<p>Fifty-six models are implemented and documented in <a href="https://github.com/rayhanalirachman/tidyABM/blob/main/models/README.md" class="external-link"><code>models/</code></a>, each on its own page with its code, the result it reproduces and its source: thirteen the grammar was designed against, three of those rebuilt because the short version does not show what the model is known for, and four rounds of ten ported as stress tests.</p>
+<p>Every feature in the package that is not in the founding thirteen exists because one of those forty models asked for it: <code><a href="reference/abm_link.html">abm_link()</a></code>, <code><a href="reference/abm_neighbours.html">abm_neighbours()</a></code>, <code><a href="reference/abm_tell.html">abm_tell()</a></code>, <code><a href="reference/abm_draw.html">abm_draw()</a></code>, <code><a href="reference/abm_repeat.html">abm_repeat()</a></code>, the <code>one_of</code> pairing mode, <code>among =</code>, <code>cost =</code>, <code>within =</code>, <code>.by =</code>, <code>.order =</code>, <code>times =</code>, <code>record =</code>, <code>.scope = "population"</code>, clique linking, the Poisson and scale-free and ring networks, and the cascading semantics of <code><a href="reference/abm_sequential.html">abm_sequential()</a></code>. <a href="https://github.com/rayhanalirachman/tidyABM/blob/main/models/what-changed.md" class="external-link"><code>models/what-changed.md</code></a> is the history. <a href="https://github.com/rayhanalirachman/tidyABM/blob/main/models/open-items.md" class="external-link"><code>models/open-items.md</code></a> is what is still out of reach.</p>
 <p>Several of the validations are quantitative rather than qualitative. Hawks and Doves matches the analytic evolutionarily stable frequency <code>V/C</code> to three decimals across a twelve-fold range of the cost parameter. The information cascade matches <code>p² / (p² + (1-p)²)</code> at five values of the signal accuracy, and Deffuant’s cluster count matches <code>floor(1/(2d))</code> at six values of the threshold. Watts’s cascade window comes out at its closed-form boundaries on both ends. The Minority Game reproduces the σ²/α curve with its minimum at the reported critical value, and the Naming Game’s two scaling exponents land at 1.45 and 1.39 against a reported 3/2.</p>
 <p>The fourth round added three more. Division of labour settles at δ/α to two decimals whatever the thresholds are. The neutral model’s variant counts land on the Ewens sampling formula across two orders of magnitude in the innovation rate. Deferred acceptance reproduces Pittel’s <code>ln n</code> and <code>n / ln n</code> on the nose at n = 200, which for a model this simple still surprises me.</p>
-<p>See <code><a href="articles/tidyABM.html">vignette("tidyABM")</a></code> to get started, <code><a href="articles/models.html">vignette("models")</a></code> for a tour of the grammar, and <code><a href="articles/corrections.html">vignette("corrections")</a></code> for the three models whose short form runs but is wrong.</p>
+<p>See <a href="https://rayhanalirachman.github.io/tidyABM/articles/tidyABM.html"><code>vignette("tidyABM")</code></a> to get started, <a href="https://rayhanalirachman.github.io/tidyABM/articles/models.html"><code>vignette("models")</code></a> for a tour of the grammar, and <a href="https://rayhanalirachman.github.io/tidyABM/articles/corrections.html"><code>vignette("corrections")</code></a> for the three models whose short form runs but is wrong.</p>
 </div>
 </div>
   </main><aside class="col-md-3"><div class="links">
@@ -308,6 +371,9 @@
 <ul class="list-unstyled">
 <li><a href="https://github.com/rayhanalirachman/tidyABM/" class="external-link">Browse source code</a></li>
 <li><a href="https://github.com/rayhanalirachman/tidyABM/issues" class="external-link">Report a bug</a></li>
+<li><a href="https://github.com/rayhanalirachman/tidyABM/blob/main/models/README.md" class="external-link">The 56-model corpus</a></li>
+<li><a href="https://github.com/rayhanalirachman/tidyABM/blob/main/models/what-changed.md" class="external-link">What each stress test changed</a></li>
+<li><a href="https://github.com/rayhanalirachman/tidyABM/blob/main/models/open-items.md" class="external-link">What the grammar still cannot say</a></li>
 </ul>
 </div>
 

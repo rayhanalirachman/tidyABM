@@ -60,7 +60,7 @@ the state produced by
 [`abm_setup()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_setup.md),
 before any step has run, so a run of `n` ticks returns `n + 1`
 snapshots. Global values are recorded alongside and are available with
-[`abm_globals()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_globals.md).
+\[abm_globals()\].
 
 Agent-based models are stochastic, so `seed` is a first-class argument
 rather than something to arrange yourself: it makes the run reproducible
@@ -72,13 +72,14 @@ fifty thousand agents has been keeping every one of them, every tick,
 since the start. `record` says how much to keep.
 
 It fixes the run, though, not the model. If the agents' starting columns
-were drawn at random, they were drawn when
-[`abm_setup()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_setup.md)
-was called, and this seed comes too late to affect them. Seed both for
-an experiment that reproduces end to end:
+were drawn at random, they were drawn when \[abm_setup()\] was called,
+and this seed comes too late to affect them. Seed both for an experiment
+that reproduces end to end:
 
-    m <- abm_setup(agents = abm_agents(n = 100, x = ~runif(n)), seed = 1)
-    r <- abm_run(m, go, ticks = 100, seed = 1)
+    <- abm_run(m, go, ticks = 100, seed = 1) ```
+
+    [abm_globals()]: R:abm_globals()
+    [abm_setup()]: R:abm_setup()
 
 ## Examples
 

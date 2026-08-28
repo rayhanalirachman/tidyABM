@@ -51,6 +51,14 @@ in `abm_repeat(until = <absorbed>, max = <ticks>)` and run for a single
 tick stops as soon as the model reaches its absorbing state, instead of
 recomputing a fixed point for the rest of the run.
 
+## See also
+
+[`abm_go()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_go.md),
+which lists every step and fixes the order they run in. The block it
+wraps is validated exactly as
+[`abm_go()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_go.md)
+validates a tick.
+
 ## Examples
 
 ``` r

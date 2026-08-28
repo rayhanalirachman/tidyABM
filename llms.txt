@@ -53,9 +53,10 @@ Every other `abm_*()` function is a step inside
 ## A whole model
 
 Wilensky and Rand’s *Simple Economy*: 500 agents start with \$100 each,
-and every tick anyone with money gives \$1 to someone else. The wealth
-distribution starts as a spike and ends up exponential. Nobody is doing
-anything clever, and inequality shows up anyway.
+and every tick anyone with money gives \$1 to someone else. Nobody is
+doing anything clever, and inequality shows up anyway: the starting
+spike spreads, and run far enough past the thousand ticks below it
+relaxes into an exponential.
 
 ``` r
 
@@ -85,6 +86,10 @@ result
 `result` is a plain long tibble, so the analysis is ordinary dplyr and
 ggplot2.
 
+The rest of this page is the map.
+[`vignette("tidyABM")`](https://rayhanalirachman.github.io/tidyABM/articles/tidyABM.html)
+is the walkthrough, and works the same example line by line.
+
 ## The grammar
 
 [`abm_setup()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_setup.md)
@@ -98,20 +103,61 @@ declares the world, out of two other specifications and a list:
 
 [`abm_go()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_go.md)
 declares what happens each tick, as a sequence of steps dispatched by
-type and position rather than by argument name:
+type and position rather than by argument name. There are twelve of
+them, in six groups. The [reference
+index](https://rayhanalirachman.github.io/tidyABM/reference/index.html)
+uses the same six, in the same order, which is the order a tick works
+through them.
+
+**1. Interaction and matching.** Who interacts with whom this tick. It
+comes first, because everything below reads the pairing it leaves
+standing.
 
 | step | what it does |
 |----|----|
 | [`abm_match()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_match.md) | decides who interacts with whom this tick |
+
+**2. Updating agents.** All five write a value somewhere, and the only
+thing separating them is *whose row* gets written. They are listed by
+reach: the agent itself, the agent itself in an order you control, its
+neighbourhood, one other agent, everybody.
+
+| step | what it does |
+|----|----|
 | [`abm_rules()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_rules.md) | updates agent columns, all agents simultaneously |
 | [`abm_sequential()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_sequential.md) | updates them one at a time, in shuffled order or an order you name |
 | [`abm_neighbours()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_neighbours.md) | summarises each agent’s neighbourhood, either the network or everyone `within` a condition |
-| [`abm_draw()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_draw.md) | attaches a value to every edge, readable from both ends |
 | [`abm_tell()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_tell.md) | writes a value into *another* agent’s row |
 | [`abm_global()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_global.md) | updates a value shared by the whole population, or a table of them indexed by a category |
+
+**3. Network topology.** What is connected to what.
+
+| step | what it does |
+|----|----|
+| [`abm_link()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_link.md) | adds an edge between matched agents |
+| [`abm_unlink()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_unlink.md) | removes one |
+
+**4. Edge data.** A value carried by edges that already exist. The
+topology is left alone, which is why this is not part of the group
+above.
+
+| step | what it does |
+|----|----|
+| [`abm_draw()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_draw.md) | attaches a value to every edge, readable from both ends |
+
+**5. Demographics.** The only steps that change how many agents there
+are.
+
+| step | what it does |
+|----|----|
 | [`abm_birth()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_birth.md) | adds agents, one or `times` many |
 | [`abm_death()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_death.md) | removes them |
-| [`abm_link()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_link.md) / [`abm_unlink()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_unlink.md) | adds or removes network edges |
+
+**6. Control flow.** Replaying a block of the steps above inside a
+single tick.
+
+| step | what it does |
+|----|----|
 | [`abm_repeat()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_repeat.md) | replays a block of steps until a condition holds |
 
 So a two-phase model (play, then imitate) is written flat and in order:
@@ -174,7 +220,7 @@ Experimental. The API is shaped by what porting models turns up, and it
 is still moving. Build on it now and expect to edit that code later.
 
 Fifty-six models are implemented and documented in
-[`models/`](https://rayhanalirachman.github.io/tidyABM/models/README.md),
+[`models/`](https://github.com/rayhanalirachman/tidyABM/blob/main/models/README.md),
 each on its own page with its code, the result it reproduces and its
 source: thirteen the grammar was designed against, three of those
 rebuilt because the short version does not show what the model is known
@@ -192,9 +238,9 @@ the `one_of` pairing mode, `among =`, `cost =`, `within =`, `.by =`,
 linking, the Poisson and scale-free and ring networks, and the cascading
 semantics of
 [`abm_sequential()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_sequential.md).
-[`models/what-changed.md`](https://rayhanalirachman.github.io/tidyABM/models/what-changed.md)
+[`models/what-changed.md`](https://github.com/rayhanalirachman/tidyABM/blob/main/models/what-changed.md)
 is the history.
-[`models/open-items.md`](https://rayhanalirachman.github.io/tidyABM/models/open-items.md)
+[`models/open-items.md`](https://github.com/rayhanalirachman/tidyABM/blob/main/models/open-items.md)
 is what is still out of reach.
 
 Several of the validations are quantitative rather than qualitative.
@@ -216,11 +262,11 @@ and `n / ln n` on the nose at n = 200, which for a model this simple
 still surprises me.
 
 See
-[`vignette("tidyABM")`](https://rayhanalirachman.github.io/tidyABM/articles/tidyABM.md)
+[`vignette("tidyABM")`](https://rayhanalirachman.github.io/tidyABM/articles/tidyABM.html)
 to get started,
-[`vignette("models")`](https://rayhanalirachman.github.io/tidyABM/articles/models.md)
+[`vignette("models")`](https://rayhanalirachman.github.io/tidyABM/articles/models.html)
 for a tour of the grammar, and
-[`vignette("corrections")`](https://rayhanalirachman.github.io/tidyABM/articles/corrections.md)
+[`vignette("corrections")`](https://rayhanalirachman.github.io/tidyABM/articles/corrections.html)
 for the three models whose short form runs but is wrong.
 
 # Package index
@@ -247,43 +293,60 @@ The specifications you hand to
 - [`abm_network()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_network.md)
   : Declare a persistent network between agents
 
-## Steps: matching
+## Steps: interaction and matching
 
-Who interacts with whom this tick.
+Who interacts with whom this tick. Runs first, because the steps below
+read the pairing it leaves standing.
 
 - [`abm_match()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_match.md)
   : Match agents into pairs or groups
 
 ## Steps: updating agents
 
+All five write a value somewhere; the only difference is which row is
+written. Ordered by reach: the agent itself, the agent itself in a given
+order, its neighbourhood, one other agent, the whole population.
+
 - [`abm_rules()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_rules.md)
   : Update agent columns
 - [`abm_sequential()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_sequential.md)
   : Update agent columns one agent at a time
-- [`abm_global()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_global.md)
-  : Update a shared, population-level value
 - [`abm_neighbours()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_neighbours.md)
   : Summarise each agent's neighbourhood
 - [`abm_tell()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_tell.md)
   : Write a value into another agent's row
+- [`abm_global()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_global.md)
+  : Update a shared, population-level value
 
-## Steps: changing the population
+## Steps: network topology
+
+Changing what is connected to what.
+
+- [`abm_link()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_link.md)
+  : Add edges between matched agents
+- [`abm_unlink()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_unlink.md)
+  : Remove edges between matched agents
+
+## Steps: edge data
+
+Attaching a value to edges that already exist, without touching the
+topology.
+
+- [`abm_draw()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_draw.md)
+  : Attach a value to every edge, visible from both ends
+
+## Steps: demographics
+
+The only steps that change the size of the population.
 
 - [`abm_birth()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_birth.md)
   : Add agents
 - [`abm_death()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_death.md)
   : Remove agents
 
-## Steps: changing the network
-
-- [`abm_link()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_link.md)
-  : Add edges between matched agents
-- [`abm_unlink()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_unlink.md)
-  : Remove edges between matched agents
-- [`abm_draw()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_draw.md)
-  : Attach a value to every edge, visible from both ends
-
 ## Steps: control flow
+
+Replaying a block of the steps above within a single tick.
 
 - [`abm_repeat()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_repeat.md)
   : Repeat a block of steps until a condition holds

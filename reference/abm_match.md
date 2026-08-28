@@ -159,6 +159,16 @@ shuffle of the whole population into couples. They are different models
 of who meets whom, and which one you want depends on the source you are
 porting.
 
+## See also
+
+[`abm_go()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_go.md),
+which lists every step and fixes the order they run in.
+[`abm_link()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_link.md),
+[`abm_unlink()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_unlink.md)
+and
+[`abm_draw()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_draw.md)
+also read the pairing a match leaves standing.
+
 ## Examples
 
 ``` r

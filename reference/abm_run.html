@@ -25,8 +25,8 @@ and records the whole population after every tick."></head><body>
 <li class="active nav-item"><a class="nav-link" href="../reference/index.html">Reference</a></li>
 <li class="nav-item dropdown">
   <button class="nav-link dropdown-toggle" type="button" id="dropdown-articles" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">Articles</button>
-  <ul class="dropdown-menu" aria-labelledby="dropdown-articles"><li><a class="dropdown-item" href="../articles/corrections.html">Three models that need more than the sketch</a></li>
-    <li><a class="dropdown-item" href="../articles/models.html">Model gallery</a></li>
+  <ul class="dropdown-menu" aria-labelledby="dropdown-articles"><li><a class="dropdown-item" href="../articles/models.html">Model gallery</a></li>
+    <li><a class="dropdown-item" href="../articles/corrections.html">Corrections</a></li>
   </ul></li>
 <li class="nav-item"><a class="nav-link" href="../news/index.html">Changelog</a></li>
       </ul><ul class="navbar-nav"><li class="nav-item"><form class="form-inline" role="search">
@@ -82,38 +82,40 @@ starting population also needs <code><a href="abm_setup.html">abm_setup()</a></c
 <dt id="arg-record">record<a class="anchor" aria-label="anchor" href="#arg-record"></a></dt>
 <dd><p>Which ticks' populations to keep. <code>"all"</code> (the default) keeps
 every one; a positive whole number keeps every <code>record</code>-th tick, plus tick 0
-and the last; <code>"final"</code> keeps only the last; <code>"globals"</code> keeps none.
-Globals are recorded every tick whatever this says, since they are one row
-each. A model whose population grows needs this: recording every agent of
-every tick is what makes such a run die of memory rather than merely take a
-while.</p></dd>
+and the last; <code>"final"</code> keeps only the last; <code>"globals"</code> keeps none. Globals
+are recorded every tick whatever this says, since they are one row each. A
+model whose population grows needs this: recording every agent of every tick
+is what makes such a run die of memory rather than merely take a while.</p></dd>
 
 </dl></div>
     <div class="section level2">
     <h2 id="value">Value<a class="anchor" aria-label="anchor" href="#value"></a></h2>
-    <p>An <code>abm_result</code>: a tibble of one row per agent per tick, carrying the
-run's globals and final network as attributes.</p>
+    <p>An <code>abm_result</code>: a tibble of one row per agent per tick, carrying
+the run's globals and final network as attributes.</p>
     </div>
     <div class="section level2">
     <h2 id="details">Details<a class="anchor" aria-label="anchor" href="#details"></a></h2>
-    <p>The result is one long tibble, <code>tick</code>, <code>.id</code>, <code>.group</code>, then
-every agent column, which is what you want for plotting and summarising. Tick 0
-is the state produced by <code><a href="abm_setup.html">abm_setup()</a></code>, before any step has run, so a run
-of <code>n</code> ticks returns <code>n + 1</code> snapshots. Global values are recorded
-alongside and are available with <code><a href="abm_globals.html">abm_globals()</a></code>.</p>
-<p>Agent-based models are stochastic, so <code>seed</code> is a first-class argument rather
-than something to arrange yourself: it makes the run reproducible without
-touching the global random state.</p>
+    <p>The result is one long tibble, <code>tick</code>, <code>.id</code>, <code>.group</code>, then every agent
+column, which is what you want for plotting and summarising. Tick 0 is the
+state produced by <code><a href="abm_setup.html">abm_setup()</a></code>, before any step has run, so a run of <code>n</code>
+ticks returns <code>n + 1</code> snapshots. Global values are recorded alongside and
+are available with [abm_globals()].</p>
+<p>Agent-based models are stochastic, so <code>seed</code> is a first-class argument
+rather than something to arrange yourself: it makes the run reproducible
+without touching the global random state.</p>
 <p>Every tick's whole population is recorded by default, which is right for a
 fixed population and wrong for a growing one – a run that ends with fifty
 thousand agents has been keeping every one of them, every tick, since the
 start. <code>record</code> says how much to keep.</p>
-<p>It fixes the run, though, not the model. If the agents' starting columns were
-drawn at random, they were drawn when <code><a href="abm_setup.html">abm_setup()</a></code> was called, and this seed
-comes too late to affect them. Seed both for an experiment that reproduces end
-to end:</p>
-<p></p><div class="sourceCode"><pre><code><span id="cb1-1"><a href="#cb1-1" tabindex="-1"></a>m <span class="ot">&lt;-</span> <span class="fu">abm_setup</span>(<span class="at">agents =</span> <span class="fu">abm_agents</span>(<span class="at">n =</span> <span class="dv">100</span>, <span class="at">x =</span> <span class="sc">~</span><span class="fu">runif</span>(n)), <span class="at">seed =</span> <span class="dv">1</span>)</span>
-<span id="cb1-2"><a href="#cb1-2" tabindex="-1"></a>r <span class="ot">&lt;-</span> <span class="fu">abm_run</span>(m, go, <span class="at">ticks =</span> <span class="dv">100</span>, <span class="at">seed =</span> <span class="dv">1</span>)</span></code></pre><p></p></div>
+<p>It fixes the run, though, not the model. If the agents' starting columns
+were drawn at random, they were drawn when [abm_setup()] was called, and
+this seed comes too late to affect them. Seed both for an experiment that
+reproduces end to end:</p>
+<p></p><div class="sourceCode m &lt;- abm_setup(agents = abm_agents(n = 100, x = ~runif(n)), seed = 1) r"><pre><code>&lt;- abm_run(m, go, ticks = 100, seed = 1) ```
+
+[abm_globals()]: R:abm_globals()
+[abm_setup()]: R:abm_setup()
+</code></pre><p></p></div>
     </div>
 
     <div class="section level2">

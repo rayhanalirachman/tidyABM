@@ -27,6 +27,14 @@ abm_death(when, prune_edges = TRUE)
 
 An `abm_death` step object.
 
+## See also
+
+[`abm_go()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_go.md),
+which lists every step and fixes the order they run in.
+
+Other demographic steps:
+[`abm_birth()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_birth.md)
+
 ## Examples
 
 ``` r

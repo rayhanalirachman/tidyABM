@@ -80,6 +80,14 @@ above one, a clutch, a litter, a Poisson number of seeds, is `times`,
 and each offspring is evaluated separately, so a mutation drawn in
 `inherit` differs between siblings.
 
+## See also
+
+[`abm_go()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_go.md),
+which lists every step and fixes the order they run in.
+
+Other demographic steps:
+[`abm_death()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_death.md)
+
 ## Examples
 
 ``` r

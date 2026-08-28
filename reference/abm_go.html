@@ -27,8 +27,8 @@ several phases is written flat and in order:"></head><body>
 <li class="active nav-item"><a class="nav-link" href="../reference/index.html">Reference</a></li>
 <li class="nav-item dropdown">
   <button class="nav-link dropdown-toggle" type="button" id="dropdown-articles" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">Articles</button>
-  <ul class="dropdown-menu" aria-labelledby="dropdown-articles"><li><a class="dropdown-item" href="../articles/corrections.html">Three models that need more than the sketch</a></li>
-    <li><a class="dropdown-item" href="../articles/models.html">Model gallery</a></li>
+  <ul class="dropdown-menu" aria-labelledby="dropdown-articles"><li><a class="dropdown-item" href="../articles/models.html">Model gallery</a></li>
+    <li><a class="dropdown-item" href="../articles/corrections.html">Corrections</a></li>
   </ul></li>
 <li class="nav-item"><a class="nav-link" href="../news/index.html">Changelog</a></li>
       </ul><ul class="navbar-nav"><li class="nav-item"><form class="form-inline" role="search">
@@ -67,8 +67,7 @@ several phases is written flat and in order:</p>
 <dl><dt id="arg--">...<a class="anchor" aria-label="anchor" href="#arg--"></a></dt>
 <dd><p>Step objects: <code><a href="abm_match.html">abm_match()</a></code>, <code><a href="abm_rules.html">abm_rules()</a></code>, <code><a href="abm_sequential.html">abm_sequential()</a></code>,
 <code><a href="abm_global.html">abm_global()</a></code>, <code><a href="abm_neighbours.html">abm_neighbours()</a></code>, <code><a href="abm_tell.html">abm_tell()</a></code>, <code><a href="abm_birth.html">abm_birth()</a></code>,
-<code><a href="abm_death.html">abm_death()</a></code>, <code><a href="abm_link.html">abm_link()</a></code>, <code><a href="abm_unlink.html">abm_unlink()</a></code>, <code><a href="abm_draw.html">abm_draw()</a></code>,
-<code><a href="abm_repeat.html">abm_repeat()</a></code>.</p></dd>
+<code><a href="abm_death.html">abm_death()</a></code>, <code><a href="abm_link.html">abm_link()</a></code>, <code><a href="abm_unlink.html">abm_unlink()</a></code>, <code><a href="abm_draw.html">abm_draw()</a></code>, <code><a href="abm_repeat.html">abm_repeat()</a></code>.</p></dd>
 
 </dl></div>
     <div class="section level2">
@@ -77,19 +76,7 @@ several phases is written flat and in order:</p>
     </div>
     <div class="section level2">
     <h2 id="details">Details<a class="anchor" aria-label="anchor" href="#details"></a></h2>
-    <p></p><div class="sourceCode"><pre><code><span id="cb1-1"><a href="#cb1-1" tabindex="-1"></a><span class="fu">abm_go</span>(</span>
-<span id="cb1-2"><a href="#cb1-2" tabindex="-1"></a>  <span class="fu">abm_match</span>(<span class="at">pair =</span> <span class="st">"random"</span>), <span class="fu">abm_rules</span>(payoff <span class="sc">~</span> ...),   <span class="co"># phase 1: play</span></span>
-<span id="cb1-3"><a href="#cb1-3" tabindex="-1"></a>  <span class="fu">abm_match</span>(<span class="at">pair =</span> <span class="st">"random"</span>), <span class="fu">abm_rules</span>(strategy <span class="sc">~</span> ...)  <span class="co"># phase 2: imitate</span></span>
-<span id="cb1-4"><a href="#cb1-4" tabindex="-1"></a>)</span></code></pre><p></p></div>
-<p>The sequence is validated once, here, rather than on every tick. Three rules
-apply:</p><ul><li><p>it cannot be empty;</p></li>
-<li><p>no two <code><a href="abm_match.html">abm_match()</a></code> steps may sit next to each other, since the first
-would be discarded unused;</p></li>
-<li><p>it cannot end on an <code><a href="abm_match.html">abm_match()</a></code>, for the same reason.</p></li>
-</ul><p>Everything else is allowed. In particular a model may use no matching at all
-(El Farol, or a pure redistribution model), and several update steps may follow
-a single match, the market model pairs once and then applies separate rules to
-buyers and to sellers.</p>
+    <p></p><div class="sourceCode abm_go( abm_match(pair = " random abm_rules ... phase><pre><code></code></pre><p></p></div>
     </div>
 
     <div class="section level2">

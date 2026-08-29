@@ -50,10 +50,11 @@ abm_run(model, go, ticks, seed = NULL, record = "all", progress = NULL)
 - progress:
 
   Whether to show a progress bar with an ETA while the run is going.
-  `NULL` (the default) leaves it to `cli`, which draws one only for an
-  interactive session and only once the run has been going long enough
-  to be worth reporting. `TRUE` forces it on from the first tick,
-  `FALSE` off.
+  `NULL` (the default) follows the session: a bar at an interactive
+  console once the run has been going long enough to be worth reporting,
+  and nothing while knitr, pkgdown or `R CMD check` is running the code,
+  so it never turns up in a rendered page. `TRUE` forces it on from the
+  first tick, `FALSE` off.
 
 ## Value
 

@@ -24,10 +24,6 @@ go <- abm_go(
 )
 
 r <- abm_run(economy, go, ticks = 500, seed = 1)
-#> Running model ■■■■■■                            17% | ETA:  5s
-#> Running model ■■■■■■■■■■■■                      35% | ETA:  4s
-#> Running model ■■■■■■■■■■■■■■■■■■■■■■■■■■■       86% | ETA:  1s
-#> Running model ■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■  100% | ETA:  0s
 
 round(quantile(r$money[r$tick == 500]))
 #>   0%  25%  50%  75% 100% 
@@ -177,8 +173,6 @@ go <- abm_go(
 )
 
 r <- abm_run(rumour, go, ticks = 100, seed = 5)
-#> Running model ■■■■■■■■■■■■■■■                   47% | ETA:  1s
-#> Running model ■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■  100% | ETA:  0s
 
 table(r$state[r$tick == 100])
 #> 
@@ -511,9 +505,6 @@ go <- abm_go(
 )
 
 r <- abm_run(bankres, go, ticks = 100, seed = 13)
-#> Running model ■■■■■■■■■                         27% | ETA:  3s
-#> Running model ■■■■■■■■■■■■■■                    43% | ETA:  2s
-#> Running model ■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■  100% | ETA:  0s
 
 round(tail(abm_globals(r), 3), 2)
 #> # A tibble: 3 × 4

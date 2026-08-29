@@ -86,10 +86,6 @@ inequality appears anyway.</p>
 <span><span class="op">)</span></span>
 <span></span>
 <span><span class="va">r</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/abm_run.html">abm_run</a></span><span class="op">(</span><span class="va">economy</span>, <span class="va">go</span>, ticks <span class="op">=</span> <span class="fl">500</span>, seed <span class="op">=</span> <span class="fl">1</span><span class="op">)</span></span>
-<span><span class="co">#&gt; Running model <span style="color: #00BB00;">■■■■■■                          </span>  17% | ETA:  5s</span></span>
-<span><span class="co">#&gt; Running model <span style="color: #00BB00;">■■■■■■■■■■■■                    </span>  35% | ETA:  4s</span></span>
-<span><span class="co">#&gt; Running model <span style="color: #00BB00;">■■■■■■■■■■■■■■■■■■■■■■■■■■■     </span>  86% | ETA:  1s</span></span>
-<span><span class="co">#&gt; Running model <span style="color: #00BB00;">■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■ </span> 100% | ETA:  0s</span></span>
 <span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/stats/quantile.html" class="external-link">quantile</a></span><span class="op">(</span><span class="va">r</span><span class="op">$</span><span class="va">money</span><span class="op">[</span><span class="va">r</span><span class="op">$</span><span class="va">tick</span> <span class="op">==</span> <span class="fl">500</span><span class="op">]</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="co">#&gt;   0%  25%  50%  75% 100% </span></span>
@@ -225,8 +221,6 @@ hears it.</p>
 <span><span class="op">)</span></span>
 <span></span>
 <span><span class="va">r</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/abm_run.html">abm_run</a></span><span class="op">(</span><span class="va">rumour</span>, <span class="va">go</span>, ticks <span class="op">=</span> <span class="fl">100</span>, seed <span class="op">=</span> <span class="fl">5</span><span class="op">)</span></span>
-<span><span class="co">#&gt; Running model <span style="color: #00BB00;">■■■■■■■■■■■■■■■                 </span>  47% | ETA:  1s</span></span>
-<span><span class="co">#&gt; Running model <span style="color: #00BB00;">■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■ </span> 100% | ETA:  0s</span></span>
 <span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/table.html" class="external-link">table</a></span><span class="op">(</span><span class="va">r</span><span class="op">$</span><span class="va">state</span><span class="op">[</span><span class="va">r</span><span class="op">$</span><span class="va">tick</span> <span class="op">==</span> <span class="fl">100</span><span class="op">]</span><span class="op">)</span></span>
 <span><span class="co">#&gt; </span></span>
@@ -538,9 +532,6 @@ it has, and whoever asks first gets it.</p>
 <span><span class="op">)</span></span>
 <span></span>
 <span><span class="va">r</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/abm_run.html">abm_run</a></span><span class="op">(</span><span class="va">bankres</span>, <span class="va">go</span>, ticks <span class="op">=</span> <span class="fl">100</span>, seed <span class="op">=</span> <span class="fl">13</span><span class="op">)</span></span>
-<span><span class="co">#&gt; Running model <span style="color: #00BB00;">■■■■■■■■■                       </span>  27% | ETA:  3s</span></span>
-<span><span class="co">#&gt; Running model <span style="color: #00BB00;">■■■■■■■■■■■■■■                  </span>  43% | ETA:  2s</span></span>
-<span><span class="co">#&gt; Running model <span style="color: #00BB00;">■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■ </span> 100% | ETA:  0s</span></span>
 <span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/utils/head.html" class="external-link">tail</a></span><span class="op">(</span><span class="fu"><a href="../reference/abm_globals.html">abm_globals</a></span><span class="op">(</span><span class="va">r</span><span class="op">)</span>, <span class="fl">3</span><span class="op">)</span>, <span class="fl">2</span><span class="op">)</span></span>
 <span><span class="co">#&gt; <span style="color: #949494;"># A tibble: 3 × 4</span></span></span>

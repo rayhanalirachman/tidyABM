@@ -90,9 +90,11 @@ is what makes such a run die of memory rather than merely take a while.</p></dd>
 
 <dt id="arg-progress">progress<a class="anchor" aria-label="anchor" href="#arg-progress"></a></dt>
 <dd><p>Whether to show a progress bar with an ETA while the run is
-going. <code>NULL</code> (the default) leaves it to <code>cli</code>, which draws one only for an
-interactive session and only once the run has been going long enough to be
-worth reporting. <code>TRUE</code> forces it on from the first tick, <code>FALSE</code> off.</p></dd>
+going. <code>NULL</code> (the default) follows the session: a bar at an interactive
+console once the run has been going long enough to be worth reporting, and
+nothing while knitr, pkgdown or <code>R CMD check</code> is running the code, so it
+never turns up in a rendered page. <code>TRUE</code> forces it on from the first tick,
+<code>FALSE</code> off.</p></dd>
 
 </dl></div>
     <div class="section level2">

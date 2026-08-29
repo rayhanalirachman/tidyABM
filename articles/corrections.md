@@ -99,9 +99,6 @@ go <- abm_go(
 )
 
 r <- abm_run(farol, go, ticks = 300, seed = 2)
-#> Running model ■■■■■■■■■                         28% | ETA:  3s
-#> Running model ■■■■■■■■■■■■■                     39% | ETA:  2s
-#> Running model ■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■  100% | ETA:  0s
 
 attendance <- abm_globals(r)$att1[-(1:101)]
 c(mean = round(mean(attendance), 1), sd = round(sd(attendance), 1),
@@ -140,8 +137,6 @@ one_predictor <- abm_setup(
   seed = 1)
 
 tail(abm_globals(abm_run(one_predictor, go, ticks = 300, seed = 2))$att1, 8)
-#> Running model ■■■■■■■■■                         28% | ETA:  3s
-#> Running model ■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■  100% | ETA:  0s
 #> [1] 71 71 71 71 71 71 71 71
 ```
 
@@ -220,11 +215,6 @@ well_mixed_go <- abm_go(
 )
 
 mixed <- abm_run(start_pop(), well_mixed_go, ticks = 400, seed = 1)
-#> Running model ■■■■                              10% | ETA:  9s
-#> Running model ■■■■■■■■■                         28% | ETA:  7s
-#> Running model ■■■■■■■■■■■■■■■■■■                57% | ETA:  5s
-#> Running model ■■■■■■■■■■■■■■■■■■■■■■■■■■■       85% | ETA:  2s
-#> Running model ■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■  100% | ETA:  0s
 
 shares(mixed, 400)
 #> x
@@ -261,24 +251,6 @@ local_go <- abm_go(
 
 local <- abm_run(start_pop(abm_network(type = "random", degree = 4)), local_go,
                  ticks = 400, seed = 1)
-#> Running model ■■                                 4% | ETA: 34s
-#> Running model ■■■■                              10% | ETA: 40s
-#> Running model ■■■■■■                            15% | ETA: 40s
-#> Running model ■■■■■■■                           21% | ETA: 38s
-#> Running model ■■■■■■■■■                         27% | ETA: 36s
-#> Running model ■■■■■■■■■■■                       33% | ETA: 33s
-#> Running model ■■■■■■■■■■■■■                     39% | ETA: 30s
-#> Running model ■■■■■■■■■■■■■■                    45% | ETA: 27s
-#> Running model ■■■■■■■■■■■■■■■■                  50% | ETA: 25s
-#> Running model ■■■■■■■■■■■■■■■■■■                56% | ETA: 22s
-#> Running model ■■■■■■■■■■■■■■■■■■■■              62% | ETA: 19s
-#> Running model ■■■■■■■■■■■■■■■■■■■■■             68% | ETA: 16s
-#> Running model ■■■■■■■■■■■■■■■■■■■■■■■           73% | ETA: 14s
-#> Running model ■■■■■■■■■■■■■■■■■■■■■■■■■         79% | ETA: 11s
-#> Running model ■■■■■■■■■■■■■■■■■■■■■■■■■■        85% | ETA:  8s
-#> Running model ■■■■■■■■■■■■■■■■■■■■■■■■■■■■      90% | ETA:  5s
-#> Running model ■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■    96% | ETA:  2s
-#> Running model ■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■  100% | ETA:  0s
 
 shares(local, 400)
 #> x
@@ -407,9 +379,6 @@ zakah_go <- abm_go(
 baseline_go <- abm_go(shocks, consume, line)
 
 with_zakah <- abm_run(start(), zakah_go,    ticks = 300, seed = 12)
-#> Running model ■■■■■■■■■                         28% | ETA:  3s
-#> Running model ■■■■■■■■■■■■■■■■■■■■■■■■■         81% | ETA:  1s
-#> Running model ■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■  100% | ETA:  0s
 baseline   <- abm_run(start(), baseline_go, ticks = 300, seed = 12)
 ```
 

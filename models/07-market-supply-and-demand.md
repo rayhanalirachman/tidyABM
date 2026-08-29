@@ -1,49 +1,89 @@
-# 7. Market, supply and demand (after Primer)
+# 7. Market, bilateral bargaining
 
 **Concept**
 
-- Setup: 200 buyers with a private `wtp` and an opening `offer`; 200 sellers with
-  a private `wta` and an opening `ask`
-- Go: pair across the two groups, meet in the middle where both sides can live
-  with the midpoint, adjust next tick's opening position depending on whether
-  you traded
-- Output: transaction prices converge on the clearing price
+- Setup: one seller with a private `limit_price` (the least it will accept) and
+  two buyers, each with a private `limit_price` (the most it will pay). Every
+  agent also carries an `expected_price`, its opening position for the tick
+- Go: reset the tick, pair across the two groups, trade at the midpoint when the
+  buyer's `expected_price` has caught up to the seller's, then move each agent's
+  `expected_price` for the next tick depending on whether it traded
+- Output: with one seller and two buyers the seller is never short of a
+  counterparty, so it raises its `expected_price` faster than it concedes and the
+  transaction price drifts upward rather than settling
 
 **Package**
 
 ```r
 market <- abm_setup(agents = list(
-  buyers  = abm_agents(n = 200, wtp = ~rnorm(n, 50, 10), offer = ~wtp * 0.8),
-  sellers = abm_agents(n = 200, wta = ~rnorm(n, 40, 10), ask   = ~wta * 1.2)))
+  seller = abm_agents(n = 1, limit_price = 20, expected_price = 20,
+                      transacted = FALSE, deal_price = NA_real_),
+  buyer  = abm_agents(n = 2, limit_price = c(40, 35), expected_price = c(30, 25),
+                      transacted = FALSE, deal_price = NA_real_)
+))
 
 go <- abm_go(
+  abm_rules(transacted ~ FALSE, deal_price ~ NA_real_),
+
   abm_match(pair = "opposite_group", by = .group),
-  abm_rules(price  ~ (offer + partner_ask) / 2,
-            price  ~ (partner_offer + ask) / 2),
-  abm_rules(traded ~ price <= wtp & price >= partner_wta,
-            traded ~ price >= wta & price <= partner_wtp),
-  abm_rules(price  ~ if_else(traded, price, NA_real_)),
-  abm_rules(offer  ~ pmin(if_else(traded, offer * 0.98, offer * 1.02), wtp)),
-  abm_rules(ask    ~ pmax(if_else(traded, ask * 1.02,   ask * 0.98),   wta))
+
+  abm_rules(
+    transacted ~ case_when(
+      .group == "seller" & partner_expected_price >= expected_price ~ TRUE,
+      .group == "buyer"  & expected_price >= partner_expected_price ~ TRUE,
+      TRUE ~ FALSE
+    ),
+    deal_price ~ if_else(
+      (.group == "seller" & partner_expected_price >= expected_price) |
+      (.group == "buyer"  & expected_price >= partner_expected_price),
+      (expected_price + partner_expected_price) / 2, NA_real_
+    )
+  ),
+
+  abm_rules(
+    expected_price ~ case_when(
+      .group == "seller" &  transacted ~ expected_price + 2,
+      .group == "seller" & !transacted ~ pmax(expected_price - 1, limit_price),
+      .group == "buyer"  &  transacted ~ expected_price - 1,
+      .group == "buyer"  & !transacted ~ pmin(expected_price + 1, limit_price),
+      TRUE ~ expected_price
+    )
+  )
 )
 
-result <- abm_run(market, go, ticks = 200, seed = 7)
+result <- abm_run(market, go, ticks = 50, seed = 123)
 ```
 
-*Introduced several agent groups and rule routing by column existence. Every step
-here relies on it: `price ~ (offer + partner_ask) / 2` mentions a column only
-buyers have, so it applies only to buyers, and the rule beside it, with the same
-target, applies only to sellers. No `type ==` test, no merging of the two
-tibbles, and two rules writing one column is how a pair of groups say the same
-thing from their own side.*
+```r
+library(dplyr)
+library(ggplot2)
 
-*A bilateral trade is the midpoint of the two opening positions, and it happens
-when that midpoint is one both sides can live with: at or below the buyer's `wtp`
-and at or above the seller's `wta`. The `pmin`/`pmax` on the last two rules are
-the part worth keeping: without them a run of unlucky ticks walks an agent's
-opening position past its own reservation value, and agents that bid above what
-the good is worth to them push the mean price away from the clearing price
-instead of onto it.*
+result |>
+  filter(.group == "seller") |>
+  select(tick, deal_price) |>
+  ggplot(aes(x = tick, y = deal_price)) +
+  geom_point() +
+  theme_minimal()
+```
+
+*Several agent groups, and rule routing by column existence. Both `case_when()`
+blocks branch on `.group`, the column `abm_setup()` writes from the list names, so
+there is no separate agent-`type` field to keep in step. `opposite_group`
+matching partitions the two groups into pairs, and with one seller and two buyers
+it forms exactly one pair per tick: one buyer is left unmatched, gets no
+`partner_expected_price`, falls to the `TRUE ~ FALSE` branch of the `transacted`
+rule, and adjusts as a buyer who failed to trade.*
+
+*The first `abm_rules()` step clears `transacted` and `deal_price` before the
+match, so a tick where nobody trades reads as `NA` rather than carrying last
+tick's number. The two rules inside the price step are evaluated against the same
+start-of-step state, so `deal_price` recomputes the agreement condition instead of
+reading `transacted`; splitting them into two `abm_rules()` calls would let the
+second read the first's result. The `pmax`/`pmin` clamps hold each agent's
+`expected_price` on its own side of its `limit_price`. The asymmetry in the last
+step, seller `+2` on a trade against `-1` for the buyers, is the whole model: the
+seller with a captive pair of buyers concedes ground more slowly than it takes
+it, and the deal price climbs.*
 
 ---
 

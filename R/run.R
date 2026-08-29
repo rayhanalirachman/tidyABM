@@ -42,6 +42,10 @@
 #'   are recorded every tick whatever this says, since they are one row each. A
 #'   model whose population grows needs this: recording every agent of every tick
 #'   is what makes such a run die of memory rather than merely take a while.
+#' @param progress Whether to show a progress bar with an ETA while the run is
+#'   going. `NULL` (the default) leaves it to `cli`, which draws one only for an
+#'   interactive session and only once the run has been going long enough to be
+#'   worth reporting. `TRUE` forces it on from the first tick, `FALSE` off.
 #'
 #' @return An `abm_result`: a tibble of one row per agent per tick, carrying
 #'   the run's globals and final network as attributes.
@@ -54,7 +58,8 @@
 #' )
 #' result <- abm_run(economy, go, ticks = 10, seed = 1)
 #' result
-abm_run <- function(model, go, ticks, seed = NULL, record = "all") {
+abm_run <- function(model, go, ticks, seed = NULL, record = "all",
+                    progress = NULL) {
   if (!inherits(model, "abm_model")) {
     abm_abort("{.arg model} must come from {.fn abm_setup}.",
               class = "tidyABM_bad_model")
@@ -69,6 +74,15 @@ abm_run <- function(model, go, ticks, seed = NULL, record = "all") {
   }
   ticks <- as.integer(ticks)
   record <- check_record(record)
+
+  if (!is.null(progress) && !rlang::is_bool(progress)) {
+    abm_abort("{.arg progress} must be {.code TRUE}, {.code FALSE} or {.code NULL}.",
+              class = "tidyABM_bad_progress")
+  }
+  show_progress <- !isFALSE(progress) && ticks > 0L
+  if (isTRUE(progress)) {
+    rlang::local_options(cli.progress_show_after = 0)
+  }
 
   if (!is.null(seed)) {
     old <- if (exists(".Random.seed", .GlobalEnv)) get(".Random.seed", .GlobalEnv) else NULL
@@ -93,6 +107,10 @@ abm_run <- function(model, go, ticks, seed = NULL, record = "all") {
   if (keep[[1]]) snapshots[[1]] <- snapshot(state, 0L)
   global_log[[1]] <- global_row(state, 0L)
 
+  if (show_progress) {
+    cli::cli_progress_bar("Running model", total = ticks)
+  }
+
   for (t in seq_len(ticks)) {
     state$match <- NULL
     for (step in go$steps) {
@@ -102,6 +120,7 @@ abm_run <- function(model, go, ticks, seed = NULL, record = "all") {
     # the run then slows down rather than filling memory
     if (keep[[t + 1L]]) snapshots[[t + 1L]] <- snapshot(state, t)
     global_log[[t + 1L]] <- global_row(state, t)
+    if (show_progress) cli::cli_progress_update()
   }
 
   snapshots <- Filter(Negate(is.null), snapshots)

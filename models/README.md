@@ -62,7 +62,7 @@ The set the grammar was designed against.
 | 4 | [Ethnocentrism, short form](04-ethnocentrism-short.md) |
 | 5 | [Rumour Mill](05-rumour-mill.md) |
 | 6 | [Party, segregation without geography](06-party-segregation-without-geography.md) |
-| 7 | [Market, supply and demand (after Primer)](07-market-supply-and-demand.md) |
+| 7 | [Market, bilateral bargaining](07-market-supply-and-demand.md) |
 | 8 | [Voter Model on a network](08-voter-model-on-a-network.md) |
 | 9 | [Public Goods Game](09-public-goods-game.md) |
 | 10 | [Iterated Prisoner's Dilemma with fixed partners](10-iterated-prisoner-s-dilemma-with-fixed-partners.md) |

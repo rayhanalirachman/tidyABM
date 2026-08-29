@@ -4,7 +4,7 @@
 \alias{abm_run}
 \title{Run a model}
 \usage{
-abm_run(model, go, ticks, seed = NULL, record = "all")
+abm_run(model, go, ticks, seed = NULL, record = "all", progress = NULL)
 }
 \arguments{
 \item{model}{An \code{abm_model} from \code{\link[=abm_setup]{abm_setup()}}.}
@@ -23,6 +23,11 @@ and the last; \code{"final"} keeps only the last; \code{"globals"} keeps none. G
 are recorded every tick whatever this says, since they are one row each. A
 model whose population grows needs this: recording every agent of every tick
 is what makes such a run die of memory rather than merely take a while.}
+
+\item{progress}{Whether to show a progress bar with an ETA while the run is
+going. \code{NULL} (the default) leaves it to \code{cli}, which draws one only for an
+interactive session and only once the run has been going long enough to be
+worth reporting. \code{TRUE} forces it on from the first tick, \code{FALSE} off.}
 }
 \value{
 An \code{abm_result}: a tibble of one row per agent per tick, carrying

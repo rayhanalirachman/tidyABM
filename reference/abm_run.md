@@ -11,7 +11,7 @@ whole population after every tick.
 ## Usage
 
 ``` r
-abm_run(model, go, ticks, seed = NULL, record = "all")
+abm_run(model, go, ticks, seed = NULL, record = "all", progress = NULL)
 ```
 
 ## Arguments
@@ -46,6 +46,14 @@ abm_run(model, go, ticks, seed = NULL, record = "all")
   row each. A model whose population grows needs this: recording every
   agent of every tick is what makes such a run die of memory rather than
   merely take a while.
+
+- progress:
+
+  Whether to show a progress bar with an ETA while the run is going.
+  `NULL` (the default) leaves it to `cli`, which draws one only for an
+  interactive session and only once the run has been going long enough
+  to be worth reporting. `TRUE` forces it on from the first tick,
+  `FALSE` off.
 
 ## Value
 

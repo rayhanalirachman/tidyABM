@@ -24,6 +24,10 @@ go <- abm_go(
 )
 
 r <- abm_run(economy, go, ticks = 500, seed = 1)
+#> Running model ■■■■■■                            17% | ETA:  5s
+#> Running model ■■■■■■■■■■■■                      35% | ETA:  4s
+#> Running model ■■■■■■■■■■■■■■■■■■■■■■■■■■■       86% | ETA:  1s
+#> Running model ■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■  100% | ETA:  0s
 
 round(quantile(r$money[r$tick == 500]))
 #>   0%  25%  50%  75% 100% 
@@ -173,6 +177,8 @@ go <- abm_go(
 )
 
 r <- abm_run(rumour, go, ticks = 100, seed = 5)
+#> Running model ■■■■■■■■■■■■■■■                   47% | ETA:  1s
+#> Running model ■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■  100% | ETA:  0s
 
 table(r$state[r$tick == 100])
 #> 
@@ -216,43 +222,85 @@ therefore drawn once per agent rather than once for the population.
 
 ## Market
 
-*After Primer’s “Simulating Supply and Demand”.* Buyers and sellers with
-private valuations meet one at a time, and the price finds its own
-level.
+One seller, two buyers, each with a private reservation price and an
+opening `expected_price`. They trade at the midpoint when the buyer’s
+position has caught up to the seller’s, then adjust for the next tick
+depending on whether they traded.
 
 ``` r
 
 market <- abm_setup(agents = list(
-  buyers  = abm_agents(n = 200, wtp = ~rnorm(n, 50, 10), offer = ~wtp * 0.8),
-  sellers = abm_agents(n = 200, wta = ~rnorm(n, 40, 10), ask   = ~wta * 1.2)
+  seller = abm_agents(n = 1, limit_price = 20, expected_price = 20,
+                      transacted = FALSE, deal_price = NA_real_),
+  buyer  = abm_agents(n = 2, limit_price = c(40, 35), expected_price = c(30, 25),
+                      transacted = FALSE, deal_price = NA_real_)
 ))
 
 go <- abm_go(
+  abm_rules(transacted ~ FALSE, deal_price ~ NA_real_),
+
   abm_match(pair = "opposite_group", by = .group),
-  abm_rules(price  ~ (offer + partner_ask) / 2,
-            price  ~ (partner_offer + ask) / 2),
-  abm_rules(traded ~ price <= wtp & price >= partner_wta,
-            traded ~ price >= wta & price <= partner_wtp),
-  abm_rules(price  ~ if_else(traded, price, NA_real_)),
-  abm_rules(offer  ~ pmin(if_else(traded, offer * 0.98, offer * 1.02), wtp)),
-  abm_rules(ask    ~ pmax(if_else(traded, ask * 1.02,   ask * 0.98),   wta))
+
+  abm_rules(
+    transacted ~ case_when(
+      .group == "seller" & partner_expected_price >= expected_price ~ TRUE,
+      .group == "buyer"  & expected_price >= partner_expected_price ~ TRUE,
+      TRUE ~ FALSE
+    ),
+    deal_price ~ if_else(
+      (.group == "seller" & partner_expected_price >= expected_price) |
+      (.group == "buyer"  & expected_price >= partner_expected_price),
+      (expected_price + partner_expected_price) / 2, NA_real_
+    )
+  ),
+
+  abm_rules(
+    expected_price ~ case_when(
+      .group == "seller" &  transacted ~ expected_price + 2,
+      .group == "seller" & !transacted ~ pmax(expected_price - 1, limit_price),
+      .group == "buyer"  &  transacted ~ expected_price - 1,
+      .group == "buyer"  & !transacted ~ pmin(expected_price + 1, limit_price),
+      TRUE ~ expected_price
+    )
+  )
 )
 
-r <- abm_run(market, go, ticks = 200, seed = 7)
+result <- abm_run(market, go, ticks = 50, seed = 123)
 
-price <- tapply(r$price, r$tick, function(z) mean(z, na.rm = TRUE))
-round(price[c("1", "50", "200")], 2)
-#>     1    50   200 
-#> 42.95 44.47 43.20
+deals <- result$deal_price[result$.group == "seller"]
+round(c(trades = sum(!is.na(deals)),
+        first  = deals[!is.na(deals)][1],
+        last   = tail(deals[!is.na(deals)], 1)), 2)
+#> trades  first   last 
+#>     21     25     31
 ```
 
-**What it introduced:** several agent groups, and rule routing by column
-existence. The `offer` rule mentions a column only buyers have, so it
-applies only to buyers, the `ask` rule only to sellers. No `type ==`
-test, no merging of the two tibbles. The `price` and `traded` steps take
-it one further: two rules with the same target, one routed to each
-group, which is how a pair of groups say the same thing from their own
-side.
+``` r
+
+library(dplyr)
+library(ggplot2)
+
+result |>
+  filter(.group == "seller") |>
+  select(tick, deal_price) |>
+  ggplot(aes(x = tick, y = deal_price)) +
+  geom_point() +
+  theme_minimal()
+```
+
+**What it introduced:** several agent groups, and rule routing by
+`.group`, the column
+[`abm_setup()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_setup.md)
+writes from the list names. `opposite_group` matching pairs the two
+groups, and with one seller and two buyers it forms one pair per tick,
+so one buyer sits out, gets no `partner_expected_price`, and falls to
+the `TRUE ~ FALSE` branch. Clearing `transacted` and `deal_price` in the
+first step keeps a no-trade tick reading as `NA` rather than stale. And
+the two rules in the price step share a start-of-step view, which is why
+`deal_price` recomputes the agreement condition instead of reading
+`transacted`. The seller’s `+2` against the buyers’ `-1` is the model: a
+seller that never lacks a counterparty gives ground more slowly than it
+takes it, and the deal price climbs.
 
 ## Voter model
 
@@ -276,7 +324,7 @@ r <- abm_run(voter, go, ticks = 200, seed = 8)
 round(c(start = mean(r$opinion[r$tick == 0]),
         end   = mean(r$opinion[r$tick == 200])), 2)
 #> start   end 
-#>  0.52  1.00
+#>  0.53  0.72
 ```
 
 **What it introduced:**
@@ -303,8 +351,8 @@ r <- abm_run(pgg, go, ticks = 20, seed = 9)
 
 table(r$payoff[r$tick == 20])
 #> 
-#>   0 0.5   1 1.5   2 
-#>   4  32  40  16   8
+#>   0 0.5   1 1.5 
+#>  16  16  32  36
 ```
 
 **What it introduced:** `size`, generalising pairs to groups. Rules
@@ -406,7 +454,7 @@ go <- abm_go(
 r <- abm_run(zakah, go, ticks = 50, seed = 12)
 
 round(tail(abm_globals(r)$zakah_pool, 3), 1)
-#> [1] 1374.0 1368.3 1365.0
+#> [1] 1349.2 1353.5 1357.6
 ```
 
 **What it introduced:** nothing mechanically. It is the first model made
@@ -463,14 +511,17 @@ go <- abm_go(
 )
 
 r <- abm_run(bankres, go, ticks = 100, seed = 13)
+#> Running model ■■■■■■■■■                         27% | ETA:  3s
+#> Running model ■■■■■■■■■■■■■■                    43% | ETA:  2s
+#> Running model ■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■  100% | ETA:  0s
 
 round(tail(abm_globals(r), 3), 2)
 #> # A tibble: 3 × 4
 #>    tick bank_deposits bank_loans bank_reserves
 #>   <dbl>         <dbl>      <dbl>         <dbl>
-#> 1    98         3132.       314.         -0.6 
-#> 2    99         3143.       314.          0.45
-#> 3   100         3133.       314.         -0.98
+#> 1    98         3025.       303.         -0.03
+#> 2    99         3040.       303.          1.47
+#> 3   100         3034.       304.         -0.64
 ```
 
 **What it introduced:**

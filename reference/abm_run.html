@@ -54,7 +54,7 @@ and records the whole population after every tick.</p>
 
     <div class="section level2">
     <h2 id="ref-usage">Usage<a class="anchor" aria-label="anchor" href="#ref-usage"></a></h2>
-    <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">abm_run</span><span class="op">(</span><span class="va">model</span>, <span class="va">go</span>, <span class="va">ticks</span>, seed <span class="op">=</span> <span class="cn">NULL</span>, record <span class="op">=</span> <span class="st">"all"</span><span class="op">)</span></span></code></pre></div>
+    <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">abm_run</span><span class="op">(</span><span class="va">model</span>, <span class="va">go</span>, <span class="va">ticks</span>, seed <span class="op">=</span> <span class="cn">NULL</span>, record <span class="op">=</span> <span class="st">"all"</span>, progress <span class="op">=</span> <span class="cn">NULL</span><span class="op">)</span></span></code></pre></div>
     </div>
 
     <div class="section level2">
@@ -86,6 +86,13 @@ and the last; <code>"final"</code> keeps only the last; <code>"globals"</code> k
 are recorded every tick whatever this says, since they are one row each. A
 model whose population grows needs this: recording every agent of every tick
 is what makes such a run die of memory rather than merely take a while.</p></dd>
+
+
+<dt id="arg-progress">progress<a class="anchor" aria-label="anchor" href="#arg-progress"></a></dt>
+<dd><p>Whether to show a progress bar with an ETA while the run is
+going. <code>NULL</code> (the default) leaves it to <code>cli</code>, which draws one only for an
+interactive session and only once the run has been going long enough to be
+worth reporting. <code>TRUE</code> forces it on from the first tick, <code>FALSE</code> off.</p></dd>
 
 </dl></div>
     <div class="section level2">

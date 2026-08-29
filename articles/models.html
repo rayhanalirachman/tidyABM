@@ -86,6 +86,10 @@ inequality appears anyway.</p>
 <span><span class="op">)</span></span>
 <span></span>
 <span><span class="va">r</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/abm_run.html">abm_run</a></span><span class="op">(</span><span class="va">economy</span>, <span class="va">go</span>, ticks <span class="op">=</span> <span class="fl">500</span>, seed <span class="op">=</span> <span class="fl">1</span><span class="op">)</span></span>
+<span><span class="co">#&gt; Running model <span style="color: #00BB00;">■■■■■■                          </span>  17% | ETA:  5s</span></span>
+<span><span class="co">#&gt; Running model <span style="color: #00BB00;">■■■■■■■■■■■■                    </span>  35% | ETA:  4s</span></span>
+<span><span class="co">#&gt; Running model <span style="color: #00BB00;">■■■■■■■■■■■■■■■■■■■■■■■■■■■     </span>  86% | ETA:  1s</span></span>
+<span><span class="co">#&gt; Running model <span style="color: #00BB00;">■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■ </span> 100% | ETA:  0s</span></span>
 <span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/stats/quantile.html" class="external-link">quantile</a></span><span class="op">(</span><span class="va">r</span><span class="op">$</span><span class="va">money</span><span class="op">[</span><span class="va">r</span><span class="op">$</span><span class="va">tick</span> <span class="op">==</span> <span class="fl">500</span><span class="op">]</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="co">#&gt;   0%  25%  50%  75% 100% </span></span>
@@ -221,6 +225,8 @@ hears it.</p>
 <span><span class="op">)</span></span>
 <span></span>
 <span><span class="va">r</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/abm_run.html">abm_run</a></span><span class="op">(</span><span class="va">rumour</span>, <span class="va">go</span>, ticks <span class="op">=</span> <span class="fl">100</span>, seed <span class="op">=</span> <span class="fl">5</span><span class="op">)</span></span>
+<span><span class="co">#&gt; Running model <span style="color: #00BB00;">■■■■■■■■■■■■■■■                 </span>  47% | ETA:  1s</span></span>
+<span><span class="co">#&gt; Running model <span style="color: #00BB00;">■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■ </span> 100% | ETA:  0s</span></span>
 <span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/table.html" class="external-link">table</a></span><span class="op">(</span><span class="va">r</span><span class="op">$</span><span class="va">state</span><span class="op">[</span><span class="va">r</span><span class="op">$</span><span class="va">tick</span> <span class="op">==</span> <span class="fl">100</span><span class="op">]</span><span class="op">)</span></span>
 <span><span class="co">#&gt; </span></span>
@@ -262,47 +268,87 @@ therefore drawn once per agent rather than once for the population.</p>
 <div class="section level2">
 <h2 id="market">Market<a class="anchor" aria-label="anchor" href="#market"></a>
 </h2>
-<p><em>After Primer’s “Simulating Supply and Demand”.</em> Buyers and
-sellers with private valuations meet one at a time, and the price finds
-its own level.</p>
+<p>One seller, two buyers, each with a private reservation price and an
+opening <code>expected_price</code>. They trade at the midpoint when the
+buyer’s position has caught up to the seller’s, then adjust for the next
+tick depending on whether they traded.</p>
 <div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">market</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/abm_setup.html">abm_setup</a></span><span class="op">(</span>agents <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span></span>
-<span>  buyers  <span class="op">=</span> <span class="fu"><a href="../reference/abm_agents.html">abm_agents</a></span><span class="op">(</span>n <span class="op">=</span> <span class="fl">200</span>, wtp <span class="op">=</span> <span class="op">~</span><span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">rnorm</a></span><span class="op">(</span><span class="va">n</span>, <span class="fl">50</span>, <span class="fl">10</span><span class="op">)</span>, offer <span class="op">=</span> <span class="op">~</span><span class="va">wtp</span> <span class="op">*</span> <span class="fl">0.8</span><span class="op">)</span>,</span>
-<span>  sellers <span class="op">=</span> <span class="fu"><a href="../reference/abm_agents.html">abm_agents</a></span><span class="op">(</span>n <span class="op">=</span> <span class="fl">200</span>, wta <span class="op">=</span> <span class="op">~</span><span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">rnorm</a></span><span class="op">(</span><span class="va">n</span>, <span class="fl">40</span>, <span class="fl">10</span><span class="op">)</span>, ask   <span class="op">=</span> <span class="op">~</span><span class="va">wta</span> <span class="op">*</span> <span class="fl">1.2</span><span class="op">)</span></span>
+<span>  seller <span class="op">=</span> <span class="fu"><a href="../reference/abm_agents.html">abm_agents</a></span><span class="op">(</span>n <span class="op">=</span> <span class="fl">1</span>, limit_price <span class="op">=</span> <span class="fl">20</span>, expected_price <span class="op">=</span> <span class="fl">20</span>,</span>
+<span>                      transacted <span class="op">=</span> <span class="cn">FALSE</span>, deal_price <span class="op">=</span> <span class="cn">NA_real_</span><span class="op">)</span>,</span>
+<span>  buyer  <span class="op">=</span> <span class="fu"><a href="../reference/abm_agents.html">abm_agents</a></span><span class="op">(</span>n <span class="op">=</span> <span class="fl">2</span>, limit_price <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">40</span>, <span class="fl">35</span><span class="op">)</span>, expected_price <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">30</span>, <span class="fl">25</span><span class="op">)</span>,</span>
+<span>                      transacted <span class="op">=</span> <span class="cn">FALSE</span>, deal_price <span class="op">=</span> <span class="cn">NA_real_</span><span class="op">)</span></span>
 <span><span class="op">)</span><span class="op">)</span></span>
 <span></span>
 <span><span class="va">go</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/abm_go.html">abm_go</a></span><span class="op">(</span></span>
+<span>  <span class="fu"><a href="../reference/abm_rules.html">abm_rules</a></span><span class="op">(</span><span class="va">transacted</span> <span class="op">~</span> <span class="cn">FALSE</span>, <span class="va">deal_price</span> <span class="op">~</span> <span class="cn">NA_real_</span><span class="op">)</span>,</span>
+<span></span>
 <span>  <span class="fu"><a href="../reference/abm_match.html">abm_match</a></span><span class="op">(</span>pair <span class="op">=</span> <span class="st">"opposite_group"</span>, by <span class="op">=</span> <span class="va">.group</span><span class="op">)</span>,</span>
-<span>  <span class="fu"><a href="../reference/abm_rules.html">abm_rules</a></span><span class="op">(</span><span class="va">price</span>  <span class="op">~</span> <span class="op">(</span><span class="va">offer</span> <span class="op">+</span> <span class="va">partner_ask</span><span class="op">)</span> <span class="op">/</span> <span class="fl">2</span>,</span>
-<span>            <span class="va">price</span>  <span class="op">~</span> <span class="op">(</span><span class="va">partner_offer</span> <span class="op">+</span> <span class="va">ask</span><span class="op">)</span> <span class="op">/</span> <span class="fl">2</span><span class="op">)</span>,</span>
-<span>  <span class="fu"><a href="../reference/abm_rules.html">abm_rules</a></span><span class="op">(</span><span class="va">traded</span> <span class="op">~</span> <span class="va">price</span> <span class="op">&lt;=</span> <span class="va">wtp</span> <span class="op">&amp;</span> <span class="va">price</span> <span class="op">&gt;=</span> <span class="va">partner_wta</span>,</span>
-<span>            <span class="va">traded</span> <span class="op">~</span> <span class="va">price</span> <span class="op">&gt;=</span> <span class="va">wta</span> <span class="op">&amp;</span> <span class="va">price</span> <span class="op">&lt;=</span> <span class="va">partner_wtp</span><span class="op">)</span>,</span>
-<span>  <span class="fu"><a href="../reference/abm_rules.html">abm_rules</a></span><span class="op">(</span><span class="va">price</span>  <span class="op">~</span> <span class="fu"><a href="https://dplyr.tidyverse.org/reference/if_else.html" class="external-link">if_else</a></span><span class="op">(</span><span class="va">traded</span>, <span class="va">price</span>, <span class="cn">NA_real_</span><span class="op">)</span><span class="op">)</span>,</span>
-<span>  <span class="fu"><a href="../reference/abm_rules.html">abm_rules</a></span><span class="op">(</span><span class="va">offer</span>  <span class="op">~</span> <span class="fu"><a href="https://rdrr.io/r/base/Extremes.html" class="external-link">pmin</a></span><span class="op">(</span><span class="fu"><a href="https://dplyr.tidyverse.org/reference/if_else.html" class="external-link">if_else</a></span><span class="op">(</span><span class="va">traded</span>, <span class="va">offer</span> <span class="op">*</span> <span class="fl">0.98</span>, <span class="va">offer</span> <span class="op">*</span> <span class="fl">1.02</span><span class="op">)</span>, <span class="va">wtp</span><span class="op">)</span><span class="op">)</span>,</span>
-<span>  <span class="fu"><a href="../reference/abm_rules.html">abm_rules</a></span><span class="op">(</span><span class="va">ask</span>    <span class="op">~</span> <span class="fu"><a href="https://rdrr.io/r/base/Extremes.html" class="external-link">pmax</a></span><span class="op">(</span><span class="fu"><a href="https://dplyr.tidyverse.org/reference/if_else.html" class="external-link">if_else</a></span><span class="op">(</span><span class="va">traded</span>, <span class="va">ask</span> <span class="op">*</span> <span class="fl">1.02</span>,   <span class="va">ask</span> <span class="op">*</span> <span class="fl">0.98</span><span class="op">)</span>,   <span class="va">wta</span><span class="op">)</span><span class="op">)</span></span>
+<span></span>
+<span>  <span class="fu"><a href="../reference/abm_rules.html">abm_rules</a></span><span class="op">(</span></span>
+<span>    <span class="va">transacted</span> <span class="op">~</span> <span class="fu"><a href="https://dplyr.tidyverse.org/reference/case-and-replace-when.html" class="external-link">case_when</a></span><span class="op">(</span></span>
+<span>      <span class="va">.group</span> <span class="op">==</span> <span class="st">"seller"</span> <span class="op">&amp;</span> <span class="va">partner_expected_price</span> <span class="op">&gt;=</span> <span class="va">expected_price</span> <span class="op">~</span> <span class="cn">TRUE</span>,</span>
+<span>      <span class="va">.group</span> <span class="op">==</span> <span class="st">"buyer"</span>  <span class="op">&amp;</span> <span class="va">expected_price</span> <span class="op">&gt;=</span> <span class="va">partner_expected_price</span> <span class="op">~</span> <span class="cn">TRUE</span>,</span>
+<span>      <span class="cn">TRUE</span> <span class="op">~</span> <span class="cn">FALSE</span></span>
+<span>    <span class="op">)</span>,</span>
+<span>    <span class="va">deal_price</span> <span class="op">~</span> <span class="fu"><a href="https://dplyr.tidyverse.org/reference/if_else.html" class="external-link">if_else</a></span><span class="op">(</span></span>
+<span>      <span class="op">(</span><span class="va">.group</span> <span class="op">==</span> <span class="st">"seller"</span> <span class="op">&amp;</span> <span class="va">partner_expected_price</span> <span class="op">&gt;=</span> <span class="va">expected_price</span><span class="op">)</span> <span class="op">|</span></span>
+<span>      <span class="op">(</span><span class="va">.group</span> <span class="op">==</span> <span class="st">"buyer"</span>  <span class="op">&amp;</span> <span class="va">expected_price</span> <span class="op">&gt;=</span> <span class="va">partner_expected_price</span><span class="op">)</span>,</span>
+<span>      <span class="op">(</span><span class="va">expected_price</span> <span class="op">+</span> <span class="va">partner_expected_price</span><span class="op">)</span> <span class="op">/</span> <span class="fl">2</span>, <span class="cn">NA_real_</span></span>
+<span>    <span class="op">)</span></span>
+<span>  <span class="op">)</span>,</span>
+<span></span>
+<span>  <span class="fu"><a href="../reference/abm_rules.html">abm_rules</a></span><span class="op">(</span></span>
+<span>    <span class="va">expected_price</span> <span class="op">~</span> <span class="fu"><a href="https://dplyr.tidyverse.org/reference/case-and-replace-when.html" class="external-link">case_when</a></span><span class="op">(</span></span>
+<span>      <span class="va">.group</span> <span class="op">==</span> <span class="st">"seller"</span> <span class="op">&amp;</span>  <span class="va">transacted</span> <span class="op">~</span> <span class="va">expected_price</span> <span class="op">+</span> <span class="fl">2</span>,</span>
+<span>      <span class="va">.group</span> <span class="op">==</span> <span class="st">"seller"</span> <span class="op">&amp;</span> <span class="op">!</span><span class="va">transacted</span> <span class="op">~</span> <span class="fu"><a href="https://rdrr.io/r/base/Extremes.html" class="external-link">pmax</a></span><span class="op">(</span><span class="va">expected_price</span> <span class="op">-</span> <span class="fl">1</span>, <span class="va">limit_price</span><span class="op">)</span>,</span>
+<span>      <span class="va">.group</span> <span class="op">==</span> <span class="st">"buyer"</span>  <span class="op">&amp;</span>  <span class="va">transacted</span> <span class="op">~</span> <span class="va">expected_price</span> <span class="op">-</span> <span class="fl">1</span>,</span>
+<span>      <span class="va">.group</span> <span class="op">==</span> <span class="st">"buyer"</span>  <span class="op">&amp;</span> <span class="op">!</span><span class="va">transacted</span> <span class="op">~</span> <span class="fu"><a href="https://rdrr.io/r/base/Extremes.html" class="external-link">pmin</a></span><span class="op">(</span><span class="va">expected_price</span> <span class="op">+</span> <span class="fl">1</span>, <span class="va">limit_price</span><span class="op">)</span>,</span>
+<span>      <span class="cn">TRUE</span> <span class="op">~</span> <span class="va">expected_price</span></span>
+<span>    <span class="op">)</span></span>
+<span>  <span class="op">)</span></span>
 <span><span class="op">)</span></span>
 <span></span>
-<span><span class="va">r</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/abm_run.html">abm_run</a></span><span class="op">(</span><span class="va">market</span>, <span class="va">go</span>, ticks <span class="op">=</span> <span class="fl">200</span>, seed <span class="op">=</span> <span class="fl">7</span><span class="op">)</span></span>
+<span><span class="va">result</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/abm_run.html">abm_run</a></span><span class="op">(</span><span class="va">market</span>, <span class="va">go</span>, ticks <span class="op">=</span> <span class="fl">50</span>, seed <span class="op">=</span> <span class="fl">123</span><span class="op">)</span></span>
 <span></span>
-<span><span class="va">price</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/tapply.html" class="external-link">tapply</a></span><span class="op">(</span><span class="va">r</span><span class="op">$</span><span class="va">price</span>, <span class="va">r</span><span class="op">$</span><span class="va">tick</span>, <span class="kw">function</span><span class="op">(</span><span class="va">z</span><span class="op">)</span> <span class="fu"><a href="https://rdrr.io/r/base/mean.html" class="external-link">mean</a></span><span class="op">(</span><span class="va">z</span>, na.rm <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="va">price</span><span class="op">[</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"1"</span>, <span class="st">"50"</span>, <span class="st">"200"</span><span class="op">)</span><span class="op">]</span>, <span class="fl">2</span><span class="op">)</span></span>
-<span><span class="co">#&gt;     1    50   200 </span></span>
-<span><span class="co">#&gt; 42.95 44.47 43.20</span></span></code></pre></div>
+<span><span class="va">deals</span> <span class="op">&lt;-</span> <span class="va">result</span><span class="op">$</span><span class="va">deal_price</span><span class="op">[</span><span class="va">result</span><span class="op">$</span><span class="va">.group</span> <span class="op">==</span> <span class="st">"seller"</span><span class="op">]</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span>trades <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/sum.html" class="external-link">sum</a></span><span class="op">(</span><span class="op">!</span><span class="fu"><a href="https://rdrr.io/r/base/NA.html" class="external-link">is.na</a></span><span class="op">(</span><span class="va">deals</span><span class="op">)</span><span class="op">)</span>,</span>
+<span>        first  <span class="op">=</span> <span class="va">deals</span><span class="op">[</span><span class="op">!</span><span class="fu"><a href="https://rdrr.io/r/base/NA.html" class="external-link">is.na</a></span><span class="op">(</span><span class="va">deals</span><span class="op">)</span><span class="op">]</span><span class="op">[</span><span class="fl">1</span><span class="op">]</span>,</span>
+<span>        last   <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/utils/head.html" class="external-link">tail</a></span><span class="op">(</span><span class="va">deals</span><span class="op">[</span><span class="op">!</span><span class="fu"><a href="https://rdrr.io/r/base/NA.html" class="external-link">is.na</a></span><span class="op">(</span><span class="va">deals</span><span class="op">)</span><span class="op">]</span>, <span class="fl">1</span><span class="op">)</span><span class="op">)</span>, <span class="fl">2</span><span class="op">)</span></span>
+<span><span class="co">#&gt; trades  first   last </span></span>
+<span><span class="co">#&gt;     21     25     31</span></span></code></pre></div>
+<div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://dplyr.tidyverse.org" class="external-link">dplyr</a></span><span class="op">)</span></span>
+<span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://ggplot2.tidyverse.org" class="external-link">ggplot2</a></span><span class="op">)</span></span>
+<span></span>
+<span><span class="va">result</span> <span class="op">|&gt;</span></span>
+<span>  <span class="fu"><a href="https://dplyr.tidyverse.org/reference/filter.html" class="external-link">filter</a></span><span class="op">(</span><span class="va">.group</span> <span class="op">==</span> <span class="st">"seller"</span><span class="op">)</span> <span class="op">|&gt;</span></span>
+<span>  <span class="fu"><a href="https://dplyr.tidyverse.org/reference/select.html" class="external-link">select</a></span><span class="op">(</span><span class="va">tick</span>, <span class="va">deal_price</span><span class="op">)</span> <span class="op">|&gt;</span></span>
+<span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/ggplot.html" class="external-link">ggplot</a></span><span class="op">(</span><span class="fu"><a href="https://ggplot2.tidyverse.org/reference/aes.html" class="external-link">aes</a></span><span class="op">(</span>x <span class="op">=</span> <span class="va">tick</span>, y <span class="op">=</span> <span class="va">deal_price</span><span class="op">)</span><span class="op">)</span> <span class="op">+</span></span>
+<span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/geom_point.html" class="external-link">geom_point</a></span><span class="op">(</span><span class="op">)</span> <span class="op">+</span></span>
+<span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/ggtheme.html" class="external-link">theme_minimal</a></span><span class="op">(</span><span class="op">)</span></span></code></pre></div>
 <p><strong>What it introduced:</strong> several agent groups, and rule
-routing by column existence. The <code>offer</code> rule mentions a
-column only buyers have, so it applies only to buyers, the
-<code>ask</code> rule only to sellers. No <code>type ==</code> test, no
-merging of the two tibbles. The <code>price</code> and
-<code>traded</code> steps take it one further: two rules with the same
-target, one routed to each group, which is how a pair of groups say the
-same thing from their own side.</p>
+routing by <code>.group</code>, the column <code><a href="../reference/abm_setup.html">abm_setup()</a></code>
+writes from the list names. <code>opposite_group</code> matching pairs
+the two groups, and with one seller and two buyers it forms one pair per
+tick, so one buyer sits out, gets no
+<code>partner_expected_price</code>, and falls to the
+<code>TRUE ~ FALSE</code> branch. Clearing <code>transacted</code> and
+<code>deal_price</code> in the first step keeps a no-trade tick reading
+as <code>NA</code> rather than stale. And the two rules in the price
+step share a start-of-step view, which is why <code>deal_price</code>
+recomputes the agreement condition instead of reading
+<code>transacted</code>. The seller’s <code>+2</code> against the
+buyers’ <code>-1</code> is the model: a seller that never lacks a
+counterparty gives ground more slowly than it takes it, and the deal
+price climbs.</p>
 </div>
 <div class="section level2">
 <h2 id="voter-model">Voter model<a class="anchor" aria-label="anchor" href="#voter-model"></a>
 </h2>
 <p>Opinions spread along fixed connections rather than through the whole
 population.</p>
-<div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">voter</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/abm_setup.html">abm_setup</a></span><span class="op">(</span></span>
 <span>  agents  <span class="op">=</span> <span class="fu"><a href="../reference/abm_agents.html">abm_agents</a></span><span class="op">(</span>n <span class="op">=</span> <span class="fl">100</span>, opinion <span class="op">=</span> <span class="op">~</span><span class="fu"><a href="https://rdrr.io/r/base/sample.html" class="external-link">sample</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">0</span>, <span class="fl">1</span><span class="op">)</span>, <span class="va">n</span>, replace <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span><span class="op">)</span>,</span>
 <span>  network <span class="op">=</span> <span class="fu"><a href="../reference/abm_network.html">abm_network</a></span><span class="op">(</span>type <span class="op">=</span> <span class="st">"random"</span>, degree <span class="op">=</span> <span class="fl">4</span><span class="op">)</span></span>
@@ -318,7 +364,7 @@ population.</p>
 <span><span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span>start <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/mean.html" class="external-link">mean</a></span><span class="op">(</span><span class="va">r</span><span class="op">$</span><span class="va">opinion</span><span class="op">[</span><span class="va">r</span><span class="op">$</span><span class="va">tick</span> <span class="op">==</span> <span class="fl">0</span><span class="op">]</span><span class="op">)</span>,</span>
 <span>        end   <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/mean.html" class="external-link">mean</a></span><span class="op">(</span><span class="va">r</span><span class="op">$</span><span class="va">opinion</span><span class="op">[</span><span class="va">r</span><span class="op">$</span><span class="va">tick</span> <span class="op">==</span> <span class="fl">200</span><span class="op">]</span><span class="op">)</span><span class="op">)</span>, <span class="fl">2</span><span class="op">)</span></span>
 <span><span class="co">#&gt; start   end </span></span>
-<span><span class="co">#&gt;  0.52  1.00</span></span></code></pre></div>
+<span><span class="co">#&gt;  0.53  0.72</span></span></code></pre></div>
 <p><strong>What it introduced:</strong> <code><a href="../reference/abm_network.html">abm_network()</a></code> and
 <code>pair = "network"</code>. The network is a separate edge list
 stored alongside the agent tibble, not a list-column on it.</p>
@@ -328,7 +374,7 @@ stored alongside the agent tibble, not a list-column on it.</p>
 </h2>
 <p>Groups of four, a pot that grows and is split evenly whoever paid
 in.</p>
-<div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">pgg</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/abm_setup.html">abm_setup</a></span><span class="op">(</span>agents <span class="op">=</span> <span class="fu"><a href="../reference/abm_agents.html">abm_agents</a></span><span class="op">(</span></span>
 <span>  n <span class="op">=</span> <span class="fl">100</span>, contribution <span class="op">=</span> <span class="op">~</span><span class="fu"><a href="https://rdrr.io/r/base/sample.html" class="external-link">sample</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">0</span>, <span class="fl">1</span><span class="op">)</span>, <span class="va">n</span>, replace <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span>, payoff <span class="op">=</span> <span class="fl">0</span></span>
 <span><span class="op">)</span><span class="op">)</span></span>
@@ -342,8 +388,8 @@ in.</p>
 <span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/table.html" class="external-link">table</a></span><span class="op">(</span><span class="va">r</span><span class="op">$</span><span class="va">payoff</span><span class="op">[</span><span class="va">r</span><span class="op">$</span><span class="va">tick</span> <span class="op">==</span> <span class="fl">20</span><span class="op">]</span><span class="op">)</span></span>
 <span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt;   0 0.5   1 1.5   2 </span></span>
-<span><span class="co">#&gt;   4  32  40  16   8</span></span></code></pre></div>
+<span><span class="co">#&gt;   0 0.5   1 1.5 </span></span>
+<span><span class="co">#&gt;  16  16  32  36</span></span></code></pre></div>
 <p><strong>What it introduced:</strong> <code>size</code>, generalising
 pairs to groups. Rules reuse dplyr’s grouped-mutate semantics rather
 than adding group-aggregate functions of their own, so
@@ -354,7 +400,7 @@ than adding group-aggregate functions of their own, so
 </h2>
 <p>Same game, same partner every round, tit for tat. Cooperation
 survives.</p>
-<div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">ipd</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/abm_setup.html">abm_setup</a></span><span class="op">(</span></span>
 <span>  agents  <span class="op">=</span> <span class="fu"><a href="../reference/abm_agents.html">abm_agents</a></span><span class="op">(</span>n <span class="op">=</span> <span class="fl">100</span>, move <span class="op">=</span> <span class="st">"cooperate"</span>, payoff <span class="op">=</span> <span class="fl">0</span><span class="op">)</span>,</span>
 <span>  network <span class="op">=</span> <span class="fu"><a href="../reference/abm_network.html">abm_network</a></span><span class="op">(</span>type <span class="op">=</span> <span class="st">"random"</span>, degree <span class="op">=</span> <span class="fl">1</span><span class="op">)</span></span>
@@ -388,7 +434,7 @@ needs an explicit column.</p>
 </h2>
 <p><em>Wilensky &amp; Rand, ch. 5.</em> The network grows, and hubs
 appear.</p>
-<div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb13"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">pa</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/abm_setup.html">abm_setup</a></span><span class="op">(</span></span>
 <span>  agents  <span class="op">=</span> <span class="fu"><a href="../reference/abm_agents.html">abm_agents</a></span><span class="op">(</span>n <span class="op">=</span> <span class="fl">2</span><span class="op">)</span>,</span>
 <span>  network <span class="op">=</span> <span class="fu"><a href="../reference/abm_network.html">abm_network</a></span><span class="op">(</span>type <span class="op">=</span> <span class="st">"manual"</span>, edges <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/data.frame.html" class="external-link">data.frame</a></span><span class="op">(</span>from <span class="op">=</span> <span class="fl">1</span>, to <span class="op">=</span> <span class="fl">2</span><span class="op">)</span><span class="op">)</span></span>
@@ -417,7 +463,7 @@ degree-proportional without anyone storing a degree.</p>
 </h2>
 <p>Consumption erodes wealth. Those above the <em>nisab</em> pay 2.5%
 into a pool, and those below the poverty line share it.</p>
-<div class="sourceCode" id="cb13"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb14"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">nisab</span> <span class="op">&lt;-</span> <span class="fl">100</span></span>
 <span><span class="va">poverty_line</span> <span class="op">&lt;-</span> <span class="fl">30</span></span>
 <span></span>
@@ -439,7 +485,7 @@ into a pool, and those below the poverty line share it.</p>
 <span><span class="va">r</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/abm_run.html">abm_run</a></span><span class="op">(</span><span class="va">zakah</span>, <span class="va">go</span>, ticks <span class="op">=</span> <span class="fl">50</span>, seed <span class="op">=</span> <span class="fl">12</span><span class="op">)</span></span>
 <span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/utils/head.html" class="external-link">tail</a></span><span class="op">(</span><span class="fu"><a href="../reference/abm_globals.html">abm_globals</a></span><span class="op">(</span><span class="va">r</span><span class="op">)</span><span class="op">$</span><span class="va">zakah_pool</span>, <span class="fl">3</span><span class="op">)</span>, <span class="fl">1</span><span class="op">)</span></span>
-<span><span class="co">#&gt; [1] 1374.0 1368.3 1365.0</span></span></code></pre></div>
+<span><span class="co">#&gt; [1] 1349.2 1353.5 1357.6</span></span></code></pre></div>
 <p><strong>What it introduced:</strong> nothing mechanically. It is the
 first model made of nothing but individual and population-level steps,
 which confirmed matching is optional machinery rather than a
@@ -462,7 +508,7 @@ before reading anything into the inequality path.
 </h2>
 <p><em>Wilensky, NetLogo Sample Models.</em> A bank can only lend what
 it has, and whoever asks first gets it.</p>
-<div class="sourceCode" id="cb14"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb15"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">reserve_ratio</span> <span class="op">&lt;-</span> <span class="fl">0.1</span></span>
 <span></span>
 <span><span class="va">bankres</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/abm_setup.html">abm_setup</a></span><span class="op">(</span></span>
@@ -492,14 +538,17 @@ it has, and whoever asks first gets it.</p>
 <span><span class="op">)</span></span>
 <span></span>
 <span><span class="va">r</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/abm_run.html">abm_run</a></span><span class="op">(</span><span class="va">bankres</span>, <span class="va">go</span>, ticks <span class="op">=</span> <span class="fl">100</span>, seed <span class="op">=</span> <span class="fl">13</span><span class="op">)</span></span>
+<span><span class="co">#&gt; Running model <span style="color: #00BB00;">■■■■■■■■■                       </span>  27% | ETA:  3s</span></span>
+<span><span class="co">#&gt; Running model <span style="color: #00BB00;">■■■■■■■■■■■■■■                  </span>  43% | ETA:  2s</span></span>
+<span><span class="co">#&gt; Running model <span style="color: #00BB00;">■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■ </span> 100% | ETA:  0s</span></span>
 <span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/utils/head.html" class="external-link">tail</a></span><span class="op">(</span><span class="fu"><a href="../reference/abm_globals.html">abm_globals</a></span><span class="op">(</span><span class="va">r</span><span class="op">)</span>, <span class="fl">3</span><span class="op">)</span>, <span class="fl">2</span><span class="op">)</span></span>
 <span><span class="co">#&gt; <span style="color: #949494;"># A tibble: 3 × 4</span></span></span>
 <span><span class="co">#&gt;    tick bank_deposits bank_loans bank_reserves</span></span>
 <span><span class="co">#&gt;   <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span>         <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span>      <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span>         <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span></span></span>
-<span><span class="co">#&gt; <span style="color: #BCBCBC;">1</span>    98         <span style="text-decoration: underline;">3</span>132.       314.         -<span style="color: #BB0000;">0.6</span> </span></span>
-<span><span class="co">#&gt; <span style="color: #BCBCBC;">2</span>    99         <span style="text-decoration: underline;">3</span>143.       314.          0.45</span></span>
-<span><span class="co">#&gt; <span style="color: #BCBCBC;">3</span>   100         <span style="text-decoration: underline;">3</span>133.       314.         -<span style="color: #BB0000;">0.98</span></span></span></code></pre></div>
+<span><span class="co">#&gt; <span style="color: #BCBCBC;">1</span>    98         <span style="text-decoration: underline;">3</span>025.       303.         -<span style="color: #BB0000;">0.03</span></span></span>
+<span><span class="co">#&gt; <span style="color: #BCBCBC;">2</span>    99         <span style="text-decoration: underline;">3</span>040.       303.          1.47</span></span>
+<span><span class="co">#&gt; <span style="color: #BCBCBC;">3</span>   100         <span style="text-decoration: underline;">3</span>034.       304.         -<span style="color: #BB0000;">0.64</span></span></span></code></pre></div>
 <p><strong>What it introduced:</strong> <code><a href="../reference/abm_sequential.html">abm_sequential()</a></code>.
 Every earlier model works fine with simultaneous updates, because a
 shared pool that is only ever <em>divided</em> (the public goods pot,

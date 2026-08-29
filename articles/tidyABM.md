@@ -101,6 +101,10 @@ moves the dollar.
 
 # 3. the run
 result <- abm_run(economy, go, ticks = 500, seed = 1)
+#> Running model ■■■■■■                            17% | ETA:  5s
+#> Running model ■■■■■■■■                          25% | ETA:  4s
+#> Running model ■■■■■■■■■■■■■■■■■■■■■■■■          77% | ETA:  1s
+#> Running model ■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■  100% | ETA:  0s
 result
 #> <abm_result> 500 ticks, 500 agents seen, 250500 rows
 #> # A tibble: 250,500 × 4

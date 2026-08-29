@@ -47,7 +47,8 @@ go <- abm_go(
       .group == "buyer"  &  transacted ~ expected_price - 1,
       .group == "buyer"  & !transacted ~ pmin(expected_price + 1, limit_price),
       TRUE ~ expected_price
-    )
+    ),
+    .scope = "population"
   )
 )
 
@@ -66,13 +67,13 @@ result |>
   theme_minimal()
 ```
 
-*Several agent groups, and rule routing by column existence. Both `case_when()`
-blocks branch on `.group`, the column `abm_setup()` writes from the list names, so
-there is no separate agent-`type` field to keep in step. `opposite_group`
-matching partitions the two groups into pairs, and with one seller and two buyers
-it forms exactly one pair per tick: one buyer is left unmatched, gets no
-`partner_expected_price`, falls to the `TRUE ~ FALSE` branch of the `transacted`
-rule, and adjusts as a buyer who failed to trade.*
+*Several agent groups, rule routing by `.group`, and `.scope = "population"` on
+the step that has to reach every agent. Both `case_when()` blocks branch on
+`.group`, the column `abm_setup()` writes from the list names, so there is no
+separate agent-`type` field to keep in step. `opposite_group` matching partitions
+the two groups into pairs, and with one seller and two buyers it forms exactly one
+pair per tick: one buyer is left unmatched and gets no `partner_expected_price`,
+so it falls to the `TRUE ~ FALSE` branch of the `transacted` rule.*
 
 *The first `abm_rules()` step clears `transacted` and `deal_price` before the
 match, so a tick where nobody trades reads as `NA` rather than carrying last
@@ -80,8 +81,15 @@ tick's number. The two rules inside the price step are evaluated against the sam
 start-of-step state, so `deal_price` recomputes the agreement condition instead of
 reading `transacted`; splitting them into two `abm_rules()` calls would let the
 second read the first's result. The `pmax`/`pmin` clamps hold each agent's
-`expected_price` on its own side of its `limit_price`. The asymmetry in the last
-step, seller `+2` on a trade against `-1` for the buyers, is the whole model: the
+`expected_price` on its own side of its `limit_price`.*
+
+*The last step carries `.scope = "population"` because the match from earlier in
+the tick is still standing. Without it, `abm_rules()` would update only the
+matched pair, and the unmatched buyer's `expected_price` would freeze until a tick
+it is paired again. `"population"` makes the step ignore the standing match and
+run over everyone, so the idle buyer takes the `!transacted` branch and bids
+itself up toward its `limit_price` while it waits. The asymmetry in that step,
+seller `+2` on a trade against `-1` for the buyers, is the rest of the model: the
 seller with a captive pair of buyers concedes ground more slowly than it takes
 it, and the deal price climbs.*
 

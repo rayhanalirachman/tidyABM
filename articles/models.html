@@ -405,9 +405,12 @@ appear.</p>
 <span><span class="co">#&gt;    max_degree median_degree </span></span>
 <span><span class="co">#&gt;            36             1</span></span></code></pre></div>
 <p><strong>What it introduced:</strong> the only way the network changes
-during a run. <code>from = "random_edge"</code> reuses NetLogo’s trick.
-Pick an edge uniformly, then one of its endpoints, and selection comes
-out degree-proportional without anyone storing a degree.</p>
+during a run. One edge per new node here;
+<code>abm_birth(links = m)</code> gives the general form, <em>m</em>
+edges per node, each drawn degree-proportionally.
+<code>from = "random_edge"</code> reuses NetLogo’s trick. Pick an edge
+uniformly, then one of its endpoints, and selection comes out
+degree-proportional without anyone storing a degree.</p>
 </div>
 <div class="section level2">
 <h2 id="zakah-redistribution">Zakah redistribution<a class="anchor" aria-label="anchor" href="#zakah-redistribution"></a>

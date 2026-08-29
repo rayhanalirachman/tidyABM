@@ -12,7 +12,8 @@ abm_birth(
   times = NULL,
   cost = NULL,
   inherit = NULL,
-  attach_via = NULL
+  attach_via = NULL,
+  links = NULL
 )
 ```
 
@@ -40,7 +41,8 @@ abm_birth(
   One or more `column ~ expression` formulas applied to the parent *and*
   the newborn after the split, expressing what reproduction costs, for
   example `cost = resource ~ resource / 2` to halve a resource between
-  them.
+  them. Only `when` has a parent to charge; with `n` there is none, so
+  columns the new agents are to be given belong in `inherit`.
 
 - inherit:
 
@@ -62,6 +64,20 @@ abm_birth(
   existing agent. This is the only way the network grows during a run;
   `from = "random_edge"` gives degree-proportional (preferential)
   attachment.
+
+- links:
+
+  How many edges the newborn gets, one by default. One edge makes the
+  newborn a leaf, so a population that also dies erodes whatever network
+  it started with into a forest of parent-child pairs, however dense
+  that network was. `links` gives the newborn the degree the model means
+  instead. With `from = "parent"` it takes the parent *and* a sample of
+  the parent's own neighbours, which is what "the offspring settles in a
+  site next to its parent" means on a lattice; with
+  `from = "random_edge"` it is the *m* degree-proportional edges per
+  node that preferential attachment is defined with. Targets are
+  distinct, and a newborn takes what there is when there are fewer than
+  `links` of them.
 
 ## Value
 
@@ -106,6 +122,15 @@ abm_birth(n = 1, attach_via = abm_match(pair = "network", from = "random_edge"))
 #> <abm_birth>
 #> • n = 1
 #> • attach_via = network ("random_edge")
+
+# the offspring takes a place beside its parent, with a neighbourhood of its
+# own rather than a single edge back to the parent
+abm_birth(when = runif(dplyr::n()) < ptr, links = 4,
+          attach_via = abm_match(pair = "network", from = "parent"))
+#> <abm_birth>
+#> • when = `runif(dplyr::n()) < ptr`
+#> • attach_via = network ("parent")
+#> • links = 4
 
 # a child of two parents, with its own age and a mutated trait
 abm_birth(

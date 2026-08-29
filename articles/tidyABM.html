@@ -544,6 +544,19 @@ be a column, a number, or a draw:</p>
 <p>Each offspring is a row of its own before <code>inherit</code> is
 evaluated, so a mutation drawn there differs from sibling to sibling
 rather than being drawn once and copied.</p>
+<p>In a model with a network, a newborn is nowhere until
+<code>attach_via</code> puts it somewhere: an
+<code>abm_match(pair = "network")</code> spec that names who it attaches
+to, where <code>from = "parent"</code> is next to the agent it was
+cloned from and <code>from = "random_edge"</code> is
+degree-proportional. <code>links</code> says how many edges it arrives
+with, one by default. That default is worth thinking about whenever
+agents also die, because a death prunes a full degree’s worth of edges
+and a one-edge birth puts back a single link, which erodes the network
+over a long run. With <code>from = "parent"</code>, <code>links</code>
+takes the parent and a sample of the parent’s own neighbours, so the
+newborn arrives in a neighbourhood rather than on the end of a single
+thread.</p>
 </div>
 <div class="section level2">
 <h2 id="reproducibility">Reproducibility<a class="anchor" aria-label="anchor" href="#reproducibility"></a>

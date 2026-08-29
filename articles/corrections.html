@@ -113,85 +113,85 @@ holds several candidate predictors, scores them against what actually
 happened, and acts on whichever has been working. Nobody’s forecast is
 stable, so the population’s response to a given history keeps changing,
 and attendance never settles.</p>
-<p>That is expressible here, but it needs each agent to carry a
-<em>set</em> of strategies, and the grammar has no shorthand for that.
-One column per weight per strategy is the only way. Ordinary R
-metaprogramming fills the gap:</p>
+<p>Each agent therefore has to carry a <em>set</em> of predictors rather
+than a number, and a column holds a set as readily as it holds a scalar.
+<code>w</code> is a matrix of weights per agent, ten predictors over
+five lags and a constant; <code>e</code> is that agent’s rolling error
+for each of the ten; <code>p</code> is what each of them said this week.
+All three are ordinary list columns.</p>
 <div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">MEMORY</span> <span class="op">&lt;-</span> <span class="fl">5</span>    <span class="co"># weeks of attendance each predictor looks at</span></span>
 <span><span class="va">N_STRAT</span> <span class="op">&lt;-</span> <span class="fl">10</span>  <span class="co"># candidate predictors per agent</span></span>
 <span><span class="va">CAPACITY</span> <span class="op">&lt;-</span> <span class="fl">60</span></span>
 <span></span>
-<span><span class="co"># each strategy s is a linear rule: w_s0 * 100 + w_s1 * att1 + ... + w_s5 * att5</span></span>
-<span><span class="va">strategy_columns</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span><span class="op">)</span> <span class="op">{</span></span>
-<span>  <span class="va">cols</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="op">)</span></span>
-<span>  <span class="kw">for</span> <span class="op">(</span><span class="va">s</span> <span class="kw">in</span> <span class="fu"><a href="https://rdrr.io/r/base/seq.html" class="external-link">seq_len</a></span><span class="op">(</span><span class="va">N_STRAT</span><span class="op">)</span><span class="op">)</span> <span class="op">{</span></span>
-<span>    <span class="kw">for</span> <span class="op">(</span><span class="va">j</span> <span class="kw">in</span> <span class="fl">0</span><span class="op">:</span><span class="va">MEMORY</span><span class="op">)</span> <span class="va">cols</span><span class="op">[[</span><span class="fu"><a href="https://rdrr.io/r/base/sprintf.html" class="external-link">sprintf</a></span><span class="op">(</span><span class="st">"w%d_%d"</span>, <span class="va">s</span>, <span class="va">j</span><span class="op">)</span><span class="op">]</span><span class="op">]</span> <span class="op">&lt;-</span> <span class="op">~</span><span class="fu"><a href="https://rdrr.io/r/stats/Uniform.html" class="external-link">runif</a></span><span class="op">(</span><span class="va">n</span>, <span class="op">-</span><span class="fl">1</span>, <span class="fl">1</span><span class="op">)</span></span>
-<span>    <span class="va">cols</span><span class="op">[[</span><span class="fu"><a href="https://rdrr.io/r/base/sprintf.html" class="external-link">sprintf</a></span><span class="op">(</span><span class="st">"e%d"</span>, <span class="va">s</span><span class="op">)</span><span class="op">]</span><span class="op">]</span> <span class="op">&lt;-</span> <span class="fl">0</span>     <span class="co"># rolling error of strategy s</span></span>
-<span>  <span class="op">}</span></span>
-<span>  <span class="va">cols</span><span class="op">$</span><span class="va">active</span> <span class="op">&lt;-</span> <span class="fl">1L</span>                    <span class="co"># which one the agent currently trusts</span></span>
-<span>  <span class="va">cols</span></span>
-<span><span class="op">}</span></span>
-<span></span>
 <span><span class="va">farol</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/abm_setup.html">abm_setup</a></span><span class="op">(</span></span>
-<span>  agents  <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/do.call.html" class="external-link">do.call</a></span><span class="op">(</span><span class="va">abm_agents</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>n <span class="op">=</span> <span class="fl">100</span><span class="op">)</span>, <span class="fu">strategy_columns</span><span class="op">(</span><span class="op">)</span><span class="op">)</span><span class="op">)</span>,</span>
-<span>  globals <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/stats/setNames.html" class="external-link">setNames</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">as.list</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/rep.html" class="external-link">rep</a></span><span class="op">(</span><span class="va">CAPACITY</span>, <span class="va">MEMORY</span><span class="op">)</span><span class="op">)</span>, <span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste0</a></span><span class="op">(</span><span class="st">"att"</span>, <span class="fl">1</span><span class="op">:</span><span class="va">MEMORY</span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="op">)</span></span></code></pre></div>
-<p>The steps themselves are ordinary: forecast, act, observe, re-score,
-switch.</p>
+<span>  agents <span class="op">=</span> <span class="fu"><a href="../reference/abm_agents.html">abm_agents</a></span><span class="op">(</span></span>
+<span>    n <span class="op">=</span> <span class="fl">100</span>,</span>
+<span>    w <span class="op">=</span> <span class="op">~</span><span class="fu"><a href="https://rdrr.io/r/base/lapply.html" class="external-link">lapply</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/seq.html" class="external-link">seq_len</a></span><span class="op">(</span><span class="va">n</span><span class="op">)</span>, <span class="kw">function</span><span class="op">(</span><span class="va">i</span><span class="op">)</span></span>
+<span>          <span class="fu"><a href="https://rdrr.io/r/base/matrix.html" class="external-link">matrix</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/stats/Uniform.html" class="external-link">runif</a></span><span class="op">(</span><span class="va">N_STRAT</span> <span class="op">*</span> <span class="op">(</span><span class="va">MEMORY</span> <span class="op">+</span> <span class="fl">1</span><span class="op">)</span>, <span class="op">-</span><span class="fl">1</span>, <span class="fl">1</span><span class="op">)</span>, <span class="va">N_STRAT</span>, <span class="va">MEMORY</span> <span class="op">+</span> <span class="fl">1</span><span class="op">)</span><span class="op">)</span>,</span>
+<span>    e <span class="op">=</span> <span class="op">~</span><span class="fu"><a href="https://rdrr.io/r/base/lapply.html" class="external-link">lapply</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/seq.html" class="external-link">seq_len</a></span><span class="op">(</span><span class="va">n</span><span class="op">)</span>, <span class="kw">function</span><span class="op">(</span><span class="va">i</span><span class="op">)</span> <span class="fu"><a href="https://rdrr.io/r/base/numeric.html" class="external-link">numeric</a></span><span class="op">(</span><span class="va">N_STRAT</span><span class="op">)</span><span class="op">)</span>,</span>
+<span>    p <span class="op">=</span> <span class="op">~</span><span class="fu"><a href="https://rdrr.io/r/base/lapply.html" class="external-link">lapply</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/seq.html" class="external-link">seq_len</a></span><span class="op">(</span><span class="va">n</span><span class="op">)</span>, <span class="kw">function</span><span class="op">(</span><span class="va">i</span><span class="op">)</span> <span class="fu"><a href="https://rdrr.io/r/base/numeric.html" class="external-link">numeric</a></span><span class="op">(</span><span class="va">N_STRAT</span><span class="op">)</span><span class="op">)</span>,</span>
+<span>    go_today <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span>,</span>
+<span>  globals <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">as.list</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/stats/setNames.html" class="external-link">setNames</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/rep.html" class="external-link">rep</a></span><span class="op">(</span><span class="va">CAPACITY</span>, <span class="va">MEMORY</span><span class="op">)</span>, <span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste0</a></span><span class="op">(</span><span class="st">"att"</span>, <span class="fl">1</span><span class="op">:</span><span class="va">MEMORY</span><span class="op">)</span><span class="op">)</span><span class="op">)</span>,</span>
+<span>  seed <span class="op">=</span> <span class="fl">1</span><span class="op">)</span></span></code></pre></div>
+<p>The tick is the four things the description names: forecast with
+every predictor, act on one, observe what happened, re-score them all.
+There is no fifth step for switching, because “act on whichever has been
+working” is <code>which.min(e)</code> read at the moment of acting.</p>
 <div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">f</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span><span class="va">lhs</span>, <span class="va">rhs</span><span class="op">)</span> <span class="fu">rlang</span><span class="fu">::</span><span class="fu"><a href="https://rlang.r-lib.org/reference/new_formula.html" class="external-link">new_formula</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/parse.html" class="external-link">str2lang</a></span><span class="op">(</span><span class="va">lhs</span><span class="op">)</span>, <span class="fu"><a href="https://rdrr.io/r/base/parse.html" class="external-link">str2lang</a></span><span class="op">(</span><span class="va">rhs</span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="va">lags</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste0</a></span><span class="op">(</span><span class="st">"att"</span>, <span class="fl">1</span><span class="op">:</span><span class="va">MEMORY</span><span class="op">)</span></span>
-<span></span>
-<span><span class="va">forecast</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/do.call.html" class="external-link">do.call</a></span><span class="op">(</span><span class="va">abm_rules</span>, <span class="fu"><a href="https://rdrr.io/r/base/lapply.html" class="external-link">lapply</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/seq.html" class="external-link">seq_len</a></span><span class="op">(</span><span class="va">N_STRAT</span><span class="op">)</span>, <span class="kw">function</span><span class="op">(</span><span class="va">s</span><span class="op">)</span> <span class="op">{</span></span>
-<span>  <span class="fu">f</span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste0</a></span><span class="op">(</span><span class="st">"p"</span>, <span class="va">s</span><span class="op">)</span>,</span>
-<span>    <span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/sprintf.html" class="external-link">sprintf</a></span><span class="op">(</span><span class="st">"w%d_0 * 100"</span>, <span class="va">s</span><span class="op">)</span>, <span class="fu"><a href="https://rdrr.io/r/base/sprintf.html" class="external-link">sprintf</a></span><span class="op">(</span><span class="st">"w%d_%d * %s"</span>, <span class="va">s</span>, <span class="fl">1</span><span class="op">:</span><span class="va">MEMORY</span>, <span class="va">lags</span><span class="op">)</span><span class="op">)</span>,</span>
-<span>          collapse <span class="op">=</span> <span class="st">" + "</span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="op">}</span><span class="op">)</span><span class="op">)</span></span>
-<span></span>
-<span><span class="va">act</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/abm_rules.html">abm_rules</a></span><span class="op">(</span><span class="fu">f</span><span class="op">(</span><span class="st">"go_today"</span>, <span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste0</a></span><span class="op">(</span></span>
-<span>  <span class="st">"case_when("</span>, <span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/sprintf.html" class="external-link">sprintf</a></span><span class="op">(</span><span class="st">"active == %d ~ p%d"</span>, <span class="fl">1</span><span class="op">:</span><span class="op">(</span><span class="va">N_STRAT</span> <span class="op">-</span> <span class="fl">1</span><span class="op">)</span>, <span class="fl">1</span><span class="op">:</span><span class="op">(</span><span class="va">N_STRAT</span> <span class="op">-</span> <span class="fl">1</span><span class="op">)</span><span class="op">)</span>,</span>
-<span>                      collapse <span class="op">=</span> <span class="st">", "</span><span class="op">)</span>,</span>
-<span>  <span class="st">", TRUE ~ p"</span>, <span class="va">N_STRAT</span>, <span class="st">") &lt; "</span>, <span class="va">CAPACITY</span><span class="op">)</span><span class="op">)</span><span class="op">)</span></span>
-<span></span>
-<span><span class="va">observe</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/do.call.html" class="external-link">do.call</a></span><span class="op">(</span><span class="va">abm_global</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span></span>
-<span>  <span class="fu"><a href="https://rdrr.io/r/base/lapply.html" class="external-link">lapply</a></span><span class="op">(</span><span class="va">MEMORY</span><span class="op">:</span><span class="fl">2</span>, <span class="kw">function</span><span class="op">(</span><span class="va">j</span><span class="op">)</span> <span class="fu">f</span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste0</a></span><span class="op">(</span><span class="st">"att"</span>, <span class="va">j</span><span class="op">)</span>, <span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste0</a></span><span class="op">(</span><span class="st">"att"</span>, <span class="va">j</span> <span class="op">-</span> <span class="fl">1</span><span class="op">)</span><span class="op">)</span><span class="op">)</span>,</span>
-<span>  <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="fu">f</span><span class="op">(</span><span class="st">"att1"</span>, <span class="st">"sum(go_today)"</span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="op">)</span><span class="op">)</span></span>
-<span></span>
-<span><span class="va">rescore</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/do.call.html" class="external-link">do.call</a></span><span class="op">(</span><span class="va">abm_rules</span>, <span class="fu"><a href="https://rdrr.io/r/base/lapply.html" class="external-link">lapply</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/seq.html" class="external-link">seq_len</a></span><span class="op">(</span><span class="va">N_STRAT</span><span class="op">)</span>, <span class="kw">function</span><span class="op">(</span><span class="va">s</span><span class="op">)</span></span>
-<span>  <span class="fu">f</span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste0</a></span><span class="op">(</span><span class="st">"e"</span>, <span class="va">s</span><span class="op">)</span>, <span class="fu"><a href="https://rdrr.io/r/base/sprintf.html" class="external-link">sprintf</a></span><span class="op">(</span><span class="st">"0.8 * e%d + 0.2 * abs(p%d - att1)"</span>, <span class="va">s</span>, <span class="va">s</span><span class="op">)</span><span class="op">)</span><span class="op">)</span><span class="op">)</span></span>
-<span></span>
-<span><span class="va">switch_to_best</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/abm_rules.html">abm_rules</a></span><span class="op">(</span><span class="fu">f</span><span class="op">(</span><span class="st">"active"</span>, <span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste0</a></span><span class="op">(</span></span>
-<span>  <span class="st">"case_when("</span>,</span>
-<span>  <span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/sprintf.html" class="external-link">sprintf</a></span><span class="op">(</span><span class="st">"e%d &lt;= pmin(%s) ~ %dL"</span>, <span class="fl">1</span><span class="op">:</span><span class="op">(</span><span class="va">N_STRAT</span> <span class="op">-</span> <span class="fl">1</span><span class="op">)</span>,</span>
-<span>                <span class="fu"><a href="https://rdrr.io/r/base/lapply.html" class="external-link">vapply</a></span><span class="op">(</span><span class="fl">1</span><span class="op">:</span><span class="op">(</span><span class="va">N_STRAT</span> <span class="op">-</span> <span class="fl">1</span><span class="op">)</span>,</span>
-<span>                       <span class="kw">function</span><span class="op">(</span><span class="va">s</span><span class="op">)</span> <span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste0</a></span><span class="op">(</span><span class="st">"e"</span>, <span class="fu"><a href="https://rdrr.io/r/base/sets.html" class="external-link">setdiff</a></span><span class="op">(</span><span class="fl">1</span><span class="op">:</span><span class="va">N_STRAT</span>, <span class="va">s</span><span class="op">)</span>, collapse <span class="op">=</span> <span class="st">", "</span><span class="op">)</span>,</span>
-<span>                       <span class="fu"><a href="https://rdrr.io/r/base/character.html" class="external-link">character</a></span><span class="op">(</span><span class="fl">1</span><span class="op">)</span><span class="op">)</span>,</span>
-<span>                <span class="fl">1</span><span class="op">:</span><span class="op">(</span><span class="va">N_STRAT</span> <span class="op">-</span> <span class="fl">1</span><span class="op">)</span><span class="op">)</span>, collapse <span class="op">=</span> <span class="st">", "</span><span class="op">)</span>,</span>
-<span>  <span class="st">", TRUE ~ "</span>, <span class="va">N_STRAT</span>, <span class="st">"L)"</span><span class="op">)</span><span class="op">)</span><span class="op">)</span></span>
-<span></span>
-<span><span class="va">go</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/abm_go.html">abm_go</a></span><span class="op">(</span><span class="va">forecast</span>, <span class="va">act</span>, <span class="va">observe</span>, <span class="va">rescore</span>, <span class="va">switch_to_best</span><span class="op">)</span></span>
+<code class="sourceCode R"><span><span class="va">go</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/abm_go.html">abm_go</a></span><span class="op">(</span></span>
+<span>  <span class="fu"><a href="../reference/abm_rules.html">abm_rules</a></span><span class="op">(</span><span class="va">p</span> <span class="op">~</span> <span class="fu"><a href="https://rdrr.io/r/base/lapply.html" class="external-link">lapply</a></span><span class="op">(</span><span class="va">w</span>, <span class="kw">function</span><span class="op">(</span><span class="va">W</span><span class="op">)</span> <span class="fu"><a href="https://rdrr.io/r/base/vector.html" class="external-link">as.vector</a></span><span class="op">(</span><span class="va">W</span> <span class="op"><a href="https://rdrr.io/r/base/matmult.html" class="external-link">%*%</a></span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">100</span>, <span class="va">att1</span>, <span class="va">att2</span>, <span class="va">att3</span>, <span class="va">att4</span>, <span class="va">att5</span><span class="op">)</span><span class="op">)</span><span class="op">)</span><span class="op">)</span>,</span>
+<span>  <span class="fu"><a href="../reference/abm_rules.html">abm_rules</a></span><span class="op">(</span><span class="va">go_today</span> <span class="op">~</span> <span class="fu"><a href="https://rdrr.io/r/base/mapply.html" class="external-link">mapply</a></span><span class="op">(</span><span class="kw">function</span><span class="op">(</span><span class="va">pi</span>, <span class="va">ei</span><span class="op">)</span> <span class="va">pi</span><span class="op">[</span><span class="fu"><a href="https://rdrr.io/r/base/which.min.html" class="external-link">which.min</a></span><span class="op">(</span><span class="va">ei</span><span class="op">)</span><span class="op">]</span>, <span class="va">p</span>, <span class="va">e</span><span class="op">)</span> <span class="op">&lt;</span> <span class="va">CAPACITY</span><span class="op">)</span>,</span>
+<span>  <span class="fu"><a href="../reference/abm_global.html">abm_global</a></span><span class="op">(</span><span class="va">att5</span> <span class="op">~</span> <span class="va">att4</span>, <span class="va">att4</span> <span class="op">~</span> <span class="va">att3</span>, <span class="va">att3</span> <span class="op">~</span> <span class="va">att2</span>, <span class="va">att2</span> <span class="op">~</span> <span class="va">att1</span>,</span>
+<span>             <span class="va">att1</span> <span class="op">~</span> <span class="fu"><a href="https://rdrr.io/r/base/sum.html" class="external-link">sum</a></span><span class="op">(</span><span class="va">go_today</span><span class="op">)</span><span class="op">)</span>,</span>
+<span>  <span class="fu"><a href="../reference/abm_rules.html">abm_rules</a></span><span class="op">(</span><span class="va">e</span> <span class="op">~</span> <span class="fu"><a href="https://rdrr.io/r/base/mapply.html" class="external-link">mapply</a></span><span class="op">(</span><span class="kw">function</span><span class="op">(</span><span class="va">ei</span>, <span class="va">pi</span><span class="op">)</span> <span class="fl">0.8</span> <span class="op">*</span> <span class="va">ei</span> <span class="op">+</span> <span class="fl">0.2</span> <span class="op">*</span> <span class="fu"><a href="https://rdrr.io/r/base/MathFun.html" class="external-link">abs</a></span><span class="op">(</span><span class="va">pi</span> <span class="op">-</span> <span class="va">att1</span><span class="op">)</span>,</span>
+<span>                       <span class="va">e</span>, <span class="va">p</span>, SIMPLIFY <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="op">)</span></span>
 <span></span>
 <span><span class="va">r</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/abm_run.html">abm_run</a></span><span class="op">(</span><span class="va">farol</span>, <span class="va">go</span>, ticks <span class="op">=</span> <span class="fl">300</span>, seed <span class="op">=</span> <span class="fl">2</span><span class="op">)</span></span>
 <span></span>
-<span><span class="va">attendance</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/abm_globals.html">abm_globals</a></span><span class="op">(</span><span class="va">r</span><span class="op">)</span><span class="op">$</span><span class="va">att1</span><span class="op">[</span><span class="op">-</span><span class="op">(</span><span class="fl">1</span><span class="op">:</span><span class="fl">100</span><span class="op">)</span><span class="op">]</span></span>
+<span><span class="va">attendance</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/abm_globals.html">abm_globals</a></span><span class="op">(</span><span class="va">r</span><span class="op">)</span><span class="op">$</span><span class="va">att1</span><span class="op">[</span><span class="op">-</span><span class="op">(</span><span class="fl">1</span><span class="op">:</span><span class="fl">101</span><span class="op">)</span><span class="op">]</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span>mean <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/mean.html" class="external-link">mean</a></span><span class="op">(</span><span class="va">attendance</span><span class="op">)</span>, <span class="fl">1</span><span class="op">)</span>, sd <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/stats/sd.html" class="external-link">sd</a></span><span class="op">(</span><span class="va">attendance</span><span class="op">)</span>, <span class="fl">1</span><span class="op">)</span>,</span>
 <span>  min <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/Extremes.html" class="external-link">min</a></span><span class="op">(</span><span class="va">attendance</span><span class="op">)</span>, max <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/Extremes.html" class="external-link">max</a></span><span class="op">(</span><span class="va">attendance</span><span class="op">)</span>,</span>
 <span>  distinct <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/length.html" class="external-link">length</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/unique.html" class="external-link">unique</a></span><span class="op">(</span><span class="va">attendance</span><span class="op">)</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="co">#&gt;     mean       sd      min      max distinct </span></span>
-<span><span class="co">#&gt;     60.8      3.7     54.0     69.0     16.0</span></span></code></pre></div>
-<p>Attendance now hovers near the capacity of 60 without ever repeating
-itself, which is Arthur’s result. Note how sensitive it is. With three
-predictors instead of ten it locks up again. The fluctuation is a
-property of the predictor pool, not something the model produces on its
-own.</p>
-<p><strong>What this exposes about the grammar.</strong> There is no
-compact way to give an agent a <em>set</em> of anything. Ten strategies
-over five lags is seventy columns, and only metaprogramming makes that
-bearable. A future <code><a href="../reference/abm_agents.html">abm_agents()</a></code> might accept matrix-valued
-or list-valued columns. Until then, build the spec with
-<code><a href="https://rdrr.io/r/base/do.call.html" class="external-link">do.call()</a></code>.</p>
+<span><span class="co">#&gt;     57.2      3.4     50.0     65.0     16.0</span></span></code></pre></div>
+<p>Attendance sits at the capacity of 60 and keeps moving, which is
+Arthur’s result. It is worth being precise about what “keeps moving”
+means, because the short version did not merely fluctuate less, it
+locked into a cycle. Over the last 200 ticks this run visits 16 distinct
+attendance levels and matches no lag up to six, so there is no period to
+find.</p>
+<p>The mechanism is the size of the predictor pool, not the inductive
+machinery on its own. Across four population draws, ten predictors per
+agent never settles (sd 1.8 to 3.7, ten to seventeen distinct levels, no
+period); three predictors locks into a cycle in two draws of four; one
+predictor locks in all four, which is the degenerate case the first run
+showed. Both seeds matter here: <code>abm_setup(seed =)</code> fixes
+which predictors the agents are born with, and it changes the answer as
+much as <code>abm_run(seed =)</code> does.</p>
+<div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">one_predictor</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/abm_setup.html">abm_setup</a></span><span class="op">(</span></span>
+<span>  agents <span class="op">=</span> <span class="fu"><a href="../reference/abm_agents.html">abm_agents</a></span><span class="op">(</span></span>
+<span>    n <span class="op">=</span> <span class="fl">100</span>,</span>
+<span>    w <span class="op">=</span> <span class="op">~</span><span class="fu"><a href="https://rdrr.io/r/base/lapply.html" class="external-link">lapply</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/seq.html" class="external-link">seq_len</a></span><span class="op">(</span><span class="va">n</span><span class="op">)</span>, <span class="kw">function</span><span class="op">(</span><span class="va">i</span><span class="op">)</span> <span class="fu"><a href="https://rdrr.io/r/base/matrix.html" class="external-link">matrix</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/stats/Uniform.html" class="external-link">runif</a></span><span class="op">(</span><span class="va">MEMORY</span> <span class="op">+</span> <span class="fl">1</span>, <span class="op">-</span><span class="fl">1</span>, <span class="fl">1</span><span class="op">)</span>, <span class="fl">1</span>, <span class="va">MEMORY</span> <span class="op">+</span> <span class="fl">1</span><span class="op">)</span><span class="op">)</span>,</span>
+<span>    e <span class="op">=</span> <span class="op">~</span><span class="fu"><a href="https://rdrr.io/r/base/lapply.html" class="external-link">lapply</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/seq.html" class="external-link">seq_len</a></span><span class="op">(</span><span class="va">n</span><span class="op">)</span>, <span class="kw">function</span><span class="op">(</span><span class="va">i</span><span class="op">)</span> <span class="fu"><a href="https://rdrr.io/r/base/numeric.html" class="external-link">numeric</a></span><span class="op">(</span><span class="fl">1</span><span class="op">)</span><span class="op">)</span>,</span>
+<span>    p <span class="op">=</span> <span class="op">~</span><span class="fu"><a href="https://rdrr.io/r/base/lapply.html" class="external-link">lapply</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/seq.html" class="external-link">seq_len</a></span><span class="op">(</span><span class="va">n</span><span class="op">)</span>, <span class="kw">function</span><span class="op">(</span><span class="va">i</span><span class="op">)</span> <span class="fu"><a href="https://rdrr.io/r/base/numeric.html" class="external-link">numeric</a></span><span class="op">(</span><span class="fl">1</span><span class="op">)</span><span class="op">)</span>,</span>
+<span>    go_today <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span>,</span>
+<span>  globals <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">as.list</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/stats/setNames.html" class="external-link">setNames</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/rep.html" class="external-link">rep</a></span><span class="op">(</span><span class="va">CAPACITY</span>, <span class="va">MEMORY</span><span class="op">)</span>, <span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste0</a></span><span class="op">(</span><span class="st">"att"</span>, <span class="fl">1</span><span class="op">:</span><span class="va">MEMORY</span><span class="op">)</span><span class="op">)</span><span class="op">)</span>,</span>
+<span>  seed <span class="op">=</span> <span class="fl">1</span><span class="op">)</span></span>
+<span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/utils/head.html" class="external-link">tail</a></span><span class="op">(</span><span class="fu"><a href="../reference/abm_globals.html">abm_globals</a></span><span class="op">(</span><span class="fu"><a href="../reference/abm_run.html">abm_run</a></span><span class="op">(</span><span class="va">one_predictor</span>, <span class="va">go</span>, ticks <span class="op">=</span> <span class="fl">300</span>, seed <span class="op">=</span> <span class="fl">2</span><span class="op">)</span><span class="op">)</span><span class="op">$</span><span class="va">att1</span>, <span class="fl">8</span><span class="op">)</span></span>
+<span><span class="co">#&gt; [1] 71 71 71 71 71 71 71 71</span></span></code></pre></div>
+<p><strong>What this exposes about the grammar.</strong> Nothing, as it
+turns out, and that is worth recording. This model was first written as
+seventy scalar columns and five blocks of
+<code><a href="https://rlang.r-lib.org/reference/new_formula.html" class="external-link">rlang::new_formula()</a></code> scaffolding, and it was described here
+as the model that proved the grammar could not give an agent a set. It
+can. What was missing was the idiom, not the capability: rules over list
+columns are <code><a href="https://rdrr.io/r/base/lapply.html" class="external-link">lapply()</a></code> and <code><a href="https://rdrr.io/r/base/mapply.html" class="external-link">mapply()</a></code> where you
+would otherwise write arithmetic, and nothing pointed that out. The
+minority game and the naming game found it first.</p>
 </div>
 <div class="section level2">
 <h2 id="ethnocentrism-cooperation-has-to-be-conditional-and-neighbours-have-to-be-kin">Ethnocentrism: cooperation has to be conditional, and neighbours
@@ -205,7 +205,7 @@ down.</p>
 <p>The real model gives every agent <strong>two</strong> strategy bits:
 whether to cooperate with someone of your own tag, and whether to
 cooperate with someone of a different one. That makes four types.</p>
-<div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">COST</span> <span class="op">&lt;-</span> <span class="fl">0.01</span>; <span class="va">BENEFIT</span> <span class="op">&lt;-</span> <span class="fl">0.03</span>; <span class="va">BASE_PTR</span> <span class="op">&lt;-</span> <span class="fl">0.12</span>; <span class="va">DEATH</span> <span class="op">&lt;-</span> <span class="fl">0.10</span>; <span class="va">CAPACITY</span> <span class="op">&lt;-</span> <span class="fl">800</span></span>
 <span></span>
 <span><span class="va">random_traits</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span></span>
@@ -222,7 +222,8 @@ cooperate with someone of a different one. That makes four types.</p>
 <span>      coop_in  <span class="op">=</span> <span class="op">~</span><span class="fu"><a href="https://rdrr.io/r/base/sample.html" class="external-link">sample</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="cn">TRUE</span>, <span class="cn">FALSE</span><span class="op">)</span>, <span class="va">n</span>, replace <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span>,</span>
 <span>      coop_out <span class="op">=</span> <span class="op">~</span><span class="fu"><a href="https://rdrr.io/r/base/sample.html" class="external-link">sample</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="cn">TRUE</span>, <span class="cn">FALSE</span><span class="op">)</span>, <span class="va">n</span>, replace <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span>,</span>
 <span>      ptr      <span class="op">=</span> <span class="va">BASE_PTR</span><span class="op">)</span>,</span>
-<span>    network <span class="op">=</span> <span class="va">network</span><span class="op">)</span></span>
+<span>    network <span class="op">=</span> <span class="va">network</span>,</span>
+<span>    seed    <span class="op">=</span> <span class="fl">1</span><span class="op">)</span></span>
 <span><span class="op">}</span></span>
 <span></span>
 <span><span class="va">label</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span><span class="va">r</span><span class="op">)</span> <span class="op">{</span></span>
@@ -239,42 +240,45 @@ cooperate with someone of a different one. That makes four types.</p>
 <p>Even with conditional strategies, a well-mixed population does not
 produce ethnocentrism. Everyone meets a random stranger, so the tag
 carries no information, and the cheapest strategy wins:</p>
-<div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">well_mixed_go</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/abm_go.html">abm_go</a></span><span class="op">(</span></span>
 <span>  <span class="fu"><a href="../reference/abm_match.html">abm_match</a></span><span class="op">(</span>pair <span class="op">=</span> <span class="st">"random"</span><span class="op">)</span>,</span>
 <span>  <span class="fu"><a href="../reference/abm_rules.html">abm_rules</a></span><span class="op">(</span><span class="va">give</span> <span class="op">~</span> <span class="fu"><a href="https://dplyr.tidyverse.org/reference/if_else.html" class="external-link">if_else</a></span><span class="op">(</span><span class="va">partner_tag</span> <span class="op">==</span> <span class="va">tag</span>, <span class="va">coop_in</span>, <span class="va">coop_out</span><span class="op">)</span><span class="op">)</span>,</span>
 <span>  <span class="fu"><a href="../reference/abm_rules.html">abm_rules</a></span><span class="op">(</span><span class="va">ptr</span> <span class="op">~</span> <span class="va">BASE_PTR</span> <span class="op">-</span> <span class="va">COST</span> <span class="op">*</span> <span class="va">give</span> <span class="op">+</span> <span class="va">BENEFIT</span> <span class="op">*</span> <span class="va">partner_give</span><span class="op">)</span>,</span>
 <span>  <span class="fu"><a href="../reference/abm_birth.html">abm_birth</a></span><span class="op">(</span>when <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/stats/Uniform.html" class="external-link">runif</a></span><span class="op">(</span><span class="fu"><a href="https://dplyr.tidyverse.org/reference/context.html" class="external-link">n</a></span><span class="op">(</span><span class="op">)</span><span class="op">)</span> <span class="op">&lt;</span> <span class="va">ptr</span><span class="op">)</span>,</span>
 <span>  <span class="fu"><a href="../reference/abm_death.html">abm_death</a></span><span class="op">(</span>when <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/stats/Uniform.html" class="external-link">runif</a></span><span class="op">(</span><span class="fu"><a href="https://dplyr.tidyverse.org/reference/context.html" class="external-link">n</a></span><span class="op">(</span><span class="op">)</span><span class="op">)</span> <span class="op">&lt;</span> <span class="va">DEATH</span> <span class="op">+</span> <span class="fl">0.25</span> <span class="op">*</span> <span class="fu"><a href="https://rdrr.io/r/base/Extremes.html" class="external-link">pmax</a></span><span class="op">(</span><span class="fl">0</span>, <span class="op">(</span><span class="fu"><a href="https://dplyr.tidyverse.org/reference/context.html" class="external-link">n</a></span><span class="op">(</span><span class="op">)</span> <span class="op">-</span> <span class="va">CAPACITY</span><span class="op">)</span> <span class="op">/</span> <span class="va">CAPACITY</span><span class="op">)</span><span class="op">)</span>,</span>
-<span>  <span class="fu"><a href="https://rdrr.io/r/base/do.call.html" class="external-link">do.call</a></span><span class="op">(</span><span class="va">abm_birth</span>, <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>n <span class="op">=</span> <span class="fl">8</span>, cost <span class="op">=</span> <span class="va">random_traits</span><span class="op">)</span><span class="op">)</span></span>
+<span>  <span class="fu"><a href="../reference/abm_birth.html">abm_birth</a></span><span class="op">(</span>n <span class="op">=</span> <span class="fl">8</span>, inherit <span class="op">=</span> <span class="va">random_traits</span><span class="op">)</span></span>
 <span><span class="op">)</span></span>
 <span></span>
 <span><span class="va">mixed</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/abm_run.html">abm_run</a></span><span class="op">(</span><span class="fu">start_pop</span><span class="op">(</span><span class="op">)</span>, <span class="va">well_mixed_go</span>, ticks <span class="op">=</span> <span class="fl">400</span>, seed <span class="op">=</span> <span class="fl">1</span><span class="op">)</span></span>
 <span></span>
 <span><span class="fu">shares</span><span class="op">(</span><span class="va">mixed</span>, <span class="fl">400</span><span class="op">)</span></span>
 <span><span class="co">#&gt; x</span></span>
-<span><span class="co">#&gt;       egoist ethnocentric     altruist      traitor </span></span>
-<span><span class="co">#&gt;        0.336        0.260        0.216        0.188</span></span></code></pre></div>
-<p>Egoists, with ethnocentrics behind them. This is not a failure. It is
-Hammond and Axelrod’s own control condition, and it is the point of
-their paper: ethnocentrism needs <em>local</em> structure. Offspring
-have to settle next to their parents, so that your neighbours are
-disproportionately your kin, so that “same tag” actually predicts “will
-cooperate with me”.</p>
-<p>That is what the model needs and it is the one thing the package
-could not express: <code>attach_via</code> could put a newborn next to a
-random agent or a well-connected one, but not next to its own parent.
-<code>from = "parent"</code> closes that gap.</p>
-<div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
+<span><span class="co">#&gt;       egoist     altruist ethnocentric      traitor </span></span>
+<span><span class="co">#&gt;        0.514        0.215        0.159        0.111</span></span></code></pre></div>
+<p>Egoists, at half the population. This is not a failure. It is Hammond
+and Axelrod’s own control condition, and it is the point of their paper:
+ethnocentrism needs <em>local</em> structure. Offspring have to settle
+next to their parents, so that your neighbours are disproportionately
+your kin, so that “same tag” actually predicts “will cooperate with
+me”.</p>
+<p>That is what the model needs, and it took two arguments the package
+did not have. <code>attach_via</code> could put a newborn next to a
+random agent or a well-connected one, but not next to its own parent,
+which <code>from = "parent"</code> fixed. And a newborn got exactly one
+edge, which is not a place in a neighbourhood but a leaf hanging off
+one; <code>links</code> gives it the degree the model means. Both births
+below take four links, the degree the population starts with.</p>
+<div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">local_go</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/abm_go.html">abm_go</a></span><span class="op">(</span></span>
 <span>  <span class="fu"><a href="../reference/abm_match.html">abm_match</a></span><span class="op">(</span>pair <span class="op">=</span> <span class="st">"network"</span><span class="op">)</span>,</span>
 <span>  <span class="fu"><a href="../reference/abm_rules.html">abm_rules</a></span><span class="op">(</span><span class="va">give</span> <span class="op">~</span> <span class="fu"><a href="https://dplyr.tidyverse.org/reference/if_else.html" class="external-link">if_else</a></span><span class="op">(</span><span class="va">partner_tag</span> <span class="op">==</span> <span class="va">tag</span>, <span class="va">coop_in</span>, <span class="va">coop_out</span><span class="op">)</span><span class="op">)</span>,</span>
 <span>  <span class="fu"><a href="../reference/abm_rules.html">abm_rules</a></span><span class="op">(</span><span class="va">ptr</span> <span class="op">~</span> <span class="va">BASE_PTR</span> <span class="op">-</span> <span class="va">COST</span> <span class="op">*</span> <span class="va">give</span> <span class="op">+</span> <span class="va">BENEFIT</span> <span class="op">*</span> <span class="va">partner_give</span><span class="op">)</span>,</span>
-<span>  <span class="fu"><a href="../reference/abm_birth.html">abm_birth</a></span><span class="op">(</span>when <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/stats/Uniform.html" class="external-link">runif</a></span><span class="op">(</span><span class="fu"><a href="https://dplyr.tidyverse.org/reference/context.html" class="external-link">n</a></span><span class="op">(</span><span class="op">)</span><span class="op">)</span> <span class="op">&lt;</span> <span class="va">ptr</span>,</span>
+<span>  <span class="fu"><a href="../reference/abm_birth.html">abm_birth</a></span><span class="op">(</span>when <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/stats/Uniform.html" class="external-link">runif</a></span><span class="op">(</span><span class="fu"><a href="https://dplyr.tidyverse.org/reference/context.html" class="external-link">n</a></span><span class="op">(</span><span class="op">)</span><span class="op">)</span> <span class="op">&lt;</span> <span class="va">ptr</span>, links <span class="op">=</span> <span class="fl">4</span>,</span>
 <span>            attach_via <span class="op">=</span> <span class="fu"><a href="../reference/abm_match.html">abm_match</a></span><span class="op">(</span>pair <span class="op">=</span> <span class="st">"network"</span>, from <span class="op">=</span> <span class="st">"parent"</span><span class="op">)</span><span class="op">)</span>,</span>
 <span>  <span class="fu"><a href="../reference/abm_death.html">abm_death</a></span><span class="op">(</span>when <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/stats/Uniform.html" class="external-link">runif</a></span><span class="op">(</span><span class="fu"><a href="https://dplyr.tidyverse.org/reference/context.html" class="external-link">n</a></span><span class="op">(</span><span class="op">)</span><span class="op">)</span> <span class="op">&lt;</span> <span class="va">DEATH</span> <span class="op">+</span> <span class="fl">0.25</span> <span class="op">*</span> <span class="fu"><a href="https://rdrr.io/r/base/Extremes.html" class="external-link">pmax</a></span><span class="op">(</span><span class="fl">0</span>, <span class="op">(</span><span class="fu"><a href="https://dplyr.tidyverse.org/reference/context.html" class="external-link">n</a></span><span class="op">(</span><span class="op">)</span> <span class="op">-</span> <span class="va">CAPACITY</span><span class="op">)</span> <span class="op">/</span> <span class="va">CAPACITY</span><span class="op">)</span><span class="op">)</span>,</span>
-<span>  <span class="fu"><a href="https://rdrr.io/r/base/do.call.html" class="external-link">do.call</a></span><span class="op">(</span><span class="va">abm_birth</span>, <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>n <span class="op">=</span> <span class="fl">8</span>, attach_via <span class="op">=</span> <span class="fu"><a href="../reference/abm_match.html">abm_match</a></span><span class="op">(</span>pair <span class="op">=</span> <span class="st">"network"</span><span class="op">)</span>,</span>
-<span>                          cost <span class="op">=</span> <span class="va">random_traits</span><span class="op">)</span><span class="op">)</span></span>
+<span>  <span class="fu"><a href="../reference/abm_birth.html">abm_birth</a></span><span class="op">(</span>n <span class="op">=</span> <span class="fl">8</span>, links <span class="op">=</span> <span class="fl">4</span>, inherit <span class="op">=</span> <span class="va">random_traits</span>,</span>
+<span>            attach_via <span class="op">=</span> <span class="fu"><a href="../reference/abm_match.html">abm_match</a></span><span class="op">(</span>pair <span class="op">=</span> <span class="st">"network"</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="op">)</span></span>
 <span></span>
 <span><span class="va">local</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/abm_run.html">abm_run</a></span><span class="op">(</span><span class="fu">start_pop</span><span class="op">(</span><span class="fu"><a href="../reference/abm_network.html">abm_network</a></span><span class="op">(</span>type <span class="op">=</span> <span class="st">"random"</span>, degree <span class="op">=</span> <span class="fl">4</span><span class="op">)</span><span class="op">)</span>, <span class="va">local_go</span>,</span>
@@ -282,20 +286,49 @@ random agent or a well-connected one, but not next to its own parent.
 <span></span>
 <span><span class="fu">shares</span><span class="op">(</span><span class="va">local</span>, <span class="fl">400</span><span class="op">)</span></span>
 <span><span class="co">#&gt; x</span></span>
-<span><span class="co">#&gt;     altruist ethnocentric       egoist      traitor </span></span>
-<span><span class="co">#&gt;        0.370        0.361        0.136        0.134</span></span></code></pre></div>
-<p>Ethnocentrics now lead, and egoists are down to about a third of
-their well-mixed share. The clustering is visible directly in the
-network:</p>
-<div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
+<span><span class="co">#&gt;     altruist ethnocentric      traitor       egoist </span></span>
+<span><span class="co">#&gt;        0.375        0.365        0.138        0.122</span></span></code></pre></div>
+<p>Egoists collapse, from about half the population to about an eighth,
+and the two strategies that cooperate with their own kind take three
+quarters of it between them. That is the paper’s result and it
+replicates: over five population draws egoists average 0.37 well mixed
+and 0.15 locally.</p>
+<p>Which of the two in-group strategies leads is a weaker claim than the
+vignette used to make. Ethnocentrics average 0.37 against altruists’
+0.33 across those five draws, but they lead in only two of them, and
+this seed is one where the altruists are marginally ahead. The reason is
+visible in the network: clustering this strong means out-group
+encounters are rare, and a strategy that pays a cost to refuse them
+saves little by doing so.</p>
+<div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">edges</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/abm_edges.html">abm_edges</a></span><span class="op">(</span><span class="va">local</span><span class="op">)</span></span>
 <span><span class="va">final</span> <span class="op">&lt;-</span> <span class="va">local</span><span class="op">[</span><span class="va">local</span><span class="op">$</span><span class="va">tick</span> <span class="op">==</span> <span class="fl">400</span>, <span class="op">]</span></span>
 <span><span class="va">tags</span>  <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/setNames.html" class="external-link">setNames</a></span><span class="op">(</span><span class="va">final</span><span class="op">$</span><span class="va">tag</span>, <span class="va">final</span><span class="op">$</span><span class="va">.id</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/mean.html" class="external-link">mean</a></span><span class="op">(</span><span class="va">tags</span><span class="op">[</span><span class="fu"><a href="https://rdrr.io/r/base/character.html" class="external-link">as.character</a></span><span class="op">(</span><span class="va">edges</span><span class="op">$</span><span class="va">from</span><span class="op">)</span><span class="op">]</span> <span class="op">==</span> <span class="va">tags</span><span class="op">[</span><span class="fu"><a href="https://rdrr.io/r/base/character.html" class="external-link">as.character</a></span><span class="op">(</span><span class="va">edges</span><span class="op">$</span><span class="va">to</span><span class="op">)</span><span class="op">]</span>, na.rm <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span>
-<span><span class="co">#&gt; [1] 0.953168</span></span></code></pre></div>
+<span><span class="co">#&gt; [1] 0.8365911</span></span></code></pre></div>
 <p>Around 0.5 would mean neighbours are random with respect to tag. What
-you get is close to 1: local reproduction has sorted the population into
-same-tag neighbourhoods, and that is the whole mechanism.</p>
+you get is around 0.84: local reproduction has sorted the population
+into same-tag neighbourhoods, and that is the whole mechanism.</p>
+<div class="section level3">
+<h3 id="what-one-edge-per-newborn-was-doing">What one edge per newborn was doing<a class="anchor" aria-label="anchor" href="#what-one-edge-per-newborn-was-doing"></a>
+</h3>
+<p><code>links</code> is not decoration, and the reason is worth
+showing, because the model runs perfectly well without it and reports a
+<em>better</em> number.</p>
+<p>With one edge per newborn, deaths prune four edges and births replace
+one. The 4-regular graph the run starts on is gone within twenty-five
+ticks. Over five draws it ends at a mean degree of 0.97, with 27% of the
+population joined to nobody at all and sitting out every match. What is
+left is a forest of parent-child pairs, and 0.955 of those edges join
+agents of the same tag, which is close to 1 for the trivial reason that
+most of them are a parent and its own child.</p>
+<p>With <code>links = 4</code> the network is a network: mean degree
+3.3, 5% isolated, and a same-tag share of 0.85 that describes
+neighbourhoods rather than kinship dyads. The strategy shares barely
+move, 0.39 ethnocentrics against 0.37, which is the good outcome: the
+mechanism was real, and the eroded network was overstating the evidence
+for it.</p>
+</div>
 </div>
 <div class="section level2">
 <h2 id="zakah-nobody-is-poor-in-a-model-with-no-risk">Zakah: nobody is poor in a model with no risk<a class="anchor" aria-label="anchor" href="#zakah-nobody-is-poor-in-a-model-with-no-risk"></a>
@@ -303,7 +336,7 @@ same-tag neighbourhoods, and that is the whole mechanism.</p>
 <p>The zakah model collects 2.5% from every household above the
 <em>nisab</em> and shares it among households below a poverty line. As
 written it stops working after about ten ticks:</p>
-<div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">NISAB</span> <span class="op">&lt;-</span> <span class="fl">100</span></span>
 <span><span class="va">consume</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/abm_rules.html">abm_rules</a></span><span class="op">(</span><span class="va">wealth</span> <span class="op">~</span> <span class="va">wealth</span> <span class="op">+</span> <span class="va">income</span> <span class="op">-</span> <span class="op">(</span><span class="fl">0.6</span> <span class="op">*</span> <span class="va">income</span> <span class="op">+</span> <span class="fl">0.02</span> <span class="op">*</span> <span class="va">wealth</span><span class="op">)</span><span class="op">)</span></span>
 <span></span>
@@ -324,7 +357,7 @@ written it stops working after about ten ticks:</p>
 <span><span class="co"># how many households are below the poverty line, over time?</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/tapply.html" class="external-link">tapply</a></span><span class="op">(</span><span class="va">short</span><span class="op">$</span><span class="va">wealth</span> <span class="op">&lt;</span> <span class="fl">30</span>, <span class="va">short</span><span class="op">$</span><span class="va">tick</span>, <span class="va">sum</span><span class="op">)</span><span class="op">[</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"0"</span>, <span class="st">"5"</span>, <span class="st">"10"</span>, <span class="st">"50"</span>, <span class="st">"100"</span><span class="op">)</span><span class="op">]</span></span>
 <span><span class="co">#&gt;   0   5  10  50 100 </span></span>
-<span><span class="co">#&gt;  46   0   0   0   0</span></span></code></pre></div>
+<span><span class="co">#&gt;  54   0   0   0   0</span></span></code></pre></div>
 <p>The pool keeps being collected and stops being distributed, so zakah
 becomes a flat tax that goes nowhere.</p>
 <p>Two things are wrong, and only one of them is the threshold.</p>
@@ -341,7 +374,7 @@ matter where you put the line. A redistribution model with nothing to
 redistribute against is measuring nothing.</p>
 <p>Put in a source of dispersion, meaning income that moves plus
 occasional large losses, and the model has something to say:</p>
-<div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">shocks</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/abm_rules.html">abm_rules</a></span><span class="op">(</span></span>
 <span>  <span class="va">income</span> <span class="op">~</span> <span class="fu"><a href="https://rdrr.io/r/base/Log.html" class="external-link">exp</a></span><span class="op">(</span><span class="fl">0.9</span> <span class="op">*</span> <span class="fu"><a href="https://rdrr.io/r/base/Log.html" class="external-link">log</a></span><span class="op">(</span><span class="va">income</span><span class="op">)</span> <span class="op">+</span> <span class="fl">0.1</span> <span class="op">*</span> <span class="fl">3</span> <span class="op">+</span> <span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">rnorm</a></span><span class="op">(</span><span class="fu"><a href="https://dplyr.tidyverse.org/reference/context.html" class="external-link">n</a></span><span class="op">(</span><span class="op">)</span>, <span class="fl">0</span>, <span class="fl">0.15</span><span class="op">)</span><span class="op">)</span>,  <span class="co"># AR(1) in logs</span></span>
 <span>  <span class="va">wealth</span> <span class="op">~</span> <span class="va">wealth</span> <span class="op">-</span> <span class="fu"><a href="https://dplyr.tidyverse.org/reference/if_else.html" class="external-link">if_else</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/stats/Uniform.html" class="external-link">runif</a></span><span class="op">(</span><span class="fu"><a href="https://dplyr.tidyverse.org/reference/context.html" class="external-link">n</a></span><span class="op">(</span><span class="op">)</span><span class="op">)</span> <span class="op">&lt;</span> <span class="fl">0.03</span>, <span class="va">wealth</span> <span class="op">*</span> <span class="fl">0.6</span>, <span class="fl">0</span><span class="op">)</span>     <span class="co"># occasional hit</span></span>
@@ -366,7 +399,7 @@ occasional large losses, and the model has something to say:</p>
 <span></span>
 <span><span class="va">with_zakah</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/abm_run.html">abm_run</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/stats/start.html" class="external-link">start</a></span><span class="op">(</span><span class="op">)</span>, <span class="va">zakah_go</span>,    ticks <span class="op">=</span> <span class="fl">300</span>, seed <span class="op">=</span> <span class="fl">12</span><span class="op">)</span></span>
 <span><span class="va">baseline</span>   <span class="op">&lt;-</span> <span class="fu"><a href="../reference/abm_run.html">abm_run</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/stats/start.html" class="external-link">start</a></span><span class="op">(</span><span class="op">)</span>, <span class="va">baseline_go</span>, ticks <span class="op">=</span> <span class="fl">300</span>, seed <span class="op">=</span> <span class="fl">12</span><span class="op">)</span></span></code></pre></div>
-<div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">gini</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span><span class="va">x</span><span class="op">)</span> <span class="op">{</span> <span class="va">x</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/sort.html" class="external-link">sort</a></span><span class="op">(</span><span class="va">x</span><span class="op">)</span>; <span class="va">n</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/length.html" class="external-link">length</a></span><span class="op">(</span><span class="va">x</span><span class="op">)</span>; <span class="fu"><a href="https://rdrr.io/r/base/sum.html" class="external-link">sum</a></span><span class="op">(</span><span class="op">(</span><span class="fl">2</span> <span class="op">*</span> <span class="fu"><a href="https://rdrr.io/r/base/seq.html" class="external-link">seq_len</a></span><span class="op">(</span><span class="va">n</span><span class="op">)</span> <span class="op">-</span> <span class="va">n</span> <span class="op">-</span> <span class="fl">1</span><span class="op">)</span> <span class="op">*</span> <span class="va">x</span><span class="op">)</span> <span class="op">/</span> <span class="op">(</span><span class="va">n</span> <span class="op">*</span> <span class="fu"><a href="https://rdrr.io/r/base/sum.html" class="external-link">sum</a></span><span class="op">(</span><span class="va">x</span><span class="op">)</span><span class="op">)</span> <span class="op">}</span></span>
 <span><span class="va">compare</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span><span class="va">r</span><span class="op">)</span> <span class="op">{</span></span>
 <span>  <span class="va">w</span> <span class="op">&lt;-</span> <span class="va">r</span><span class="op">$</span><span class="va">wealth</span><span class="op">[</span><span class="va">r</span><span class="op">$</span><span class="va">tick</span> <span class="op">==</span> <span class="fl">300</span><span class="op">]</span></span>
@@ -376,10 +409,10 @@ occasional large losses, and the model has something to say:</p>
 <span><span class="fu"><a href="https://rdrr.io/r/base/cbind.html" class="external-link">rbind</a></span><span class="op">(</span>baseline <span class="op">=</span> <span class="fu">compare</span><span class="op">(</span><span class="va">baseline</span><span class="op">)</span>, zakah <span class="op">=</span> <span class="fu">compare</span><span class="op">(</span><span class="va">with_zakah</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="co">#&gt;          p10.10% median  gini</span></span>
 <span><span class="co">#&gt; baseline   108.1  202.1 0.249</span></span>
-<span><span class="co">#&gt; zakah      144.3  212.0 0.173</span></span></code></pre></div>
+<span><span class="co">#&gt; zakah      142.6  212.2 0.174</span></span></code></pre></div>
 <p>The bottom decile is higher and the Gini coefficient is a third
 lower. The recipient pool no longer empties:</p>
-<div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb13"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">poor_share</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span><span class="va">r</span><span class="op">)</span> <span class="op">{</span></span>
 <span>  <span class="va">pl</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/abm_globals.html">abm_globals</a></span><span class="op">(</span><span class="va">r</span><span class="op">)</span><span class="op">$</span><span class="va">poverty_line</span><span class="op">[</span><span class="fu"><a href="https://rdrr.io/r/base/match.html" class="external-link">match</a></span><span class="op">(</span><span class="va">r</span><span class="op">$</span><span class="va">tick</span>, <span class="fu"><a href="../reference/abm_globals.html">abm_globals</a></span><span class="op">(</span><span class="va">r</span><span class="op">)</span><span class="op">$</span><span class="va">tick</span><span class="op">)</span><span class="op">]</span></span>
 <span>  <span class="fu"><a href="https://rdrr.io/r/base/tapply.html" class="external-link">tapply</a></span><span class="op">(</span><span class="va">r</span><span class="op">$</span><span class="va">wealth</span> <span class="op">&lt;</span> <span class="va">pl</span>, <span class="va">r</span><span class="op">$</span><span class="va">tick</span>, <span class="va">mean</span><span class="op">)</span></span>
@@ -411,10 +444,20 @@ not its result.</li>
 redistribute against, and the threshold question is a distraction from
 that.</li>
 </ul>
-<p>Two of the three needed no change to the package. The third needed
-one argument, <code>from = "parent"</code>, which was a genuine gap:
-there was no way to put an offspring next to its parent, and that is a
-mechanism a lot of spatial and kin-structured models depend on.</p>
+<p>Two of the three needed no change to the package. Ethnocentrism
+needed two arguments, and both were the same missing idea: a newborn has
+to arrive <em>somewhere</em>. <code>from = "parent"</code> says where,
+and <code>links</code> says how much of a neighbourhood it gets when it
+lands. Without the first there is no kin structure. Without the second
+the kin structure eats the network.</p>
+<p>There is a fourth thing to take from this, which is about reading a
+result rather than writing a model. Each of these corrections was
+checked by asking whether the number the model reports means what the
+surrounding sentence claims. The uncorrected El Farol had a plausible
+attendance series that was a two-cycle. The uncorrected ethnocentrism
+had a same-tag edge share of 0.96 that was measuring a forest of
+parent-child pairs. Both are the kind of number a model happily produces
+and a reader happily accepts.</p>
 </div>
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>
     </nav></aside>

@@ -596,6 +596,18 @@ Each offspring is a row of its own before `inherit` is evaluated, so a
 mutation drawn there differs from sibling to sibling rather than being
 drawn once and copied.
 
+In a model with a network, a newborn is nowhere until `attach_via` puts
+it somewhere: an `abm_match(pair = "network")` spec that names who it
+attaches to, where `from = "parent"` is next to the agent it was cloned
+from and `from = "random_edge"` is degree-proportional. `links` says how
+many edges it arrives with, one by default. That default is worth
+thinking about whenever agents also die, because a death prunes a full
+degree’s worth of edges and a one-edge birth puts back a single link,
+which erodes the network over a long run. With `from = "parent"`,
+`links` takes the parent and a sample of the parent’s own neighbours, so
+the newborn arrives in a neighbourhood rather than on the end of a
+single thread.
+
 ## Reproducibility
 
 Agent-based models are stochastic, so `seed` is an argument to

@@ -372,6 +372,8 @@ c(max_degree = max(deg), median_degree = median(deg))
 ```
 
 **What it introduced:** the only way the network changes during a run.
+One edge per new node here; `abm_birth(links = m)` gives the general
+form, *m* edges per node, each drawn degree-proportionally.
 `from = "random_edge"` reuses NetLogo’s trick. Pick an edge uniformly,
 then one of its endpoints, and selection comes out degree-proportional
 without anyone storing a degree.

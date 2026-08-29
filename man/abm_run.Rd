@@ -25,9 +25,11 @@ model whose population grows needs this: recording every agent of every tick
 is what makes such a run die of memory rather than merely take a while.}
 
 \item{progress}{Whether to show a progress bar with an ETA while the run is
-going. \code{NULL} (the default) leaves it to \code{cli}, which draws one only for an
-interactive session and only once the run has been going long enough to be
-worth reporting. \code{TRUE} forces it on from the first tick, \code{FALSE} off.}
+going. \code{NULL} (the default) follows the session: a bar at an interactive
+console once the run has been going long enough to be worth reporting, and
+nothing while knitr, pkgdown or \verb{R CMD check} is running the code, so it
+never turns up in a rendered page. \code{TRUE} forces it on from the first tick,
+\code{FALSE} off.}
 }
 \value{
 An \code{abm_result}: a tibble of one row per agent per tick, carrying

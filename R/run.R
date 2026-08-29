@@ -43,9 +43,11 @@
 #'   model whose population grows needs this: recording every agent of every tick
 #'   is what makes such a run die of memory rather than merely take a while.
 #' @param progress Whether to show a progress bar with an ETA while the run is
-#'   going. `NULL` (the default) leaves it to `cli`, which draws one only for an
-#'   interactive session and only once the run has been going long enough to be
-#'   worth reporting. `TRUE` forces it on from the first tick, `FALSE` off.
+#'   going. `NULL` (the default) follows the session: a bar at an interactive
+#'   console once the run has been going long enough to be worth reporting, and
+#'   nothing while knitr, pkgdown or `R CMD check` is running the code, so it
+#'   never turns up in a rendered page. `TRUE` forces it on from the first tick,
+#'   `FALSE` off.
 #'
 #' @return An `abm_result`: a tibble of one row per agent per tick, carrying
 #'   the run's globals and final network as attributes.
@@ -79,7 +81,11 @@ abm_run <- function(model, go, ticks, seed = NULL, record = "all",
     abm_abort("{.arg progress} must be {.code TRUE}, {.code FALSE} or {.code NULL}.",
               class = "tidyABM_bad_progress")
   }
-  show_progress <- !isFALSE(progress) && ticks > 0L
+  # `NULL` follows the session: a bar at a console, nothing when knitr, pkgdown
+  # or `R CMD check` is running the code, so it never lands in a rendered page.
+  # `TRUE` overrides that and also drops cli's wait, so it shows from tick 1.
+  show_progress <- ticks > 0L &&
+    (if (is.null(progress)) rlang::is_interactive() else progress)
   if (isTRUE(progress)) {
     rlang::local_options(cli.progress_show_after = 0)
   }

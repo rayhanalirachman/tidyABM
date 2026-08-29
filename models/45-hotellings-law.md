@@ -83,11 +83,14 @@ moves would random-walk the pair into a wall. Neither is a limitation of the
 grammar, but both are the kind of thing that makes a hill-climbing ABM quietly
 produce a plausible wrong answer.*
 
-*One real limitation did show up. `pair = "nearest"` has a single fixed metric,
-Euclidean distance in the `by` columns. The price-competition version of this
-model, d'Aspremont, Gabszewicz & Thisse (1979), where shops set prices too and
-the answer flips to* maximum *differentiation, needs "nearest in price plus
-travel cost", which the mode cannot express. See Open items.*
+*One real limitation showed up here and was closed later. `pair = "nearest"`
+had a single fixed metric, Euclidean distance in the `by` columns, and the
+price-competition version of this model, d'Aspremont, Gabszewicz & Thisse
+(1979), where shops set prices too and the answer flips to* maximum
+*differentiation, needs "nearest in price plus travel cost". That is
+`cost = price + travel * abs(x - own_x)`, an expression the chooser minimises
+instead of a distance, which the garbage can (48) forced and which this model
+had asked for first.*
 
 ---
 

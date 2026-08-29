@@ -11,8 +11,11 @@
 
 **Package**
 
-The chromosome has no vector column to live in, so it is `L` columns and the
-rules are built with `do.call()`:
+The chromosome is `L` scalar columns here and the rules are built with
+`do.call()`. A list column would hold the whole genome as one vector per agent,
+the way model 41 holds a strategy table; this page keeps the version it was
+written with, and the crossover rule is the one thing that reads better spread
+across columns, since it is a different parent per bit:
 
 ```r
 L <- 20; N <- 100                      # 20 bits, 100 individuals
@@ -70,10 +73,11 @@ Across mutation rates:
 
 The error catastrophe, at the rate the NetLogo model puts it.
 
-*Needed nothing new, and it is the third model to hit the same wall.* Like El
-Farol's weights and PD N-Person's memory, a chromosome is a vector and the
-grammar has only scalar columns, so a 20-bit genome is 20 columns and 40
-programmatically built rules. What did work cleanly: formula objects built with
+*Needed nothing new.* It was filed as the third model to hit the same wall as El
+Farol's weights and PD N-Person's memory, a vector of per-agent state with only
+scalar columns to put it in. That wall was not there: model 41 holds its
+strategy table in a list column, and a 20-bit genome fits in one too. What did
+work cleanly here: formula objects built with
 `rlang::new_formula()` go straight into `abm_rules()` and `do.call(abm_go, ...)`,
 so a model whose *shape* depends on a parameter is writable without any string
 manipulation.

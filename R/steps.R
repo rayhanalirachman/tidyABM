@@ -218,9 +218,9 @@ abm_global <- function(..., .by = NULL) {
 
 # Population -------------------------------------------------------------
 
-new_abm_birth <- function(when, n, times, cost, inherit, attach_via) {
+new_abm_birth <- function(when, n, times, cost, inherit, attach_via, links) {
   structure(list(when = when, n = n, times = times, cost = cost,
-                 inherit = inherit, attach_via = attach_via),
+                 inherit = inherit, attach_via = attach_via, links = links),
             class = c("abm_birth", "abm_step"))
 }
 
@@ -250,6 +250,8 @@ new_abm_birth <- function(when, n, times, cost, inherit, attach_via) {
 #' @param cost One or more `column ~ expression` formulas applied to the parent
 #'   *and* the newborn after the split, expressing what reproduction costs, for
 #'   example `cost = resource ~ resource / 2` to halve a resource between them.
+#'   Only `when` has a parent to charge; with `n` there is none, so columns the
+#'   new agents are to be given belong in `inherit`.
 #' @param inherit One or more `column ~ expression` formulas applied to the
 #'   newborn *only*, expressing what the offspring gets that the parent does not
 #'   keep: a reset age, a mutated trait, a sex drawn at birth. The expressions
@@ -261,6 +263,16 @@ new_abm_birth <- function(when, n, times, cost, inherit, attach_via) {
 #'   connect each newborn to an existing agent. This is the only way the network
 #'   grows during a run; `from = "random_edge"` gives degree-proportional
 #'   (preferential) attachment.
+#' @param links How many edges the newborn gets, one by default. One edge makes
+#'   the newborn a leaf, so a population that also dies erodes whatever network
+#'   it started with into a forest of parent-child pairs, however dense that
+#'   network was. `links` gives the newborn the degree the model means instead.
+#'   With `from = "parent"` it takes the parent *and* a sample of the parent's
+#'   own neighbours, which is what "the offspring settles in a site next to its
+#'   parent" means on a lattice; with `from = "random_edge"` it is the *m*
+#'   degree-proportional edges per node that preferential attachment is defined
+#'   with. Targets are distinct, and a newborn takes what there is when there
+#'   are fewer than `links` of them.
 #'
 #' @return An `abm_birth` step object.
 #' @seealso [abm_go()], which lists every step and fixes the order they run
@@ -274,13 +286,18 @@ new_abm_birth <- function(when, n, times, cost, inherit, attach_via) {
 #' abm_birth(when = mature, times = rpois(dplyr::n(), 2), inherit = age ~ 0)
 #' abm_birth(n = 1, attach_via = abm_match(pair = "network", from = "random_edge"))
 #'
+#' # the offspring takes a place beside its parent, with a neighbourhood of its
+#' # own rather than a single edge back to the parent
+#' abm_birth(when = runif(dplyr::n()) < ptr, links = 4,
+#'           attach_via = abm_match(pair = "network", from = "parent"))
+#'
 #' # a child of two parents, with its own age and a mutated trait
 #' abm_birth(
 #'   when = sex == "female",
 #'   inherit = list(age ~ 0, trait ~ (trait + partner_trait) / 2 + rnorm(n(), 0, 0.01))
 #' )
 abm_birth <- function(when = NULL, n = NULL, times = NULL, cost = NULL,
-                      inherit = NULL, attach_via = NULL) {
+                      inherit = NULL, attach_via = NULL, links = NULL) {
   when <- enquo_or_null(rlang::enquo(when))
   times <- enquo_or_null(rlang::enquo(times))
 
@@ -322,8 +339,22 @@ abm_birth <- function(when = NULL, n = NULL, times = NULL, cost = NULL,
       )
     }
   }
+  if (!is.null(links)) {
+    if (is.null(attach_via)) {
+      abm_abort(
+        c("{.arg links} counts the edges {.arg attach_via} makes.",
+          "i" = "Supply {.arg attach_via} too, or drop {.arg links}."),
+        class = "tidyABM_missing_arg"
+      )
+    }
+    if (!rlang::is_scalar_integerish(links) || is.na(links) || links < 1) {
+      abm_abort("{.arg links} must be a single whole number of at least 1.",
+                class = "tidyABM_bad_links")
+    }
+    links <- as.integer(links)
+  }
   new_abm_birth(when, if (is.null(n)) NULL else as.integer(n), times, cost,
-                inherit, attach_via)
+                inherit, attach_via, links)
 }
 
 new_abm_death <- function(when, prune_edges) {
@@ -406,7 +437,8 @@ print.abm_birth <- function(x, ...) {
     if (!is.null(x$times)) "times = {.code {deparse1(rlang::quo_get_expr(x$times))}}",
     if (!is.null(x$cost)) "cost = {.code {rule_labels(list(rules = x$cost))}}",
     if (!is.null(x$inherit)) "inherit = {.code {rule_labels(list(rules = x$inherit))}}",
-    if (!is.null(x$attach_via)) 'attach_via = network ({.val {x$attach_via$from}})'
+    if (!is.null(x$attach_via)) 'attach_via = network ({.val {x$attach_via$from}})',
+    if (!is.null(x$links)) "links = {x$links}"
   )
   cli::cli_bullets(stats::setNames(bits, rep("*", length(bits))))
   invisible(x)

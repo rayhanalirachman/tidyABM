@@ -69,7 +69,7 @@ bare `abm_match()`.
 | `abm_draw(name ~ expr, .each =)` | attaches a value to every edge, readable from both ends |
 | `abm_tell(col ~ expr, to =, when =, .resolve =, .order =)` | writes into *another* agent's row |
 | `abm_global(name ~ agg, .by =)` | updates a population-level value, or a table of them |
-| `abm_birth(when =, n =, times =, cost =, inherit =, attach_via =)` | adds agents |
+| `abm_birth(when =, n =, times =, cost =, inherit =, attach_via =, links =)` | adds agents |
 | `abm_death(when =, prune_edges =)` | removes them |
 | `abm_link(when =)` / `abm_unlink(when =)` | adds / removes network edges |
 | `abm_repeat(..., until =, max =)` | replays a block of steps inside the tick |
@@ -91,6 +91,17 @@ need not have picked you:
   that minimises the expression named by `cost`
 - `"network"` takes a neighbour from the model's network. `from = "random_edge"`
   and `from = "parent"` work inside `abm_birth(attach_via =)`
+
+A newborn gets one edge unless `abm_birth(links =)` says otherwise, and one edge
+makes it a leaf. In a model that also kills agents that is not a detail: deaths
+prune whatever degree the network started with and births replace it with a
+single link, so a 4-regular graph erodes into a forest of parent-child pairs
+within a few dozen ticks. `links` is the degree the model means. With
+`from = "parent"` the newborn takes the parent *and* a sample of the parent's
+own neighbours, which is what "the offspring settles in a site next to its
+parent" means on a lattice, and with `from = "random_edge"` it is the *m* edges
+per node that preferential attachment is defined with. Model 15 is the model
+that forced it.
 
 Each mode uses a fixed set of the other arguments and errors on one it does not
 use, rather than ignoring it.

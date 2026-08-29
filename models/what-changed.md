@@ -267,3 +267,37 @@ covers the similarity-space models that motivated it. And
 family with a shared shape the way the pairing modes do: an argument general
 enough to take a protocol would be an argument that takes a function, and at that
 point the model may as well write the steps, which is what model 43 does.
+
+
+---
+
+# What re-checking the corrections changed
+
+No new models. `vignette("corrections")` was read back against the corpus, on
+the theory that a page about mechanisms compressed out of a description is the
+page most likely to have compressed something itself.
+
+| addition | forced by | what it does |
+|---|---|---|
+| `abm_birth(links =)` | Ethnocentrism (15) | how many edges a newborn gets, and with `from = "parent"` it takes the parent's neighbours rather than only the parent |
+
+Two claims came off, and they are the more useful half.
+
+**El Farol did not need anything.** It had been written as seventy scalar
+columns and five blocks of `rlang::new_formula()` scaffolding, and cited three
+times over as the model proving an agent could not hold a set. A list column
+holds one. The rewrite is twelve lines, and it is a better demonstration than
+the original: fixing `abm_setup(seed =)` as well as `abm_run(seed =)` made the
+result reproducible, which it had not been, and a sweep over the size of the
+predictor pool shows the fluctuation appearing as the pool grows rather than
+being asserted from one run.
+
+**The ethnocentrism result was resting on a broken network.** The model was
+correct, the mechanism was real, and the graph it ran on had eroded to a mean
+degree of 0.97 with a quarter of the population isolated, because deaths prune
+four edges and each birth added one. Nothing in the run said so. The number the
+write-up quoted, 0.955 of edges joining same-tag agents, was the artefact: on a
+maintained network the figure is 0.85 and the strategy shares are the same. The
+lesson is the one the vignette is about, applied to the vignette: a model that
+runs, reports a plausible number, and is measuring something other than what the
+sentence next to it claims.

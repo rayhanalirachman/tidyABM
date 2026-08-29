@@ -33,6 +33,18 @@ cloned from, which is the only way to put offspring near their kin. It exists
 because Hammond and Axelrod's ethnocentrism model does not work without it. See
 `vignette("corrections")`.
 
+`abm_birth(links =)` says how many edges a newborn gets, one by default. One
+edge makes a newborn a leaf, so a population that also dies erodes whatever
+network it started with: every `abm_death()` prunes a full degree's worth of
+edges and every birth puts back a single link. The ethnocentrism model consumed
+its own 4-regular graph within twenty-five ticks that way and finished with a
+mean degree of 0.97 and 27% of agents joined to nobody, while still reporting a
+plausible result. With `from = "parent"` the newborn takes the parent *and* a
+sample of the parent's own neighbours, which is what settling in a site next to
+your parent means; with `from = "random_edge"` it is the *m* edges per node that
+preferential attachment is defined with. Same model, same seed, `links = 1`
+gives the run the old behaviour exactly.
+
 `abm_birth(when =)` and `abm_death(when =)` conditions are evaluated through the
 same data-masking path as `abm_rules()`, so `n()`, `if_else()` and friends mean
 the same thing in a condition as in a rule.

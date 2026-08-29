@@ -44,6 +44,12 @@ five of the pages here now show different code for the same result: 29 uses
 `abm_run(record =)`. [What each stress test changed](what-changed.md) says what
 that exercise showed that a stress test cannot.
 
+The corrections themselves were then read back the same way, which is where 14
+and 15 got the code they show now. El Farol turned out to need nothing at all,
+only the list column two later models had already found, and ethnocentrism
+turned out to have been running on a network that its own births and deaths had
+eroded to a mean degree of 0.97, which `abm_birth(links =)` fixes.
+
 ### Part 1: the founding thirteen
 
 The set the grammar was designed against.

@@ -307,6 +307,42 @@ match_network <- function(spec, agents, edges, pool) {
   m
 }
 
+#' Pick `k` distinct target agents for a newborn
+#'
+#' One draw per target, rejecting repeats, which is what "m distinct edges per
+#' new node" means in preferential attachment. `k = 1` makes exactly the one
+#' draw `attach_target()` always made, so a model that does not ask for more
+#' links sees the same random stream it always did.
+#' @noRd
+attach_targets <- function(spec, agents, edges, k = 1L) {
+  out <- integer()
+  attempts <- 0L
+  cap <- 10L * k
+  while (length(out) < k && attempts < cap) {
+    attempts <- attempts + 1L
+    hit <- attach_target(spec, agents[!agents$.id %in% out, , drop = FALSE],
+                         edges)
+    if (is.na(hit) || hit %in% out) next
+    out <- c(out, hit)
+  }
+  out
+}
+
+#' The parent's own neighbours, which is what makes a newborn's place local
+#'
+#' `exclude` holds the newborn and its siblings: an offspring settles among the
+#' agents already there, not among the ones born with it.
+#' @noRd
+parent_neighbours <- function(edges, parent, k, exclude = integer()) {
+  if (k <= 0L || is.na(parent) || is.null(edges) || nrow(edges) == 0L) {
+    return(integer())
+  }
+  nb <- c(edges$to[edges$from == parent], edges$from[edges$to == parent])
+  nb <- unique(nb[!nb %in% c(parent, exclude)])
+  if (!length(nb)) return(integer())
+  nb[sample.int(length(nb), min(k, length(nb)))]
+}
+
 #' Pick a target agent for a newborn, given an `attach_via` match spec
 #' @noRd
 attach_target <- function(spec, agents, edges) {

@@ -10,7 +10,8 @@ abm_birth(
   times = NULL,
   cost = NULL,
   inherit = NULL,
-  attach_via = NULL
+  attach_via = NULL,
+  links = NULL
 )
 }
 \arguments{
@@ -27,7 +28,9 @@ drawn there differs from sibling to sibling.}
 
 \item{cost}{One or more \code{column ~ expression} formulas applied to the parent
 \emph{and} the newborn after the split, expressing what reproduction costs, for
-example \code{cost = resource ~ resource / 2} to halve a resource between them.}
+example \code{cost = resource ~ resource / 2} to halve a resource between them.
+Only \code{when} has a parent to charge; with \code{n} there is none, so columns the
+new agents are to be given belong in \code{inherit}.}
 
 \item{inherit}{One or more \code{column ~ expression} formulas applied to the
 newborn \emph{only}, expressing what the offspring gets that the parent does not
@@ -40,6 +43,17 @@ That is how two-parent inheritance is written: \code{inherit = trait ~ (trait + 
 connect each newborn to an existing agent. This is the only way the network
 grows during a run; \code{from = "random_edge"} gives degree-proportional
 (preferential) attachment.}
+
+\item{links}{How many edges the newborn gets, one by default. One edge makes
+the newborn a leaf, so a population that also dies erodes whatever network
+it started with into a forest of parent-child pairs, however dense that
+network was. \code{links} gives the newborn the degree the model means instead.
+With \code{from = "parent"} it takes the parent \emph{and} a sample of the parent's
+own neighbours, which is what "the offspring settles in a site next to its
+parent" means on a lattice; with \code{from = "random_edge"} it is the \emph{m}
+degree-proportional edges per node that preferential attachment is defined
+with. Targets are distinct, and a newborn takes what there is when there
+are fewer than \code{links} of them.}
 }
 \value{
 An \code{abm_birth} step object.
@@ -67,6 +81,11 @@ abm_birth(when = resource > 20, cost = resource ~ resource / 2)
 # a clutch rather than a single offspring
 abm_birth(when = mature, times = rpois(dplyr::n(), 2), inherit = age ~ 0)
 abm_birth(n = 1, attach_via = abm_match(pair = "network", from = "random_edge"))
+
+# the offspring takes a place beside its parent, with a neighbourhood of its
+# own rather than a single edge back to the parent
+abm_birth(when = runif(dplyr::n()) < ptr, links = 4,
+          attach_via = abm_match(pair = "network", from = "parent"))
 
 # a child of two parents, with its own age and a mutated trait
 abm_birth(

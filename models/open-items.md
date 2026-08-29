@@ -3,6 +3,33 @@
 What the grammar still cannot say, and what came off the list when the seventh
 round went at the list itself rather than at a new set of models.
 
+## Closed by the corrections re-check
+
+Not a round. Re-reading `vignette("corrections")` against the corpus turned up
+one thing the grammar could not say and one thing it could say all along.
+
+- **~~A newborn gets exactly one edge.~~** `abm_birth(links = )` says how many.
+  A single edge makes a newborn a leaf, which is harmless in a fixed population
+  and corrosive in a growing one: `abm_death()` prunes whatever degree the graph
+  had and each birth puts back one link, so the ethnocentrism model (15) ate its
+  own 4-regular network inside twenty-five ticks and spent the rest of the run
+  on a forest of parent-child pairs with 27% of agents joined to nobody. The
+  same-tag edge share it reported, 0.955, was mostly counting parents and their
+  own children. With `links = 4` the graph holds at mean degree 3.3 and the
+  strategy shares barely move, which is the outcome worth having: the mechanism
+  was real and the eroded network was flattering it. `from = "parent"` takes the
+  parent plus a sample of the parent's own neighbours; `from = "random_edge"`
+  now does the *m* edges per node that preferential attachment is defined with.
+- **~~El Farol needs a set-valued column the grammar lacks.~~** It does need one
+  and the grammar has one. Three model pages (14, 26, 35) still carried the
+  retracted "no set-valued agent state" entry as a live complaint, two rounds
+  after the naming game (40) and the minority game (41) disproved it. El Farol
+  is now a list column of predictor weights and a list column of scores, twelve
+  lines with no metaprogramming, and it reproduces Arthur's result more
+  convincingly than the seventy-column version did, because the seventy-column
+  version fixed neither seed and was not reproducible. The other two pages are
+  corrected in the prose; the PD N-Person rewrite is outstanding.
+
 ## Closed by Part 7
 
 Part 7 is the only round with no models in it. Every entry below had been sitting

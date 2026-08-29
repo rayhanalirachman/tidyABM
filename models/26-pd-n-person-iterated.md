@@ -73,12 +73,14 @@ result <- abm_run(pop, go, ticks = 400, seed = 5)
 
 *The crossover is the model's signature curve and it comes out cleanly.*
 
-*This is the model that shows where the grammar hurts. Per-opponent memory is a
-**vector per agent**, and the only way to hold one is a column per element, N
-columns for N possible opponents, so N² cells. It is workable at N = 24 with
-`do.call()` and hopeless at NetLogo's default of 60. This is the same gap El Farol
-hit from the other direction, and it is the one thing on this list that a future
-version of the package should actually fix.*
+*Per-opponent memory is a **vector per agent**, and this page holds it as a
+column per element, N columns for N possible opponents, so N² cells, workable at
+N = 24 with `do.call()` and hopeless at NetLogo's default of 60. That was filed
+as a gap in the grammar, alongside El Farol's weights. It is not one: a list
+column holds a named vector of grudges per agent and `abm_rules()` indexes into
+it with `.partner`, which is how model 41 holds a strategy table. The N²
+version below is the one this model was written with, and the rewrite is
+outstanding.*
 
 *One honest difference from NetLogo: there, agents wander a 441-patch world and
 meet sparsely, so opponents recur rarely and defect usually posts the best average.

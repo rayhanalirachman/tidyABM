@@ -255,7 +255,8 @@ go <- abm_go(
       .group == "buyer"  &  transacted ~ expected_price - 1,
       .group == "buyer"  & !transacted ~ pmin(expected_price + 1, limit_price),
       TRUE ~ expected_price
-    )
+    ),
+    .scope = "population"
   )
 )
 
@@ -266,7 +267,7 @@ round(c(trades = sum(!is.na(deals)),
         first  = deals[!is.na(deals)][1],
         last   = tail(deals[!is.na(deals)], 1)), 2)
 #> trades  first   last 
-#>     21     25     31
+#>     23     25     39
 ```
 
 ``` r
@@ -282,19 +283,26 @@ result |>
   theme_minimal()
 ```
 
-**What it introduced:** several agent groups, and rule routing by
-`.group`, the column
+**What it introduced:** several agent groups, rule routing by `.group`
+(the column
 [`abm_setup()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_setup.md)
-writes from the list names. `opposite_group` matching pairs the two
-groups, and with one seller and two buyers it forms one pair per tick,
-so one buyer sits out, gets no `partner_expected_price`, and falls to
-the `TRUE ~ FALSE` branch. Clearing `transacted` and `deal_price` in the
-first step keeps a no-trade tick reading as `NA` rather than stale. And
-the two rules in the price step share a start-of-step view, which is why
-`deal_price` recomputes the agreement condition instead of reading
-`transacted`. The seller’s `+2` against the buyers’ `-1` is the model: a
-seller that never lacks a counterparty gives ground more slowly than it
-takes it, and the deal price climbs.
+writes from the list names), and `.scope = "population"`.
+`opposite_group` matching pairs the two groups, and with one seller and
+two buyers it forms one pair per tick, so one buyer sits out, gets no
+`partner_expected_price`, and falls to the `TRUE ~ FALSE` branch.
+Clearing `transacted` and `deal_price` in the first step keeps a
+no-trade tick reading as `NA` rather than stale. The two rules in the
+trade step share a start-of-step view, which is why `deal_price`
+recomputes the agreement condition instead of reading `transacted`. The
+price step needs `.scope = "population"` because the match is still
+standing: by default
+[`abm_rules()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_rules.md)
+would touch only the matched pair, freezing the idle buyer’s
+`expected_price` until it is paired again; `"population"` runs the step
+over every agent, so the waiting buyer keeps bidding up toward its
+`limit_price`. The seller’s `+2` against the buyers’ `-1` is the rest of
+the model: a seller that never lacks a counterparty gives ground more
+slowly than it takes it, and the deal price climbs.
 
 ## Voter model
 

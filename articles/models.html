@@ -299,7 +299,8 @@ tick depending on whether they traded.</p>
 <span>      <span class="va">.group</span> <span class="op">==</span> <span class="st">"buyer"</span>  <span class="op">&amp;</span>  <span class="va">transacted</span> <span class="op">~</span> <span class="va">expected_price</span> <span class="op">-</span> <span class="fl">1</span>,</span>
 <span>      <span class="va">.group</span> <span class="op">==</span> <span class="st">"buyer"</span>  <span class="op">&amp;</span> <span class="op">!</span><span class="va">transacted</span> <span class="op">~</span> <span class="fu"><a href="https://rdrr.io/r/base/Extremes.html" class="external-link">pmin</a></span><span class="op">(</span><span class="va">expected_price</span> <span class="op">+</span> <span class="fl">1</span>, <span class="va">limit_price</span><span class="op">)</span>,</span>
 <span>      <span class="cn">TRUE</span> <span class="op">~</span> <span class="va">expected_price</span></span>
-<span>    <span class="op">)</span></span>
+<span>    <span class="op">)</span>,</span>
+<span>    .scope <span class="op">=</span> <span class="st">"population"</span></span>
 <span>  <span class="op">)</span></span>
 <span><span class="op">)</span></span>
 <span></span>
@@ -310,7 +311,7 @@ tick depending on whether they traded.</p>
 <span>        first  <span class="op">=</span> <span class="va">deals</span><span class="op">[</span><span class="op">!</span><span class="fu"><a href="https://rdrr.io/r/base/NA.html" class="external-link">is.na</a></span><span class="op">(</span><span class="va">deals</span><span class="op">)</span><span class="op">]</span><span class="op">[</span><span class="fl">1</span><span class="op">]</span>,</span>
 <span>        last   <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/utils/head.html" class="external-link">tail</a></span><span class="op">(</span><span class="va">deals</span><span class="op">[</span><span class="op">!</span><span class="fu"><a href="https://rdrr.io/r/base/NA.html" class="external-link">is.na</a></span><span class="op">(</span><span class="va">deals</span><span class="op">)</span><span class="op">]</span>, <span class="fl">1</span><span class="op">)</span><span class="op">)</span>, <span class="fl">2</span><span class="op">)</span></span>
 <span><span class="co">#&gt; trades  first   last </span></span>
-<span><span class="co">#&gt;     21     25     31</span></span></code></pre></div>
+<span><span class="co">#&gt;     23     25     39</span></span></code></pre></div>
 <div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://dplyr.tidyverse.org" class="external-link">dplyr</a></span><span class="op">)</span></span>
 <span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://ggplot2.tidyverse.org" class="external-link">ggplot2</a></span><span class="op">)</span></span>
@@ -321,21 +322,26 @@ tick depending on whether they traded.</p>
 <span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/ggplot.html" class="external-link">ggplot</a></span><span class="op">(</span><span class="fu"><a href="https://ggplot2.tidyverse.org/reference/aes.html" class="external-link">aes</a></span><span class="op">(</span>x <span class="op">=</span> <span class="va">tick</span>, y <span class="op">=</span> <span class="va">deal_price</span><span class="op">)</span><span class="op">)</span> <span class="op">+</span></span>
 <span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/geom_point.html" class="external-link">geom_point</a></span><span class="op">(</span><span class="op">)</span> <span class="op">+</span></span>
 <span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/ggtheme.html" class="external-link">theme_minimal</a></span><span class="op">(</span><span class="op">)</span></span></code></pre></div>
-<p><strong>What it introduced:</strong> several agent groups, and rule
-routing by <code>.group</code>, the column <code><a href="../reference/abm_setup.html">abm_setup()</a></code>
-writes from the list names. <code>opposite_group</code> matching pairs
-the two groups, and with one seller and two buyers it forms one pair per
-tick, so one buyer sits out, gets no
-<code>partner_expected_price</code>, and falls to the
+<p><strong>What it introduced:</strong> several agent groups, rule
+routing by <code>.group</code> (the column <code><a href="../reference/abm_setup.html">abm_setup()</a></code>
+writes from the list names), and <code>.scope = "population"</code>.
+<code>opposite_group</code> matching pairs the two groups, and with one
+seller and two buyers it forms one pair per tick, so one buyer sits out,
+gets no <code>partner_expected_price</code>, and falls to the
 <code>TRUE ~ FALSE</code> branch. Clearing <code>transacted</code> and
 <code>deal_price</code> in the first step keeps a no-trade tick reading
-as <code>NA</code> rather than stale. And the two rules in the price
-step share a start-of-step view, which is why <code>deal_price</code>
+as <code>NA</code> rather than stale. The two rules in the trade step
+share a start-of-step view, which is why <code>deal_price</code>
 recomputes the agreement condition instead of reading
-<code>transacted</code>. The seller’s <code>+2</code> against the
-buyers’ <code>-1</code> is the model: a seller that never lacks a
-counterparty gives ground more slowly than it takes it, and the deal
-price climbs.</p>
+<code>transacted</code>. The price step needs
+<code>.scope = "population"</code> because the match is still standing:
+by default <code><a href="../reference/abm_rules.html">abm_rules()</a></code> would touch only the matched pair,
+freezing the idle buyer’s <code>expected_price</code> until it is paired
+again; <code>"population"</code> runs the step over every agent, so the
+waiting buyer keeps bidding up toward its <code>limit_price</code>. The
+seller’s <code>+2</code> against the buyers’ <code>-1</code> is the rest
+of the model: a seller that never lacks a counterparty gives ground more
+slowly than it takes it, and the deal price climbs.</p>
 </div>
 <div class="section level2">
 <h2 id="voter-model">Voter model<a class="anchor" aria-label="anchor" href="#voter-model"></a>

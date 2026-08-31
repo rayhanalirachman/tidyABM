@@ -234,3 +234,4 @@ See [`vignette("tidyABM")`](https://rayhanalirachman.github.io/tidyABM/articles/
 [`vignette("models")`](https://rayhanalirachman.github.io/tidyABM/articles/models.html) for a tour of the grammar, and
 [`vignette("corrections")`](https://rayhanalirachman.github.io/tidyABM/articles/corrections.html) for the three models
 whose short form runs but is wrong.
+

@@ -45,12 +45,25 @@ what "one agent at a time" already implies, an agent that draws a quote
 and then decides whether the quote crosses the book has to be able to
 read the number it just drew.
 
-The step is deliberately narrow: during the per-agent loop a rule can
-read its own agent's columns and any global, and it can write its own
-agent's columns and any global. It cannot see other agents' column
-values, use
+During the per-agent loop a rule can read and write its own agent's
+columns and any global. If an
+[`abm_match()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_match.md)
+is standing it can also read and write its **partner's**: the step is
+narrowed to the agents the match placed in a group, `.partner` and
+`partner_<col>` come into scope, and a rule whose left-hand side is
+`partner_<col>` writes into that agent's row. Because the partner is
+read live rather than copied at the start of the step, the second buyer
+at a shop sees the stock the first one took, which is what a
+decentralised market is and what
 [`abm_tell()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_tell.md)
-to write into another agent's row. Use
+cannot say:
+[`abm_tell()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_tell.md)
+resolves every sender at once, so a stock it draws down can go negative.
+
+It reaches no further than that. To write into a row that is neither its
+own nor its partner's, use
+[`abm_tell()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_tell.md).
+Use
 [`abm_rules()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_rules.md)
 unless you specifically need the ordering, since sequential evaluation
 is both slower and harder to reason about.
@@ -76,4 +89,15 @@ abm_sequential(
 #> <abm_sequential> 2 rules
 #> • `loan ~ ifelse(wallet < 0, loan + 1, loan)`
 #> • `bank_reserves ~ ifelse(wallet < 0, bank_reserves - 1, bank_reserves)`
+
+# a sale: what is left on the shelf is what the customers before me left
+abm_sequential(
+  got         ~ pmin(want, money / partner_price, partner_stock),
+  money       ~ money - got * partner_price,
+  partner_stock ~ partner_stock - got
+)
+#> <abm_sequential> 3 rules
+#> • `got ~ pmin(want, money/partner_price, partner_stock)`
+#> • `money ~ money - got * partner_price`
+#> • `partner_stock ~ partner_stock - got`
 ```

@@ -93,10 +93,17 @@ opposite of <code><a href="abm_rules.html">abm_rules()</a></code>, where every r
 the step, and it is what "one agent at a time" already implies, an agent
 that draws a quote and then decides whether the quote crosses the book has
 to be able to read the number it just drew.</p>
-<p>The step is deliberately narrow: during the per-agent loop a rule can read
-its own agent's columns and any global, and it can write its own agent's
-columns and any global. It cannot see other agents' column values, use
-<code><a href="abm_tell.html">abm_tell()</a></code> to write into another agent's row. Use <code><a href="abm_rules.html">abm_rules()</a></code> unless you
+<p>During the per-agent loop a rule can read and write its own agent's columns
+and any global. If an <code><a href="abm_match.html">abm_match()</a></code> is standing it can also read and write
+its <strong>partner's</strong>: the step is narrowed to the agents the match placed in a
+group, <code>.partner</code> and <code>partner_&lt;col&gt;</code> come into scope, and a rule whose
+left-hand side is <code>partner_&lt;col&gt;</code> writes into that agent's row. Because the
+partner is read live rather than copied at the start of the step, the
+second buyer at a shop sees the stock the first one took, which is what a
+decentralised market is and what <code><a href="abm_tell.html">abm_tell()</a></code> cannot say: <code><a href="abm_tell.html">abm_tell()</a></code>
+resolves every sender at once, so a stock it draws down can go negative.</p>
+<p>It reaches no further than that. To write into a row that is neither its own
+nor its partner's, use <code><a href="abm_tell.html">abm_tell()</a></code>. Use <code><a href="abm_rules.html">abm_rules()</a></code> unless you
 specifically need the ordering, since sequential evaluation is both slower
 and harder to reason about.</p>
     </div>
@@ -120,6 +127,17 @@ in.</p>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #0000BB;">&lt;abm_sequential&gt;</span> 2 rules</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">•</span> `loan ~ ifelse(wallet &lt; 0, loan + 1, loan)`</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">•</span> `bank_reserves ~ ifelse(wallet &lt; 0, bank_reserves - 1, bank_reserves)`</span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co"># a sale: what is left on the shelf is what the customers before me left</span></span></span>
+<span class="r-in"><span><span class="fu">abm_sequential</span><span class="op">(</span></span></span>
+<span class="r-in"><span>  <span class="va">got</span>         <span class="op">~</span> <span class="fu"><a href="https://rdrr.io/r/base/Extremes.html" class="external-link">pmin</a></span><span class="op">(</span><span class="va">want</span>, <span class="va">money</span> <span class="op">/</span> <span class="va">partner_price</span>, <span class="va">partner_stock</span><span class="op">)</span>,</span></span>
+<span class="r-in"><span>  <span class="va">money</span>       <span class="op">~</span> <span class="va">money</span> <span class="op">-</span> <span class="va">got</span> <span class="op">*</span> <span class="va">partner_price</span>,</span></span>
+<span class="r-in"><span>  <span class="va">partner_stock</span> <span class="op">~</span> <span class="va">partner_stock</span> <span class="op">-</span> <span class="va">got</span></span></span>
+<span class="r-in"><span><span class="op">)</span></span></span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #0000BB;">&lt;abm_sequential&gt;</span> 3 rules</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">•</span> `got ~ pmin(want, money/partner_price, partner_stock)`</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">•</span> `money ~ money - got * partner_price`</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">•</span> `partner_stock ~ partner_stock - got`</span>
 </code></pre></div>
     </div>
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>

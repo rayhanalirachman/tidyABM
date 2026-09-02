@@ -59,7 +59,8 @@ it then use.</p>
 <span>  eligible <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  from <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  among <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  cost <span class="op">=</span> <span class="cn">NULL</span></span>
+<span>  cost <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  weight <span class="op">=</span> <span class="cn">NULL</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -111,7 +112,13 @@ agent it was cloned from, which is what puts offspring next to their kin.</p></d
 <dt id="arg-among">among<a class="anchor" aria-label="anchor" href="#arg-among"></a></dt>
 <dd><p>A condition naming the agents that may be <em>chosen</em>, for the
 directional modes <code>"one_of"</code> and <code>"nearest"</code>. Defaults to everybody. An
-agent is never matched to itself.</p></dd>
+agent is never matched to itself.</p>
+<p>It is evaluated over the population, once per candidate, until it mentions
+an <code>own_&lt;col&gt;</code>. Then it is a question about the <em>pair</em> rather than about
+the candidate, and it is evaluated over the same (chooser, candidate) view
+<code>cost</code> minimises over, so every chooser gets a candidate set of its own.
+<code>among = .id %in% own_sellers</code> is "one of the firms I buy from", which no
+population condition can say.</p></dd>
 
 
 <dt id="arg-cost">cost<a class="anchor" aria-label="anchor" href="#arg-cost"></a></dt>
@@ -124,6 +131,16 @@ chooser's own preference list as easily as a price. <code>by</code> is the speci
 <code>cost = (x - own_x)^2</code>; anything else, a delivered price <code>price + travel * abs(x - own_x)</code>, an energy deficit, a position in a preference list, needs
 this. <code>NA</code> means the candidate is not acceptable to that chooser, and a
 chooser with no acceptable candidate sits the step out.</p></dd>
+
+
+<dt id="arg-weight">weight<a class="anchor" aria-label="anchor" href="#arg-weight"></a></dt>
+<dd><p>A draw probability for the candidates, for <code>"one_of"</code>. The
+default is a uniform draw. Evaluated like <code>among</code>: over the population
+unless it mentions an <code>own_&lt;col&gt;</code>, in which case it is per (chooser,
+candidate). Non-positive and <code>NA</code> weights make a candidate unpickable, and
+a chooser whose candidates all weigh nothing sits the step out. This is
+what "noticed in proportion to its size" and preferential attachment as a
+<em>step</em> need.</p></dd>
 
 </dl></div>
     <div class="section level2">
@@ -172,6 +189,13 @@ a match leaves standing.</p></div>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #0000BB;">&lt;abm_match&gt;</span> pair = <span style="color: #0000BB;">"nearest"</span></span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">•</span> by = `position`</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">•</span> among = `.group == "shops"`</span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co"># a firm I do not already buy from, noticed in proportion to its size</span></span></span>
+<span class="r-in"><span><span class="fu">abm_match</span><span class="op">(</span>pair <span class="op">=</span> <span class="st">"one_of"</span>, among <span class="op">=</span> <span class="va">.group</span> <span class="op">==</span> <span class="st">"firms"</span> <span class="op">&amp;</span> <span class="op">!</span><span class="va">.id</span> <span class="op"><a href="https://rdrr.io/r/base/match.html" class="external-link">%in%</a></span> <span class="va">own_sellers</span>,</span></span>
+<span class="r-in"><span>          weight <span class="op">=</span> <span class="va">staff</span><span class="op">)</span></span></span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #0000BB;">&lt;abm_match&gt;</span> pair = <span style="color: #0000BB;">"one_of"</span></span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">•</span> among = `.group == "firms" &amp; !.id %in% own_sellers`</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">•</span> weight = `staff`</span>
 <span class="r-in"><span><span class="fu">abm_match</span><span class="op">(</span>pair <span class="op">=</span> <span class="st">"nearest"</span>, cost <span class="op">=</span> <span class="va">price</span> <span class="op">+</span> <span class="fu"><a href="https://rdrr.io/r/base/MathFun.html" class="external-link">abs</a></span><span class="op">(</span><span class="va">x</span> <span class="op">-</span> <span class="va">own_x</span><span class="op">)</span>,</span></span>
 <span class="r-in"><span>          among <span class="op">=</span> <span class="va">.group</span> <span class="op">==</span> <span class="st">"shops"</span><span class="op">)</span></span></span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #0000BB;">&lt;abm_match&gt;</span> pair = <span style="color: #0000BB;">"nearest"</span></span>

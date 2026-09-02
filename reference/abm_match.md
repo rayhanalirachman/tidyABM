@@ -17,7 +17,8 @@ abm_match(
   eligible = NULL,
   from = NULL,
   among = NULL,
-  cost = NULL
+  cost = NULL,
+  weight = NULL
 )
 ```
 
@@ -74,6 +75,13 @@ abm_match(
   directional modes `"one_of"` and `"nearest"`. Defaults to everybody.
   An agent is never matched to itself.
 
+  It is evaluated over the population, once per candidate, until it
+  mentions an `own_<col>`. Then it is a question about the *pair* rather
+  than about the candidate, and it is evaluated over the same (chooser,
+  candidate) view `cost` minimises over, so every chooser gets a
+  candidate set of its own. `among = .id %in% own_sellers` is "one of
+  the firms I buy from", which no population condition can say.
+
 - cost:
 
   For `"nearest"`, an expression naming what the chooser is minimising,
@@ -88,6 +96,16 @@ abm_match(
   preference list, needs this. `NA` means the candidate is not
   acceptable to that chooser, and a chooser with no acceptable candidate
   sits the step out.
+
+- weight:
+
+  A draw probability for the candidates, for `"one_of"`. The default is
+  a uniform draw. Evaluated like `among`: over the population unless it
+  mentions an `own_<col>`, in which case it is per (chooser, candidate).
+  Non-positive and `NA` weights make a candidate unpickable, and a
+  chooser whose candidates all weigh nothing sits the step out. This is
+  what "noticed in proportion to its size" and preferential attachment
+  as a *step* need.
 
 ## Value
 
@@ -160,6 +178,13 @@ abm_match(pair = "nearest", by = position, among = .group == "shops")
 #> <abm_match> pair = "nearest"
 #> • by = `position`
 #> • among = `.group == "shops"`
+
+# a firm I do not already buy from, noticed in proportion to its size
+abm_match(pair = "one_of", among = .group == "firms" & !.id %in% own_sellers,
+          weight = staff)
+#> <abm_match> pair = "one_of"
+#> • among = `.group == "firms" & !.id %in% own_sellers`
+#> • weight = `staff`
 abm_match(pair = "nearest", cost = price + abs(x - own_x),
           among = .group == "shops")
 #> <abm_match> pair = "nearest"

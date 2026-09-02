@@ -74,6 +74,9 @@ abm_repeat <- function(..., until = NULL, max) {
 
 #' @noRd
 run_repeat <- function(step, state) {
+  # a pairing made inside the block belongs to the block, the way the tick
+  # already discards the one it ends on
+  outer_match <- state$match
   for (i in seq_len(step$max)) {
     for (s in step$steps) state <- run_step(s, state)
     if (is.null(step$until)) next
@@ -99,6 +102,7 @@ run_repeat <- function(step, state) {
     if (isTRUE(val)) break
   }
   state$repeats <- i
+  state$match <- outer_match
   state
 }
 

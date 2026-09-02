@@ -62,17 +62,116 @@ run_match <- function(spec, agents, edges, globals, call = rlang::caller_env()) 
   pool <- agents$.id[eligible]
   # `eligible` says who takes part; `among` says who may be picked. They are
   # different questions for the directional modes, where choosing is one-way.
-  candidates <- agents$.id[eval_condition(spec$among, agents, globals)]
+  ch <- choice_set(spec, agents, globals, pool, call)
 
   res <- switch(
     spec$pair,
     random         = match_random(spec, agents, globals, pool),
-    one_of         = match_one_of(spec, agents, globals, pool, candidates),
+    one_of         = match_one_of(spec, agents, globals, pool, ch),
     opposite_group = match_opposite(spec, agents, globals, pool, call),
-    nearest        = match_nearest(spec, agents, globals, pool, candidates, call),
+    nearest        = match_nearest(spec, agents, globals, pool, ch, call),
     network        = match_network(spec, agents, edges, pool)
   )
   res
+}
+
+#' Does a condition ask about the pair rather than about the candidate?
+#'
+#' `among` and `weight` are ordinary population conditions until one of them
+#' mentions an `own_<col>`. That is the signal that the question is "may *I*
+#' pick this one", not "may anyone", and it is the same signal `cost` gives.
+#' @noRd
+mentions_own <- function(quo) {
+  if (is.null(quo)) return(FALSE)
+  any(startsWith(all.vars(rlang::quo_get_expr(quo)), "own_"))
+}
+
+#' Who each chooser may pick, and with what weight
+#'
+#' Returns `ids` (the candidates, in agent order), `ok` (`NULL` when every
+#' chooser shares one candidate set, otherwise a chooser x candidate logical
+#' matrix whose rows follow `pool`) and `w` (`NULL`, a vector over `ids`, or a
+#' matrix shaped like `ok`).
+#' @noRd
+choice_set <- function(spec, agents, globals, pool, call = rlang::caller_env()) {
+  if (!spec$pair %in% c("one_of", "nearest")) return(NULL)
+  pairwise <- mentions_own(spec$among) || mentions_own(spec$weight)
+
+  if (!pairwise) {
+    ids <- agents$.id[eval_condition(spec$among, agents, globals)]
+    w <- NULL
+    if (!is.null(spec$weight)) {
+      wv <- eval_rule(list(quo = spec$weight), aug = agents, globals = globals,
+                      grouped = FALSE)
+      if (length(wv) == 1L) wv <- rep(wv, nrow(agents))
+      w <- check_weight(wv, spec, call)[match(ids, agents$.id)]
+    }
+    return(list(ids = ids, ok = NULL, w = w))
+  }
+
+  # one row per (chooser, candidate): the candidate's columns under their own
+  # names, the chooser's under `own_`. The same view `cost` minimises over, so
+  # a comparison written for one means the same thing in the other.
+  focal <- which(agents$.id %in% pool)
+  if (!length(focal)) return(list(ids = agents$.id, ok = NULL, w = NULL))
+  ns <- length(focal); nc <- nrow(agents)
+  view <- pair_view(agents,
+                    focal_idx = rep(focal, each = nc),
+                    cand_idx  = rep(seq_len(nc), times = ns))
+
+  ok <- if (is.null(spec$among)) rep(TRUE, nrow(view))
+        else eval_over_view(spec$among, view, globals)
+  if (!is.logical(ok)) {
+    abm_abort(
+      c("{.arg among} must be a condition.",
+        "x" = "{.code {deparse1(rlang::quo_get_expr(spec$among))}} returned {.cls {class(ok)[[1]]}}."),
+      class = "tidyABM_bad_among", call = call
+    )
+  }
+  if (length(ok) == 1L) ok <- rep(ok, nrow(view))
+  ok[is.na(ok)] <- FALSE
+
+  w <- NULL
+  if (!is.null(spec$weight)) {
+    wv <- eval_over_view(spec$weight, view, globals)
+    if (length(wv) == 1L) wv <- rep(wv, nrow(view))
+    w <- matrix(check_weight(wv, spec, call), nrow = ns, byrow = TRUE)
+  }
+  list(ids = agents$.id, ok = matrix(ok, nrow = ns, byrow = TRUE), w = w)
+}
+
+#' @noRd
+check_weight <- function(w, spec, call) {
+  if (!is.numeric(w)) {
+    abm_abort(
+      c("{.arg weight} must be numeric.",
+        "x" = "{.code {deparse1(rlang::quo_get_expr(spec$weight))}} returned {.cls {class(w)[[1]]}}."),
+      class = "tidyABM_bad_weight", call = call
+    )
+  }
+  w[is.na(w)] <- 0
+  pmax(w, 0)
+}
+
+#' Draw one candidate per chooser, honouring a per-chooser set and weights
+#' @noRd
+draw_choices <- function(pool, ch) {
+  ids <- ch$ids
+  out <- rep(NA_integer_, length(pool))
+  for (i in seq_along(pool)) {
+    keep <- if (is.null(ch$ok)) rep(TRUE, length(ids)) else ch$ok[i, ]
+    keep <- keep & ids != pool[[i]]
+    if (!any(keep)) next
+    cand <- ids[keep]
+    if (is.null(ch$w)) {
+      out[[i]] <- cand[[sample.int(length(cand), 1L)]]
+    } else {
+      wi <- if (is.matrix(ch$w)) ch$w[i, keep] else ch$w[keep]
+      if (sum(wi) <= 0) next
+      out[[i]] <- cand[[sample.int(length(cand), 1L, prob = wi)]]
+    }
+  }
+  out
 }
 
 match_random <- function(spec, agents, globals, pool) {
@@ -107,25 +206,35 @@ match_random <- function(spec, agents, globals, pool) {
   m
 }
 
-match_one_of <- function(spec, agents, globals, pool, candidates = NULL) {
-  candidates <- candidates %||% agents$.id
+match_one_of <- function(spec, agents, globals, pool, ch = NULL) {
+  ch <- ch %||% list(ids = agents$.id, ok = NULL, w = NULL)
+  candidates <- ch$ids
   if (length(pool) == 0L || length(candidates) == 0L) {
     return(empty_match())
   }
-  # NetLogo's `one-of other turtles`: each eligible agent draws a partner from
-  # the candidate pool, itself excluded. Directional, so A may pick B while B
-  # picks someone else entirely.
-  # An agent that is its own only candidate has nobody to pick and sits out.
-  usable <- pool[!(pool %in% candidates) | length(candidates) > 1L]
-  pool <- usable
-  if (length(pool) == 0L) return(empty_match())
-  idx <- match(pool, agents$.id)
-  draw <- draw_from(candidates, length(pool))
-  clash <- draw == pool
-  while (any(clash)) {
-    draw[clash] <- draw_from(candidates, sum(clash))
+  if (is.null(ch$ok) && is.null(ch$w)) {
+    # NetLogo's `one-of other turtles`: each eligible agent draws a partner from
+    # the candidate pool, itself excluded. Directional, so A may pick B while B
+    # picks someone else entirely.
+    # An agent that is its own only candidate has nobody to pick and sits out.
+    usable <- pool[!(pool %in% candidates) | length(candidates) > 1L]
+    pool <- usable
+    if (length(pool) == 0L) return(empty_match())
+    draw <- draw_from(candidates, length(pool))
     clash <- draw == pool
+    while (any(clash)) {
+      draw[clash] <- draw_from(candidates, sum(clash))
+      clash <- draw == pool
+    }
+  } else {
+    # a candidate set, or a weighting, that belongs to the chooser: it draws
+    # one agent at a time rather than one draw for the whole pool
+    draw <- draw_choices(pool, ch)
+    got <- !is.na(draw)
+    pool <- pool[got]; draw <- draw[got]
+    if (length(pool) == 0L) return(empty_match())
   }
+  idx <- match(pool, agents$.id)
 
   if (is.null(spec$role)) {
     role_a <- rep(NA_character_, length(pool))
@@ -195,17 +304,18 @@ match_opposite <- function(spec, agents, globals, pool, call) {
   m
 }
 
-match_nearest <- function(spec, agents, globals, pool, candidates, call) {
+match_nearest <- function(spec, agents, globals, pool, ch, call) {
+  ch <- ch %||% list(ids = agents$.id, ok = NULL, w = NULL)
   if (!is.null(spec$cost)) {
-    return(match_cheapest(spec, agents, globals, pool, candidates, call))
+    return(match_cheapest(spec, agents, globals, pool, ch, call))
   }
+  candidates <- ch$ids
   by <- by_columns(spec$by, call)
   missing <- setdiff(by, names(agents))
   if (length(missing)) {
     abm_abort("Column{?s} {.field {missing}} not found.",
               class = "tidyABM_missing_column", call = call)
   }
-  candidates <- candidates %||% agents$.id
   sub <- agents[agents$.id %in% pool, , drop = FALSE]
   cand <- agents[agents$.id %in% candidates, , drop = FALSE]
   if (nrow(sub) == 0L || nrow(cand) == 0L) {
@@ -218,6 +328,8 @@ match_nearest <- function(spec, agents, globals, pool, candidates, call) {
   # ordering matters, so the square root is not worth taking
   d <- outer(rowSums(a^2), rowSums(b^2), "+") - 2 * (a %*% t(b))
   d[outer(sub$.id, cand$.id, "==")] <- Inf   # never yourself
+  # a candidate set of the chooser's own rules the rest out
+  if (!is.null(ch$ok)) d[!ch$ok[, match(cand$.id, ch$ids), drop = FALSE]] <- Inf
   ok <- is.finite(matrixStats_rowMins(d))
   if (!any(ok)) return(empty_match())
   nearest <- max.col(-d, ties.method = "first")
@@ -236,8 +348,8 @@ match_nearest <- function(spec, agents, globals, pool, candidates, call) {
 #' `abm_neighbours()` gives, and it is what lets the thing being minimised be a
 #' delivered price or an energy deficit rather than a distance.
 #' @noRd
-match_cheapest <- function(spec, agents, globals, pool, candidates, call) {
-  candidates <- candidates %||% agents$.id
+match_cheapest <- function(spec, agents, globals, pool, ch, call) {
+  candidates <- ch$ids
   sub  <- agents[agents$.id %in% pool, , drop = FALSE]
   cand <- agents[agents$.id %in% candidates, , drop = FALSE]
   if (nrow(sub) == 0L || nrow(cand) == 0L) {
@@ -270,6 +382,8 @@ match_cheapest <- function(spec, agents, globals, pool, candidates, call) {
     )
   }
   val[view$.chooser == view$.candidate] <- NA_real_   # never yourself
+  # a candidate set of the chooser's own rules the rest out
+  if (!is.null(ch$ok)) val[!as.vector(t(ch$ok[, match(cand$.id, ch$ids), drop = FALSE]))] <- NA_real_
   keep <- !is.na(val)
   if (!any(keep)) return(empty_match())
 

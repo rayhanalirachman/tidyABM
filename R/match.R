@@ -4,16 +4,17 @@
 # rather than being silently ignored.
 match_relevant_args <- list(
   random          = c("size", "role", "eligible"),
-  one_of          = c("role", "eligible", "among"),
+  one_of          = c("role", "eligible", "among", "weight"),
   opposite_group  = c("size", "by", "role", "eligible"),
   nearest         = c("by", "cost", "size", "eligible", "among"),
   network         = c("from", "eligible")
 )
 
-new_abm_match <- function(pair, size, by, role, eligible, from, among, cost) {
+new_abm_match <- function(pair, size, by, role, eligible, from, among, cost,
+                          weight) {
   structure(
     list(pair = pair, size = size, by = by, role = role, eligible = eligible,
-         from = from, among = among, cost = cost),
+         from = from, among = among, cost = cost, weight = weight),
     class = c("abm_match", "abm_step")
   )
 }
@@ -89,6 +90,20 @@ new_abm_match <- function(pair, size, by, role, eligible, from, among, cost) {
 #' @param among A condition naming the agents that may be *chosen*, for the
 #'   directional modes `"one_of"` and `"nearest"`. Defaults to everybody. An
 #'   agent is never matched to itself.
+#'
+#'   It is evaluated over the population, once per candidate, until it mentions
+#'   an `own_<col>`. Then it is a question about the *pair* rather than about
+#'   the candidate, and it is evaluated over the same (chooser, candidate) view
+#'   `cost` minimises over, so every chooser gets a candidate set of its own.
+#'   `among = .id %in% own_sellers` is "one of the firms I buy from", which no
+#'   population condition can say.
+#' @param weight A draw probability for the candidates, for `"one_of"`. The
+#'   default is a uniform draw. Evaluated like `among`: over the population
+#'   unless it mentions an `own_<col>`, in which case it is per (chooser,
+#'   candidate). Non-positive and `NA` weights make a candidate unpickable, and
+#'   a chooser whose candidates all weigh nothing sits the step out. This is
+#'   what "noticed in proportion to its size" and preferential attachment as a
+#'   *step* need.
 #' @param from For `"network"`, `"neighbour"` (the default) picks a random
 #'   neighbour of the agent; `"random_edge"` picks a random edge of the whole
 #'   network and then one of its endpoints, which selects agents in proportion to
@@ -107,13 +122,17 @@ new_abm_match <- function(pair, size, by, role, eligible, from, among, cost) {
 #' abm_match(pair = "random", size = 4)
 #' abm_match(pair = "nearest", by = opinion)
 #' abm_match(pair = "nearest", by = position, among = .group == "shops")
+#'
+#' # a firm I do not already buy from, noticed in proportion to its size
+#' abm_match(pair = "one_of", among = .group == "firms" & !.id %in% own_sellers,
+#'           weight = staff)
 #' abm_match(pair = "nearest", cost = price + abs(x - own_x),
 #'           among = .group == "shops")
 #' abm_match(pair = "random", role = list(giver = money > 0, receiver = TRUE))
 abm_match <- function(pair = c("random", "one_of", "opposite_group", "nearest",
                                 "network"),
                       size = NULL, by = NULL, role = NULL, eligible = NULL,
-                      from = NULL, among = NULL, cost = NULL) {
+                      from = NULL, among = NULL, cost = NULL, weight = NULL) {
   pair <- rlang::arg_match(pair)
 
   by        <- enquo_or_null(rlang::enquo(by))
@@ -121,6 +140,7 @@ abm_match <- function(pair = c("random", "one_of", "opposite_group", "nearest",
   role      <- enquo_or_null(rlang::enquo(role))
   eligible  <- enquo_or_null(rlang::enquo(eligible))
   among     <- enquo_or_null(rlang::enquo(among))
+  weight    <- enquo_or_null(rlang::enquo(weight))
 
   supplied <- c(
     if (!is.null(size))      "size",
@@ -129,7 +149,8 @@ abm_match <- function(pair = c("random", "one_of", "opposite_group", "nearest",
     if (!is.null(eligible))  "eligible",
     if (!is.null(from))      "from",
     if (!is.null(among))     "among",
-    if (!is.null(cost))      "cost"
+    if (!is.null(cost))      "cost",
+    if (!is.null(weight))    "weight"
   )
   irrelevant <- setdiff(supplied, match_relevant_args[[pair]])
   if (length(irrelevant)) {
@@ -193,7 +214,7 @@ abm_match <- function(pair = c("random", "one_of", "opposite_group", "nearest",
     }
   }
 
-  new_abm_match(pair, size, by, role, eligible, from, among, cost)
+  new_abm_match(pair, size, by, role, eligible, from, among, cost, weight)
 }
 
 #' @export
@@ -205,6 +226,7 @@ print.abm_match <- function(x, ...) {
     if (!is.null(x$role)) "roles = {.val {names(as.list(rlang::quo_get_expr(x$role))[-1])}}",
     if (!is.null(x$eligible)) "eligible = {.code {deparse1(rlang::quo_get_expr(x$eligible))}}",
     if (!is.null(x$among)) "among = {.code {deparse1(rlang::quo_get_expr(x$among))}}",
+    if (!is.null(x$weight)) "weight = {.code {deparse1(rlang::quo_get_expr(x$weight))}}",
     if (x$pair == "network" && x$from != "neighbour") "from = {.val {x$from}}"
   )
   cli::cli_text('{.cls abm_match} pair = {.val {x$pair}}')

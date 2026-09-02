@@ -121,10 +121,18 @@ abm_rules <- function(..., .scope = c("match", "population"), .by = NULL) {
 #' that draws a quote and then decides whether the quote crosses the book has
 #' to be able to read the number it just drew.
 #'
-#' The step is deliberately narrow: during the per-agent loop a rule can read
-#' its own agent's columns and any global, and it can write its own agent's
-#' columns and any global. It cannot see other agents' column values, use
-#' [abm_tell()] to write into another agent's row. Use [abm_rules()] unless you
+#' During the per-agent loop a rule can read and write its own agent's columns
+#' and any global. If an [abm_match()] is standing it can also read and write
+#' its **partner's**: the step is narrowed to the agents the match placed in a
+#' group, `.partner` and `partner_<col>` come into scope, and a rule whose
+#' left-hand side is `partner_<col>` writes into that agent's row. Because the
+#' partner is read live rather than copied at the start of the step, the
+#' second buyer at a shop sees the stock the first one took, which is what a
+#' decentralised market is and what [abm_tell()] cannot say: `abm_tell()`
+#' resolves every sender at once, so a stock it draws down can go negative.
+#'
+#' It reaches no further than that. To write into a row that is neither its own
+#' nor its partner's, use [abm_tell()]. Use [abm_rules()] unless you
 #' specifically need the ordering, since sequential evaluation is both slower
 #' and harder to reason about.
 #'
@@ -146,6 +154,13 @@ abm_rules <- function(..., .scope = c("match", "population"), .by = NULL) {
 #' abm_sequential(
 #'   loan          ~ ifelse(wallet < 0, loan + 1, loan),
 #'   bank_reserves ~ ifelse(wallet < 0, bank_reserves - 1, bank_reserves)
+#' )
+#'
+#' # a sale: what is left on the shelf is what the customers before me left
+#' abm_sequential(
+#'   got         ~ pmin(want, money / partner_price, partner_stock),
+#'   money       ~ money - got * partner_price,
+#'   partner_stock ~ partner_stock - got
 #' )
 abm_sequential <- function(..., .order = NULL) {
   new_rule_step(collect_rules(rlang::list2(...), "abm_sequential"),

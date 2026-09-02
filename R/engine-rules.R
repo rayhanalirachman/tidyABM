@@ -161,13 +161,20 @@ run_rules_by <- function(step, state, combined) {
     )
   }
   aug <- augment_group(combined, state$match, combined)
+  # `NA` is not a group. An agent with no value for the `.by` column sits the
+  # step out and keeps what it had, the way `NA` does in `.order`.
+  taking_part <- !is.na(combined[[by]])
   for (r in step$rules) {
     value <- eval_rule(r, aug, state$globals, grouped = FALSE, by = by)
+    if (length(value) == nrow(combined) && !all(taking_part)) {
+      value[!taking_part] <- if (r$target %in% names(combined))
+        combined[[r$target]][!taking_part] else NA
+    }
     for (nm in names(state$groups)) {
       g <- state$groups[[nm]]
       if (nrow(g) == 0L) next
       idx <- match(g$.id, combined$.id)
-      g <- assign_rule(g, r$target, value[idx], rep(TRUE, nrow(g)))
+      g <- assign_rule(g, r$target, value[idx], taking_part[idx])
       state$groups[[nm]] <- g
     }
     combined[[r$target]] <- value
@@ -312,6 +319,21 @@ run_global_by <- function(step, state, combined) {
 run_sequential <- function(step, state) {
   order_ids <- unlist(lapply(state$groups, function(g) g$.id), use.names = FALSE)
   if (!length(order_ids)) return(state)
+
+  # A standing match narrows the step to the agents it placed in a group, the
+  # way it narrows `abm_rules()`, and puts `.partner` and `partner_<col>` in
+  # scope. Read live from the working columns, so the second buyer at a shop
+  # sees the stock the first one left.
+  m <- NULL
+  if (!is.null(state$match)) {
+    m <- state$match$match
+    # a match step that paired nobody leaves the step with nothing to do, the
+    # way it leaves `abm_rules()` with no rows to write
+    if (nrow(m) == 0L) return(state)
+    order_ids <- order_ids[order_ids %in% m$.id]
+    if (!length(order_ids)) return(state)
+  }
+
   if (is.null(step$order)) {
     order_ids <- shuffle(order_ids)
   } else {
@@ -322,9 +344,22 @@ run_sequential <- function(step, state) {
     key <- eval_rule(list(quo = step$order), combined, state$globals,
                      grouped = FALSE)
     if (length(key) == 1L) key <- rep(key, nrow(combined))
-    keep <- !is.na(key)
+    keep <- !is.na(key) & combined$.id %in% order_ids
     order_ids <- combined$.id[keep][order(key[keep])]
     if (!length(order_ids)) return(state)
+  }
+
+  partner_of <- role_of <- gid_of <- NULL
+  p_cols <- character()
+  if (!is.null(m)) {
+    partner_of <- stats::setNames(m$.partner,  as.character(m$.id))
+    role_of    <- stats::setNames(m$.role,     as.character(m$.id))
+    gid_of     <- stats::setNames(m$.group_id, as.character(m$.id))
+    # only the partner columns the step names are materialised: doing it for
+    # every column of every agent is what would make this loop slow
+    named <- c(unlist(lapply(step$rules, `[[`, "vars"), use.names = FALSE),
+               vapply(step$rules, `[[`, "", "target"))
+    p_cols <- unique(sub("^partner_", "", grep("^partner_", named, value = TRUE)))
   }
 
   group_of <- rep(names(state$groups),
@@ -364,10 +399,44 @@ run_sequential <- function(step, state) {
     data <- lapply(v, function(x) x[[i]])
     if (!"n" %in% names(data)) data$n <- function() 1L
 
+    pid <- NA_integer_; pg <- NULL; pj <- NA_integer_
+    if (!is.null(m)) {
+      key <- as.character(id)
+      data$.partner  <- partner_of[[key]]
+      data$.role     <- role_of[[key]]
+      data$.group_id <- gid_of[[key]]
+      pid <- data$.partner
+      if (!is.na(pid)) {
+        pg <- group_of[[as.character(pid)]]
+        pj <- index[[pg]][[as.character(pid)]]
+      }
+      for (nm in p_cols) {
+        src <- if (is.na(pid)) NULL
+               else if (identical(pg, gname)) v else cols[[pg]]
+        data[[paste0("partner_", nm)]] <-
+          if (!is.null(src) && nm %in% names(src)) src[[nm]][[pj]] else NA
+      }
+    }
+
     for (k in which_rules) {
       value <- rlang::eval_tidy(quos[[k]], data = data)
       target <- step$rules[[k]]$target
-      if (is_global[[k]]) {
+      if (startsWith(target, "partner_") && !is.null(m)) {
+        # the only place a sequential rule leaves its own row: the agent it is
+        # matched with, which is what a transaction is
+        nm <- sub("^partner_", "", target)
+        if (!is.na(pid)) {
+          if (identical(pg, gname)) {
+            if (nm %in% names(v)) {
+              v[[nm]] <- write_at(v[[nm]], pj, value, sizes[[gname]])
+            }
+          } else if (nm %in% names(cols[[pg]])) {
+            cols[[pg]][[nm]] <- write_at(cols[[pg]][[nm]], pj, value,
+                                         sizes[[pg]])
+          }
+          data[[target]] <- value[[1]]
+        }
+      } else if (is_global[[k]]) {
         val <- value[[1]]
         state$globals[[target]] <- val
         for (e in envs) assign(target, val, envir = e)

@@ -12,7 +12,8 @@ abm_match(
   eligible = NULL,
   from = NULL,
   among = NULL,
-  cost = NULL
+  cost = NULL,
+  weight = NULL
 )
 }
 \arguments{
@@ -47,7 +48,14 @@ agent it was cloned from, which is what puts offspring next to their kin.}
 
 \item{among}{A condition naming the agents that may be \emph{chosen}, for the
 directional modes \code{"one_of"} and \code{"nearest"}. Defaults to everybody. An
-agent is never matched to itself.}
+agent is never matched to itself.
+
+It is evaluated over the population, once per candidate, until it mentions
+an \verb{own_<col>}. Then it is a question about the \emph{pair} rather than about
+the candidate, and it is evaluated over the same (chooser, candidate) view
+\code{cost} minimises over, so every chooser gets a candidate set of its own.
+\code{among = .id \%in\% own_sellers} is "one of the firms I buy from", which no
+population condition can say.}
 
 \item{cost}{For \code{"nearest"}, an expression naming what the chooser is
 minimising, used instead of \code{by}. It is evaluated once per (chooser,
@@ -58,6 +66,14 @@ chooser's own preference list as easily as a price. \code{by} is the special cas
 \code{cost = (x - own_x)^2}; anything else, a delivered price \code{price + travel * abs(x - own_x)}, an energy deficit, a position in a preference list, needs
 this. \code{NA} means the candidate is not acceptable to that chooser, and a
 chooser with no acceptable candidate sits the step out.}
+
+\item{weight}{A draw probability for the candidates, for \code{"one_of"}. The
+default is a uniform draw. Evaluated like \code{among}: over the population
+unless it mentions an \verb{own_<col>}, in which case it is per (chooser,
+candidate). Non-positive and \code{NA} weights make a candidate unpickable, and
+a chooser whose candidates all weigh nothing sits the step out. This is
+what "noticed in proportion to its size" and preferential attachment as a
+\emph{step} need.}
 }
 \value{
 An \code{abm_match} step object.
@@ -106,6 +122,10 @@ abm_match(pair = "one_of")
 abm_match(pair = "random", size = 4)
 abm_match(pair = "nearest", by = opinion)
 abm_match(pair = "nearest", by = position, among = .group == "shops")
+
+# a firm I do not already buy from, noticed in proportion to its size
+abm_match(pair = "one_of", among = .group == "firms" & !.id \%in\% own_sellers,
+          weight = staff)
 abm_match(pair = "nearest", cost = price + abs(x - own_x),
           among = .group == "shops")
 abm_match(pair = "random", role = list(giver = money > 0, receiver = TRUE))

@@ -15,7 +15,7 @@ deterministic agent, sequential dynamics, 1-D traffic, global feedback).
 | tier | addition | one-line spec |
 |---|---|---|
 | **current** | — | the grammar as it stands in the repo today |
-| **L0** | `abm_network(type = "grid" \| "line", dims, neighbourhood, torus)` | a lattice is a network type; the constructor injects `.x`, `.y` |
+| **L0** | `abm_network(type = "grid" \| "line", dims, diagonals, torus)` | a lattice is a network type; see *Setup conventions* below |
 | **L1** | named neighbours | `abm_neighbours(..., .where = "west")`, or direction-labelled lattice edges |
 | **L2** | the turtle-≠-patch bundle | `abm_network(on = <group>)`, `.cell` as an engine-owned location column, `within = (a == b)` equijoin fast path, `abm_tell(to = <id column>)`, `abm_match(.by = <column>)`, `abm_move(along =, to =, who =, range =)` |
 
@@ -27,6 +27,30 @@ Verdict codes used below:
 - 🟠 **L2** — needs the turtle-≠-patch bundle
 - 🔴 **L2+** — needs something beyond the proposed bundle
 - ⛔ — not expressible even with everything proposed
+
+## Setup conventions (settled in review)
+
+These apply to every L0 / L2 model below and are why their setup blocks are short.
+
+- **A lattice stays a network.** `abm_network(type = "grid", dims = c(w, h), on = <group>)`
+  remains the primitive; `abm_neighbours()`, `abm_match(pair = "network")`,
+  `abm_link()`, `abm_edges()` consume its edge list unchanged. `on =` names the
+  group to wire (defaults to the whole population in a single-group model).
+- **The wired group inherits its count.** A group a grid network wires omits
+  `n` — it comes from `prod(dims)`. `n` is still usable inside that group's
+  column formulas.
+- **Coordinates are injected.** The grid constructor adds `.x`, `.y` (and `.cell`
+  on non-wired groups). For a grid network `abm_setup()` builds the lattice
+  *before* materialising agent columns, so `.x` / `.y` are in scope in setup
+  formulas as well as in the go block. Non-grid networks keep the current order.
+- **`diagonals = TRUE / FALSE`** replaces the `"moore"` / `"von_neumann"` eponyms.
+  Default `TRUE` (8-neighbour, matches NetLogo's unmarked `neighbors` and Game of
+  Life); Fire and Ising pass `FALSE`.
+- **`abm_grid()` is optional sugar.** `abm_grid(dims, diagonals, torus, <cols>)`
+  desugars to an `abm_agents()` group plus `abm_network(type = "grid", on = <it>)`
+  — one implementation, so the go block is identical either way. Use it for
+  patch-heavy models; keep the explicit two-line form when the network should be
+  visible or sits alongside other networks.
 
 ---
 
@@ -66,9 +90,8 @@ end
 w <- h <- 100
 
 life <- abm_setup(
-  agents  = abm_agents(n = w * h, alive = ~runif(n) < 0.10),
-  network = abm_network(type = "grid", dims = c(w, h),
-                        neighbourhood = "moore", torus = TRUE)
+  agents  = abm_agents(alive = ~runif(n) < 0.10),        # n comes from the grid
+  network = abm_network(type = "grid", dims = c(w, h))   # diagonals, torus default to TRUE
 )
 
 go <- abm_go(
@@ -211,20 +234,18 @@ empty → tree → burning → burnt; run to completion.
 w <- h <- 250
 density <- 0.60
 
+# 1. the world: just the forest — no coordinates, no ignition
 fire <- abm_setup(
-  agents = abm_agents(
-    n      = w * h,
-    x      = ~rep(seq_len(w), times = h),
-    y      = ~rep(seq_len(h), each = w),
-    forest = ~runif(n) < density,
-    state  = ~dplyr::if_else(!forest, "empty",
-               dplyr::if_else(x == 1, "burning", "tree"))
+  agents  = abm_agents(
+    state = ~dplyr::if_else(runif(n) < density, "tree", "empty")
   ),
   network = abm_network(type = "grid", dims = c(w, h),
-                        neighbourhood = "von_neumann", torus = FALSE)
+                        diagonals = FALSE, torus = FALSE)
 )
 
-step <- list(
+# 2. the tick: ignite where you choose, then spread
+go <- abm_go(
+  abm_rules(state ~ dplyr::if_else(state == "tree" & .x == 1, "burning", state)),
   abm_neighbours(hot ~ any(state == "burning")),
   abm_rules(state ~ dplyr::case_when(
     state == "burning"    ~ "burnt",
@@ -232,25 +253,28 @@ step <- list(
     TRUE                  ~ state))
 )
 
-# one tick burns the whole fire out
-go <- abm_go(do.call(abm_repeat, c(step, list(until = !any(state == "burning"),
-                                              max = w * h))))
-result <- abm_run(fire, go, ticks = 1, seed = 1)
+result <- abm_run(fire, go, ticks = 3 * w, seed = 1, record = 10)
 ```
 
-**Verdict: 🔵 L0.** Only `neighbourhood = "von_neumann"`. `abm_repeat(until =)`
-already exists, as does the density sweep (one `go` block, many worlds), which is
-how the burned-fraction-vs-density curve is produced.
+**Verdict: 🔵 L0.** Only `diagonals = FALSE`. Setup is now a single random field;
+ignition is its own `abm_rules` step, so the start pattern is one swappable line
+(`.x == 1` for the left edge, `.x == w %/% 2 & .y == h %/% 2` for a centre point,
+`.x %in% c(1, w) | .y %in% c(1, h)` for all edges).
 
-**Friction.** Igniting the left edge needs the `x` coordinate at `abm_setup()`
-time; with the L0 constructor injecting `.x`/`.y` this is clean, otherwise the
-modeller computes `x` with the constructor's row-major convention (shown above).
-A draw for `forest` and a separate test on `x` must share one `runif()` or the
-edge trees and the interior trees are drawn inconsistently — handled here by the
-`forest` column.
+**Friction.** The ignition step re-runs every tick; it is a silent no-op once the
+target cells are no longer `"tree"`, which is fine for this absorbing model but
+turns into a permanent fire source the moment regrowth is added. Placing ignition
+*before* `abm_neighbours` lets the fire it lights be seen the same tick.
+
+For the *fraction-burned-vs-density* study a run is an experiment, so wrap the
+spread in `abm_repeat(until = !any(state == "burning"), max = w * h)` and run
+`ticks = 1` — one run, one completed fire — then sweep `density` across worlds.
+Bare `ticks = 3 * w` (shown) is the animation form: the front advances one ring
+per tick and the model goes quiescent on its own.
 
 **Validation.** Fraction of trees burned vs `density` shows a sharp transition
-near the square-lattice site-percolation threshold, *p*c ≈ 0.5927.
+near the square-lattice site-percolation threshold, *p*c ≈ 0.5927. `diagonals =
+FALSE` is load-bearing for that number — Moore spread drops it to ≈ 0.41.
 
 ---
 
@@ -301,7 +325,7 @@ schelling <- abm_setup(
                                        c(1 - minority, minority)), NA_character_)
   ),
   network = abm_network(type = "grid", dims = c(w, h),
-                        neighbourhood = "moore", torus = TRUE),
+                        diagonals = TRUE, torus = TRUE),
   globals = list(tol = tol)
 )
 
@@ -381,43 +405,53 @@ w <- h <- 50
 
 world <- abm_setup(
   agents = list(
-    patches = abm_agents(n = w * h,
+    patches = abm_agents(                                   # no n — comes from the grid
                 grass     = ~sample(c(TRUE, FALSE), n, TRUE),
-                countdown = ~sample(0:30, n, TRUE)),
-    sheep   = abm_agents(n = 100, energy = ~runif(n, 4, 8)),   # .cell injected by L2
+                countdown = ~sample.int(30, n, TRUE)),
+    sheep   = abm_agents(n = 100, energy = ~runif(n, 4, 8)),   # .cell injected, random-placed
     wolves  = abm_agents(n = 50,  energy = ~runif(n, 4, 8))
   ),
   network = abm_network(type = "grid", dims = c(w, h), on = "patches",
-                        neighbourhood = "moore", torus = TRUE),
-  globals = list(regrow = 30, sheep_gain = 4, wolf_gain = 20)
+                        diagonals = TRUE, torus = TRUE),
+  globals = list(regrow = 30, sheep_gain = 4, wolf_gain = 20,
+                 sheep_repro = 0.04, wolf_repro = 0.05)
 )
+# equivalently: patches = abm_grid(dims = c(w, h), grass = ~..., countdown = ~...)
 
 go <- abm_go(
+  # move, then pay the metabolic cost
   abm_move(along = "patches", to = "random_neighbour", who = c("sheep", "wolves")),
-  abm_rules(energy ~ energy - 1, .scope = "population"),
+  abm_rules(energy ~ energy - 1),
 
-  # sheep eat grass on their patch
+  # sheep eat the grass on their cell
   abm_neighbours(grass_here ~ any(grass),
-                 within = .id == own_.cell & .group == "patches"),
+                 within = .group == "patches" & .id == own_.cell),
   abm_rules(energy ~ dplyr::if_else(grass_here, energy + sheep_gain, energy)),
-  abm_tell(grass ~ FALSE, countdown ~ regrow,
-           to = .cell, when = grass_here, .resolve = "last"),
+  abm_tell(grass ~ FALSE, countdown ~ regrow, to = .cell, when = grass_here),
 
-  # wolves eat a sheep sharing their patch
+  # wolves eat a sheep sharing their cell
   abm_match(pair = "opposite_group", by = .group, .by = .cell,
             eligible = .group %in% c("wolves", "sheep")),
   abm_rules(energy ~ dplyr::if_else(.group == "wolves" & !is.na(.partner),
                                     energy + wolf_gain, energy)),
   abm_death(when = .group == "sheep" & !is.na(.partner)),
 
-  # patch regrows
-  abm_rules(countdown ~ pmax(0, countdown - 1),
-            grass ~ grass | countdown == 0, .scope = "population"),
+  # starve
+  abm_death(when = .group %in% c("sheep", "wolves") & energy < 0),
 
-  # demographics
-  abm_birth(when = .group %in% c("sheep", "wolves") & runif(dplyr::n()) < 0.04,
+  # reproduce — clone, split energy
+  abm_birth(when = .group == "sheep"  & runif(dplyr::n()) < sheep_repro,
             cost = energy ~ energy / 2),
-  abm_death(when = .group %in% c("sheep", "wolves") & energy < 0)
+  abm_birth(when = .group == "wolves" & runif(dplyr::n()) < wolf_repro,
+            cost = energy ~ energy / 2),
+
+  # grass regrows
+  abm_rules(
+    grass     ~ grass | countdown == 0,
+    countdown ~ dplyr::case_when(grass          ~ countdown,
+                                 countdown <= 0 ~ regrow,
+                                 TRUE           ~ countdown - 1),
+    .scope = "population")
 )
 
 result <- abm_run(world, go, ticks = 500, seed = 1, record = 10)
@@ -504,7 +538,7 @@ world <- abm_setup(
     ants = abm_agents(n = 100, carrying = FALSE)     # .cell injected, starts at nest
   ),
   network = abm_network(type = "grid", dims = c(w, h), on = "patches",
-                        neighbourhood = "moore", torus = FALSE),
+                        diagonals = TRUE, torus = FALSE),
   globals = list(evap = 0.10, diff = 0.30)
 )
 
@@ -686,7 +720,7 @@ sugar <- abm_setup(
                 vision = ~sample(1:6, n, TRUE))
   ),
   network = abm_network(type = "grid", dims = c(w, h), on = "patches",
-                        neighbourhood = "von_neumann", torus = TRUE)
+                        diagonals = FALSE, torus = TRUE)
 )
 
 go <- abm_go(
@@ -763,7 +797,7 @@ langton <- abm_setup(
     ant     = abm_agents(n = 1, heading = 0L)     # 0 N, 1 E, 2 S, 3 W; .cell = centre
   ),
   network = abm_network(type = "grid", dims = c(w, h), on = "patches",
-                        neighbourhood = "von_neumann", torus = TRUE)
+                        diagonals = FALSE, torus = TRUE)
 )
 
 go <- abm_go(
@@ -837,7 +871,7 @@ ising <- abm_setup(
     black = ~(x + y) %% 2 == 0
   ),
   network = abm_network(type = "grid", dims = c(w, h),
-                        neighbourhood = "von_neumann", torus = TRUE),
+                        diagonals = FALSE, torus = TRUE),
   globals = list(temp = 2.4)
 )
 
@@ -921,7 +955,7 @@ daisy <- abm_setup(
     age  = 0L
   ),
   network = abm_network(type = "grid", dims = c(w, h),
-                        neighbourhood = "moore", torus = TRUE),
+                        diagonals = TRUE, torus = TRUE),
   globals = list(luminosity = 1.0, global_temp = 0)
 )
 
@@ -1162,7 +1196,8 @@ Ordered by how many of the thirteen force it, then by size.
 
 | primitive | spec | forced by | size |
 |---|---|---|---|
-| `abm_network(type = "grid" \| "line")` | `dims`, `neighbourhood`, `torus`; injects `.x`, `.y`; validates `n == prod(dims)` | 1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 13 | one constructor branch; no new step |
+| `abm_network(type = "grid" \| "line")` | `dims`, `diagonals`, `torus`; injects `.x`, `.y`; the wired group inherits `n = prod(dims)`; lattice built before agent columns so `.x`/`.y` are in scope in setup | 1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 13 | one constructor branch; no new step |
+| `abm_grid()` sugar | `abm_agents()` group + `abm_network(type = "grid", on = <it>)` in one call; desugars, so no new machinery | any patch model (optional) | thin wrapper |
 | named neighbours (L1) | `abm_neighbours(..., .where = "west")` **or** direction-labelled lattice edges | 2, 9 | new idea (edge direction), small code |
 | `abm_network(on = <group>)` | wire one named group instead of the whole population | 5, 6, 8, 9, 13 | one argument |
 | `.cell` reserved column, with `.x`/`.y` kept in sync | engine-owned location column holding a patch `.id`; `.x`/`.y` track it; carve-out from the `.`-prefix ban | 5, 6, 8, 9, 13 | small |
@@ -1202,3 +1237,98 @@ Ordered by how many of the thirteen force it, then by size.
   set. Strict single-site Ising needs a neighbour-aware `abm_sequential`, which no
   other model here wants — so the checkerboard formulation is documented as the
   supported one, in the same spirit as the corpus's three *corrections*.
+
+## Analysing the results (Game of Life as the worked example)
+
+`abm_run()` returns a plain long tibble — one row per cell per recorded tick,
+`tick, .id, .group, .x, .y, alive` — so every analysis is ordinary dplyr / ggplot.
+Nothing about the API is spatial; you just have `.x` / `.y` to pivot on, and
+`abm_edges()` for the adjacency.
+
+### Decide first: the field, or a summary?
+
+A `record =` choice made before the run.
+
+| you want | keep it as | cost |
+|---|---|---|
+| the board itself (render, animate, cluster analysis) | populations — `record = "all"` or a thinned integer | ~10k rows/tick on a 100² grid |
+| a scalar over time (density, activity) | `abm_global()` — recorded **every tick regardless of `record =`** | 1 row/tick |
+
+So for just the density curve, add the global and thin the field:
+
+```r
+go <- abm_go(
+  abm_neighbours(live_n ~ sum(alive)),
+  abm_rules(alive ~ live_n == 3 | (alive & live_n == 2)),
+  abm_global(density ~ mean(alive))
+)
+result <- abm_run(life, go, ticks = 500, seed = 1, record = "final")
+abm_globals(result)                       # tick, density — all 500 ticks
+```
+
+### 1. Look at the field
+
+```r
+dplyr::filter(result, tick == 100) |>
+  ggplot2::ggplot(ggplot2::aes(.x, .y, fill = alive)) +
+  ggplot2::geom_raster() + ggplot2::coord_equal()
+```
+
+`facet_wrap(~ tick)` for a contact sheet; `gganimate::transition_manual(tick)` for
+a movie. `geom_raster()` is why the grid constructor injects `.x` / `.y`.
+
+### 2. Scalar time series (if not done as a global)
+
+```r
+result |>
+  dplyr::group_by(tick) |>
+  dplyr::summarise(density = mean(alive)) |>
+  ggplot2::ggplot(ggplot2::aes(tick, density)) + ggplot2::geom_line()
+```
+
+Decays toward the random-soup asymptote ≈ 0.0287.
+
+### 3. Structures — `abm_edges()` + igraph
+
+The grid edge list is a spatial weights matrix. Keep edges between two live cells
+and connected components are the live clusters:
+
+```r
+snap     <- dplyr::filter(result, tick == 500)
+live_ids <- snap$.id[snap$alive]
+e_live   <- dplyr::filter(abm_edges(result), from %in% live_ids, to %in% live_ids)
+
+comp <- igraph::components(
+  igraph::graph_from_data_frame(e_live, directed = FALSE,
+    vertices = data.frame(name = live_ids)))
+
+comp$no             # number of live clusters
+table(comp$csize)   # 4 = block, 3 = blinker, 5 = glider, ...
+```
+
+Period / stasis detection needs consecutive ticks (`record = "all"`):
+
+```r
+result |>
+  dplyr::arrange(.id, tick) |>
+  dplyr::group_by(.id) |>
+  dplyr::mutate(flipped = alive != dplyr::lag(alive)) |>
+  dplyr::group_by(tick) |>
+  dplyr::summarise(n_flipped = sum(flipped, na.rm = TRUE))
+```
+
+`n_flipped == 0` on consecutive ticks → a still life; a fixed value alternating →
+an oscillator.
+
+### The validation checks, concretely
+
+| claim | analysis |
+|---|---|
+| blinker period 2 | seed 3 cells in a row, `record = "all"`, `alive` repeats every 2 ticks |
+| glider translates `(1,1)` / 4 ticks | single glider, `filter(alive) \|> group_by(tick) \|> summarise(cx = mean(.x), cy = mean(.y))` — slopes ≈ 0.25 |
+| soup density → 0.0287 | `abm_global(density ~ mean(alive))`, read at large tick, average over seeds |
+
+The pattern generalises to every spatial model here: `group_by(tick)` for time
+series, `filter(tick == t)` for a frame, `abm_edges()` for anything topological.
+Turtle-≠-patch models add `filter(.group == "sheep")` before the `group_by`, and
+`.cell` joins a turtle back to its patch.

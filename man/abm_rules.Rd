@@ -73,6 +73,7 @@ in.
 
 Other agent update steps:
 \code{\link[=abm_global]{abm_global()}},
+\code{\link[=abm_move]{abm_move()}},
 \code{\link[=abm_neighbours]{abm_neighbours()}},
 \code{\link[=abm_sequential]{abm_sequential()}},
 \code{\link[=abm_tell]{abm_tell()}}

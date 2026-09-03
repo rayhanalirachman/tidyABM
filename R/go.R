@@ -115,6 +115,7 @@ print.abm_go <- function(x, ...) {
       abm_sequential = paste0("seq    ", length(s$rules), " rule(s)"),
       abm_global     = paste0("global ", length(s$rules), " rule(s)"),
       abm_neighbours = paste0("nbrs   ", length(s$rules), " rule(s)"),
+      abm_move       = paste0("move   along ", s$along),
       abm_tell       = paste0("tell   ", length(s$rules), " rule(s)"),
       abm_birth      = "birth",
       abm_death      = "death",

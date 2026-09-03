@@ -9,9 +9,14 @@ abm_setup(agents, network = NULL, globals = list(), seed = NULL)
 \arguments{
 \item{agents}{Either one \code{\link[=abm_agents]{abm_agents()}} specification, or a \emph{named} list of
 them for a model with several kinds of agent (for example
-\code{list(buyers = abm_agents(...), sellers = abm_agents(...))}).}
+\code{list(buyers = abm_agents(...), sellers = abm_agents(...))}). One element
+may be an \code{\link[=abm_grid]{abm_grid()}}, which is sugar for a group plus the grid
+\code{\link[=abm_network]{abm_network()}} wired to it.}
 
-\item{network}{Optionally an \code{\link[=abm_network]{abm_network()}} specification.}
+\item{network}{Optionally an \code{\link[=abm_network]{abm_network()}} specification. A lattice
+(\code{type = "grid"} or \code{"line"}) is built before the agent columns are
+materialised, so the wired group's formulas can read \code{.x} and \code{.y} and its
+count is inherited from \code{dims}.}
 
 \item{globals}{A named list of population-level values shared by every agent,
 for example \code{list(last_attendance = 60)}. Globals are readable inside every

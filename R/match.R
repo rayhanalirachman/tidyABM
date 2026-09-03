@@ -11,10 +11,11 @@ match_relevant_args <- list(
 )
 
 new_abm_match <- function(pair, size, by, role, eligible, from, among, cost,
-                          weight) {
+                          weight, dot_by = NULL) {
   structure(
     list(pair = pair, size = size, by = by, role = role, eligible = eligible,
-         from = from, among = among, cost = cost, weight = weight),
+         from = from, among = among, cost = cost, weight = weight,
+         dot_by = dot_by),
     class = c("abm_match", "abm_step")
   )
 }
@@ -104,6 +105,13 @@ new_abm_match <- function(pair, size, by, role, eligible, from, among, cost,
 #'   a chooser whose candidates all weigh nothing sits the step out. This is
 #'   what "noticed in proportion to its size" and preferential attachment as a
 #'   *step* need.
+#' @param .by A column naming a partition the match is confined to: agents are
+#'   only ever matched with agents sharing its value. This is
+#'   [abm_rules()]'s `.by` grouping applied to matching, and on a lattice
+#'   `.by = .cell` is what makes every co-located interaction -- predation,
+#'   mating, combat -- expressible: `abm_match(pair = "opposite_group", by =
+#'   .group, .by = .cell)` gives each wolf one sheep from *its own cell*, and
+#'   never pairs one sheep with two wolves. `NA` sits an agent out.
 #' @param from For `"network"`, `"neighbour"` (the default) picks a random
 #'   neighbour of the agent; `"random_edge"` picks a random edge of the whole
 #'   network and then one of its endpoints, which selects agents in proportion to
@@ -129,13 +137,19 @@ new_abm_match <- function(pair, size, by, role, eligible, from, among, cost,
 #' abm_match(pair = "nearest", cost = price + abs(x - own_x),
 #'           among = .group == "shops")
 #' abm_match(pair = "random", role = list(giver = money > 0, receiver = TRUE))
+#'
+#' # one prey per predator, per cell
+#' abm_match(pair = "opposite_group", by = .group, .by = .cell,
+#'           eligible = .group %in% c("wolves", "sheep"))
 abm_match <- function(pair = c("random", "one_of", "opposite_group", "nearest",
                                 "network"),
                       size = NULL, by = NULL, role = NULL, eligible = NULL,
-                      from = NULL, among = NULL, cost = NULL, weight = NULL) {
+                      from = NULL, among = NULL, cost = NULL, weight = NULL,
+                      .by = NULL) {
   pair <- rlang::arg_match(pair)
 
   by        <- enquo_or_null(rlang::enquo(by))
+  dot_by    <- enquo_or_null(rlang::enquo(.by))
   cost      <- enquo_or_null(rlang::enquo(cost))
   role      <- enquo_or_null(rlang::enquo(role))
   eligible  <- enquo_or_null(rlang::enquo(eligible))
@@ -214,7 +228,16 @@ abm_match <- function(pair = c("random", "one_of", "opposite_group", "nearest",
     }
   }
 
-  new_abm_match(pair, size, by, role, eligible, from, among, cost, weight)
+  if (!is.null(dot_by) && pair == "network") {
+    abm_abort(
+      c('{.arg .by} confines a match to a partition, and {.code pair = "network"} is already confined to the edges.',
+        "i" = "Drop {.arg .by}."),
+      class = "tidyABM_irrelevant_arg"
+    )
+  }
+
+  new_abm_match(pair, size, by, role, eligible, from, among, cost, weight,
+                dot_by)
 }
 
 #' @export
@@ -222,6 +245,7 @@ print.abm_match <- function(x, ...) {
   bits <- c(
     if (x$size != 2L) "size = {x$size}",
     if (!is.null(x$by)) "by = {.code {deparse1(rlang::quo_get_expr(x$by))}}",
+    if (!is.null(x$dot_by)) ".by = {.code {deparse1(rlang::quo_get_expr(x$dot_by))}}",
     if (!is.null(x$cost)) "cost = {.code {deparse1(rlang::quo_get_expr(x$cost))}}",
     if (!is.null(x$role)) "roles = {.val {names(as.list(rlang::quo_get_expr(x$role))[-1])}}",
     if (!is.null(x$eligible)) "eligible = {.code {deparse1(rlang::quo_get_expr(x$eligible))}}",

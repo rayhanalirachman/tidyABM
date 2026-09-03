@@ -4,17 +4,41 @@
 \alias{abm_neighbours}
 \title{Summarise each agent's neighbourhood}
 \usage{
-abm_neighbours(..., within = NULL)
+abm_neighbours(..., within = NULL, .where = NULL)
 }
 \arguments{
 \item{...}{One or more \code{column ~ aggregate_expression} rules. The expression
 sees the neighbours' agent columns, the focal agent's own columns as
-\verb{own_<col>}, any column \code{\link[=abm_draw]{abm_draw()}} attached to the edge, and any global.}
+\verb{own_<col>}, any column \code{\link[=abm_draw]{abm_draw()}} attached to the edge, and any global.One named lattice neighbour
+
+On a grid or line \code{\link[=abm_network]{abm_network()}} the two neighbours either side of a cell
+are not always interchangeable: a 1-D cellular automaton reads an \emph{ordered}
+triple, and "the cell to my north" is a different question from "my
+neighbourhood". \code{.where} restricts the aggregate to the single neighbour in
+a named lattice direction, so the aggregate runs over a one-row set and both
+\code{col ~ s} and \code{col ~ sum(s)} yield that neighbour's value. A missing
+neighbour, at a bounded edge, yields \code{NA}.
+
+\if{html}{\out{<div class="sourceCode r">}}\preformatted{abm_neighbours(s_w ~ sum(s), .where = "west"),
+abm_neighbours(s_e ~ sum(s), .where = "east"),
+abm_rules(s ~ rule[[4 * s_w + 2 * s + s_e + 1]])
+}\if{html}{\out{</div>}}}
 
 \item{within}{Optional condition defining a neighbourhood in attribute space
 rather than in the network. Evaluated once per (focal, candidate) pair, with
 the candidate's columns under their own names and the focal agent's under
-\verb{own_<col>}. When it is supplied the model needs no network.}
+\verb{own_<col>}. When it is supplied the model needs no network.
+
+A condition of the shape \verb{<col> == own_<col>} (optionally \code{&}-ed with
+more) is recognised and resolved as a hash join rather than by building
+every pair, so the co-location lookup
+\code{within = .group == "patches" & .id == own_.cell} -- "the cell I am
+standing on" -- is linear in the population rather than quadratic.}
+
+\item{.where}{Optional lattice direction restricting the neighbourhood to a
+single neighbour: \code{"north"}, \code{"south"}, \code{"east"} or \code{"west"} on a grid;
+\code{"left"} / \code{"right"} (or \code{"west"} / \code{"east"}) on a line. Needs a lattice,
+and cannot be combined with \code{within}.}
 }
 \value{
 An \code{abm_neighbours} step object.
@@ -75,6 +99,13 @@ abm_neighbours(richer_neighbours ~ sum(wealth > own_wealth))
 
 # a neighbourhood in opinion space rather than in a network
 abm_neighbours(opinion ~ mean(opinion), within = abs(opinion - own_opinion) <= 0.2)
+
+# the one cell to the west, on a lattice
+abm_neighbours(s_w ~ sum(s), .where = "west")
+
+# what is on the cell I am standing on
+abm_neighbours(grass_here ~ any(grass),
+               within = .group == "patches" & .id == own_.cell)
 }
 \seealso{
 \code{\link[=abm_go]{abm_go()}}, which lists every step and fixes the order they run
@@ -82,6 +113,7 @@ in.
 
 Other agent update steps:
 \code{\link[=abm_global]{abm_global()}},
+\code{\link[=abm_move]{abm_move()}},
 \code{\link[=abm_rules]{abm_rules()}},
 \code{\link[=abm_sequential]{abm_sequential()}},
 \code{\link[=abm_tell]{abm_tell()}}

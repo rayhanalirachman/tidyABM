@@ -23,6 +23,23 @@ rule_applies <- function(rule, g, all_cols, globals) {
   TRUE
 }
 
+#' Does a *condition* apply to this group?
+#'
+#' The same question [rule_applies()] asks, without a target column: a
+#' condition that mentions an agent column this group does not have is not
+#' about this group. That is what lets one `abm_death(when = ... & energy < 0)`
+#' sit in a model whose patches have no `energy`, exactly as one `abm_rules()`
+#' step routes itself to the groups its columns exist in.
+#' @noRd
+condition_applies <- function(quo, g, all_cols, globals) {
+  if (is.null(quo)) return(TRUE)
+  vars <- setdiff(all.vars(rlang::quo_get_expr(quo)),
+                  c(".id", ".group", ".group_id", ".partner", ".role",
+                    names(globals)))
+  vars <- vars[!startsWith(vars, "partner_")]
+  all(intersect(vars, all_cols) %in% names(g))
+}
+
 #' Add match information and partner columns to a group tibble
 #' @noRd
 augment_group <- function(g, match_state, combined) {

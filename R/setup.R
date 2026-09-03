@@ -1,9 +1,10 @@
 # Model setup ------------------------------------------------------------
 
-new_abm_model <- function(groups, globals, edges, network_spec) {
+new_abm_model <- function(groups, globals, edges, network_spec,
+                          lattice = NULL) {
   structure(
     list(groups = groups, globals = globals, edges = edges,
-         network_spec = network_spec),
+         network_spec = network_spec, lattice = lattice),
     class = "abm_model"
   )
 }
@@ -22,8 +23,13 @@ new_abm_model <- function(groups, globals, edges, network_spec) {
 #'
 #' @param agents Either one [abm_agents()] specification, or a *named* list of
 #'   them for a model with several kinds of agent (for example
-#'   `list(buyers = abm_agents(...), sellers = abm_agents(...))`).
-#' @param network Optionally an [abm_network()] specification.
+#'   `list(buyers = abm_agents(...), sellers = abm_agents(...))`). One element
+#'   may be an [abm_grid()], which is sugar for a group plus the grid
+#'   [abm_network()] wired to it.
+#' @param network Optionally an [abm_network()] specification. A lattice
+#'   (`type = "grid"` or `"line"`) is built before the agent columns are
+#'   materialised, so the wired group's formulas can read `.x` and `.y` and its
+#'   count is inherited from `dims`.
 #' @param globals A named list of population-level values shared by every agent,
 #'   for example `list(last_attendance = 60)`. Globals are readable inside every
 #'   rule and are updated by [abm_global()].
@@ -63,6 +69,11 @@ abm_setup <- function(agents, network = NULL, globals = list(), seed = NULL) {
     }, add = TRUE)
   }
 
+  # `abm_grid()` is sugar for a group plus the grid network wired to it
+  expanded <- expand_abm_grid(agents, network)
+  agents <- expanded$agents
+  network <- expanded$network
+
   specs <- normalise_agent_specs(agents)
 
   if (!is.list(globals) || (length(globals) && !rlang::is_named(globals))) {
@@ -70,17 +81,39 @@ abm_setup <- function(agents, network = NULL, globals = list(), seed = NULL) {
               class = "tidyABM_bad_globals")
   }
 
-  groups <- list()
-  offset <- 0L
-  for (nm in names(specs)) {
-    groups[[nm]] <- materialise_agents(specs[[nm]], nm, id_offset = offset)
-    offset <- offset + specs[[nm]]$n
-  }
-
   if (!is.null(network) && !inherits(network, "abm_network")) {
     abm_abort("{.arg network} must be built with {.fn abm_network}.",
               class = "tidyABM_bad_network")
   }
+
+  # A lattice is built *before* the agent columns, so `.x` / `.y` are in scope
+  # in the wired group's formulas and its count can be inherited. Every other
+  # network keeps the current order.
+  if (is_lattice_spec(network)) {
+    return(setup_lattice(specs, network, globals))
+  }
+
+  groups <- list()
+  offset <- 0L
+  for (nm in names(specs)) {
+    if (is.null(specs[[nm]]$n)) {
+      abm_abort(
+        c("Group {.field {nm}} needs an {.arg n}.",
+          "i" = 'Only the group a {.code type = "grid"} or {.code "line"} network is wired to inherits its count.'),
+        class = "tidyABM_bad_n"
+      )
+    }
+    if (!is.null(specs[[nm]]$at)) {
+      abm_abort(
+        c("{.arg at} places agents on a lattice, and this model has none.",
+          "i" = 'Add {.code abm_network(type = "grid", dims = ...)}, or drop {.arg at}.'),
+        class = "tidyABM_no_lattice"
+      )
+    }
+    groups[[nm]] <- materialise_agents(specs[[nm]], nm, id_offset = offset)
+    offset <- offset + specs[[nm]]$n
+  }
+
   edges <- materialise_network(network, n = offset)
 
   new_abm_model(groups, as.list(globals), edges, network)
@@ -135,6 +168,12 @@ print.abm_model <- function(x, ...) {
   }
   if (!is.null(x$edges)) {
     cli::cli_bullets(c("*" = "network: {nrow(x$edges)} edge{?s}"))
+  }
+  if (!is.null(x$lattice)) {
+    l <- x$lattice
+    cli::cli_bullets(c(
+      "*" = "lattice: {.val {l$type}} {paste(l$dims, collapse = ' x ')} on {.field {l$on}}{if (l$torus) ', torus' else ', bounded'}"
+    ))
   }
   invisible(x)
 }

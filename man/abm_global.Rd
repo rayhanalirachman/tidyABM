@@ -74,6 +74,7 @@ abm_global(stimulus ~ pmax(0, stimulus + 1 - 3 * sum(task == .key) / n()),
 in.
 
 Other agent update steps:
+\code{\link[=abm_move]{abm_move()}},
 \code{\link[=abm_neighbours]{abm_neighbours()}},
 \code{\link[=abm_rules]{abm_rules()}},
 \code{\link[=abm_sequential]{abm_sequential()}},

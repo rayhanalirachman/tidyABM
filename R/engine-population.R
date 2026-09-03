@@ -15,9 +15,11 @@ birth_by_condition <- function(step, state) {
   newborns <- integer()
   parents_of <- integer()
   combined <- bind_groups(state$groups)
+  all_cols <- setdiff(model_columns(state$groups), c(".id", ".group"))
   for (nm in names(state$groups)) {
     g <- state$groups[[nm]]
     if (nrow(g) == 0L) next
+    if (!condition_applies(step$when, g, all_cols, state$globals)) next
     aug <- augment_group(g, state$match, combined)
     parents <- eval_condition(step$when, aug, state$globals)
     if (!any(parents)) next
@@ -149,9 +151,12 @@ attach_newborns <- function(step, state, newborns, parents = NULL) {
 run_death <- function(step, state) {
   removed <- integer()
   combined <- bind_groups(state$groups)
+  all_cols <- setdiff(model_columns(state$groups), c(".id", ".group"))
   for (nm in names(state$groups)) {
     g <- state$groups[[nm]]
     if (nrow(g) == 0L) next
+    # a condition about a column this group has not got is not about this group
+    if (!condition_applies(step$when, g, all_cols, state$globals)) next
     aug <- augment_group(g, state$match, combined)
     dead <- eval_condition(step$when, aug, state$globals)
     if (!any(dead)) next

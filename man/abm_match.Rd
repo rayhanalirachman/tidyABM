@@ -13,7 +13,8 @@ abm_match(
   from = NULL,
   among = NULL,
   cost = NULL,
-  weight = NULL
+  weight = NULL,
+  .by = NULL
 )
 }
 \arguments{
@@ -74,6 +75,13 @@ candidate). Non-positive and \code{NA} weights make a candidate unpickable, and
 a chooser whose candidates all weigh nothing sits the step out. This is
 what "noticed in proportion to its size" and preferential attachment as a
 \emph{step} need.}
+
+\item{.by}{A column naming a partition the match is confined to: agents are
+only ever matched with agents sharing its value. This is
+\code{\link[=abm_rules]{abm_rules()}}'s \code{.by} grouping applied to matching, and on a lattice
+\code{.by = .cell} is what makes every co-located interaction -- predation,
+mating, combat -- expressible: \code{abm_match(pair = "opposite_group", by = .group, .by = .cell)} gives each wolf one sheep from \emph{its own cell}, and
+never pairs one sheep with two wolves. \code{NA} sits an agent out.}
 }
 \value{
 An \code{abm_match} step object.
@@ -129,6 +137,10 @@ abm_match(pair = "one_of", among = .group == "firms" & !.id \%in\% own_sellers,
 abm_match(pair = "nearest", cost = price + abs(x - own_x),
           among = .group == "shops")
 abm_match(pair = "random", role = list(giver = money > 0, receiver = TRUE))
+
+# one prey per predator, per cell
+abm_match(pair = "opposite_group", by = .group, .by = .cell,
+          eligible = .group \%in\% c("wolves", "sheep"))
 }
 \seealso{
 \code{\link[=abm_go]{abm_go()}}, which lists every step and fixes the order they run

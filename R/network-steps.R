@@ -184,10 +184,36 @@ run_unlink <- function(step, state) {
 #' @param ... One or more `column ~ aggregate_expression` rules. The expression
 #'   sees the neighbours' agent columns, the focal agent's own columns as
 #'   `own_<col>`, any column [abm_draw()] attached to the edge, and any global.
+#' # One named lattice neighbour
+#'
+#' On a grid or line [abm_network()] the two neighbours either side of a cell
+#' are not always interchangeable: a 1-D cellular automaton reads an *ordered*
+#' triple, and "the cell to my north" is a different question from "my
+#' neighbourhood". `.where` restricts the aggregate to the single neighbour in
+#' a named lattice direction, so the aggregate runs over a one-row set and both
+#' `col ~ s` and `col ~ sum(s)` yield that neighbour's value. A missing
+#' neighbour, at a bounded edge, yields `NA`.
+#'
+#' ```r
+#' abm_neighbours(s_w ~ sum(s), .where = "west"),
+#' abm_neighbours(s_e ~ sum(s), .where = "east"),
+#' abm_rules(s ~ rule[[4 * s_w + 2 * s + s_e + 1]])
+#' ```
+#'
 #' @param within Optional condition defining a neighbourhood in attribute space
 #'   rather than in the network. Evaluated once per (focal, candidate) pair, with
 #'   the candidate's columns under their own names and the focal agent's under
 #'   `own_<col>`. When it is supplied the model needs no network.
+#'
+#'   A condition of the shape `<col> == own_<col>` (optionally `&`-ed with
+#'   more) is recognised and resolved as a hash join rather than by building
+#'   every pair, so the co-location lookup
+#'   `within = .group == "patches" & .id == own_.cell` -- "the cell I am
+#'   standing on" -- is linear in the population rather than quadratic.
+#' @param .where Optional lattice direction restricting the neighbourhood to a
+#'   single neighbour: `"north"`, `"south"`, `"east"` or `"west"` on a grid;
+#'   `"left"` / `"right"` (or `"west"` / `"east"`) on a line. Needs a lattice,
+#'   and cannot be combined with `within`.
 #'
 #' @return An `abm_neighbours` step object.
 #' @seealso [abm_go()], which lists every step and fixes the order they run
@@ -200,10 +226,31 @@ run_unlink <- function(step, state) {
 #'
 #' # a neighbourhood in opinion space rather than in a network
 #' abm_neighbours(opinion ~ mean(opinion), within = abs(opinion - own_opinion) <= 0.2)
-abm_neighbours <- function(..., within = NULL) {
+#'
+#' # the one cell to the west, on a lattice
+#' abm_neighbours(s_w ~ sum(s), .where = "west")
+#'
+#' # what is on the cell I am standing on
+#' abm_neighbours(grass_here ~ any(grass),
+#'                within = .group == "patches" & .id == own_.cell)
+abm_neighbours <- function(..., within = NULL, .where = NULL) {
   step <- new_rule_step(collect_rules(rlang::list2(...), "abm_neighbours"),
                         "abm_neighbours")
   step$within <- enquo_or_null(rlang::enquo(within))
+  step$where <- .where
+  if (!is.null(.where)) {
+    if (!rlang::is_string(.where)) {
+      abm_abort("{.arg .where} must be a single direction name.",
+                class = "tidyABM_bad_where")
+    }
+    if (!is.null(step$within)) {
+      abm_abort(
+        c("{.arg .where} and {.arg within} are different neighbourhoods.",
+          "i" = "{.arg .where} names one lattice neighbour; {.arg within} is a condition."),
+        class = "tidyABM_conflicting_args"
+      )
+    }
+  }
   step
 }
 
@@ -269,8 +316,13 @@ run_neighbours <- function(step, state) {
   combined <- bind_groups(state$groups)
   if (nrow(combined) == 0L) return(state)
 
-  if (!is.null(step$within)) {
-    view <- attribute_view(step, combined, state$globals)
+  if (!is.null(step$where)) {
+    # L1: the single lattice neighbour in a named direction
+    view <- directional_view(step, combined, state)
+  } else if (!is.null(step$within)) {
+    # a `<col> == own_<col>` condition is a join, not a cross product
+    view <- equijoin_view(step, combined, state$globals) %||%
+      attribute_view(step, combined, state$globals)
   } else {
     if (is.null(state$edges)) {
       abm_abort(

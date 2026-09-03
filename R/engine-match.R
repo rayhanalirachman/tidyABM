@@ -58,6 +58,7 @@ assign_roles <- function(role_quo, agents, globals, a_idx, b_idx) {
 #' only. A match decides who meets whom; it never writes an agent column.
 #' @noRd
 run_match <- function(spec, agents, edges, globals, call = rlang::caller_env()) {
+  if (!is.null(spec$dot_by)) return(run_match_by(spec, agents, edges, globals, call))
   eligible <- eval_condition(spec$eligible, agents, globals)
   pool <- agents$.id[eligible]
   # `eligible` says who takes part; `among` says who may be picked. They are
@@ -73,6 +74,44 @@ run_match <- function(spec, agents, edges, globals, call = rlang::caller_env()) 
     network        = match_network(spec, agents, edges, pool)
   )
   res
+}
+
+#' Run a match once inside each partition of a `.by` column
+#'
+#' The whole match is replayed per partition -- eligibility, roles, the draw --
+#' so an agent is only ever paired with an agent sharing the column's value.
+#' `.group_id`s are re-based across partitions so that grouped rules still see
+#' one group per pair. `NA` is not a partition: an agent with no value sits the
+#' step out, the way it does in `abm_rules(.by =)`.
+#' @noRd
+run_match_by <- function(spec, agents, edges, globals, call) {
+  by <- by_columns(spec$dot_by, call)
+  if (length(by) != 1L || !by %in% names(agents)) {
+    abm_abort(
+      c("{.arg .by} must name one existing agent column.",
+        "x" = "No column {.field {by}}."),
+      class = "tidyABM_missing_column", call = call
+    )
+  }
+  inner <- spec
+  inner$dot_by <- NULL
+
+  key <- agents[[by]]
+  parts <- split(seq_len(nrow(agents)), key)          # `split()` drops NA keys
+  out <- vector("list", length(parts))
+  offset <- 0L
+  for (i in seq_along(parts)) {
+    sub <- agents[parts[[i]], , drop = FALSE]
+    if (nrow(sub) == 0L) next
+    m <- run_match(inner, sub, edges, globals, call)
+    if (nrow(m) == 0L) next
+    m$.group_id <- m$.group_id + offset
+    offset <- max(m$.group_id)
+    out[[i]] <- m
+  }
+  out <- Filter(Negate(is.null), out)
+  if (!length(out)) return(empty_match())
+  dplyr::bind_rows(out)
 }
 
 #' Does a condition ask about the pair rather than about the candidate?

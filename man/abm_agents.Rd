@@ -4,14 +4,24 @@
 \alias{abm_agents}
 \title{Declare a group of agents}
 \usage{
-abm_agents(n, ...)
+abm_agents(n = NULL, ..., at = NULL)
 }
 \arguments{
-\item{n}{Number of agents in this group. A single positive integer.}
+\item{n}{Number of agents in this group. A single positive integer. Optional,
+and ignored, for the group a grid or line \code{\link[=abm_network]{abm_network()}} is wired to,
+which inherits \code{prod(dims)} instead.}
 
 \item{...}{Named column specifications. Each is either a plain value (which
 is recycled) or a one-sided formula (which is evaluated once, per group).
 Names beginning with \code{.} are reserved for the package.}
+
+\item{at}{Where on the lattice this group starts, as a one-sided formula
+evaluated once, like a column. It must yield a cell id (a wired-group
+\code{.id}), either one to recycle or one per agent. The expression sees this
+group's own columns, \code{n}, \code{dims}, and the wired group's columns, so both
+\code{at = ~sample(prod(dims), n, replace = TRUE)} and \code{at = ~which(nest)[1]}
+work. Only meaningful in a model with a lattice; the default is a uniform
+random placement.}
 }
 \value{
 An \code{abm_agents} specification object.
@@ -33,6 +43,14 @@ must return either a length-\code{n} vector or a length-1 value to recycle.
 Formulas are evaluated in order, and each one can see \code{n} as well as any
 column defined before it, so \code{abm_agents(n = 200, wtp = ~rnorm(n, 50, 10), offer = ~wtp * 0.8)} works as written.
 }
+\section{On a lattice}{
+Two things change when the model has a grid or line network (see
+\code{\link[=abm_network]{abm_network()}}). The group that network is wired to \strong{omits \code{n}}: its count
+is \code{prod(dims)}, and passing a matching \code{n} is allowed while a mismatch is an
+error. Every other group gets a \code{.cell} saying which cell it is standing on,
+drawn uniformly at random unless \code{at} says otherwise.
+}
+
 \examples{
 abm_agents(n = 500, money = 100)
 
@@ -46,4 +64,9 @@ go <- abm_go(
 )
 
 abm_run(economy, go, ticks = 10, seed = 1)
+
+# on a lattice: the wired group inherits its count, the mobile one is placed
+abm_agents(alive = ~runif(n) < 0.1)
+abm_agents(n = 100, energy = ~runif(n, 4, 8),
+           at = ~sample(prod(dims), n, replace = TRUE))
 }

@@ -102,6 +102,7 @@ abm_run <- function(model, go, ticks, seed = NULL, record = "all",
     groups  = model$groups,
     globals = model$globals,
     edges   = model$edges,
+    lattice = model$lattice,
     match   = NULL,
     next_id = n_agents(model) + 1L
   )
@@ -183,6 +184,7 @@ run_step <- function(step, state) {
     abm_sequential = run_sequential(step, state),
     abm_global     = run_global(step, state),
     abm_neighbours = run_neighbours(step, state),
+    abm_move       = run_move(step, state),
     abm_draw       = run_draw(step, state),
     abm_tell       = run_tell(step, state),
     abm_birth      = run_birth(step, state),
@@ -253,6 +255,9 @@ abm_edges <- function(x) {
 
 #' @export
 n_agents.abm_result <- function(x, ...) {
+  # a result that has been subset down to a few columns may no longer carry
+  # `.id`; that is a narrower view of the run, not a run with no agents in it
+  if (!".id" %in% names(x)) return(NA_integer_)
   length(unique(x$.id))
 }
 
@@ -261,8 +266,11 @@ print.abm_result <- function(x, ...) {
   rec <- attr(x, "record")
   note <- if (identical(rec, "all") || is.null(rec)) "" else
     cli::format_inline(", recording {.val {rec}}")
+  seen <- n_agents(x)
+  seen_txt <- if (is.na(seen)) "" else
+    cli::format_inline("{seen} agent{?s} seen, ")
   cli::cli_text(
-    "{.cls abm_result} {attr(x, 'ticks')} tick{?s}, {n_agents(x)} agent{?s} seen, {nrow(x)} row{?s}{note}"
+    "{.cls abm_result} {attr(x, 'ticks')} tick{?s}, {seen_txt}{nrow(x)} row{?s}{note}"
   )
   print(tibble::as_tibble(x), ...)
   invisible(x)

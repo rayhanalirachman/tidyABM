@@ -5,18 +5,23 @@
 \title{Declare a persistent network between agents}
 \usage{
 abm_network(
-  type = c("random", "poisson", "scale_free", "ring", "complete", "manual", "empty"),
+  type = c("random", "poisson", "scale_free", "ring", "complete", "grid", "line",
+    "manual", "empty"),
   degree = NULL,
-  edges = NULL
+  edges = NULL,
+  dims = NULL,
+  diagonals = NULL,
+  torus = NULL,
+  on = NULL
 )
 }
 \arguments{
 \item{type}{How the network is built. \code{"random"} for a \code{degree}-regular
 random graph, \code{"poisson"} for an Erdos-Renyi graph of mean degree \code{degree},
 \code{"scale_free"} for a Barabasi-Albert graph, \code{"ring"} for a one-dimensional
-lattice, \code{"complete"} for every possible edge, \code{"manual"} to supply \code{edges}
-yourself, or \code{"empty"} for a network that starts with no edges (useful with
-\code{\link[=abm_birth]{abm_birth()}}).}
+lattice, \code{"complete"} for every possible edge, \code{"grid"} for a 2-D lattice,
+\code{"line"} for a 1-D one, \code{"manual"} to supply \code{edges} yourself, or \code{"empty"}
+for a network that starts with no edges (useful with \code{\link[=abm_birth]{abm_birth()}}).}
 
 \item{degree}{Number of neighbours per agent, exactly, for \code{"random"} and
 \code{"ring"}; on average, for \code{"poisson"}; per newly attached agent, for
@@ -25,6 +30,24 @@ yourself, or \code{"empty"} for a network that starts with no edges (useful with
 
 \item{edges}{A two-column data frame of \code{from}/\code{to} agent ids. Required for
 \code{type = "manual"}.}
+
+\item{dims}{The shape of a lattice: \code{c(width, height)} for \code{type = "grid"},
+a single width for \code{type = "line"}. The cell count is \code{prod(dims)}.
+Required for both lattice types and used by neither of the others.}
+
+\item{diagonals}{For \code{type = "grid"}, whether a cell's neighbourhood includes
+the diagonals. \code{TRUE} (the default) is the 8-neighbour Moore neighbourhood
+and matches NetLogo's unmarked \code{neighbors}; \code{FALSE} is the 4-neighbour von
+Neumann one. An error for \code{type = "line"}, which has no diagonals.}
+
+\item{torus}{For a lattice, whether the edges wrap. \code{TRUE} is the default.
+\code{FALSE} gives a bounded lattice whose border cells simply have fewer
+neighbours, which needs no special-casing in a rule: \code{sum()} and \code{any()}
+see the shorter neighbourhood directly.}
+
+\item{on}{For a lattice, the name of the agent group to wire. The rest of the
+population is not on the lattice; it stands \emph{on} it, via \code{.cell}. Defaults
+to the whole population, which is what a patch-only model wants.}
 }
 \value{
 An \code{abm_network} specification object.
@@ -58,10 +81,42 @@ Barabasi-Albert graph attaching \code{degree} edges per new agent, giving the
 heavy tail. \code{"ring"} is the one-dimensional lattice, each agent joined to
 the \code{degree / 2} agents on either side of it.
 }
+\section{Lattices}{
+\code{type = "grid"} and \code{type = "line"} build a lattice, and a lattice \strong{is a
+network}: it produces the same \code{from}/\code{to} edge tibble every other type
+produces, so patches are ordinary agents and \code{\link[=abm_neighbours]{abm_neighbours()}},
+\code{\link[=abm_match]{abm_match()}} with \code{pair = "network"}, \code{\link[=abm_link]{abm_link()}} and \code{\link[=abm_edges]{abm_edges()}} all
+work on it with no change. There is no second medium and no patch-specific
+rule syntax.
+
+Two things are injected. The wired group gains \code{.x} and \code{.y} (a line gains
+\code{.x} only), integer cell coordinates, 1-based, with \code{.id = .x + (.y - 1) * w}
+and \code{.y} increasing upward. Every \emph{other} group gains \code{.cell}, an integer
+holding the wired group's \code{.id} for the cell that agent is standing on, plus
+\code{.x} / \code{.y} mirroring it. All three are reserved: a model reads them, it does
+not declare them.
+
+The wired group also \strong{inherits its count}, so it omits \code{n} in
+\code{\link[=abm_agents]{abm_agents()}} and gets \code{prod(dims)}. \code{n} is still usable inside that group's
+formulas, and a matching \code{n} is allowed; a mismatch is an error. The lattice
+is built before the agent columns are materialised, so \code{.x} and \code{.y} are in
+scope in setup formulas as well as in the go block.
+}
+
 \examples{
 abm_network(type = "random", degree = 4)
 abm_network(type = "poisson", degree = 3)
 abm_network(type = "ring", degree = 2)
 abm_network(type = "complete")
 abm_network(type = "manual", edges = data.frame(from = 1, to = 2))
+
+# a 100x100 torus with the Moore neighbourhood
+abm_network(type = "grid", dims = c(100, 100))
+
+# a bounded von Neumann grid, wired to the patches of a turtle model
+abm_network(type = "grid", dims = c(50, 50), diagonals = FALSE,
+            torus = FALSE, on = "patches")
+
+# a 1-D ring of cells
+abm_network(type = "line", dims = 401)
 }

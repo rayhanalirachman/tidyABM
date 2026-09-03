@@ -77,6 +77,7 @@ which lists every step and fixes the order they run in.
 
 Other agent update steps:
 [`abm_global()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_global.md),
+[`abm_move()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_move.md),
 [`abm_neighbours()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_neighbours.md),
 [`abm_sequential()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_sequential.md),
 [`abm_tell()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_tell.md)

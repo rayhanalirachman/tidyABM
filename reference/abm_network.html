@@ -58,9 +58,14 @@ agents that are removed.</p>
     <div class="section level2">
     <h2 id="ref-usage">Usage<a class="anchor" aria-label="anchor" href="#ref-usage"></a></h2>
     <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">abm_network</span><span class="op">(</span></span>
-<span>  type <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"random"</span>, <span class="st">"poisson"</span>, <span class="st">"scale_free"</span>, <span class="st">"ring"</span>, <span class="st">"complete"</span>, <span class="st">"manual"</span>, <span class="st">"empty"</span><span class="op">)</span>,</span>
+<span>  type <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"random"</span>, <span class="st">"poisson"</span>, <span class="st">"scale_free"</span>, <span class="st">"ring"</span>, <span class="st">"complete"</span>, <span class="st">"grid"</span>, <span class="st">"line"</span>,</span>
+<span>    <span class="st">"manual"</span>, <span class="st">"empty"</span><span class="op">)</span>,</span>
 <span>  degree <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  edges <span class="op">=</span> <span class="cn">NULL</span></span>
+<span>  edges <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  dims <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  diagonals <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  torus <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  on <span class="op">=</span> <span class="cn">NULL</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -72,9 +77,9 @@ agents that are removed.</p>
 <dd><p>How the network is built. <code>"random"</code> for a <code>degree</code>-regular
 random graph, <code>"poisson"</code> for an Erdos-Renyi graph of mean degree <code>degree</code>,
 <code>"scale_free"</code> for a Barabasi-Albert graph, <code>"ring"</code> for a one-dimensional
-lattice, <code>"complete"</code> for every possible edge, <code>"manual"</code> to supply <code>edges</code>
-yourself, or <code>"empty"</code> for a network that starts with no edges (useful with
-<code><a href="abm_birth.html">abm_birth()</a></code>).</p></dd>
+lattice, <code>"complete"</code> for every possible edge, <code>"grid"</code> for a 2-D lattice,
+<code>"line"</code> for a 1-D one, <code>"manual"</code> to supply <code>edges</code> yourself, or <code>"empty"</code>
+for a network that starts with no edges (useful with <code><a href="abm_birth.html">abm_birth()</a></code>).</p></dd>
 
 
 <dt id="arg-degree">degree<a class="anchor" aria-label="anchor" href="#arg-degree"></a></dt>
@@ -87,6 +92,32 @@ yourself, or <code>"empty"</code> for a network that starts with no edges (usefu
 <dt id="arg-edges">edges<a class="anchor" aria-label="anchor" href="#arg-edges"></a></dt>
 <dd><p>A two-column data frame of <code>from</code>/<code>to</code> agent ids. Required for
 <code>type = "manual"</code>.</p></dd>
+
+
+<dt id="arg-dims">dims<a class="anchor" aria-label="anchor" href="#arg-dims"></a></dt>
+<dd><p>The shape of a lattice: <code>c(width, height)</code> for <code>type = "grid"</code>,
+a single width for <code>type = "line"</code>. The cell count is <code>prod(dims)</code>.
+Required for both lattice types and used by neither of the others.</p></dd>
+
+
+<dt id="arg-diagonals">diagonals<a class="anchor" aria-label="anchor" href="#arg-diagonals"></a></dt>
+<dd><p>For <code>type = "grid"</code>, whether a cell's neighbourhood includes
+the diagonals. <code>TRUE</code> (the default) is the 8-neighbour Moore neighbourhood
+and matches NetLogo's unmarked <code>neighbors</code>; <code>FALSE</code> is the 4-neighbour von
+Neumann one. An error for <code>type = "line"</code>, which has no diagonals.</p></dd>
+
+
+<dt id="arg-torus">torus<a class="anchor" aria-label="anchor" href="#arg-torus"></a></dt>
+<dd><p>For a lattice, whether the edges wrap. <code>TRUE</code> is the default.
+<code>FALSE</code> gives a bounded lattice whose border cells simply have fewer
+neighbours, which needs no special-casing in a rule: <code><a href="https://rdrr.io/r/base/sum.html" class="external-link">sum()</a></code> and <code><a href="https://rdrr.io/r/base/any.html" class="external-link">any()</a></code>
+see the shorter neighbourhood directly.</p></dd>
+
+
+<dt id="arg-on">on<a class="anchor" aria-label="anchor" href="#arg-on"></a></dt>
+<dd><p>For a lattice, the name of the agent group to wire. The rest of the
+population is not on the lattice; it stands <em>on</em> it, via <code>.cell</code>. Defaults
+to the whole population, which is what a patch-only model wants.</p></dd>
 
 </dl></div>
     <div class="section level2">
@@ -114,6 +145,26 @@ Barabasi-Albert graph attaching <code>degree</code> edges per new agent, giving 
 heavy tail. <code>"ring"</code> is the one-dimensional lattice, each agent joined to
 the <code>degree / 2</code> agents on either side of it.</p>
     </div>
+    <div class="section level2">
+    <h2 id="lattices">Lattices<a class="anchor" aria-label="anchor" href="#lattices"></a></h2>
+    <p><code>type = "grid"</code> and <code>type = "line"</code> build a lattice, and a lattice <strong>is a
+network</strong>: it produces the same <code>from</code>/<code>to</code> edge tibble every other type
+produces, so patches are ordinary agents and <code><a href="abm_neighbours.html">abm_neighbours()</a></code>,
+<code><a href="abm_match.html">abm_match()</a></code> with <code>pair = "network"</code>, <code><a href="abm_link.html">abm_link()</a></code> and <code><a href="abm_edges.html">abm_edges()</a></code> all
+work on it with no change. There is no second medium and no patch-specific
+rule syntax.</p>
+<p>Two things are injected. The wired group gains <code>.x</code> and <code>.y</code> (a line gains
+<code>.x</code> only), integer cell coordinates, 1-based, with <code>.id = .x + (.y - 1) * w</code>
+and <code>.y</code> increasing upward. Every <em>other</em> group gains <code>.cell</code>, an integer
+holding the wired group's <code>.id</code> for the cell that agent is standing on, plus
+<code>.x</code> / <code>.y</code> mirroring it. All three are reserved: a model reads them, it does
+not declare them.</p>
+<p>The wired group also <strong>inherits its count</strong>, so it omits <code>n</code> in
+<code><a href="abm_agents.html">abm_agents()</a></code> and gets <code>prod(dims)</code>. <code>n</code> is still usable inside that group's
+formulas, and a matching <code>n</code> is allowed; a mismatch is an error. The lattice
+is built before the agent columns are materialised, so <code>.x</code> and <code>.y</code> are in
+scope in setup formulas as well as in the go block.</p>
+    </div>
 
     <div class="section level2">
     <h2 id="ref-examples">Examples<a class="anchor" aria-label="anchor" href="#ref-examples"></a></h2>
@@ -131,6 +182,28 @@ the <code>degree / 2</code> agents on either side of it.</p>
 <span class="r-in"><span><span class="fu">abm_network</span><span class="op">(</span>type <span class="op">=</span> <span class="st">"manual"</span>, edges <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/data.frame.html" class="external-link">data.frame</a></span><span class="op">(</span>from <span class="op">=</span> <span class="fl">1</span>, to <span class="op">=</span> <span class="fl">2</span><span class="op">)</span><span class="op">)</span></span></span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #0000BB;">&lt;abm_network&gt;</span> type <span style="color: #0000BB;">"manual"</span></span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">•</span> 1 edge supplied</span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co"># a 100x100 torus with the Moore neighbourhood</span></span></span>
+<span class="r-in"><span><span class="fu">abm_network</span><span class="op">(</span>type <span class="op">=</span> <span class="st">"grid"</span>, dims <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">100</span>, <span class="fl">100</span><span class="op">)</span><span class="op">)</span></span></span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #0000BB;">&lt;abm_network&gt;</span> type <span style="color: #0000BB;">"grid"</span></span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">•</span> dims = 100 x 100 (10000 cells)</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">•</span> diagonals = TRUE</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">•</span> torus = TRUE</span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co"># a bounded von Neumann grid, wired to the patches of a turtle model</span></span></span>
+<span class="r-in"><span><span class="fu">abm_network</span><span class="op">(</span>type <span class="op">=</span> <span class="st">"grid"</span>, dims <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">50</span>, <span class="fl">50</span><span class="op">)</span>, diagonals <span class="op">=</span> <span class="cn">FALSE</span>,</span></span>
+<span class="r-in"><span>            torus <span class="op">=</span> <span class="cn">FALSE</span>, on <span class="op">=</span> <span class="st">"patches"</span><span class="op">)</span></span></span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #0000BB;">&lt;abm_network&gt;</span> type <span style="color: #0000BB;">"grid"</span></span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">•</span> dims = 50 x 50 (2500 cells)</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">•</span> diagonals = FALSE</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">•</span> torus = FALSE</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">•</span> on = <span style="color: #00BB00;">patches</span></span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co"># a 1-D ring of cells</span></span></span>
+<span class="r-in"><span><span class="fu">abm_network</span><span class="op">(</span>type <span class="op">=</span> <span class="st">"line"</span>, dims <span class="op">=</span> <span class="fl">401</span><span class="op">)</span></span></span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #0000BB;">&lt;abm_network&gt;</span> type <span style="color: #0000BB;">"line"</span></span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">•</span> dims = 401 (401 cells)</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">•</span> torus = TRUE</span>
 </code></pre></div>
     </div>
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>

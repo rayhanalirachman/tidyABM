@@ -12,6 +12,7 @@ produced.
 |----|----|
 | [The grammar](https://rayhanalirachman.github.io/tidyABM/models/grammar.md) | every step, and what each one means |
 | [All 56 models](https://rayhanalirachman.github.io/tidyABM/models/README.md) | the index, by part |
+| [The spatial models](https://rayhanalirachman.github.io/tidyABM/models-spatial/README.md) | the lattice corpus, kept separate from the 56 |
 | [Open items](https://rayhanalirachman.github.io/tidyABM/models/open-items.md) | what the grammar still cannot say |
 | [What each stress test changed](https://rayhanalirachman.github.io/tidyABM/models/what-changed.md) | how the grammar got its shape |
 | [Sources](https://rayhanalirachman.github.io/tidyABM/models/sources.md) | every citation in one table |

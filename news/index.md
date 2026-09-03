@@ -1,5 +1,91 @@
 # Changelog
 
+## tidyABM (development version)
+
+### The spatial grammar
+
+A lattice is now a network type, which is the whole idea:
+`abm_network(type = "grid")` produces the same `from`/`to` edge tibble
+every other type produces, so patches are ordinary agents and
+[`abm_neighbours()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_neighbours.md),
+`abm_match(pair = "network")`,
+[`abm_link()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_link.md)
+and
+[`abm_edges()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_edges.md)
+work on a grid unchanged. A mobile agent’s location is a patch `.id`
+held in a reserved `.cell` column, and moving is writing that column.
+There is no second medium and no patch-specific rule syntax. Every
+addition is additive: no existing signature changes meaning.
+
+- [`abm_network()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_network.md)
+  gains `type = "grid"` and `type = "line"`, with `dims`, `diagonals`,
+  `torus` and `on`. The wired group is given `.x` / `.y` (a line gets
+  `.x` only) and **inherits its count** from `prod(dims)`, so it omits
+  `n`. The lattice is built before the agent columns are materialised,
+  so `.x` and `.y` are in scope in setup formulas as well as in the go
+  block.
+- [`abm_grid()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_grid.md)
+  is sugar for a patch group plus the grid network wired to it.
+- `abm_neighbours(.where =)` restricts the aggregate to the single
+  lattice neighbour in a named direction (`"north"` / `"south"` /
+  `"east"` / `"west"`, or `"left"` / `"right"` on a line), which is what
+  an ordered-neighbour rule such as a 1-D cellular automaton needs.
+- `abm_neighbours(within =)` now recognises a `<col> == own_<col>`
+  condition and resolves it as a hash join, so the co-location lookup
+  `within = .group == "patches" & .id == own_.cell` is linear in the
+  population rather than quadratic.
+- Every group that is not the wired one gets `.cell`, plus `.x` / `.y`
+  kept in sync with it. `abm_agents(at =)` places them; the default is
+  uniform random.
+- `abm_match(.by =)` confines a match to a partition, so
+  `abm_match(pair = "opposite_group", by = .group, .by = .cell)` gives
+  each predator one prey *from its own cell* and never pairs one prey
+  with two.
+- [`abm_move()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_move.md)
+  is the one new step: it reassigns `.cell` to a cell reachable from the
+  current one. `to = "random_neighbour"`, `"random_empty_neighbour"`,
+  `"stay"`, or `uphill(<expr>)` / `downhill(<expr>)`; `who` says which
+  groups move. `direction`, `range`, `axes_only` and `avoid_occupied`
+  cover the models that force them (Langton’s Ant, Sugarscape,
+  Rebellion).
+
+Validated in `tests/testthat/test-spatial.R` and reproduced at full size
+by `models-spatial/scripts/`: Game of Life’s blinker and glider, rule 90
+against Pascal’s triangle mod 2, fire percolation, Schelling,
+Wolf–Sheep–Grass, Ants, Langton’s Ant against a reference
+implementation, the Ising transition at *T*_(c), Daisyworld and
+Rebellion.
+
+### Also
+
+- [`abm_death()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_death.md)
+  and
+  [`abm_birth()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_birth.md)
+  now skip a group whose columns the `when` condition does not
+  mention-match, the way
+  [`abm_rules()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_rules.md)
+  already routed itself to the groups its columns exist in. Before this,
+  one `abm_death(when = ... & energy < 0)` in a model whose patches have
+  no `energy` was an error rather than a step that did not apply to
+  patches.
+- Strict single-site Ising remains out of reach:
+  [`abm_sequential()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_sequential.md)
+  processes agents one at a time but can read only its own row and the
+  globals, never a neighbour. The checkerboard formulation is the
+  supported one.
+- [`abm_agents()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_agents.md)
+  gains `at` as a named argument, and its `n` is now optional (it has to
+  be, for a grid-wired group to inherit its count). Two things follow. A
+  column called `at` is no longer possible — it binds to the placement
+  argument instead, though a model with no lattice then fails loudly
+  rather than silently. And a missing `n` is now reported by
+  [`abm_setup()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_setup.md)
+  rather than by
+  [`abm_agents()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_agents.md),
+  since only
+  [`abm_setup()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_setup.md)
+  knows whether the model has a lattice for the group to inherit from.
+
 ## tidyABM 0.0.0.9000
 
 First working version. The package implements the grammar developed

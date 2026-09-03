@@ -67,11 +67,16 @@ shared globals. The result is the <code>model</code> argument of <code><a href="
 <dl><dt id="arg-agents">agents<a class="anchor" aria-label="anchor" href="#arg-agents"></a></dt>
 <dd><p>Either one <code><a href="abm_agents.html">abm_agents()</a></code> specification, or a <em>named</em> list of
 them for a model with several kinds of agent (for example
-<code>list(buyers = abm_agents(...), sellers = abm_agents(...))</code>).</p></dd>
+<code>list(buyers = abm_agents(...), sellers = abm_agents(...))</code>). One element
+may be an <code><a href="abm_grid.html">abm_grid()</a></code>, which is sugar for a group plus the grid
+<code><a href="abm_network.html">abm_network()</a></code> wired to it.</p></dd>
 
 
 <dt id="arg-network">network<a class="anchor" aria-label="anchor" href="#arg-network"></a></dt>
-<dd><p>Optionally an <code><a href="abm_network.html">abm_network()</a></code> specification.</p></dd>
+<dd><p>Optionally an <code><a href="abm_network.html">abm_network()</a></code> specification. A lattice
+(<code>type = "grid"</code> or <code>"line"</code>) is built before the agent columns are
+materialised, so the wired group's formulas can read <code>.x</code> and <code>.y</code> and its
+count is inherited from <code>dims</code>.</p></dd>
 
 
 <dt id="arg-globals">globals<a class="anchor" aria-label="anchor" href="#arg-globals"></a></dt>

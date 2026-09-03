@@ -39,6 +39,35 @@
     </div>
 
     <div class="section level2">
+<h2 class="pkg-version" data-toc-text="development version" id="tidyabm-development-version">tidyABM (development version)<a class="anchor" aria-label="anchor" href="#tidyabm-development-version"></a></h2>
+<div class="section level3">
+<h3 id="the-spatial-grammar-development-version">The spatial grammar<a class="anchor" aria-label="anchor" href="#the-spatial-grammar-development-version"></a></h3>
+<p>A lattice is now a network type, which is the whole idea: <code>abm_network(type = "grid")</code> produces the same <code>from</code>/<code>to</code> edge tibble every other type produces, so patches are ordinary agents and <code><a href="../reference/abm_neighbours.html">abm_neighbours()</a></code>, <code>abm_match(pair = "network")</code>, <code><a href="../reference/abm_link.html">abm_link()</a></code> and <code><a href="../reference/abm_edges.html">abm_edges()</a></code> work on a grid unchanged. A mobile agent’s location is a patch <code>.id</code> held in a reserved <code>.cell</code> column, and moving is writing that column. There is no second medium and no patch-specific rule syntax. Every addition is additive: no existing signature changes meaning.</p>
+<ul><li>
+<code><a href="../reference/abm_network.html">abm_network()</a></code> gains <code>type = "grid"</code> and <code>type = "line"</code>, with <code>dims</code>, <code>diagonals</code>, <code>torus</code> and <code>on</code>. The wired group is given <code>.x</code> / <code>.y</code> (a line gets <code>.x</code> only) and <strong>inherits its count</strong> from <code>prod(dims)</code>, so it omits <code>n</code>. The lattice is built before the agent columns are materialised, so <code>.x</code> and <code>.y</code> are in scope in setup formulas as well as in the go block.</li>
+<li>
+<code><a href="../reference/abm_grid.html">abm_grid()</a></code> is sugar for a patch group plus the grid network wired to it.</li>
+<li>
+<code>abm_neighbours(.where =)</code> restricts the aggregate to the single lattice neighbour in a named direction (<code>"north"</code> / <code>"south"</code> / <code>"east"</code> / <code>"west"</code>, or <code>"left"</code> / <code>"right"</code> on a line), which is what an ordered-neighbour rule such as a 1-D cellular automaton needs.</li>
+<li>
+<code>abm_neighbours(within =)</code> now recognises a <code>&lt;col&gt; == own_&lt;col&gt;</code> condition and resolves it as a hash join, so the co-location lookup <code>within = .group == "patches" &amp; .id == own_.cell</code> is linear in the population rather than quadratic.</li>
+<li>Every group that is not the wired one gets <code>.cell</code>, plus <code>.x</code> / <code>.y</code> kept in sync with it. <code>abm_agents(at =)</code> places them; the default is uniform random.</li>
+<li>
+<code>abm_match(.by =)</code> confines a match to a partition, so <code>abm_match(pair = "opposite_group", by = .group, .by = .cell)</code> gives each predator one prey <em>from its own cell</em> and never pairs one prey with two.</li>
+<li>
+<code><a href="../reference/abm_move.html">abm_move()</a></code> is the one new step: it reassigns <code>.cell</code> to a cell reachable from the current one. <code>to = "random_neighbour"</code>, <code>"random_empty_neighbour"</code>, <code>"stay"</code>, or <code>uphill(&lt;expr&gt;)</code> / <code>downhill(&lt;expr&gt;)</code>; <code>who</code> says which groups move. <code>direction</code>, <code>range</code>, <code>axes_only</code> and <code>avoid_occupied</code> cover the models that force them (Langton’s Ant, Sugarscape, Rebellion).</li>
+</ul><p>Validated in <code>tests/testthat/test-spatial.R</code> and reproduced at full size by <code>models-spatial/scripts/</code>: Game of Life’s blinker and glider, rule 90 against Pascal’s triangle mod 2, fire percolation, Schelling, Wolf–Sheep–Grass, Ants, Langton’s Ant against a reference implementation, the Ising transition at <em>T</em><sub>c</sub>, Daisyworld and Rebellion.</p>
+</div>
+<div class="section level3">
+<h3 id="also-development-version">Also<a class="anchor" aria-label="anchor" href="#also-development-version"></a></h3>
+<ul><li>
+<code><a href="../reference/abm_death.html">abm_death()</a></code> and <code><a href="../reference/abm_birth.html">abm_birth()</a></code> now skip a group whose columns the <code>when</code> condition does not mention-match, the way <code><a href="../reference/abm_rules.html">abm_rules()</a></code> already routed itself to the groups its columns exist in. Before this, one <code>abm_death(when = ... &amp; energy &lt; 0)</code> in a model whose patches have no <code>energy</code> was an error rather than a step that did not apply to patches.</li>
+<li>Strict single-site Ising remains out of reach: <code><a href="../reference/abm_sequential.html">abm_sequential()</a></code> processes agents one at a time but can read only its own row and the globals, never a neighbour. The checkerboard formulation is the supported one.</li>
+<li>
+<code><a href="../reference/abm_agents.html">abm_agents()</a></code> gains <code>at</code> as a named argument, and its <code>n</code> is now optional (it has to be, for a grid-wired group to inherit its count). Two things follow. A column called <code>at</code> is no longer possible — it binds to the placement argument instead, though a model with no lattice then fails loudly rather than silently. And a missing <code>n</code> is now reported by <code><a href="../reference/abm_setup.html">abm_setup()</a></code> rather than by <code><a href="../reference/abm_agents.html">abm_agents()</a></code>, since only <code><a href="../reference/abm_setup.html">abm_setup()</a></code> knows whether the model has a lattice for the group to inherit from.</li>
+</ul></div>
+</div>
+    <div class="section level2">
 <h2 class="pkg-version" data-toc-text="0.0.0.9000" id="tidyabm-0009000">tidyABM 0.0.0.9000<a class="anchor" aria-label="anchor" href="#tidyabm-0009000"></a></h2>
 <p>First working version. The package implements the grammar developed against thirteen reference models.</p>
 <ul><li>

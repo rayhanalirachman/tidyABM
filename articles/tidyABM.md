@@ -608,6 +608,124 @@ which erodes the network over a long run. With `from = "parent"`,
 the newborn arrives in a neighbourhood rather than on the end of a
 single thread.
 
+## Space
+
+A lattice **is a network**. `abm_network(type = "grid")` produces the
+same edge list every other network type produces, so patches are
+ordinary agents and everything that already reads a network —
+[`abm_neighbours()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_neighbours.md),
+`abm_match(pair = "network")`,
+[`abm_link()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_link.md),
+[`abm_edges()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_edges.md)
+— works on a grid with no change. Nothing about the grammar is spatial;
+you just get coordinates to pivot on.
+
+The group the grid is wired to gains `.x` and `.y`, and **inherits its
+count** from `dims`, so it does not say `n`. That is a whole cellular
+automaton:
+
+``` r
+
+life <- abm_setup(
+  agents  = abm_agents(alive = ~seq_len(n) %in% (c(5, 6, 7) + 5 * 12)),
+  network = abm_network(type = "grid", dims = c(12, 12))
+)
+
+life_go <- abm_go(
+  abm_neighbours(live_n ~ sum(alive)),
+  abm_rules(alive ~ live_n == 3 | (alive & live_n == 2))
+)
+
+blinker <- abm_run(life, life_go, ticks = 2, seed = 1)
+subset(blinker, tick == 1 & alive, select = c(.x, .y))
+#> <abm_result> 2 ticks, 3 rows
+#> # A tibble: 3 × 2
+#>      .x    .y
+#>   <int> <int>
+#> 1     6     5
+#> 2     6     6
+#> 3     6     7
+```
+
+[`abm_neighbours()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_neighbours.md)
+is the first `ask patches` and
+[`abm_rules()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_rules.md)
+is the second, and
+[`abm_rules()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_rules.md)’s
+simultaneity *is* the two-`ask` structure — the synchronous update
+cannot be written wrongly. A bounded grid (`torus = FALSE`) needs no
+boundary handling either: a border cell simply has fewer neighbour rows,
+and [`sum()`](https://rdrr.io/r/base/sum.html) and
+[`any()`](https://rdrr.io/r/base/any.html) see that directly.
+
+`diagonals = FALSE` gives the 4-neighbour von Neumann lattice instead of
+the default 8-neighbour Moore one, and
+[`abm_grid()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_grid.md)
+is sugar for the group plus its network in one call. For a rule that
+needs an *ordered* neighbour — a 1-D cellular automaton reads (left,
+self, right) — `abm_neighbours(.where = )` picks out the single
+neighbour in a named direction.
+
+### Agents that are not patches
+
+`on =` wires one named group, and every other group is then standing
+*on* the lattice rather than being part of it: each gets a `.cell`
+holding a patch `.id`, with `.x` / `.y` kept in sync with it. Moving is
+writing that column, which is what
+[`abm_move()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_move.md)
+does.
+
+``` r
+
+world <- abm_setup(
+  agents = list(
+    patches = abm_agents(grass = ~runif(n) < 0.5),
+    sheep   = abm_agents(n = 20, energy = 10)
+  ),
+  network = abm_network(type = "grid", dims = c(10, 10), on = "patches"),
+  seed = 1
+)
+
+graze_go <- abm_go(
+  abm_move(along = "patches", to = "random_neighbour", who = "sheep"),
+  # what is on the cell I am standing on
+  abm_neighbours(grass_here ~ any(grass),
+                 within = .group == "patches" & .id == own_.cell),
+  abm_rules(energy ~ if_else(grass_here, energy + 1, energy - 1)),
+  # eat it
+  abm_tell(grass ~ FALSE, to = .cell, when = .group == "sheep" & grass_here)
+)
+
+grazed <- abm_run(world, graze_go, ticks = 10, seed = 1)
+subset(grazed, tick == 10 & .group == "sheep", select = c(.id, .cell, energy))[1:5, ]
+#> <abm_result> 10 ticks, 5 agents seen, 5 rows
+#> # A tibble: 5 × 3
+#>     .id .cell energy
+#>   <int> <int>  <dbl>
+#> 1   101    49      6
+#> 2   102    58      2
+#> 3   103    87      0
+#> 4   104    48      8
+#> 5   105    57      2
+```
+
+Three things there are worth naming. `within = .id == own_.cell` is the
+co-location join, and an equality against an `own_` column is recognised
+and resolved as a hash join rather than by building every pair.
+`abm_tell(to = .cell)` writes into the patch the sheep is standing on —
+note that the right-hand side is evaluated in the **sender’s** row, so
+an additive deposit wants a mailbox column and `.resolve = "sum"` rather
+than reading the recipient’s value. And `abm_move(to = )` also takes
+`uphill(<expr>)` / `downhill(<expr>)` to follow a gradient, plus
+`direction`, `range`, `axes_only` and `avoid_occupied` for the models
+that need them.
+
+Results need no special handling: `.x`, `.y` and `.cell` are ordinary
+columns in the output tibble, so `filter(tick == t)` with
+`geom_raster(aes(.x, .y))` is a frame and
+[`abm_edges()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_edges.md)
+is the spatial weights matrix.
+
 ## Reproducibility
 
 Agent-based models are stochastic, so `seed` is an argument to

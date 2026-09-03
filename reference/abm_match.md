@@ -18,7 +18,8 @@ abm_match(
   from = NULL,
   among = NULL,
   cost = NULL,
-  weight = NULL
+  weight = NULL,
+  .by = NULL
 )
 ```
 
@@ -107,6 +108,18 @@ abm_match(
   what "noticed in proportion to its size" and preferential attachment
   as a *step* need.
 
+- .by:
+
+  A column naming a partition the match is confined to: agents are only
+  ever matched with agents sharing its value. This is
+  [`abm_rules()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_rules.md)'s
+  `.by` grouping applied to matching, and on a lattice `.by = .cell` is
+  what makes every co-located interaction – predation, mating, combat –
+  expressible:
+  `abm_match(pair = "opposite_group", by = .group, .by = .cell)` gives
+  each wolf one sheep from *its own cell*, and never pairs one sheep
+  with two wolves. `NA` sits an agent out.
+
 ## Value
 
 An `abm_match` step object.
@@ -193,4 +206,12 @@ abm_match(pair = "nearest", cost = price + abs(x - own_x),
 abm_match(pair = "random", role = list(giver = money > 0, receiver = TRUE))
 #> <abm_match> pair = "random"
 #> • roles = "giver" and "receiver"
+
+# one prey per predator, per cell
+abm_match(pair = "opposite_group", by = .group, .by = .cell,
+          eligible = .group %in% c("wolves", "sheep"))
+#> <abm_match> pair = "opposite_group"
+#> • by = `.group`
+#> • .by = `.cell`
+#> • eligible = `.group %in% c("wolves", "sheep")`
 ```

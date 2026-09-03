@@ -60,7 +60,8 @@ it then use.</p>
 <span>  from <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  among <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  cost <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  weight <span class="op">=</span> <span class="cn">NULL</span></span>
+<span>  weight <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  .by <span class="op">=</span> <span class="cn">NULL</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -142,6 +143,15 @@ a chooser whose candidates all weigh nothing sits the step out. This is
 what "noticed in proportion to its size" and preferential attachment as a
 <em>step</em> need.</p></dd>
 
+
+<dt id="arg--by">.by<a class="anchor" aria-label="anchor" href="#arg--by"></a></dt>
+<dd><p>A column naming a partition the match is confined to: agents are
+only ever matched with agents sharing its value. This is
+<code><a href="abm_rules.html">abm_rules()</a></code>'s <code>.by</code> grouping applied to matching, and on a lattice
+<code>.by = .cell</code> is what makes every co-located interaction – predation,
+mating, combat – expressible: <code>abm_match(pair = "opposite_group", by = .group, .by = .cell)</code> gives each wolf one sheep from <em>its own cell</em>, and
+never pairs one sheep with two wolves. <code>NA</code> sits an agent out.</p></dd>
+
 </dl></div>
     <div class="section level2">
     <h2 id="value">Value<a class="anchor" aria-label="anchor" href="#value"></a></h2>
@@ -204,6 +214,14 @@ a match leaves standing.</p></div>
 <span class="r-in"><span><span class="fu">abm_match</span><span class="op">(</span>pair <span class="op">=</span> <span class="st">"random"</span>, role <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>giver <span class="op">=</span> <span class="va">money</span> <span class="op">&gt;</span> <span class="fl">0</span>, receiver <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span><span class="op">)</span></span></span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #0000BB;">&lt;abm_match&gt;</span> pair = <span style="color: #0000BB;">"random"</span></span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">•</span> roles = <span style="color: #0000BB;">"giver"</span> and <span style="color: #0000BB;">"receiver"</span></span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co"># one prey per predator, per cell</span></span></span>
+<span class="r-in"><span><span class="fu">abm_match</span><span class="op">(</span>pair <span class="op">=</span> <span class="st">"opposite_group"</span>, by <span class="op">=</span> <span class="va">.group</span>, .by <span class="op">=</span> <span class="va">.cell</span>,</span></span>
+<span class="r-in"><span>          eligible <span class="op">=</span> <span class="va">.group</span> <span class="op"><a href="https://rdrr.io/r/base/match.html" class="external-link">%in%</a></span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"wolves"</span>, <span class="st">"sheep"</span><span class="op">)</span><span class="op">)</span></span></span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #0000BB;">&lt;abm_match&gt;</span> pair = <span style="color: #0000BB;">"opposite_group"</span></span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">•</span> by = `.group`</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">•</span> .by = `.cell`</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">•</span> eligible = `.group %in% c("wolves", "sheep")`</span>
 </code></pre></div>
     </div>
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>

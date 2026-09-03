@@ -9,7 +9,7 @@ over the agents around it.
 ## Usage
 
 ``` r
-abm_neighbours(..., within = NULL)
+abm_neighbours(..., within = NULL, .where = NULL)
 ```
 
 ## Arguments
@@ -20,7 +20,22 @@ abm_neighbours(..., within = NULL)
   the neighbours' agent columns, the focal agent's own columns as
   `own_<col>`, any column
   [`abm_draw()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_draw.md)
-  attached to the edge, and any global.
+  attached to the edge, and any global.One named lattice neighbour
+
+  On a grid or line
+  [`abm_network()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_network.md)
+  the two neighbours either side of a cell are not always
+  interchangeable: a 1-D cellular automaton reads an *ordered* triple,
+  and "the cell to my north" is a different question from "my
+  neighbourhood". `.where` restricts the aggregate to the single
+  neighbour in a named lattice direction, so the aggregate runs over a
+  one-row set and both `col ~ s` and `col ~ sum(s)` yield that
+  neighbour's value. A missing neighbour, at a bounded edge, yields
+  `NA`.
+
+      abm_neighbours(s_w ~ sum(s), .where = "west"),
+      abm_neighbours(s_e ~ sum(s), .where = "east"),
+      abm_rules(s ~ rule[[4 * s_w + 2 * s + s_e + 1]])
 
 - within:
 
@@ -28,6 +43,19 @@ abm_neighbours(..., within = NULL)
   than in the network. Evaluated once per (focal, candidate) pair, with
   the candidate's columns under their own names and the focal agent's
   under `own_<col>`. When it is supplied the model needs no network.
+
+  A condition of the shape `<col> == own_<col>` (optionally `&`-ed with
+  more) is recognised and resolved as a hash join rather than by
+  building every pair, so the co-location lookup
+  `within = .group == "patches" & .id == own_.cell` – "the cell I am
+  standing on" – is linear in the population rather than quadratic.
+
+- .where:
+
+  Optional lattice direction restricting the neighbourhood to a single
+  neighbour: `"north"`, `"south"`, `"east"` or `"west"` on a grid;
+  `"left"` / `"right"` (or `"west"` / `"east"`) on a line. Needs a
+  lattice, and cannot be combined with `within`.
 
 ## Value
 
@@ -63,6 +91,7 @@ which lists every step and fixes the order they run in.
 
 Other agent update steps:
 [`abm_global()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_global.md),
+[`abm_move()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_move.md),
 [`abm_rules()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_rules.md),
 [`abm_sequential()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_sequential.md),
 [`abm_tell()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_tell.md)
@@ -81,4 +110,15 @@ abm_neighbours(richer_neighbours ~ sum(wealth > own_wealth))
 abm_neighbours(opinion ~ mean(opinion), within = abs(opinion - own_opinion) <= 0.2)
 #> <abm_neighbours> 1 rule (within abs(opinion - own_opinion) <= 0.2)
 #> • `opinion ~ mean(opinion)`
+
+# the one cell to the west, on a lattice
+abm_neighbours(s_w ~ sum(s), .where = "west")
+#> <abm_neighbours> 1 rule
+#> • `s_w ~ sum(s)`
+
+# what is on the cell I am standing on
+abm_neighbours(grass_here ~ any(grass),
+               within = .group == "patches" & .id == own_.cell)
+#> <abm_neighbours> 1 rule (within .group == "patches" & .id == own_.cell)
+#> • `grass_here ~ any(grass)`
 ```

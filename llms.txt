@@ -292,6 +292,8 @@ The specifications you hand to
   : Declare a group of agents
 - [`abm_network()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_network.md)
   : Declare a persistent network between agents
+- [`abm_grid()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_grid.md)
+  : A grid of patches, as a single declaration
 
 ## Steps: interaction and matching
 
@@ -317,6 +319,14 @@ order, its neighbourhood, one other agent, the whole population.
   : Write a value into another agent's row
 - [`abm_global()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_global.md)
   : Update a shared, population-level value
+
+## Steps: movement
+
+Where an agent is. A lattice is a network, an agent’s location is a
+patch id in `.cell`, and moving is writing that column.
+
+- [`abm_move()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_move.md)
+  : Move agents across a lattice
 
 ## Steps: network topology
 

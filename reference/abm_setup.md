@@ -27,13 +27,20 @@ abm_setup(agents, network = NULL, globals = list(), seed = NULL)
   [`abm_agents()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_agents.md)
   specification, or a *named* list of them for a model with several
   kinds of agent (for example
-  `list(buyers = abm_agents(...), sellers = abm_agents(...))`).
+  `list(buyers = abm_agents(...), sellers = abm_agents(...))`). One
+  element may be an
+  [`abm_grid()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_grid.md),
+  which is sugar for a group plus the grid
+  [`abm_network()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_network.md)
+  wired to it.
 
 - network:
 
   Optionally an
   [`abm_network()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_network.md)
-  specification.
+  specification. A lattice (`type = "grid"` or `"line"`) is built before
+  the agent columns are materialised, so the wired group's formulas can
+  read `.x` and `.y` and its count is inherited from `dims`.
 
 - globals:
 

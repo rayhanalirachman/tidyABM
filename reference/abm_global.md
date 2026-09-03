@@ -56,6 +56,7 @@ the scalar version does:
 which lists every step and fixes the order they run in.
 
 Other agent update steps:
+[`abm_move()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_move.md),
 [`abm_neighbours()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_neighbours.md),
 [`abm_rules()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_rules.md),
 [`abm_sequential()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_sequential.md),

@@ -559,20 +559,127 @@ newborn arrives in a neighbourhood rather than on the end of a single
 thread.</p>
 </div>
 <div class="section level2">
+<h2 id="space">Space<a class="anchor" aria-label="anchor" href="#space"></a>
+</h2>
+<p>A lattice <strong>is a network</strong>.
+<code>abm_network(type = "grid")</code> produces the same edge list
+every other network type produces, so patches are ordinary agents and
+everything that already reads a network — <code><a href="../reference/abm_neighbours.html">abm_neighbours()</a></code>,
+<code>abm_match(pair = "network")</code>, <code><a href="../reference/abm_link.html">abm_link()</a></code>,
+<code><a href="../reference/abm_edges.html">abm_edges()</a></code> — works on a grid with no change. Nothing about
+the grammar is spatial; you just get coordinates to pivot on.</p>
+<p>The group the grid is wired to gains <code>.x</code> and
+<code>.y</code>, and <strong>inherits its count</strong> from
+<code>dims</code>, so it does not say <code>n</code>. That is a whole
+cellular automaton:</p>
+<div class="sourceCode" id="cb26"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">life</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/abm_setup.html">abm_setup</a></span><span class="op">(</span></span>
+<span>  agents  <span class="op">=</span> <span class="fu"><a href="../reference/abm_agents.html">abm_agents</a></span><span class="op">(</span>alive <span class="op">=</span> <span class="op">~</span><span class="fu"><a href="https://rdrr.io/r/base/seq.html" class="external-link">seq_len</a></span><span class="op">(</span><span class="va">n</span><span class="op">)</span> <span class="op"><a href="https://rdrr.io/r/base/match.html" class="external-link">%in%</a></span> <span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">5</span>, <span class="fl">6</span>, <span class="fl">7</span><span class="op">)</span> <span class="op">+</span> <span class="fl">5</span> <span class="op">*</span> <span class="fl">12</span><span class="op">)</span><span class="op">)</span>,</span>
+<span>  network <span class="op">=</span> <span class="fu"><a href="../reference/abm_network.html">abm_network</a></span><span class="op">(</span>type <span class="op">=</span> <span class="st">"grid"</span>, dims <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">12</span>, <span class="fl">12</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="op">)</span></span>
+<span></span>
+<span><span class="va">life_go</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/abm_go.html">abm_go</a></span><span class="op">(</span></span>
+<span>  <span class="fu"><a href="../reference/abm_neighbours.html">abm_neighbours</a></span><span class="op">(</span><span class="va">live_n</span> <span class="op">~</span> <span class="fu"><a href="https://rdrr.io/r/base/sum.html" class="external-link">sum</a></span><span class="op">(</span><span class="va">alive</span><span class="op">)</span><span class="op">)</span>,</span>
+<span>  <span class="fu"><a href="../reference/abm_rules.html">abm_rules</a></span><span class="op">(</span><span class="va">alive</span> <span class="op">~</span> <span class="va">live_n</span> <span class="op">==</span> <span class="fl">3</span> <span class="op">|</span> <span class="op">(</span><span class="va">alive</span> <span class="op">&amp;</span> <span class="va">live_n</span> <span class="op">==</span> <span class="fl">2</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="op">)</span></span>
+<span></span>
+<span><span class="va">blinker</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/abm_run.html">abm_run</a></span><span class="op">(</span><span class="va">life</span>, <span class="va">life_go</span>, ticks <span class="op">=</span> <span class="fl">2</span>, seed <span class="op">=</span> <span class="fl">1</span><span class="op">)</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/subset.html" class="external-link">subset</a></span><span class="op">(</span><span class="va">blinker</span>, <span class="va">tick</span> <span class="op">==</span> <span class="fl">1</span> <span class="op">&amp;</span> <span class="va">alive</span>, select <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="va">.x</span>, <span class="va">.y</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="co">#&gt; <span style="color: #0000BB;">&lt;abm_result&gt;</span> 2 ticks, 3 rows</span></span>
+<span><span class="co">#&gt; <span style="color: #949494;"># A tibble: 3 × 2</span></span></span>
+<span><span class="co">#&gt;      .x    .y</span></span>
+<span><span class="co">#&gt;   <span style="color: #949494; font-style: italic;">&lt;int&gt;</span> <span style="color: #949494; font-style: italic;">&lt;int&gt;</span></span></span>
+<span><span class="co">#&gt; <span style="color: #BCBCBC;">1</span>     6     5</span></span>
+<span><span class="co">#&gt; <span style="color: #BCBCBC;">2</span>     6     6</span></span>
+<span><span class="co">#&gt; <span style="color: #BCBCBC;">3</span>     6     7</span></span></code></pre></div>
+<p><code><a href="../reference/abm_neighbours.html">abm_neighbours()</a></code> is the first <code>ask patches</code>
+and <code><a href="../reference/abm_rules.html">abm_rules()</a></code> is the second, and
+<code><a href="../reference/abm_rules.html">abm_rules()</a></code>’s simultaneity <em>is</em> the
+two-<code>ask</code> structure — the synchronous update cannot be
+written wrongly. A bounded grid (<code>torus = FALSE</code>) needs no
+boundary handling either: a border cell simply has fewer neighbour rows,
+and <code><a href="https://rdrr.io/r/base/sum.html" class="external-link">sum()</a></code> and <code><a href="https://rdrr.io/r/base/any.html" class="external-link">any()</a></code> see that directly.</p>
+<p><code>diagonals = FALSE</code> gives the 4-neighbour von Neumann
+lattice instead of the default 8-neighbour Moore one, and
+<code><a href="../reference/abm_grid.html">abm_grid()</a></code> is sugar for the group plus its network in one
+call. For a rule that needs an <em>ordered</em> neighbour — a 1-D
+cellular automaton reads (left, self, right) —
+<code>abm_neighbours(.where = )</code> picks out the single neighbour in
+a named direction.</p>
+<div class="section level3">
+<h3 id="agents-that-are-not-patches">Agents that are not patches<a class="anchor" aria-label="anchor" href="#agents-that-are-not-patches"></a>
+</h3>
+<p><code>on =</code> wires one named group, and every other group is
+then standing <em>on</em> the lattice rather than being part of it: each
+gets a <code>.cell</code> holding a patch <code>.id</code>, with
+<code>.x</code> / <code>.y</code> kept in sync with it. Moving is
+writing that column, which is what <code><a href="../reference/abm_move.html">abm_move()</a></code> does.</p>
+<div class="sourceCode" id="cb27"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">world</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/abm_setup.html">abm_setup</a></span><span class="op">(</span></span>
+<span>  agents <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span></span>
+<span>    patches <span class="op">=</span> <span class="fu"><a href="../reference/abm_agents.html">abm_agents</a></span><span class="op">(</span>grass <span class="op">=</span> <span class="op">~</span><span class="fu"><a href="https://rdrr.io/r/stats/Uniform.html" class="external-link">runif</a></span><span class="op">(</span><span class="va">n</span><span class="op">)</span> <span class="op">&lt;</span> <span class="fl">0.5</span><span class="op">)</span>,</span>
+<span>    sheep   <span class="op">=</span> <span class="fu"><a href="../reference/abm_agents.html">abm_agents</a></span><span class="op">(</span>n <span class="op">=</span> <span class="fl">20</span>, energy <span class="op">=</span> <span class="fl">10</span><span class="op">)</span></span>
+<span>  <span class="op">)</span>,</span>
+<span>  network <span class="op">=</span> <span class="fu"><a href="../reference/abm_network.html">abm_network</a></span><span class="op">(</span>type <span class="op">=</span> <span class="st">"grid"</span>, dims <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">10</span>, <span class="fl">10</span><span class="op">)</span>, on <span class="op">=</span> <span class="st">"patches"</span><span class="op">)</span>,</span>
+<span>  seed <span class="op">=</span> <span class="fl">1</span></span>
+<span><span class="op">)</span></span>
+<span></span>
+<span><span class="va">graze_go</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/abm_go.html">abm_go</a></span><span class="op">(</span></span>
+<span>  <span class="fu"><a href="../reference/abm_move.html">abm_move</a></span><span class="op">(</span>along <span class="op">=</span> <span class="st">"patches"</span>, to <span class="op">=</span> <span class="st">"random_neighbour"</span>, who <span class="op">=</span> <span class="st">"sheep"</span><span class="op">)</span>,</span>
+<span>  <span class="co"># what is on the cell I am standing on</span></span>
+<span>  <span class="fu"><a href="../reference/abm_neighbours.html">abm_neighbours</a></span><span class="op">(</span><span class="va">grass_here</span> <span class="op">~</span> <span class="fu"><a href="https://rdrr.io/r/base/any.html" class="external-link">any</a></span><span class="op">(</span><span class="va">grass</span><span class="op">)</span>,</span>
+<span>                 within <span class="op">=</span> <span class="va">.group</span> <span class="op">==</span> <span class="st">"patches"</span> <span class="op">&amp;</span> <span class="va">.id</span> <span class="op">==</span> <span class="va">own_.cell</span><span class="op">)</span>,</span>
+<span>  <span class="fu"><a href="../reference/abm_rules.html">abm_rules</a></span><span class="op">(</span><span class="va">energy</span> <span class="op">~</span> <span class="fu"><a href="https://dplyr.tidyverse.org/reference/if_else.html" class="external-link">if_else</a></span><span class="op">(</span><span class="va">grass_here</span>, <span class="va">energy</span> <span class="op">+</span> <span class="fl">1</span>, <span class="va">energy</span> <span class="op">-</span> <span class="fl">1</span><span class="op">)</span><span class="op">)</span>,</span>
+<span>  <span class="co"># eat it</span></span>
+<span>  <span class="fu"><a href="../reference/abm_tell.html">abm_tell</a></span><span class="op">(</span><span class="va">grass</span> <span class="op">~</span> <span class="cn">FALSE</span>, to <span class="op">=</span> <span class="va">.cell</span>, when <span class="op">=</span> <span class="va">.group</span> <span class="op">==</span> <span class="st">"sheep"</span> <span class="op">&amp;</span> <span class="va">grass_here</span><span class="op">)</span></span>
+<span><span class="op">)</span></span>
+<span></span>
+<span><span class="va">grazed</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/abm_run.html">abm_run</a></span><span class="op">(</span><span class="va">world</span>, <span class="va">graze_go</span>, ticks <span class="op">=</span> <span class="fl">10</span>, seed <span class="op">=</span> <span class="fl">1</span><span class="op">)</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/subset.html" class="external-link">subset</a></span><span class="op">(</span><span class="va">grazed</span>, <span class="va">tick</span> <span class="op">==</span> <span class="fl">10</span> <span class="op">&amp;</span> <span class="va">.group</span> <span class="op">==</span> <span class="st">"sheep"</span>, select <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="va">.id</span>, <span class="va">.cell</span>, <span class="va">energy</span><span class="op">)</span><span class="op">)</span><span class="op">[</span><span class="fl">1</span><span class="op">:</span><span class="fl">5</span>, <span class="op">]</span></span>
+<span><span class="co">#&gt; <span style="color: #0000BB;">&lt;abm_result&gt;</span> 10 ticks, 5 agents seen, 5 rows</span></span>
+<span><span class="co">#&gt; <span style="color: #949494;"># A tibble: 5 × 3</span></span></span>
+<span><span class="co">#&gt;     .id .cell energy</span></span>
+<span><span class="co">#&gt;   <span style="color: #949494; font-style: italic;">&lt;int&gt;</span> <span style="color: #949494; font-style: italic;">&lt;int&gt;</span>  <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span></span></span>
+<span><span class="co">#&gt; <span style="color: #BCBCBC;">1</span>   101    49      6</span></span>
+<span><span class="co">#&gt; <span style="color: #BCBCBC;">2</span>   102    58      2</span></span>
+<span><span class="co">#&gt; <span style="color: #BCBCBC;">3</span>   103    87      0</span></span>
+<span><span class="co">#&gt; <span style="color: #BCBCBC;">4</span>   104    48      8</span></span>
+<span><span class="co">#&gt; <span style="color: #BCBCBC;">5</span>   105    57      2</span></span></code></pre></div>
+<p>Three things there are worth naming.
+<code>within = .id == own_.cell</code> is the co-location join, and an
+equality against an <code>own_</code> column is recognised and resolved
+as a hash join rather than by building every pair.
+<code>abm_tell(to = .cell)</code> writes into the patch the sheep is
+standing on — note that the right-hand side is evaluated in the
+<strong>sender’s</strong> row, so an additive deposit wants a mailbox
+column and <code>.resolve = "sum"</code> rather than reading the
+recipient’s value. And <code>abm_move(to = )</code> also takes
+<code>uphill(&lt;expr&gt;)</code> / <code>downhill(&lt;expr&gt;)</code>
+to follow a gradient, plus <code>direction</code>, <code>range</code>,
+<code>axes_only</code> and <code>avoid_occupied</code> for the models
+that need them.</p>
+<p>Results need no special handling: <code>.x</code>, <code>.y</code>
+and <code>.cell</code> are ordinary columns in the output tibble, so
+<code>filter(tick == t)</code> with
+<code>geom_raster(aes(.x, .y))</code> is a frame and
+<code><a href="../reference/abm_edges.html">abm_edges()</a></code> is the spatial weights matrix.</p>
+</div>
+</div>
+<div class="section level2">
 <h2 id="reproducibility">Reproducibility<a class="anchor" aria-label="anchor" href="#reproducibility"></a>
 </h2>
 <p>Agent-based models are stochastic, so <code>seed</code> is an
 argument to <code><a href="../reference/abm_run.html">abm_run()</a></code> rather than something you arrange
 yourself. It is set locally, so your session’s random state is
 untouched:</p>
-<div class="sourceCode" id="cb26"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb28"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/Random.html" class="external-link">set.seed</a></span><span class="op">(</span><span class="fl">1</span><span class="op">)</span>; <span class="va">before</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/Uniform.html" class="external-link">runif</a></span><span class="op">(</span><span class="fl">1</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/invisible.html" class="external-link">invisible</a></span><span class="op">(</span><span class="fu"><a href="../reference/abm_run.html">abm_run</a></span><span class="op">(</span><span class="va">economy</span>, <span class="va">go</span>, ticks <span class="op">=</span> <span class="fl">5</span>, seed <span class="op">=</span> <span class="fl">99</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/Random.html" class="external-link">set.seed</a></span><span class="op">(</span><span class="fl">1</span><span class="op">)</span>; <span class="va">after</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/Uniform.html" class="external-link">runif</a></span><span class="op">(</span><span class="fl">1</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/identical.html" class="external-link">identical</a></span><span class="op">(</span><span class="va">before</span>, <span class="va">after</span><span class="op">)</span></span>
 <span><span class="co">#&gt; [1] TRUE</span></span></code></pre></div>
 <p>Two runs of the same model with the same seed are identical:</p>
-<div class="sourceCode" id="cb27"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb29"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">a</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/abm_run.html">abm_run</a></span><span class="op">(</span><span class="va">economy</span>, <span class="va">go</span>, ticks <span class="op">=</span> <span class="fl">20</span>, seed <span class="op">=</span> <span class="fl">42</span><span class="op">)</span></span>
 <span><span class="va">b</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/abm_run.html">abm_run</a></span><span class="op">(</span><span class="va">economy</span>, <span class="va">go</span>, ticks <span class="op">=</span> <span class="fl">20</span>, seed <span class="op">=</span> <span class="fl">42</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/identical.html" class="external-link">identical</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/as.data.frame.html" class="external-link">as.data.frame</a></span><span class="op">(</span><span class="va">a</span><span class="op">)</span>, <span class="fu"><a href="https://rdrr.io/r/base/as.data.frame.html" class="external-link">as.data.frame</a></span><span class="op">(</span><span class="va">b</span><span class="op">)</span><span class="op">)</span></span>
@@ -583,7 +690,7 @@ untouched:</p>
 drawn when <code><a href="../reference/abm_setup.html">abm_setup()</a></code> was called, before
 <code><a href="../reference/abm_run.html">abm_run()</a></code> had a chance to set anything, so two experiments
 built the same way can start from different populations:</p>
-<div class="sourceCode" id="cb28"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb30"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">random_pop</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span><span class="op">)</span> <span class="fu"><a href="../reference/abm_setup.html">abm_setup</a></span><span class="op">(</span>agents <span class="op">=</span> <span class="fu"><a href="../reference/abm_agents.html">abm_agents</a></span><span class="op">(</span>n <span class="op">=</span> <span class="fl">50</span>, x <span class="op">=</span> <span class="op">~</span><span class="fu"><a href="https://rdrr.io/r/stats/Uniform.html" class="external-link">runif</a></span><span class="op">(</span><span class="va">n</span><span class="op">)</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="va">noop_go</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/abm_go.html">abm_go</a></span><span class="op">(</span><span class="fu"><a href="../reference/abm_rules.html">abm_rules</a></span><span class="op">(</span><span class="va">x</span> <span class="op">~</span> <span class="va">x</span><span class="op">)</span><span class="op">)</span></span>
 <span></span>
@@ -592,7 +699,7 @@ built the same way can start from different populations:</p>
 <span><span class="fu"><a href="https://rdrr.io/r/base/identical.html" class="external-link">identical</a></span><span class="op">(</span><span class="va">one</span><span class="op">$</span><span class="va">x</span>, <span class="va">two</span><span class="op">$</span><span class="va">x</span><span class="op">)</span></span>
 <span><span class="co">#&gt; [1] FALSE</span></span></code></pre></div>
 <p>Seed both, and the whole experiment reproduces:</p>
-<div class="sourceCode" id="cb29"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb31"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">experiment</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span><span class="op">)</span> <span class="op">{</span></span>
 <span>  <span class="va">m</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/abm_setup.html">abm_setup</a></span><span class="op">(</span>agents <span class="op">=</span> <span class="fu"><a href="../reference/abm_agents.html">abm_agents</a></span><span class="op">(</span>n <span class="op">=</span> <span class="fl">50</span>, x <span class="op">=</span> <span class="op">~</span><span class="fu"><a href="https://rdrr.io/r/stats/Uniform.html" class="external-link">runif</a></span><span class="op">(</span><span class="va">n</span><span class="op">)</span><span class="op">)</span>, seed <span class="op">=</span> <span class="fl">4</span><span class="op">)</span></span>
 <span>  <span class="va">noop_go</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/abm_go.html">abm_go</a></span><span class="op">(</span><span class="fu"><a href="../reference/abm_rules.html">abm_rules</a></span><span class="op">(</span><span class="va">x</span> <span class="op">~</span> <span class="va">x</span><span class="op">)</span><span class="op">)</span></span>
@@ -615,7 +722,7 @@ upgrade.</p>
 which is right for a fixed population and wrong for a growing one. A run
 that ends with fifty thousand agents has been keeping every one of them
 since the start. <code>record</code> says how much to keep:</p>
-<div class="sourceCode" id="cb30"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb32"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">sizes</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span></span>
 <span>  all      <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/nrow.html" class="external-link">nrow</a></span><span class="op">(</span><span class="fu"><a href="../reference/abm_run.html">abm_run</a></span><span class="op">(</span><span class="va">economy</span>, <span class="va">go</span>, ticks <span class="op">=</span> <span class="fl">20</span>, record <span class="op">=</span> <span class="st">"all"</span><span class="op">)</span><span class="op">)</span>,</span>
 <span>  every_5  <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/nrow.html" class="external-link">nrow</a></span><span class="op">(</span><span class="fu"><a href="../reference/abm_run.html">abm_run</a></span><span class="op">(</span><span class="va">economy</span>, <span class="va">go</span>, ticks <span class="op">=</span> <span class="fl">20</span>, record <span class="op">=</span> <span class="fl">5</span><span class="op">)</span><span class="op">)</span>,</span>

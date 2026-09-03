@@ -57,7 +57,7 @@ the agents around it.</p>
 
     <div class="section level2">
     <h2 id="ref-usage">Usage<a class="anchor" aria-label="anchor" href="#ref-usage"></a></h2>
-    <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">abm_neighbours</span><span class="op">(</span><span class="va">...</span>, within <span class="op">=</span> <span class="cn">NULL</span><span class="op">)</span></span></code></pre></div>
+    <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">abm_neighbours</span><span class="op">(</span><span class="va">...</span>, within <span class="op">=</span> <span class="cn">NULL</span>, .where <span class="op">=</span> <span class="cn">NULL</span><span class="op">)</span></span></code></pre></div>
     </div>
 
     <div class="section level2">
@@ -67,14 +67,37 @@ the agents around it.</p>
 <dl><dt id="arg--">...<a class="anchor" aria-label="anchor" href="#arg--"></a></dt>
 <dd><p>One or more <code>column ~ aggregate_expression</code> rules. The expression
 sees the neighbours' agent columns, the focal agent's own columns as
-<code>own_&lt;col&gt;</code>, any column <code><a href="abm_draw.html">abm_draw()</a></code> attached to the edge, and any global.</p></dd>
+<code>own_&lt;col&gt;</code>, any column <code><a href="abm_draw.html">abm_draw()</a></code> attached to the edge, and any global.One named lattice neighbour</p>
+<p>On a grid or line <code><a href="abm_network.html">abm_network()</a></code> the two neighbours either side of a cell
+are not always interchangeable: a 1-D cellular automaton reads an <em>ordered</em>
+triple, and "the cell to my north" is a different question from "my
+neighbourhood". <code>.where</code> restricts the aggregate to the single neighbour in
+a named lattice direction, so the aggregate runs over a one-row set and both
+<code>col ~ s</code> and <code>col ~ sum(s)</code> yield that neighbour's value. A missing
+neighbour, at a bounded edge, yields <code>NA</code>.</p>
+<p></p><div class="sourceCode r"><pre><code>abm_neighbours(s_w ~ sum(s), .where = "west"),
+abm_neighbours(s_e ~ sum(s), .where = "east"),
+abm_rules(s ~ rule[[4 * s_w + 2 * s + s_e + 1]])
+</code></pre><p></p></div></dd>
 
 
 <dt id="arg-within">within<a class="anchor" aria-label="anchor" href="#arg-within"></a></dt>
 <dd><p>Optional condition defining a neighbourhood in attribute space
 rather than in the network. Evaluated once per (focal, candidate) pair, with
 the candidate's columns under their own names and the focal agent's under
-<code>own_&lt;col&gt;</code>. When it is supplied the model needs no network.</p></dd>
+<code>own_&lt;col&gt;</code>. When it is supplied the model needs no network.</p>
+<p>A condition of the shape <code>&lt;col&gt; == own_&lt;col&gt;</code> (optionally <code>&amp;</code>-ed with
+more) is recognised and resolved as a hash join rather than by building
+every pair, so the co-location lookup
+<code>within = .group == "patches" &amp; .id == own_.cell</code> – "the cell I am
+standing on" – is linear in the population rather than quadratic.</p></dd>
+
+
+<dt id="arg--where">.where<a class="anchor" aria-label="anchor" href="#arg--where"></a></dt>
+<dd><p>Optional lattice direction restricting the neighbourhood to a
+single neighbour: <code>"north"</code>, <code>"south"</code>, <code>"east"</code> or <code>"west"</code> on a grid;
+<code>"left"</code> / <code>"right"</code> (or <code>"west"</code> / <code>"east"</code>) on a line. Needs a lattice,
+and cannot be combined with <code>within</code>.</p></dd>
 
 </dl></div>
     <div class="section level2">
@@ -110,6 +133,7 @@ and the focal agent's under <code>own_&lt;col&gt;</code>, which is the same view
 in.</p>
 <p>Other agent update steps:
 <code><a href="abm_global.html">abm_global()</a></code>,
+<code><a href="abm_move.html">abm_move()</a></code>,
 <code><a href="abm_rules.html">abm_rules()</a></code>,
 <code><a href="abm_sequential.html">abm_sequential()</a></code>,
 <code><a href="abm_tell.html">abm_tell()</a></code></p></div>
@@ -128,6 +152,17 @@ in.</p>
 <span class="r-in"><span><span class="fu">abm_neighbours</span><span class="op">(</span><span class="va">opinion</span> <span class="op">~</span> <span class="fu"><a href="https://rdrr.io/r/base/mean.html" class="external-link">mean</a></span><span class="op">(</span><span class="va">opinion</span><span class="op">)</span>, within <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/MathFun.html" class="external-link">abs</a></span><span class="op">(</span><span class="va">opinion</span> <span class="op">-</span> <span class="va">own_opinion</span><span class="op">)</span> <span class="op">&lt;=</span> <span class="fl">0.2</span><span class="op">)</span></span></span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #0000BB;">&lt;abm_neighbours&gt;</span> 1 rule <span style="font-style: italic;">(within abs(opinion - own_opinion) &lt;= 0.2)</span></span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">•</span> `opinion ~ mean(opinion)`</span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co"># the one cell to the west, on a lattice</span></span></span>
+<span class="r-in"><span><span class="fu">abm_neighbours</span><span class="op">(</span><span class="va">s_w</span> <span class="op">~</span> <span class="fu"><a href="https://rdrr.io/r/base/sum.html" class="external-link">sum</a></span><span class="op">(</span><span class="va">s</span><span class="op">)</span>, .where <span class="op">=</span> <span class="st">"west"</span><span class="op">)</span></span></span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #0000BB;">&lt;abm_neighbours&gt;</span> 1 rule</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">•</span> `s_w ~ sum(s)`</span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co"># what is on the cell I am standing on</span></span></span>
+<span class="r-in"><span><span class="fu">abm_neighbours</span><span class="op">(</span><span class="va">grass_here</span> <span class="op">~</span> <span class="fu"><a href="https://rdrr.io/r/base/any.html" class="external-link">any</a></span><span class="op">(</span><span class="va">grass</span><span class="op">)</span>,</span></span>
+<span class="r-in"><span>               within <span class="op">=</span> <span class="va">.group</span> <span class="op">==</span> <span class="st">"patches"</span> <span class="op">&amp;</span> <span class="va">.id</span> <span class="op">==</span> <span class="va">own_.cell</span><span class="op">)</span></span></span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #0000BB;">&lt;abm_neighbours&gt;</span> 1 rule <span style="font-style: italic;">(within .group == "patches" &amp; .id == own_.cell)</span></span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">•</span> `grass_here ~ any(grass)`</span>
 </code></pre></div>
     </div>
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>

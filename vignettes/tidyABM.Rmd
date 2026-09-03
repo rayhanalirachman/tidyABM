@@ -479,12 +479,12 @@ life <- abm_setup(
   network = abm_network(type = "grid", dims = c(12, 12))
 )
 
-go <- abm_go(
+life_go <- abm_go(
   abm_neighbours(live_n ~ sum(alive)),
   abm_rules(alive ~ live_n == 3 | (alive & live_n == 2))
 )
 
-blinker <- abm_run(life, go, ticks = 2, seed = 1)
+blinker <- abm_run(life, life_go, ticks = 2, seed = 1)
 subset(blinker, tick == 1 & alive, select = c(.x, .y))
 ```
 
@@ -517,7 +517,7 @@ world <- abm_setup(
   seed = 1
 )
 
-go <- abm_go(
+graze_go <- abm_go(
   abm_move(along = "patches", to = "random_neighbour", who = "sheep"),
   # what is on the cell I am standing on
   abm_neighbours(grass_here ~ any(grass),
@@ -527,7 +527,7 @@ go <- abm_go(
   abm_tell(grass ~ FALSE, to = .cell, when = .group == "sheep" & grass_here)
 )
 
-grazed <- abm_run(world, go, ticks = 10, seed = 1)
+grazed <- abm_run(world, graze_go, ticks = 10, seed = 1)
 subset(grazed, tick == 10 & .group == "sheep", select = c(.id, .cell, energy))[1:5, ]
 ```
 

@@ -196,12 +196,16 @@ turns a slow run into one the kernel stops.
 Experimental. The API is shaped by what porting models turns up, and it is still
 moving. Build on it now and expect to edit that code later.
 
-Fifty-six models are implemented and documented in
+Sixty-six models are implemented and documented in
 [`models/`](https://github.com/rayhanalirachman/tidyABM/blob/main/models/README.md), each on its
-own page with its code, the result it reproduces and its source: thirteen the
-grammar was designed against, three of those rebuilt because the short version
-does not show what the model is known for, and four rounds of ten ported as
-stress tests.
+own page with its code, the result it reproduces, a figure of that result and
+its source. Fifty-six of them are
+[non-spatial](https://github.com/rayhanalirachman/tidyABM/blob/main/models/non-spatial/README.md):
+thirteen the grammar was designed against, three of those rebuilt because the
+short version does not show what the model is known for, and four rounds of ten
+ported as stress tests. The other ten are
+[lattice models](https://github.com/rayhanalirachman/tidyABM/blob/main/models/spatial/README.md),
+which are what the spatial grammar was built against.
 
 Every feature in the package that is not in the founding thirteen exists because
 one of those forty models asked for it: `abm_link()`, `abm_neighbours()`,

@@ -1,6 +1,6 @@
 # Spatial models: tidyABM
 
-The spatial corpus, kept **separate from the 56 non-spatial models** in
+The spatial corpus, kept **separate from the 54 non-spatial models** in
 [`../models/`](../models/README.md). Those models live in attribute space or on
 an abstract network; these live on a lattice, and they are what the spatial
 grammar was built against.

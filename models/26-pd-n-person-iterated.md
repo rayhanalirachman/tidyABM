@@ -25,27 +25,17 @@ end
 
 **Package**
 
+Per-opponent memory is a **set** per agent, the `.id`s of everyone who has
+defected on me, held in one list column and indexed with `.partner`:
+
 ```r
-f <- function(lhs, rhs) rlang::new_formula(str2lang(lhs), str2lang(rhs))
-
-# one memory column per possible opponent
-hist <- setNames(rep(list(FALSE), N), paste0("h", 1:N))
-pop <- abm_setup(agents = do.call(abm_agents, c(
-  list(n = N, strategy = strategies, score = 0, games = 0, defect_now = FALSE), hist)))
-
-recall <- f("remembered", paste0(
-  "case_when(", paste(sprintf(".partner == %d ~ h%d", 1:N, 1:N), collapse = ", "),
-  ", TRUE ~ FALSE)"))
-
-update <- lapply(1:N, function(k) f(paste0("h", k), sprintf(
-  "case_when(.partner != %d ~ h%d,
-             strategy == 'unforgiving' ~ h%d | partner_defect_now,
-             strategy == 'tit-for-tat' ~ partner_defect_now,
-             TRUE ~ h%d)", k, k, k, k)))
+pop <- abm_setup(agents = abm_agents(
+  n = N, strategy = strategies, score = 0, games = 0, defect_now = FALSE,
+  grudges = ~vector("list", n)))
 
 go <- abm_go(
   abm_match(pair = "random"),
-  abm_rules(recall),
+  abm_rules(remembered ~ mapply(function(g, p) p %in% g, grudges, .partner)),
   abm_rules(defect_now ~ case_when(
     strategy == "defect"    ~ TRUE,
     strategy == "cooperate" ~ FALSE,
@@ -57,7 +47,11 @@ go <- abm_go(
      defect_now & !partner_defect_now ~ 5,
     TRUE                              ~ 1)),
   abm_rules(score ~ score + payoff, games ~ games + 1),
-  do.call(abm_rules, update)
+  abm_rules(grudges ~ Map(function(g, p, d, s) {
+    if (s == "unforgiving")      if (d) union(g, p) else g
+    else if (s == "tit-for-tat") if (d) union(g, p) else setdiff(g, p)
+    else g
+  }, grudges, .partner, partner_defect_now, strategy))
 )
 
 result <- abm_run(pop, go, ticks = 400, seed = 5)
@@ -73,14 +67,22 @@ result <- abm_run(pop, go, ticks = 400, seed = 5)
 
 *The crossover is the model's signature curve and it comes out cleanly.*
 
-*Per-opponent memory is a **vector per agent**, and this page holds it as a
-column per element, N columns for N possible opponents, so N² cells, workable at
-N = 24 with `do.call()` and hopeless at NetLogo's default of 60. That was filed
-as a gap in the grammar, alongside El Farol's weights. It is not one: a list
-column holds a named vector of grudges per agent and `abm_rules()` indexes into
-it with `.partner`, which is how model 41 holds a strategy table. The N²
-version below is the one this model was written with, and the rewrite is
-outstanding.*
+*Needed nothing new. This model was first written with one memory column per
+possible opponent, N columns for N agents, so N² cells, plus a `case_when()` of
+N branches to read one of them and N generated rules to write them back. It was
+filed as a gap in the grammar alongside El Farol's weights, and it was not one:
+the same memory is one list column, read with `.partner` the way model 41 reads
+a strategy table. The rewrite is bit-identical to the N² version, because the
+representation was the only thing that changed and no rule over it draws a
+random number. It also drops the sparse half of the old cost: the set holds only
+the opponents that actually defected, where the N² version stored a `FALSE` for
+every pair that never met, so N = 60 is now the same model as N = 24 rather than
+a different exercise in `do.call()`.*
+
+*The grudge update is the one place the two representations read differently.
+Latching and forgiving are `union()` and `setdiff()` on a set, which is what the
+strategies mean; spread across columns they were a `case_when()` that had to name
+the opponent's index to leave every other column alone.*
 
 *One honest difference from NetLogo: there, agents wander a 441-patch world and
 meet sparsely, so opponents recur rarely and defect usually posts the best average.

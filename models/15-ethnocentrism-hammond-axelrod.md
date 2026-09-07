@@ -67,4 +67,4 @@ overstating the evidence for it.
 
 ---
 
-← [14. El Farol with inductive agents](14-el-farol-with-inductive-agents.md) · [all models](README.md) · [16. Zakah with a risk process](16-zakah-with-a-risk-process.md) →
+← [14. El Farol with inductive agents](14-el-farol-with-inductive-agents.md) · [all models](README.md) · [17. Giant Component](17-giant-component.md) →

@@ -30,8 +30,9 @@ result <- abm_run(zakah, go, ticks = 50, seed = 12)
 
 *First model made only of individual and population-level steps, which confirmed
 matching is optional machinery. **It stops working after about ten ticks**. See
-model 16.*
+[the risk-process version](16-zakah-with-a-risk-process.md).*
 
 ---
 
-← [11. Preferential Attachment](11-preferential-attachment.md) · [all models](README.md) · [13. Bank Reserves](13-bank-reserves.md) →
+Moved here from `models/` because it is custom, not published: see
+[models/README.md](../models/README.md). ← [work in progress](README.md)

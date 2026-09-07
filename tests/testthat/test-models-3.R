@@ -228,23 +228,14 @@ test_that("the epidemic takes off only when the estimated R0 exceeds one", {
 # --- 35. Simple Genetic Algorithm (Wilensky 1998) -------------------------
 
 test_that("the genetic algorithm finds all-ones, and loses it at high mutation", {
-  bs <- paste0("b", 1:12)
+  L <- 12
   ga <- function(mutation, N = 60, generations = 60) {
-    start <- stats::setNames(
-      lapply(bs, function(nm)
-        rlang::new_formula(NULL, quote(sample(0:1, n, replace = TRUE)))), bs)
-    m <- abm_setup(agents  = do.call(abm_agents, c(list(n = N), start)),
-                   globals = list(mut = mutation, xover = 0.7, L = length(bs)),
-                   seed = 1)
-    fit <- rlang::new_formula(
-      rlang::sym("fitness"),
-      Reduce(function(a, b) rlang::call2("+", a, b), lapply(bs, rlang::sym)))
-    child <- lapply(bs, function(nm) rlang::new_formula(rlang::sym(nm), rlang::expr(
-      if_else(!sexual, (!!rlang::sym(nm))[p1],
-              if_else(!!which(bs == nm) <= cross,
-                      (!!rlang::sym(nm))[p1], (!!rlang::sym(nm))[p2])))))
-    mut_r <- lapply(bs, function(nm) rlang::new_formula(rlang::sym(nm), rlang::expr(
-      if_else(runif(n()) < mut, 1L - (!!rlang::sym(nm)), (!!rlang::sym(nm))))))
+    m <- abm_setup(
+      agents  = abm_agents(n = N, genome = ~lapply(seq_len(n), function(i)
+                                              sample(0:1, L, replace = TRUE))),
+      globals = list(mut = mutation, xover = 0.7, L = L),
+      seed = 1)
+    fit <- abm_rules(fitness ~ vapply(genome, sum, numeric(1)))
     tournament <- function(out) list(
       abm_rules(t1 ~ sample(n(), n(), replace = TRUE),
                 t2 ~ sample(n(), n(), replace = TRUE),
@@ -253,16 +244,20 @@ test_that("the genetic algorithm finds all-ones, and loses it at high mutation",
         if_else(fitness[t1] >= fitness[t2] & fitness[t1] >= fitness[t3], t1,
                 if_else(fitness[t2] >= fitness[t3], t2, t3))))))
     go <- do.call(abm_go, c(
-      list(abm_rules(fit)), tournament("p1"), tournament("p2"),
+      list(fit), tournament("p1"), tournament("p2"),
       list(abm_rules(cross  ~ sample(L, n(), replace = TRUE),
                      sexual ~ runif(n()) < xover)),
-      list(do.call(abm_rules, child)), list(do.call(abm_rules, mut_r)),
-      list(abm_rules(fit))))
+      list(abm_rules(genome ~ Map(
+        function(g1, g2, s, k) if (!s) g1 else c(g1[seq_len(k)], g2[-seq_len(k)]),
+        genome[p1], genome[p2], sexual, cross))),
+      list(abm_rules(genome ~ lapply(genome, function(g)
+        if_else(runif(L) < mut, 1L - g, g)))),
+      list(fit)))
     r <- abm_run(m, go, ticks = generations, seed = 1)
     max(r$fitness[r$tick == generations])
   }
-  expect_equal(ga(0.02), length(bs))
-  expect_lt(ga(0.30), length(bs))
+  expect_equal(ga(0.02), L)
+  expect_lt(ga(0.30), L)
 })
 
 # --- 36. Information cascade (Bikhchandani et al. 1992) -------------------

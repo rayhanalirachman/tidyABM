@@ -196,10 +196,10 @@ turns a slow run into one the kernel stops.
 Experimental. The API is shaped by what porting models turns up, and it is still
 moving. Build on it now and expect to edit that code later.
 
-Fifty-six models are implemented and documented in
+Fifty-four models are implemented and documented in
 [`models/`](https://github.com/rayhanalirachman/tidyABM/blob/main/models/README.md), each on its
 own page with its code, the result it reproduces and its source: thirteen the
-grammar was designed against, three of those rebuilt because the short version
+grammar was designed against, two of those rebuilt because the short version
 does not show what the model is known for, and four rounds of ten ported as
 stress tests.
 
@@ -212,7 +212,7 @@ networks, and the cascading semantics of `abm_sequential()`.
 [`models/what-changed.md`](https://github.com/rayhanalirachman/tidyABM/blob/main/models/what-changed.md)
 is the history.
 [`models/open-items.md`](https://github.com/rayhanalirachman/tidyABM/blob/main/models/open-items.md)
-is what is still out of reach.
+is what is still out of reach, and is currently empty.
 
 Several of the validations are quantitative rather than qualitative. Hawks and
 Doves matches the analytic evolutionarily stable frequency `V/C` to three

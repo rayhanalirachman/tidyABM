@@ -40,4 +40,4 @@ inexpressible.*
 
 ---
 
-← [16. Zakah with a risk process](16-zakah-with-a-risk-process.md) · [all models](README.md) · [18. Small Worlds](18-small-worlds.md) →
+← [15. Ethnocentrism, Hammond & Axelrod](15-ethnocentrism-hammond-axelrod.md) · [all models](README.md) · [18. Small Worlds](18-small-worlds.md) →

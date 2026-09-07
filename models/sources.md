@@ -20,16 +20,14 @@ occasionally a simplification of it.
 | 9 | Public Goods Game | Ledyard, J. O. (1995). Public Goods: A Survey of Experimental Research, in Kagel & Roth (eds), *The Handbook of Experimental Economics*. Princeton University Press. |
 | 10 | Iterated Prisoner's Dilemma | Axelrod, R. (1984). *The Evolution of Cooperation*. Basic Books. |
 | 11 | Preferential Attachment | Barabási, A.-L. & Albert, R. (1999). Emergence of Scaling in Random Networks. *Science* 286(5439): 509–512. Wilensky & Rand (2015), ch. 5. NetLogo Preferential Attachment model. |
-| 12 | Random Consumption Zakah, short form | Custom. |
 | 13 | Bank Reserves | Wilensky, U. (1998). NetLogo Bank Reserves model. CCL, Northwestern University. <http://ccl.northwestern.edu/netlogo/models/BankReserves> |
 
-## Part 2: three of those, corrected
+## Part 2: two of those, corrected
 
 | # | model | source |
 |---|---|---|
 | 14 | El Farol with inductive agents | Arthur, W. B. (1994), as above. |
 | 15 | Ethnocentrism | Hammond, R. A. & Axelrod, R. (2006), as above. |
-| 16 | Zakah with a risk process | Custom. |
 
 ## Part 3: the first stress test
 

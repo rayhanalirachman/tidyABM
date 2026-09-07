@@ -47,4 +47,6 @@ poor are two.*
 
 ---
 
-← [15. Ethnocentrism, Hammond & Axelrod](15-ethnocentrism-hammond-axelrod.md) · [all models](README.md) · [17. Giant Component](17-giant-component.md) →
+Corrects [12. Random Consumption Zakah, short form](12-random-consumption-zakah-short.md).
+Moved here from `models/` because it is custom, not published: see
+[models/README.md](../models/README.md). ← [work in progress](README.md)

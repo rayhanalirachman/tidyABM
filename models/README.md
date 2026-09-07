@@ -1,6 +1,6 @@
 # ABM models reference: tidyABM
 
-Fifty-six models implemented in tidyABM, one file each, with the concept, a
+Fifty-four models implemented in tidyABM, one file each, with the concept, a
 NetLogo-style sketch of the original where one exists, the working package code
 and the numbers the run produced. Every model here runs. Every one with a
 behavioural claim is pinned by a test in `tidyABM/tests/testthat/`.
@@ -24,10 +24,13 @@ is the history of how the grammar got its current shape, and
 
 ## How this is organised
 
-Models 1–13 are the set the grammar was designed against. 14–16 are corrected
-versions of three of those, whose short form runs but does not reproduce the
-result the model is known for. 17–26, 27–36, 37–46 and 47–56 are four rounds of
-stress testing, each chosen to ask for something the previous rounds did not.
+Models 1–13 are the set the grammar was designed against (12 is a custom,
+unpublished model and now lives in `work in progress/`, so this range has a
+gap). 14–16 are corrected versions of two of those, whose short form runs but
+does not reproduce the result the model is known for (16 was the correction for
+model 12, so it moved with it and this range has a gap too). 17–26, 27–36,
+37–46 and 47–56 are four rounds of stress testing, each chosen to ask for
+something the previous rounds did not.
 
 The stress tests are what the package is made of. Of the forty models in
 Parts 3 to 6, eighteen needed a change to the grammar, and every feature in
@@ -50,6 +53,15 @@ only the list column two later models had already found, and ethnocentrism
 turned out to have been running on a network that its own births and deaths had
 eroded to a mean degree of 0.97, which `abm_birth(links =)` fixes.
 
+That left one entry on [open items](open-items.md), and it was the only one that
+had ever been there without asking for anything: PD N-Person (26) and the
+genetic algorithm (35) were still holding a vector of per-agent state as one
+column per element, N² cells and L of them, because they were written before
+model 41 found the list column. Both are now rewritten around it. PD N-Person's
+numbers are bit-identical to the version it replaces and the genetic algorithm's
+are not, for a reason worth reading in
+[what each stress test changed](what-changed.md).
+
 ### Part 1: the founding thirteen
 
 The set the grammar was designed against.
@@ -67,18 +79,16 @@ The set the grammar was designed against.
 | 9 | [Public Goods Game](09-public-goods-game.md) |
 | 10 | [Iterated Prisoner's Dilemma with fixed partners](10-iterated-prisoner-s-dilemma-with-fixed-partners.md) |
 | 11 | [Preferential Attachment (Wilensky & Rand, ch. 5)](11-preferential-attachment.md) |
-| 12 | [Random Consumption Zakah, short form (custom)](12-random-consumption-zakah-short.md) |
 | 13 | [Bank Reserves (Wilensky, NetLogo Social Science)](13-bank-reserves.md) |
 
-### Part 2: three of those, corrected
+### Part 2: two of those, corrected
 
-Models 2, 4 and 12 run correctly and do not show the behaviour they are known for. In each case the description left out the mechanism that produces the result. Full workings in `vignette("corrections")`.
+Models 2 and 4 run correctly and do not show the behaviour they are known for. In each case the description left out the mechanism that produces the result. Full workings in `vignette("corrections")`.
 
 | # | model |
 |---|---|
 | 14 | [El Farol with inductive agents (Arthur 1994)](14-el-farol-with-inductive-agents.md) |
 | 15 | [Ethnocentrism, Hammond & Axelrod (2006)](15-ethnocentrism-hammond-axelrod.md) |
-| 16 | [Zakah with a risk process](16-zakah-with-a-risk-process.md) |
 
 ### Part 3: the first stress test
 

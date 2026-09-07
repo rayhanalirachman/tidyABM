@@ -66,4 +66,4 @@ step's semantics, and it reads better than the original did.*
 
 ---
 
-← [12. Random Consumption Zakah, short form](12-random-consumption-zakah-short.md) · [all models](README.md) · [14. El Farol with inductive agents](14-el-farol-with-inductive-agents.md) →
+← [11. Preferential Attachment](11-preferential-attachment.md) · [all models](README.md) · [14. El Farol with inductive agents](14-el-farol-with-inductive-agents.md) →

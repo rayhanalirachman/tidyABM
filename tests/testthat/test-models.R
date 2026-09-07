@@ -181,48 +181,6 @@ test_that("iterated PD with fixed partners sustains cooperation", {
   expect_true(all(r$payoff[r$tick == 50] == 3))
 })
 
-test_that("zakah moves wealth from payers above nisab to recipients below the poverty line", {
-  withr::local_seed(1011)
-  nisab <- 100; poverty_line <- 30
-  # 4 payers at 200, 2 recipients at 10, nobody in between
-  m <- abm_setup(
-    agents = abm_agents(n = 6, wealth = ~c(rep(200, 4), 10, 10), income = 0),
-    globals = list(zakah_pool = 0))
-  r <- abm_run(m, abm_go(
-    abm_global(zakah_pool ~ sum(if_else(wealth > nisab, wealth * 0.025, 0))),
-    abm_rules(wealth ~ if_else(wealth > nisab, wealth * 0.975, wealth)),
-    abm_rules(wealth ~ if_else(wealth < poverty_line,
-                               wealth + zakah_pool / sum(wealth < poverty_line),
-                               wealth))),
-    ticks = 1, seed = 12)
-
-  last <- r[r$tick == 1, ]
-  expect_equal(abm_globals(r)$zakah_pool[[2]], 4 * 200 * 0.025)  # 20
-  expect_equal(sort(last$wealth), c(20, 20, rep(195, 4)))        # 10 + 20/2 each
-  expect_equal(sum(last$wealth), sum(r$wealth[r$tick == 0]))     # nothing lost
-})
-
-test_that("zakah with a realistic distribution keeps collecting", {
-  withr::local_seed(1012)
-  nisab <- 100; poverty_line <- 30
-  r <- abm_run(
-    abm_setup(agents = abm_agents(n = 300, wealth = ~rlnorm(n, 4, 0.5),
-                                  income = ~rlnorm(n, 3, 0.4)),
-              globals = list(zakah_pool = 0)),
-    abm_go(
-      abm_rules(wealth ~ wealth + income - (0.6 * income + 0.02 * wealth)),
-      abm_global(zakah_pool ~ sum(if_else(wealth > nisab, wealth * 0.025, 0))),
-      abm_rules(wealth ~ if_else(wealth > nisab, wealth * 0.975, wealth)),
-      abm_rules(wealth ~ if_else(wealth < poverty_line,
-                                 wealth + zakah_pool / sum(wealth < poverty_line),
-                                 wealth))),
-    ticks = 50, seed = 12)
-  pool <- abm_globals(r)$zakah_pool
-  expect_equal(pool[[1]], 0)
-  expect_true(all(pool[-1] > 0))
-  expect_true(all(r$wealth > 0))
-})
-
 test_that("bank reserves lends only what the bank has", {
   withr::local_seed(1013)
   reserve_ratio <- 0.1

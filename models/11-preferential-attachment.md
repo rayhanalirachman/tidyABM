@@ -34,4 +34,4 @@ degree-proportional without anyone storing a degree.*
 
 ---
 
-← [10. Iterated Prisoner's Dilemma with fixed partners](10-iterated-prisoner-s-dilemma-with-fixed-partners.md) · [all models](README.md) · [12. Random Consumption Zakah, short form](12-random-consumption-zakah-short.md) →
+← [10. Iterated Prisoner's Dilemma with fixed partners](10-iterated-prisoner-s-dilemma-with-fixed-partners.md) · [all models](README.md) · [13. Bank Reserves](13-bank-reserves.md) →

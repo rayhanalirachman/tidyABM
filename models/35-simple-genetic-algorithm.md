@@ -11,34 +11,21 @@
 
 **Package**
 
-The chromosome is `L` scalar columns here and the rules are built with
-`do.call()`. A list column would hold the whole genome as one vector per agent,
-the way model 41 holds a strategy table; this page keeps the version it was
-written with, and the crossover rule is the one thing that reads better spread
-across columns, since it is a different parent per bit:
+The chromosome is one list column, a bit vector per agent, the way model 41
+holds a strategy table. Crossover then says what it means: take the first
+`cross` bits from one parent and the rest from the other.
 
 ```r
 L <- 20; N <- 100                      # 20 bits, 100 individuals
 mutation <- 0.03; crossover <- 0.7
 
-start <- setNames(rep(list(~sample(0:1, n, replace = TRUE)), L),
-                  paste0("b", seq_len(L)))
-
 pop <- abm_setup(
-  agents  = do.call(abm_agents, c(list(n = N), start)),
+  agents  = abm_agents(n = N, genome = ~lapply(seq_len(n), function(i)
+                                          sample(0:1, L, replace = TRUE))),
   globals = list(mut = mutation, xover = crossover, L = L),
   seed    = 1)
 
-bs <- paste0("b", seq_len(L))
-
-# one rule per bit: take the parent's bit, switching parents at the crossover
-# point. All L rules live in one abm_rules() call, so every one reads the *old*
-# generation.
-child_rules <- lapply(bs, function(nm) {
-  new_formula(sym(nm), expr(
-    if_else(!sexual, (!!sym(nm))[p1],
-            if_else(!!which(bs == nm) <= cross, (!!sym(nm))[p1], (!!sym(nm))[p2]))))
-})
+fitness_rule <- abm_rules(fitness ~ vapply(genome, sum, numeric(1)))
 
 tournament <- function(out) list(
   abm_rules(t1 ~ sample(n(), n(), replace = TRUE),
@@ -50,37 +37,54 @@ tournament <- function(out) list(
 )
 
 go <- do.call(abm_go, c(
-  list(abm_rules(fitness_rule)),
+  list(fitness_rule),
   tournament("p1"), tournament("p2"),
   list(abm_rules(cross  ~ sample(L, n(), replace = TRUE),
                  sexual ~ runif(n()) < xover)),
-  list(do.call(abm_rules, child_rules)),
-  list(do.call(abm_rules, mutate_rules)),
-  list(abm_rules(fitness_rule))
+  # genome[p1] and genome[p2] are the parents' genomes, so the whole generation
+  # is bred in one rule and every child reads the *old* one.
+  list(abm_rules(genome ~ Map(
+    function(g1, g2, s, k) if (!s) g1 else c(g1[seq_len(k)], g2[-seq_len(k)]),
+    genome[p1], genome[p2], sexual, cross))),
+  list(abm_rules(genome ~ lapply(genome, function(g)
+    if_else(runif(L) < mut, 1L - g, g)))),
+  list(fitness_rule)
 ))
 
 result <- abm_run(pop, go, ticks = 100, seed = 1)
 ```
 
 **Result.** 20 bits, 100 individuals, 100 generations. With mutation 0.03 the
-optimum (fitness 20) is first reached at **generation 7** and held thereafter.
+optimum (fitness 20) is first reached at **generation 8** and held thereafter.
 Across mutation rates:
 
 | mutation | 0.01 | 0.03 | 0.10 | 0.30 |
 |---|---|---|---|---|
-| best | 20 | 20 | 18 | 16 |
-| mean | 19.7 | 19.1 | 15.1 | 11.2 |
+| best | 20 | 20 | 20 | 16 |
+| mean | 19.7 | 19.1 | 15.2 | 10.8 |
 
-The error catastrophe, at the rate the NetLogo model puts it.
+The error catastrophe, at the rate the NetLogo model puts it. The mean is where
+it shows: at 0.10 there is still an all-ones individual in the last generation
+and the population sits five bits below it, and at 0.30 nothing reaches the
+optimum at all.
 
 *Needed nothing new.* It was filed as the third model to hit the same wall as El
 Farol's weights and PD N-Person's memory, a vector of per-agent state with only
 scalar columns to put it in. That wall was not there: model 41 holds its
-strategy table in a list column, and a 20-bit genome fits in one too. What did
-work cleanly here: formula objects built with
-`rlang::new_formula()` go straight into `abm_rules()` and `do.call(abm_go, ...)`,
-so a model whose *shape* depends on a parameter is writable without any string
-manipulation.
+strategy table in a list column, and a 20-bit genome fits in one too. The genome
+was `L` columns, bred by `L` generated rules and mutated by `L` more, and the
+crossover rule was the argument for keeping it that way, since the parent
+switches part-way along the chromosome. That argument was backwards. Spread
+across columns, crossover is `L` rules each comparing its own fixed index to
+`cross`; as a vector it is `c(g1[seq_len(k)], g2[-seq_len(k)])`, which is the
+definition. The script runs 3× faster and the numbers above are not the old ones,
+because the mutation draws now come per agent rather than per bit and the
+random stream is therefore different.
+
+*What did still work cleanly, and is why `L` is no longer in the shape of the
+model: formula objects built with `rlang::new_formula()` go straight into
+`abm_rules()` and `do.call(abm_go, ...)`. Only the tournament needs it now, and
+only because the target column is computed.*
 
 ---
 

@@ -301,3 +301,58 @@ maintained network the figure is 0.85 and the strategy shares are the same. The
 lesson is the one the vignette is about, applied to the vignette: a model that
 runs, reports a plausible number, and is measuring something other than what the
 sentence next to it claims.
+
+---
+
+# What the two rewrites changed
+
+No new models and no additions. *Open items* had one entry left, and it was the
+only one that had ever been on that page without asking for anything: PD
+N-Person (26) and the genetic algorithm (35) were still written in scalar
+columns per slot, because they were written in the rounds when "no set-valued
+agent state" was believed. Model 41 had shown that was false two rounds earlier
+and El Farol (14) had already been rewritten around the finding. These two had
+not been.
+
+| rewrite | was | is |
+|---|---|---|
+| PD N-Person (26), per-opponent memory | `N` logical columns per agent, an `N`-branch `case_when()` to read one, `N` generated rules to write them | one list column holding the set of `.id`s that have defected on me |
+| genetic algorithm (35), the genome | `L` bit columns, `L` generated crossover rules, `L` generated mutation rules | one list column holding a bit vector |
+
+Both are the idiom from model 41, and neither needed anything the package did
+not have in Part 5. Three things came out of doing them.
+
+**A bit-identical rewrite is the strong form of the claim.** PD N-Person's
+scores, games and grudge states are identical to the `N²` version at every tick,
+for every strategy mix, because the representation was the only thing that
+changed and no rule over the memory draws a random number. The published table
+did not move. That is the useful test of a representation change and it is worth
+asking for wherever one is possible: if the numbers do not move, the old shape
+was never doing anything the new one is not.
+
+**The genetic algorithm's numbers did move, and the reason is the interesting
+half.** Its mutation step draws `L` random numbers per agent, and there is no
+way to write that over a list column that consumes the stream in the same order
+as `L` column-wise `runif(n())` calls did. The results are the same model at a
+different seed: the optimum is first reached at generation 8 rather than 7, the
+error catastrophe is at the same rate. A model whose *representation* fixes its
+random stream is a model whose numbers are less robust than they look, and the
+column-per-slot version hid that behind a shape nobody would have chosen.
+
+**Where the column-per-slot version was defended, it was defended wrongly.**
+Model 35's page argued that crossover was the one operation that read better
+spread across columns, since the parent switches part-way along the chromosome.
+Spread across columns that is `L` rules, each comparing its own fixed index to
+`cross`. As a vector it is `c(g1[seq_len(k)], g2[-seq_len(k)])`, which is the
+definition of single-point crossover rather than an encoding of it. The
+generated-rule machinery is not wrong — `rlang::new_formula()` into
+`do.call(abm_go, ...)` is still how model 35 builds its tournament, and models
+30, 44, 45 and 47 still need it — but it is for a model whose *steps* depend on a
+parameter, not for one whose *state* is a vector. Those had been the same trick
+by accident.
+
+Both rewrites also removed the size limit that had been the entry's real
+complaint. PD N-Person at NetLogo's default of 60 agents was 3,600 cells and a
+60-branch `case_when()`; it is now a sparse set per agent and the same code as at
+24. The genetic algorithm's script runs three times faster with `L` out of the
+shape of the model.

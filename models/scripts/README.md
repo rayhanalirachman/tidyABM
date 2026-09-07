@@ -22,7 +22,7 @@ installed. Each one prints its table and nothing else.
 | `m32_team.R` | 32. Team Assembly | 2 min |
 | `m33_language.R` | 33. Language Change | 20 s |
 | `m34_epidem.R` | 34. epiDEM Basic | 4 min |
-| `m35_ga.R` | 35. Simple Genetic Algorithm | 1 min |
+| `m35_ga.R` | 35. Simple Genetic Algorithm | 20 s |
 | `m36_cascade.R` | 36. Information cascade | 4 min |
 
 ## Part 5

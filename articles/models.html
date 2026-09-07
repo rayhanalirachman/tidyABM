@@ -459,56 +459,11 @@ uniformly, then one of its endpoints, and selection comes out
 degree-proportional without anyone storing a degree.</p>
 </div>
 <div class="section level2">
-<h2 id="zakah-redistribution">Zakah redistribution<a class="anchor" aria-label="anchor" href="#zakah-redistribution"></a>
-</h2>
-<p>Consumption erodes wealth. Those above the <em>nisab</em> pay 2.5%
-into a pool, and those below the poverty line share it.</p>
-<div class="sourceCode" id="cb14"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">nisab</span> <span class="op">&lt;-</span> <span class="fl">100</span></span>
-<span><span class="va">poverty_line</span> <span class="op">&lt;-</span> <span class="fl">30</span></span>
-<span></span>
-<span><span class="va">zakah</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/abm_setup.html">abm_setup</a></span><span class="op">(</span></span>
-<span>  agents  <span class="op">=</span> <span class="fu"><a href="../reference/abm_agents.html">abm_agents</a></span><span class="op">(</span>n <span class="op">=</span> <span class="fl">300</span>, wealth <span class="op">=</span> <span class="op">~</span><span class="fu"><a href="https://rdrr.io/r/stats/Lognormal.html" class="external-link">rlnorm</a></span><span class="op">(</span><span class="va">n</span>, <span class="fl">4</span>, <span class="fl">0.5</span><span class="op">)</span>,</span>
-<span>                       income <span class="op">=</span> <span class="op">~</span><span class="fu"><a href="https://rdrr.io/r/stats/Lognormal.html" class="external-link">rlnorm</a></span><span class="op">(</span><span class="va">n</span>, <span class="fl">3</span>, <span class="fl">0.4</span><span class="op">)</span><span class="op">)</span>,</span>
-<span>  globals <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>zakah_pool <span class="op">=</span> <span class="fl">0</span><span class="op">)</span></span>
-<span><span class="op">)</span></span>
-<span></span>
-<span><span class="va">go</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/abm_go.html">abm_go</a></span><span class="op">(</span></span>
-<span>  <span class="fu"><a href="../reference/abm_rules.html">abm_rules</a></span><span class="op">(</span><span class="va">wealth</span> <span class="op">~</span> <span class="va">wealth</span> <span class="op">+</span> <span class="va">income</span> <span class="op">-</span> <span class="op">(</span><span class="fl">0.6</span> <span class="op">*</span> <span class="va">income</span> <span class="op">+</span> <span class="fl">0.02</span> <span class="op">*</span> <span class="va">wealth</span><span class="op">)</span><span class="op">)</span>,</span>
-<span>  <span class="fu"><a href="../reference/abm_global.html">abm_global</a></span><span class="op">(</span><span class="va">zakah_pool</span> <span class="op">~</span> <span class="fu"><a href="https://rdrr.io/r/base/sum.html" class="external-link">sum</a></span><span class="op">(</span><span class="fu"><a href="https://dplyr.tidyverse.org/reference/if_else.html" class="external-link">if_else</a></span><span class="op">(</span><span class="va">wealth</span> <span class="op">&gt;</span> <span class="va">nisab</span>, <span class="va">wealth</span> <span class="op">*</span> <span class="fl">0.025</span>, <span class="fl">0</span><span class="op">)</span><span class="op">)</span><span class="op">)</span>,</span>
-<span>  <span class="fu"><a href="../reference/abm_rules.html">abm_rules</a></span><span class="op">(</span><span class="va">wealth</span> <span class="op">~</span> <span class="fu"><a href="https://dplyr.tidyverse.org/reference/if_else.html" class="external-link">if_else</a></span><span class="op">(</span><span class="va">wealth</span> <span class="op">&gt;</span> <span class="va">nisab</span>, <span class="va">wealth</span> <span class="op">*</span> <span class="fl">0.975</span>, <span class="va">wealth</span><span class="op">)</span><span class="op">)</span>,</span>
-<span>  <span class="fu"><a href="../reference/abm_rules.html">abm_rules</a></span><span class="op">(</span><span class="va">wealth</span> <span class="op">~</span> <span class="fu"><a href="https://dplyr.tidyverse.org/reference/if_else.html" class="external-link">if_else</a></span><span class="op">(</span><span class="va">wealth</span> <span class="op">&lt;</span> <span class="va">poverty_line</span>,</span>
-<span>                             <span class="va">wealth</span> <span class="op">+</span> <span class="va">zakah_pool</span> <span class="op">/</span> <span class="fu"><a href="https://rdrr.io/r/base/sum.html" class="external-link">sum</a></span><span class="op">(</span><span class="va">wealth</span> <span class="op">&lt;</span> <span class="va">poverty_line</span><span class="op">)</span>,</span>
-<span>                             <span class="va">wealth</span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="op">)</span></span>
-<span></span>
-<span><span class="va">r</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/abm_run.html">abm_run</a></span><span class="op">(</span><span class="va">zakah</span>, <span class="va">go</span>, ticks <span class="op">=</span> <span class="fl">50</span>, seed <span class="op">=</span> <span class="fl">12</span><span class="op">)</span></span>
-<span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/utils/head.html" class="external-link">tail</a></span><span class="op">(</span><span class="fu"><a href="../reference/abm_globals.html">abm_globals</a></span><span class="op">(</span><span class="va">r</span><span class="op">)</span><span class="op">$</span><span class="va">zakah_pool</span>, <span class="fl">3</span><span class="op">)</span>, <span class="fl">1</span><span class="op">)</span></span>
-<span><span class="co">#&gt; [1] 1349.2 1353.5 1357.6</span></span></code></pre></div>
-<p><strong>What it introduced:</strong> nothing mechanically. It is the
-first model made of nothing but individual and population-level steps,
-which confirmed matching is optional machinery rather than a
-requirement. Collection is modelled as a pool rather than peer-to-peer
-transfers, both because that is how zakah institutions actually work and
-because it sidesteps matching a mismatched number of payers and
-recipients.</p>
-<p><strong>Watch the two thresholds, and the missing risk.</strong>
-<code>nisab</code> and <code>poverty_line</code> are deliberately
-different, so a middle group pays nothing and receives nothing. But the
-recipient pool empties within about ten ticks: the consumption rule is
-mean-reverting, so every household converges on <code>20 * income</code>
-and nobody is persistently poor. Zakah then becomes a pure drag on the
-payers. Check <code>sum(wealth &lt; poverty_line)</code> over the run
-before reading anything into the inequality path.
-<code><a href="../articles/corrections.html">vignette("corrections")</a></code> fixes it.</p>
-</div>
-<div class="section level2">
 <h2 id="bank-reserves">Bank reserves<a class="anchor" aria-label="anchor" href="#bank-reserves"></a>
 </h2>
 <p><em>Wilensky, NetLogo Sample Models.</em> A bank can only lend what
 it has, and whoever asks first gets it.</p>
-<div class="sourceCode" id="cb15"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb14"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">reserve_ratio</span> <span class="op">&lt;-</span> <span class="fl">0.1</span></span>
 <span></span>
 <span><span class="va">bankres</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/abm_setup.html">abm_setup</a></span><span class="op">(</span></span>
@@ -543,17 +498,17 @@ it has, and whoever asks first gets it.</p>
 <span><span class="co">#&gt; <span style="color: #949494;"># A tibble: 3 × 4</span></span></span>
 <span><span class="co">#&gt;    tick bank_deposits bank_loans bank_reserves</span></span>
 <span><span class="co">#&gt;   <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span>         <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span>      <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span>         <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span></span></span>
-<span><span class="co">#&gt; <span style="color: #BCBCBC;">1</span>    98         <span style="text-decoration: underline;">3</span>025.       303.         -<span style="color: #BB0000;">0.03</span></span></span>
-<span><span class="co">#&gt; <span style="color: #BCBCBC;">2</span>    99         <span style="text-decoration: underline;">3</span>040.       303.          1.47</span></span>
-<span><span class="co">#&gt; <span style="color: #BCBCBC;">3</span>   100         <span style="text-decoration: underline;">3</span>034.       304.         -<span style="color: #BB0000;">0.64</span></span></span></code></pre></div>
+<span><span class="co">#&gt; <span style="color: #BCBCBC;">1</span>    98         <span style="text-decoration: underline;">3</span>245.       326.         -<span style="color: #BB0000;">1.07</span></span></span>
+<span><span class="co">#&gt; <span style="color: #BCBCBC;">2</span>    99         <span style="text-decoration: underline;">3</span>251.       326.         -<span style="color: #BB0000;">0.5</span> </span></span>
+<span><span class="co">#&gt; <span style="color: #BCBCBC;">3</span>   100         <span style="text-decoration: underline;">3</span>243.       326.         -<span style="color: #BB0000;">1.27</span></span></span></code></pre></div>
 <p><strong>What it introduced:</strong> <code><a href="../reference/abm_sequential.html">abm_sequential()</a></code>.
 Every earlier model works fine with simultaneous updates, because a
-shared pool that is only ever <em>divided</em> (the public goods pot,
-the zakah pool) gives the same answer either way. Lendable reserves are
-different: they are <em>depleted</em>, so the first borrower has to
-change what the second one sees. The step is scoped narrowly to that
-case: during the loop a rule reads and writes its own agent’s columns
-and any global, and nothing else.</p>
+shared pool that is only ever <em>divided</em> (the public goods pot)
+gives the same answer either way. Lendable reserves are different: they
+are <em>depleted</em>, so the first borrower has to change what the
+second one sees. The step is scoped narrowly to that case: during the
+loop a rule reads and writes its own agent’s columns and any global, and
+nothing else.</p>
 <p>Note that the last <code><a href="../reference/abm_sequential.html">abm_sequential()</a></code> rule writes to a
 global. That is what makes the depletion visible to the next agent.
 Without it the reserve would only be recomputed at the end of the tick

@@ -1,11 +1,11 @@
-# Three models that need more than the sketch
+# Two models that need more than the sketch
 
 ``` r
 
 library(tidyABM)
 ```
 
-Three of the models in
+Two of the models in
 [`vignette("models")`](https://rayhanalirachman.github.io/tidyABM/articles/models.md)
 run correctly and still do not show the behaviour they are famous for.
 That is not a bug in the package or in the translation. It is that the
@@ -304,143 +304,24 @@ kinship dyads. The strategy shares barely move, 0.39 ethnocentrics
 against 0.37, which is the good outcome: the mechanism was real, and the
 eroded network was overstating the evidence for it.
 
-## Zakah: nobody is poor in a model with no risk
-
-The zakah model collects 2.5% from every household above the *nisab* and
-shares it among households below a poverty line. As written it stops
-working after about ten ticks:
-
-``` r
-
-NISAB <- 100
-consume <- abm_rules(wealth ~ wealth + income - (0.6 * income + 0.02 * wealth))
-
-short_pop <- abm_setup(
-  agents  = abm_agents(n = 500, wealth = ~rlnorm(n, 4, 0.5),
-                       income = ~rlnorm(n, 3, 0.4)),
-  globals = list(zakah_pool = 0))
-
-short_go <- abm_go(
-  consume,
-  abm_global(zakah_pool ~ sum(if_else(wealth > NISAB, wealth * 0.025, 0))),
-  abm_rules(wealth ~ if_else(wealth > NISAB, wealth * 0.975, wealth)),
-  abm_rules(wealth ~ if_else(wealth < 30,
-                             wealth + zakah_pool / sum(wealth < 30), wealth)))
-
-short <- abm_run(short_pop, short_go, ticks = 100, seed = 12)
-
-# how many households are below the poverty line, over time?
-tapply(short$wealth < 30, short$tick, sum)[c("0", "5", "10", "50", "100")]
-#>   0   5  10  50 100 
-#>  54   0   0   0   0
-```
-
-The pool keeps being collected and stops being distributed, so zakah
-becomes a flat tax that goes nowhere.
-
-Two things are wrong, and only one of them is the threshold.
-
-**The poverty line is absolute in a model where wealth grows.** Everyone
-crosses 30 within a few ticks. Making it relative, at half the median,
-which is the standard measure of relative poverty, is a one-line fix.
-
-**More importantly, the model has no risk.** The consumption rule is
-`wealth * 0.98 + 0.4 * income`, which converges to exactly `20 * income`
-for every household. Wealth becomes a deterministic function of income,
-the distribution gets *tighter* over time, and nobody is ever
-persistently poor no matter where you put the line. A redistribution
-model with nothing to redistribute against is measuring nothing.
-
-Put in a source of dispersion, meaning income that moves plus occasional
-large losses, and the model has something to say:
-
-``` r
-
-shocks <- abm_rules(
-  income ~ exp(0.9 * log(income) + 0.1 * 3 + rnorm(n(), 0, 0.15)),  # AR(1) in logs
-  wealth ~ wealth - if_else(runif(n()) < 0.03, wealth * 0.6, 0)     # occasional hit
-)
-consume <- abm_rules(wealth ~ pmax(0.01, wealth + income - (0.6 * income + 0.02 * wealth)))
-line    <- abm_global(poverty_line ~ 0.5 * median(wealth))
-
-start <- function() abm_setup(
-  agents  = abm_agents(n = 500, wealth = ~rlnorm(n, 4, 0.5), income = ~rlnorm(n, 3, 0.4)),
-  globals = list(zakah_pool = 0, poverty_line = 30))
-
-zakah_go <- abm_go(
-  shocks, consume, line,
-  abm_global(zakah_pool ~ sum(if_else(wealth > NISAB, wealth * 0.025, 0))),
-  abm_rules(wealth ~ if_else(wealth > NISAB, wealth * 0.975, wealth)),
-  abm_rules(wealth ~ if_else(wealth < poverty_line,
-                             wealth + zakah_pool / pmax(1, sum(wealth < poverty_line)),
-                             wealth))
-)
-
-baseline_go <- abm_go(shocks, consume, line)
-
-with_zakah <- abm_run(start(), zakah_go,    ticks = 300, seed = 12)
-baseline   <- abm_run(start(), baseline_go, ticks = 300, seed = 12)
-```
-
-``` r
-
-gini <- function(x) { x <- sort(x); n <- length(x); sum((2 * seq_len(n) - n - 1) * x) / (n * sum(x)) }
-compare <- function(r) {
-  w <- r$wealth[r$tick == 300]
-  c(p10 = round(quantile(w, 0.1), 1), median = round(median(w), 1),
-    gini = round(gini(w), 3))
-}
-rbind(baseline = compare(baseline), zakah = compare(with_zakah))
-#>          p10.10% median  gini
-#> baseline   108.1  202.1 0.249
-#> zakah      142.6  212.2 0.174
-```
-
-The bottom decile is higher and the Gini coefficient is a third lower.
-The recipient pool no longer empties:
-
-``` r
-
-poor_share <- function(r) {
-  pl <- abm_globals(r)$poverty_line[match(r$tick, abm_globals(r)$tick)]
-  tapply(r$wealth < pl, r$tick, mean)
-}
-c(baseline = round(mean(tail(poor_share(baseline), 100)), 3),
-  zakah    = round(mean(tail(poor_share(with_zakah), 100)), 3))
-#> baseline    zakah 
-#>    0.113    0.000
-```
-
-One caveat on reading that last number. Transferring 2.5% of nearly
-everyone’s wealth to the few per cent below the line is an enormous
-per-head transfer, so relative poverty is not merely reduced but
-eliminated. Real zakah is levied on *zakatable* assets held for a year
-and distributed across eight categories, of which the poor are two. If
-you want the model to say something about actual policy, that is the
-next thing to calibrate.
-
 ## What to take from this
 
-The three failures have the same shape: a mechanism was compressed out
-of the description, and the compressed version still runs.
+The two failures have the same shape: a mechanism was compressed out of
+the description, and the compressed version still runs.
 
 - El Farol lost the *inductive* part, the agents that revise which
   forecast they trust. Without it the population is one agent.
 - Ethnocentrism lost both the tag-conditional strategy and the local
   reproduction. Without the second one you reproduce the paper’s
   control, not its result.
-- Zakah lost the risk process. Without it there is no poverty to
-  redistribute against, and the threshold question is a distraction from
-  that.
 
-Two of the three needed no change to the package. Ethnocentrism needed
-two arguments, and both were the same missing idea: a newborn has to
-arrive *somewhere*. `from = "parent"` says where, and `links` says how
-much of a neighbourhood it gets when it lands. Without the first there
-is no kin structure. Without the second the kin structure eats the
-network.
+El Farol needed no change to the package. Ethnocentrism needed two
+arguments, and both were the same missing idea: a newborn has to arrive
+*somewhere*. `from = "parent"` says where, and `links` says how much of
+a neighbourhood it gets when it lands. Without the first there is no kin
+structure. Without the second the kin structure eats the network.
 
-There is a fourth thing to take from this, which is about reading a
+There is a third thing to take from this, which is about reading a
 result rather than writing a model. Each of these corrections was
 checked by asking whether the number the model reports means what the
 surrounding sentence claims. The uncorrected El Farol had a plausible

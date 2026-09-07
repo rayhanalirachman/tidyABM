@@ -428,55 +428,6 @@ form, *m* edges per node, each drawn degree-proportionally.
 then one of its endpoints, and selection comes out degree-proportional
 without anyone storing a degree.
 
-## Zakah redistribution
-
-Consumption erodes wealth. Those above the *nisab* pay 2.5% into a pool,
-and those below the poverty line share it.
-
-``` r
-
-nisab <- 100
-poverty_line <- 30
-
-zakah <- abm_setup(
-  agents  = abm_agents(n = 300, wealth = ~rlnorm(n, 4, 0.5),
-                       income = ~rlnorm(n, 3, 0.4)),
-  globals = list(zakah_pool = 0)
-)
-
-go <- abm_go(
-  abm_rules(wealth ~ wealth + income - (0.6 * income + 0.02 * wealth)),
-  abm_global(zakah_pool ~ sum(if_else(wealth > nisab, wealth * 0.025, 0))),
-  abm_rules(wealth ~ if_else(wealth > nisab, wealth * 0.975, wealth)),
-  abm_rules(wealth ~ if_else(wealth < poverty_line,
-                             wealth + zakah_pool / sum(wealth < poverty_line),
-                             wealth))
-)
-
-r <- abm_run(zakah, go, ticks = 50, seed = 12)
-
-round(tail(abm_globals(r)$zakah_pool, 3), 1)
-#> [1] 1349.2 1353.5 1357.6
-```
-
-**What it introduced:** nothing mechanically. It is the first model made
-of nothing but individual and population-level steps, which confirmed
-matching is optional machinery rather than a requirement. Collection is
-modelled as a pool rather than peer-to-peer transfers, both because that
-is how zakah institutions actually work and because it sidesteps
-matching a mismatched number of payers and recipients.
-
-**Watch the two thresholds, and the missing risk.** `nisab` and
-`poverty_line` are deliberately different, so a middle group pays
-nothing and receives nothing. But the recipient pool empties within
-about ten ticks: the consumption rule is mean-reverting, so every
-household converges on `20 * income` and nobody is persistently poor.
-Zakah then becomes a pure drag on the payers. Check
-`sum(wealth < poverty_line)` over the run before reading anything into
-the inequality path.
-[`vignette("corrections")`](https://rayhanalirachman.github.io/tidyABM/articles/corrections.md)
-fixes it.
-
 ## Bank reserves
 
 *Wilensky, NetLogo Sample Models.* A bank can only lend what it has, and
@@ -518,20 +469,20 @@ round(tail(abm_globals(r), 3), 2)
 #> # A tibble: 3 × 4
 #>    tick bank_deposits bank_loans bank_reserves
 #>   <dbl>         <dbl>      <dbl>         <dbl>
-#> 1    98         3025.       303.         -0.03
-#> 2    99         3040.       303.          1.47
-#> 3   100         3034.       304.         -0.64
+#> 1    98         3245.       326.         -1.07
+#> 2    99         3251.       326.         -0.5 
+#> 3   100         3243.       326.         -1.27
 ```
 
 **What it introduced:**
 [`abm_sequential()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_sequential.md).
 Every earlier model works fine with simultaneous updates, because a
-shared pool that is only ever *divided* (the public goods pot, the zakah
-pool) gives the same answer either way. Lendable reserves are different:
-they are *depleted*, so the first borrower has to change what the second
-one sees. The step is scoped narrowly to that case: during the loop a
-rule reads and writes its own agent’s columns and any global, and
-nothing else.
+shared pool that is only ever *divided* (the public goods pot) gives the
+same answer either way. Lendable reserves are different: they are
+*depleted*, so the first borrower has to change what the second one
+sees. The step is scoped narrowly to that case: during the loop a rule
+reads and writes its own agent’s columns and any global, and nothing
+else.
 
 Note that the last
 [`abm_sequential()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_sequential.md)

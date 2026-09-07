@@ -2,7 +2,7 @@
 
 ### All vignettes
 
-- [Three models that need more than the
+- [Two models that need more than the
   sketch](https://rayhanalirachman.github.io/tidyABM/articles/corrections.md):
 - [Model
   gallery](https://rayhanalirachman.github.io/tidyABM/articles/models.md):

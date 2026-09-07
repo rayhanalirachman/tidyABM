@@ -5,10 +5,12 @@ template:
 
 home:
   links:
-  - text: The 56-model corpus
+  - text: The model corpus
     href: https://github.com/rayhanalirachman/tidyABM/blob/main/models/README.md
+  - text: The 56 non-spatial models
+    href: https://github.com/rayhanalirachman/tidyABM/blob/main/models/non-spatial/README.md
   - text: The spatial models
-    href: https://github.com/rayhanalirachman/tidyABM/blob/main/models-spatial/README.md
+    href: https://github.com/rayhanalirachman/tidyABM/blob/main/models/spatial/README.md
   - text: What each stress test changed
     href: https://github.com/rayhanalirachman/tidyABM/blob/main/models/what-changed.md
   - text: What the grammar still cannot say

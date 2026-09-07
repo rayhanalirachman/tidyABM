@@ -1,7 +1,7 @@
 # The spatial grammar: lattices, named neighbours, mobile agents, movement.
 #
 # Kept separate from the non-spatial tests. The model-level checks here are the
-# validations named in `work in progress/spatial-grammar-test.md`, cut down to
+# validations named in `models/spatial/design-probe.md`, cut down to
 # a size a test suite can afford.
 
 cid <- function(x, y, w) x + (y - 1) * w

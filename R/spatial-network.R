@@ -7,7 +7,7 @@
 # not the `abm_move()` step (that is in spatial-move.R); the core engine files
 # only carry thin hooks that delegate here.
 #
-# Tiers (see `work in progress/spatial-grammar-spec.md`):
+# Tiers (see `models/spatial/grammar-spec.md`):
 #   L0  the lattice network type, `.x`/`.y` injection, count inheritance,
 #       `abm_grid()` sugar
 #   L1  `abm_neighbours(..., .where = "north")` -- one named lattice neighbour

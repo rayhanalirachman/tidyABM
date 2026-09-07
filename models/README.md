@@ -68,18 +68,18 @@ The set the grammar was designed against.
 
 | # | model |
 |---|---|
-| 1 | [Simple Economy (Wilensky & Rand, ch. 2)](01-simple-economy.md) |
-| 2 | [El Farol, short form (Arthur 1994)](02-el-farol-short.md) |
-| 3 | [PD Basic, a well-mixed prisoner's dilemma with imitation](03-pd-basic-well-mixed-prisoner-s-dilemma-with-imitation.md) |
-| 4 | [Ethnocentrism, short form](04-ethnocentrism-short.md) |
-| 5 | [Rumour Mill](05-rumour-mill.md) |
-| 6 | [Party, segregation without geography](06-party-segregation-without-geography.md) |
-| 7 | [Market, bilateral bargaining](07-market-supply-and-demand.md) |
-| 8 | [Voter Model on a network](08-voter-model-on-a-network.md) |
-| 9 | [Public Goods Game](09-public-goods-game.md) |
-| 10 | [Iterated Prisoner's Dilemma with fixed partners](10-iterated-prisoner-s-dilemma-with-fixed-partners.md) |
-| 11 | [Preferential Attachment (Wilensky & Rand, ch. 5)](11-preferential-attachment.md) |
-| 13 | [Bank Reserves (Wilensky, NetLogo Social Science)](13-bank-reserves.md) |
+| 1 | [Simple Economy (Wilensky & Rand, ch. 2)](non-spatial/01-simple-economy.md) |
+| 2 | [El Farol, short form (Arthur 1994)](non-spatial/02-el-farol-short.md) |
+| 3 | [PD Basic, a well-mixed prisoner's dilemma with imitation](non-spatial/03-pd-basic-well-mixed-prisoner-s-dilemma-with-imitation.md) |
+| 4 | [Ethnocentrism, short form](non-spatial/04-ethnocentrism-short.md) |
+| 5 | [Rumour Mill](non-spatial/05-rumour-mill.md) |
+| 6 | [Party, segregation without geography](non-spatial/06-party-segregation-without-geography.md) |
+| 7 | [Market, bilateral bargaining](non-spatial/07-market-supply-and-demand.md) |
+| 8 | [Voter Model on a network](non-spatial/08-voter-model-on-a-network.md) |
+| 9 | [Public Goods Game](non-spatial/09-public-goods-game.md) |
+| 10 | [Iterated Prisoner's Dilemma with fixed partners](non-spatial/10-iterated-prisoner-s-dilemma-with-fixed-partners.md) |
+| 11 | [Preferential Attachment (Wilensky & Rand, ch. 5)](non-spatial/11-preferential-attachment.md) |
+| 13 | [Bank Reserves (Wilensky, NetLogo Social Science)](non-spatial/13-bank-reserves.md) |
 
 ### Part 2: two of those, corrected
 
@@ -87,8 +87,8 @@ Models 2 and 4 run correctly and do not show the behaviour they are known for. I
 
 | # | model |
 |---|---|
-| 14 | [El Farol with inductive agents (Arthur 1994)](14-el-farol-with-inductive-agents.md) |
-| 15 | [Ethnocentrism, Hammond & Axelrod (2006)](15-ethnocentrism-hammond-axelrod.md) |
+| 14 | [El Farol with inductive agents (Arthur 1994)](non-spatial/14-el-farol-with-inductive-agents.md) |
+| 15 | [Ethnocentrism, Hammond & Axelrod (2006)](non-spatial/15-ethnocentrism-hammond-axelrod.md) |
 
 ### Part 3: the first stress test
 
@@ -96,16 +96,16 @@ Chosen so that each one asks something of the grammar the earlier models did not
 
 | # | model |
 |---|---|
-| 17 | [Giant Component (NetLogo Networks)](17-giant-component.md) |
-| 18 | [Small Worlds (Watts & Strogatz; NetLogo Networks)](18-small-worlds.md) |
-| 19 | [Fireflies (Buck 1988; NetLogo Biology)](19-fireflies.md) |
-| 20 | [SIR on a network with recovery timers](20-sir-on-a-network-with-recovery-timers.md) |
-| 21 | [Genetic Drift / Wright–Fisher (NetLogo GenDrift P Global)](21-genetic-drift-wright-fisher.md) |
-| 22 | [Hawks and Doves (Maynard Smith & Price 1973)](22-hawks-and-doves.md) |
-| 23 | [Divide the Cake (Skyrms / Harms; NetLogo)](23-divide-the-cake.md) |
-| 24 | [Sex Ratio Equilibrium (Fisher; NetLogo Biology)](24-sex-ratio-equilibrium.md) |
-| 25 | [Axelrod's cultural dissemination (Axelrod 1997)](25-axelrod-s-cultural-dissemination.md) |
-| 26 | [PD N-Person Iterated (NetLogo Social Science)](26-pd-n-person-iterated.md) |
+| 17 | [Giant Component (NetLogo Networks)](non-spatial/17-giant-component.md) |
+| 18 | [Small Worlds (Watts & Strogatz; NetLogo Networks)](non-spatial/18-small-worlds.md) |
+| 19 | [Fireflies (Buck 1988; NetLogo Biology)](non-spatial/19-fireflies.md) |
+| 20 | [SIR on a network with recovery timers](non-spatial/20-sir-on-a-network-with-recovery-timers.md) |
+| 21 | [Genetic Drift / Wright–Fisher (NetLogo GenDrift P Global)](non-spatial/21-genetic-drift-wright-fisher.md) |
+| 22 | [Hawks and Doves (Maynard Smith & Price 1973)](non-spatial/22-hawks-and-doves.md) |
+| 23 | [Divide the Cake (Skyrms / Harms; NetLogo)](non-spatial/23-divide-the-cake.md) |
+| 24 | [Sex Ratio Equilibrium (Fisher; NetLogo Biology)](non-spatial/24-sex-ratio-equilibrium.md) |
+| 25 | [Axelrod's cultural dissemination (Axelrod 1997)](non-spatial/25-axelrod-s-cultural-dissemination.md) |
+| 26 | [PD N-Person Iterated (NetLogo Social Science)](non-spatial/26-pd-n-person-iterated.md) |
 
 ### Part 4: the second stress test
 
@@ -113,16 +113,16 @@ Chosen the same way. Three needed a package addition, seven did not. These produ
 
 | # | model |
 |---|---|
-| 27 | [Threshold model of collective behaviour (Granovetter 1978)](27-threshold-model-of-collective-behaviour.md) |
-| 28 | [Bounded confidence, pairwise (Deffuant, Neau, Amblard & Weisbuch 2000)](28-bounded-confidence-pairwise.md) |
-| 29 | [Bounded confidence, all-neighbour (Hegselmann & Krause 2002)](29-bounded-confidence-all-neighbour.md) |
-| 30 | [Norms and metanorms (Axelrod 1986)](30-norms-and-metanorms.md) |
-| 31 | [Simple Birth Rates (Wilensky 1997, NetLogo Biology)](31-simple-birth-rates.md) |
-| 32 | [Team Assembly (Guimerà, Uzzi, Spiro & Amaral 2005; NetLogo Networks)](32-team-assembly.md) |
-| 33 | [Language Change (Troutman & Wilensky 2007, NetLogo Social Science)](33-language-change.md) |
-| 34 | [epiDEM Basic (Yang & Wilensky 2011, NetLogo)](34-epidem-basic.md) |
-| 35 | [Simple Genetic Algorithm (Wilensky 1998, NetLogo Computer Science)](35-simple-genetic-algorithm.md) |
-| 36 | [Information cascade (Bikhchandani, Hirshleifer & Welch 1992)](36-information-cascade.md) |
+| 27 | [Threshold model of collective behaviour (Granovetter 1978)](non-spatial/27-threshold-model-of-collective-behaviour.md) |
+| 28 | [Bounded confidence, pairwise (Deffuant, Neau, Amblard & Weisbuch 2000)](non-spatial/28-bounded-confidence-pairwise.md) |
+| 29 | [Bounded confidence, all-neighbour (Hegselmann & Krause 2002)](non-spatial/29-bounded-confidence-all-neighbour.md) |
+| 30 | [Norms and metanorms (Axelrod 1986)](non-spatial/30-norms-and-metanorms.md) |
+| 31 | [Simple Birth Rates (Wilensky 1997, NetLogo Biology)](non-spatial/31-simple-birth-rates.md) |
+| 32 | [Team Assembly (Guimerà, Uzzi, Spiro & Amaral 2005; NetLogo Networks)](non-spatial/32-team-assembly.md) |
+| 33 | [Language Change (Troutman & Wilensky 2007, NetLogo Social Science)](non-spatial/33-language-change.md) |
+| 34 | [epiDEM Basic (Yang & Wilensky 2011, NetLogo)](non-spatial/34-epidem-basic.md) |
+| 35 | [Simple Genetic Algorithm (Wilensky 1998, NetLogo Computer Science)](non-spatial/35-simple-genetic-algorithm.md) |
+| 36 | [Information cascade (Bikhchandani, Hirshleifer & Welch 1992)](non-spatial/36-information-cascade.md) |
 
 ### Part 5: the third stress test
 
@@ -130,16 +130,16 @@ Chosen against the *Open items* list rather than against the grammar: each one w
 
 | # | model |
 |---|---|
-| 37 | [Virus on a Network (Stonedahl & Wilensky 2008, NetLogo Networks)](37-virus-on-a-network.md) |
-| 38 | [Global cascades on random networks (Watts 2002)](38-global-cascades-on-random-networks.md) |
-| 39 | [Sznajd model (Sznajd-Weron & Sznajd 2000)](39-sznajd-model.md) |
-| 40 | [Naming Game (Baronchelli et al. 2006)](40-naming-game.md) |
-| 41 | [Minority Game (Challet & Zhang 1997)](41-minority-game.md) |
-| 42 | [Kirman's ants (Kirman 1993)](42-kirmans-ants.md) |
-| 43 | [Zero-intelligence traders in a double auction (Gode & Sunder 1993)](43-zero-intelligence-traders.md) |
-| 44 | [Fairness versus reason in the ultimatum game (Nowak, Page & Sigmund 2000)](44-ultimatum-game.md) |
-| 45 | [Hotelling's Law (Hotelling 1929; NetLogo Social Science)](45-hotellings-law.md) |
-| 46 | [The Beer Distribution Game (Sterman 1989)](46-beer-distribution-game.md) |
+| 37 | [Virus on a Network (Stonedahl & Wilensky 2008, NetLogo Networks)](non-spatial/37-virus-on-a-network.md) |
+| 38 | [Global cascades on random networks (Watts 2002)](non-spatial/38-global-cascades-on-random-networks.md) |
+| 39 | [Sznajd model (Sznajd-Weron & Sznajd 2000)](non-spatial/39-sznajd-model.md) |
+| 40 | [Naming Game (Baronchelli et al. 2006)](non-spatial/40-naming-game.md) |
+| 41 | [Minority Game (Challet & Zhang 1997)](non-spatial/41-minority-game.md) |
+| 42 | [Kirman's ants (Kirman 1993)](non-spatial/42-kirmans-ants.md) |
+| 43 | [Zero-intelligence traders in a double auction (Gode & Sunder 1993)](non-spatial/43-zero-intelligence-traders.md) |
+| 44 | [Fairness versus reason in the ultimatum game (Nowak, Page & Sigmund 2000)](non-spatial/44-ultimatum-game.md) |
+| 45 | [Hotelling's Law (Hotelling 1929; NetLogo Social Science)](non-spatial/45-hotellings-law.md) |
+| 46 | [The Beer Distribution Game (Sterman 1989)](non-spatial/46-beer-distribution-game.md) |
 
 ### Part 6: the fourth stress test
 
@@ -152,21 +152,21 @@ of them found bugs rather than gaps.
 
 | # | model |
 |---|---|
-| 47 | [Response thresholds and the division of labour (Bonabeau, Theraulaz & Deneubourg 1996)](47-response-thresholds-and-division-of-labour.md) |
-| 48 | [A garbage can model of organizational choice (Cohen, March & Olsen 1972)](48-garbage-can-model.md) |
-| 49 | [The emergence of firms (Axtell 1999)](49-emergence-of-firms.md) |
-| 50 | [Adaptation on a rugged landscape (Kauffman 1993; Levinthal 1997)](50-rugged-landscapes.md) |
-| 51 | [Imitation dynamics of vaccination (Fu, Rosenbloom, Wang & Nowak 2011)](51-vaccination-imitation.md) |
-| 52 | [Bank runs and the sequential service constraint (Diamond & Dybvig 1983)](52-bank-runs.md) |
-| 53 | [Random copying and the neutral model (Bentley, Hahn & Shennan 2004)](53-neutral-model.md) |
-| 54 | [Indirect reciprocity by image scoring (Nowak & Sigmund 1998)](54-image-scoring.md) |
-| 55 | [Deferred acceptance (Gale & Shapley 1962)](55-deferred-acceptance.md) |
-| 56 | [Predator and prey without space (Lotka 1925; Volterra 1926)](56-predator-prey.md) |
+| 47 | [Response thresholds and the division of labour (Bonabeau, Theraulaz & Deneubourg 1996)](non-spatial/47-response-thresholds-and-division-of-labour.md) |
+| 48 | [A garbage can model of organizational choice (Cohen, March & Olsen 1972)](non-spatial/48-garbage-can-model.md) |
+| 49 | [The emergence of firms (Axtell 1999)](non-spatial/49-emergence-of-firms.md) |
+| 50 | [Adaptation on a rugged landscape (Kauffman 1993; Levinthal 1997)](non-spatial/50-rugged-landscapes.md) |
+| 51 | [Imitation dynamics of vaccination (Fu, Rosenbloom, Wang & Nowak 2011)](non-spatial/51-vaccination-imitation.md) |
+| 52 | [Bank runs and the sequential service constraint (Diamond & Dybvig 1983)](non-spatial/52-bank-runs.md) |
+| 53 | [Random copying and the neutral model (Bentley, Hahn & Shennan 2004)](non-spatial/53-neutral-model.md) |
+| 54 | [Indirect reciprocity by image scoring (Nowak & Sigmund 1998)](non-spatial/54-image-scoring.md) |
+| 55 | [Deferred acceptance (Gale & Shapley 1962)](non-spatial/55-deferred-acceptance.md) |
+| 56 | [Predator and prey without space (Lotka 1925; Volterra 1926)](non-spatial/56-predator-prey.md) |
 
 ## Reproducing the numbers
 
 Every table in these files came from a script in
-[`scripts/`](scripts/README.md), run at the size and seed the script names.
+[`scripts/`](non-spatial/scripts/README.md), run at the size and seed the script names.
 The `testthat` cases run the same models at reduced scale so the suite stays
 quick. The scripts are what reproduce the published tables.
 

@@ -9,8 +9,8 @@ original where one exists, the package code and the numbers the run produced.
 |---|---|
 | [The grammar](models/grammar.md) | every step, and what each one means |
 | [All 54 models](models/README.md) | the index, by part |
-| [The spatial models](models-spatial/README.md) | the lattice corpus, kept separate from the 54 |
+| [The spatial models](models/spatial/README.md) | the lattice corpus, kept separate from the 54 |
 | [Open items](models/open-items.md) | what the grammar still cannot say |
 | [What each stress test changed](models/what-changed.md) | how the grammar got its shape |
 | [Sources](models/sources.md) | every citation in one table |
-| [Reproduction scripts](models/scripts/README.md) | the runs behind the tables |
+| [Reproduction scripts](models/non-spatial/scripts/README.md) | the runs behind the tables |

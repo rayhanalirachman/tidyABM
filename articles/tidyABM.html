@@ -91,7 +91,9 @@ the network, the globals.</li>
 replayed once per tick.</li>
 <li>
 <strong>the run</strong>, <code><a href="../reference/abm_run.html">abm_run()</a></code>. The two above,
-plus <code>ticks</code>, <code>seed</code> and <code>record</code>.</li>
+plus <code>ticks</code>, <code>seed</code> and <code>record</code> —
+and, for an experiment rather than a run, <code>params</code>,
+<code>reps</code> and <code>measures</code>.</li>
 </ol>
 <div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">world</span>  <span class="op">&lt;-</span> <span class="fu"><a href="../reference/abm_setup.html">abm_setup</a></span><span class="op">(</span><span class="va">...</span><span class="op">)</span>                                <span class="co"># 1</span></span>
@@ -739,6 +741,74 @@ recorded every tick whatever you say, since they are one row each, so
 <code>"globals"</code> is the setting for a model whose output is an
 aggregate. The run itself is unchanged either way: the same seed gives
 the same final state at any setting.</p>
+</div>
+<div class="section level2">
+<h2 id="many-runs">Many runs<a class="anchor" aria-label="anchor" href="#many-runs"></a>
+</h2>
+<p>One run is rarely the question. <code>params</code> overrides the
+model’s globals, one run per value, and <code>reps</code> repeats each
+of those. Both stack their results into one result, with
+<code>.run</code>, <code>.rep</code> and a column per parameter in front
+of the ordinary columns.</p>
+<p>The Simple Economy above hands over one dollar a tick. Make the size
+of the transfer a global and it becomes something to sweep:</p>
+<div class="sourceCode" id="cb33"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">economy2</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/abm_setup.html">abm_setup</a></span><span class="op">(</span>agents  <span class="op">=</span> <span class="fu"><a href="../reference/abm_agents.html">abm_agents</a></span><span class="op">(</span>n <span class="op">=</span> <span class="fl">200</span>, money <span class="op">=</span> <span class="fl">100</span><span class="op">)</span>,</span>
+<span>                      globals <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>step <span class="op">=</span> <span class="fl">1</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="va">go2</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/abm_go.html">abm_go</a></span><span class="op">(</span></span>
+<span>  <span class="fu"><a href="../reference/abm_match.html">abm_match</a></span><span class="op">(</span>pair <span class="op">=</span> <span class="st">"random"</span>, role <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>giver <span class="op">=</span> <span class="va">money</span> <span class="op">&gt;=</span> <span class="va">step</span>, receiver <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span><span class="op">)</span>,</span>
+<span>  <span class="fu"><a href="../reference/abm_rules.html">abm_rules</a></span><span class="op">(</span><span class="va">money</span> <span class="op">~</span> <span class="fu"><a href="https://dplyr.tidyverse.org/reference/if_else.html" class="external-link">if_else</a></span><span class="op">(</span><span class="va">.role</span> <span class="op">==</span> <span class="st">"giver"</span>, <span class="va">money</span> <span class="op">-</span> <span class="va">step</span>, <span class="va">money</span> <span class="op">+</span> <span class="va">step</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="op">)</span></span>
+<span></span>
+<span><span class="va">many</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/abm_run.html">abm_run</a></span><span class="op">(</span><span class="va">economy2</span>, <span class="va">go2</span>, ticks <span class="op">=</span> <span class="fl">200</span>, seed <span class="op">=</span> <span class="fl">1</span>, record <span class="op">=</span> <span class="st">"final"</span>,</span>
+<span>                params <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>step <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">1</span>, <span class="fl">5</span>, <span class="fl">10</span><span class="op">)</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="va">many</span></span>
+<span><span class="co">#&gt; <span style="color: #0000BB;">&lt;abm_result&gt;</span> 3 runs, 200 ticks, 200 agents seen, 600 rows, recording <span style="color: #0000BB;">"final"</span></span></span>
+<span><span class="co">#&gt; <span style="color: #949494;"># A tibble: 600 × 7</span></span></span>
+<span><span class="co">#&gt;     .run  .rep  step  tick   .id .group money</span></span>
+<span><span class="co">#&gt;    <span style="color: #949494; font-style: italic;">&lt;int&gt;</span> <span style="color: #949494; font-style: italic;">&lt;int&gt;</span> <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span> <span style="color: #949494; font-style: italic;">&lt;int&gt;</span> <span style="color: #949494; font-style: italic;">&lt;int&gt;</span> <span style="color: #949494; font-style: italic;">&lt;chr&gt;</span>  <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span></span></span>
+<span><span class="co">#&gt; <span style="color: #BCBCBC;"> 1</span>     1     1     1   200     1 agents   108</span></span>
+<span><span class="co">#&gt; <span style="color: #BCBCBC;"> 2</span>     1     1     1   200     2 agents    76</span></span>
+<span><span class="co">#&gt; <span style="color: #BCBCBC;"> 3</span>     1     1     1   200     3 agents   108</span></span>
+<span><span class="co">#&gt; <span style="color: #BCBCBC;"> 4</span>     1     1     1   200     4 agents   104</span></span>
+<span><span class="co">#&gt; <span style="color: #BCBCBC;"> 5</span>     1     1     1   200     5 agents   116</span></span>
+<span><span class="co">#&gt; <span style="color: #BCBCBC;"> 6</span>     1     1     1   200     6 agents    80</span></span>
+<span><span class="co">#&gt; <span style="color: #BCBCBC;"> 7</span>     1     1     1   200     7 agents   128</span></span>
+<span><span class="co">#&gt; <span style="color: #BCBCBC;"> 8</span>     1     1     1   200     8 agents    92</span></span>
+<span><span class="co">#&gt; <span style="color: #BCBCBC;"> 9</span>     1     1     1   200     9 agents   100</span></span>
+<span><span class="co">#&gt; <span style="color: #BCBCBC;">10</span>     1     1     1   200    10 agents    82</span></span>
+<span><span class="co">#&gt; <span style="color: #949494;"># ℹ 590 more rows</span></span></span></code></pre></div>
+<p><code>measures</code> is how you get numbers out without keeping
+populations at all. Each one is a one-sided formula evaluated over the
+whole population once per tick, the way an <code><a href="../reference/abm_global.html">abm_global()</a></code>
+right-hand side is:</p>
+<div class="sourceCode" id="cb34"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">swept</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/abm_run.html">abm_run</a></span><span class="op">(</span><span class="va">economy2</span>, <span class="va">go2</span>, ticks <span class="op">=</span> <span class="fl">200</span>, seed <span class="op">=</span> <span class="fl">1</span>,</span>
+<span>                 params   <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>step <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">1</span>, <span class="fl">5</span>, <span class="fl">10</span><span class="op">)</span><span class="op">)</span>,</span>
+<span>                 reps     <span class="op">=</span> <span class="fl">5</span>,</span>
+<span>                 record   <span class="op">=</span> <span class="st">"globals"</span>,</span>
+<span>                 measures <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>spread <span class="op">=</span> <span class="op">~</span><span class="fu"><a href="https://rdrr.io/r/stats/sd.html" class="external-link">sd</a></span><span class="op">(</span><span class="va">money</span><span class="op">)</span>, broke <span class="op">=</span> <span class="op">~</span><span class="fu"><a href="https://rdrr.io/r/base/mean.html" class="external-link">mean</a></span><span class="op">(</span><span class="va">money</span> <span class="op">==</span> <span class="fl">0</span><span class="op">)</span><span class="op">)</span><span class="op">)</span></span>
+<span></span>
+<span><span class="va">final</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/subset.html" class="external-link">subset</a></span><span class="op">(</span><span class="fu"><a href="../reference/abm_measures.html">abm_measures</a></span><span class="op">(</span><span class="va">swept</span><span class="op">)</span>, <span class="va">tick</span> <span class="op">==</span> <span class="fl">200</span><span class="op">)</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/stats/aggregate.html" class="external-link">aggregate</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/cbind.html" class="external-link">cbind</a></span><span class="op">(</span><span class="va">spread</span>, <span class="va">broke</span><span class="op">)</span> <span class="op">~</span> <span class="va">step</span>, data <span class="op">=</span> <span class="va">final</span>, FUN <span class="op">=</span> <span class="va">mean</span><span class="op">)</span></span>
+<span><span class="co">#&gt;   step   spread broke</span></span>
+<span><span class="co">#&gt; 1    1 13.98040 0.000</span></span>
+<span><span class="co">#&gt; 2    5 62.03751 0.028</span></span>
+<span><span class="co">#&gt; 3   10 87.86888 0.040</span></span></code></pre></div>
+<p>Fifteen runs, and nothing kept but two numbers a tick. Writing those
+two summaries as <code><a href="../reference/abm_global.html">abm_global()</a></code> steps would have worked too,
+and would have been wrong in a way that is easy to miss: a global is
+model state, so every rule in the model could then read the spread of
+the wealth distribution. A measure goes to <code><a href="../reference/abm_measures.html">abm_measures()</a></code>
+and nowhere else.</p>
+<p>Two limits are worth knowing before you reach for this. A parameter
+is a global, so <code>n</code>, <code><a href="../reference/abm_network.html">abm_network()</a></code>’s
+<code>degree</code> and a lattice’s <code>dims</code> are out of reach —
+they are fixed when <code><a href="../reference/abm_setup.html">abm_setup()</a></code> builds the world, and
+sweeping one still means a world per value. And <code>reps</code>
+replicates the <em>run</em>, not the population: the starting columns
+were drawn when the world was built, so every replicate begins from the
+same agents and what differs is what the run itself draws.</p>
 </div>
 <div class="section level2">
 <h2 id="where-to-go-next">Where to go next<a class="anchor" aria-label="anchor" href="#where-to-go-next"></a>

@@ -38,8 +38,7 @@ and
 [`abm_go()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_go.md)
 return objects, not arguments. Build each on its own line and you can
 print it, check what it holds, and reuse it: one go block run against
-several worlds, or one world run through several go blocks. That second
-one is what a parameter sweep looks like here.
+several worlds, or one world run through several go blocks.
 
 Everything else in the grammar sits inside one of the three. You hand
 [`abm_agents()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_agents.md)
@@ -214,6 +213,59 @@ Globals are recorded every tick whatever you pass. A fixed population
 can ignore the argument. A growing one can’t, because keeping every
 agent of every tick is what turns a slow run into one the kernel stops.
 
+## Many runs
+
+An experiment is the same third statement with two more arguments.
+`params` overrides the model’s globals, one run per value and every
+combination of several; `reps` repeats each of those.
+
+``` r
+
+result <- abm_run(economy, go, ticks = 500, seed = 1,
+                  params = list(step = c(1, 5, 10)),
+                  reps   = 20)
+```
+
+Sixty runs, stacked into one result with `.run`, `.rep` and a `step`
+column in front of the ordinary ones. A single run is untouched: no
+`.run`, no `.rep`, the same columns it always returned. One seed covers
+the whole thing, a seed per run being derived from it, so an experiment
+reproduces at once rather than run by run.
+
+A parameter is a global and only a global. `n`,
+[`abm_network()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_network.md)’s
+`degree` and a lattice’s `dims` are fixed when
+[`abm_setup()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_setup.md)
+builds the world, so sweeping one of those still means one world per
+value. `reps` replicates the run, not the population: a starting column
+drawn with `~runif(n)` was drawn before
+[`abm_run()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_run.md)
+ever saw it, and what varies across replicates is what the run itself
+draws.
+
+`measures` is how you get numbers out of sixty runs without keeping
+sixty populations. Each one is a one-sided formula evaluated over the
+whole population once per tick:
+
+``` r
+
+result <- abm_run(economy, go, ticks = 500, seed = 1, reps = 20,
+                  record   = "globals",
+                  measures = list(gini = ~gini(money), broke = ~mean(money == 0)))
+
+abm_measures(result)
+#> # A tibble: 10,020 x 5
+#>    .run  .rep  tick   gini broke
+```
+
+A measure is an observation, not model state, and that is not a cosmetic
+distinction: writing the same summary with
+[`abm_global()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_global.md)
+would put it where every rule in the model can read it. A measure goes
+to
+[`abm_measures()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_measures.md)
+and nowhere else.
+
 ## Status
 
 Experimental. The API is shaped by what porting models turns up, and it
@@ -365,6 +417,8 @@ Replaying a block of the steps above within a single tick.
 
 - [`abm_globals()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_globals.md)
   : Global values recorded during a run
+- [`abm_measures()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_measures.md)
+  : Measures recorded during a run
 - [`abm_edges()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_edges.md)
   : The network at the end of a run
 - [`n_agents()`](https://rayhanalirachman.github.io/tidyABM/reference/n_agents.md)

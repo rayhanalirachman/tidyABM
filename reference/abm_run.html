@@ -54,7 +54,17 @@ and records the whole population after every tick.</p>
 
     <div class="section level2">
     <h2 id="ref-usage">Usage<a class="anchor" aria-label="anchor" href="#ref-usage"></a></h2>
-    <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">abm_run</span><span class="op">(</span><span class="va">model</span>, <span class="va">go</span>, <span class="va">ticks</span>, seed <span class="op">=</span> <span class="cn">NULL</span>, record <span class="op">=</span> <span class="st">"all"</span>, progress <span class="op">=</span> <span class="cn">NULL</span><span class="op">)</span></span></code></pre></div>
+    <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">abm_run</span><span class="op">(</span></span>
+<span>  <span class="va">model</span>,</span>
+<span>  <span class="va">go</span>,</span>
+<span>  <span class="va">ticks</span>,</span>
+<span>  params <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  reps <span class="op">=</span> <span class="fl">1</span>,</span>
+<span>  measures <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  seed <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  record <span class="op">=</span> <span class="st">"all"</span>,</span>
+<span>  progress <span class="op">=</span> <span class="cn">NULL</span></span>
+<span><span class="op">)</span></span></code></pre></div>
     </div>
 
     <div class="section level2">
@@ -73,10 +83,30 @@ and records the whole population after every tick.</p>
 <dd><p>Number of ticks to run.</p></dd>
 
 
+<dt id="arg-params">params<a class="anchor" aria-label="anchor" href="#arg-params"></a></dt>
+<dd><p>Optional named list of values overriding the model's <code>globals</code>,
+one run per combination. An entry holding several values is swept; a global
+that is itself a vector is held fixed by wrapping it in a <code><a href="https://rdrr.io/r/base/list.html" class="external-link">list()</a></code>, the same
+way a non-scalar global is written into the log. See <em>Many runs</em> below.</p></dd>
+
+
+<dt id="arg-reps">reps<a class="anchor" aria-label="anchor" href="#arg-reps"></a></dt>
+<dd><p>Number of replicates of each parameter combination. Replicates
+differ in what the run draws, not in the population they start from.</p></dd>
+
+
+<dt id="arg-measures">measures<a class="anchor" aria-label="anchor" href="#arg-measures"></a></dt>
+<dd><p>Optional named list of one-sided formulas, each evaluated over
+the whole population once per tick and recorded with <code><a href="abm_measures.html">abm_measures()</a></code>. A
+measure cannot be read by any step. See <em>Measures</em> below.</p></dd>
+
+
 <dt id="arg-seed">seed<a class="anchor" aria-label="anchor" href="#arg-seed"></a></dt>
-<dd><p>Optional integer seed for the run. Set locally, so the caller's
-random state is left untouched. See the details above on why a random
-starting population also needs <code><a href="abm_setup.html">abm_setup()</a></code>'s <code>seed</code>.</p></dd>
+<dd><p>Optional integer seed. Set locally, so the caller's random state
+is left untouched. With more than one run this seeds the experiment and a
+seed per run is derived from it, so the whole thing reproduces at once. See
+the details above on why a random starting population also needs
+<code><a href="abm_setup.html">abm_setup()</a></code>'s <code>seed</code>.</p></dd>
 
 
 <dt id="arg-record">record<a class="anchor" aria-label="anchor" href="#arg-record"></a></dt>
@@ -85,7 +115,8 @@ every one; a positive whole number keeps every <code>record</code>-th tick, plus
 and the last; <code>"final"</code> keeps only the last; <code>"globals"</code> keeps none. Globals
 are recorded every tick whatever this says, since they are one row each. A
 model whose population grows needs this: recording every agent of every tick
-is what makes such a run die of memory rather than merely take a while.</p></dd>
+is what makes such a run die of memory rather than merely take a while. It
+applies to each run, so its cost multiplies by how many there are.</p></dd>
 
 
 <dt id="arg-progress">progress<a class="anchor" aria-label="anchor" href="#arg-progress"></a></dt>
@@ -94,19 +125,19 @@ going. <code>NULL</code> (the default) follows the session: a bar at an interact
 console once the run has been going long enough to be worth reporting, and
 nothing while knitr, pkgdown or <code>R CMD check</code> is running the code, so it
 never turns up in a rendered page. <code>TRUE</code> forces it on from the first tick,
-<code>FALSE</code> off.</p></dd>
+<code>FALSE</code> off. The bar counts ticks for a single run and runs for many.</p></dd>
 
 </dl></div>
     <div class="section level2">
     <h2 id="value">Value<a class="anchor" aria-label="anchor" href="#value"></a></h2>
     <p>An <code>abm_result</code>: a tibble of one row per agent per tick, carrying
-the run's globals and final network as attributes.</p>
+the run's globals, measures and final network as attributes.</p>
     </div>
     <div class="section level2">
     <h2 id="details">Details<a class="anchor" aria-label="anchor" href="#details"></a></h2>
     <p>The result is one long tibble, <code>tick</code>, <code>.id</code>, <code>.group</code>, then every agent
 column, which is what you want for plotting and summarising. Tick 0 is the
-state produced by <code><a href="abm_setup.html">abm_setup()</a></code>, before any step has run, so a run of <code>n</code>
+state produced by [abm_setup()], before any step has run, so a run of <code>n</code>
 ticks returns <code>n + 1</code> snapshots. Global values are recorded alongside and
 are available with [abm_globals()].</p>
 <p>Agent-based models are stochastic, so <code>seed</code> is a first-class argument
@@ -122,9 +153,32 @@ this seed comes too late to affect them. Seed both for an experiment that
 reproduces end to end:</p>
 <p></p><div class="sourceCode m &lt;- abm_setup(agents = abm_agents(n = 100, x = ~runif(n)), seed = 1) r"><pre><code>&lt;- abm_run(m, go, ticks = 100, seed = 1) ```
 
+[abm_setup()]: R:abm_setup()
 [abm_globals()]: R:abm_globals()
 [abm_setup()]: R:abm_setup()
 </code></pre><p></p></div>
+    </div>
+    <div class="section level2">
+    <h2 id="many-runs">Many runs<a class="anchor" aria-label="anchor" href="#many-runs"></a></h2>
+
+
+
+<p><code>params</code> and <code>reps</code> turn one call into several runs. <code>params</code> is a named list
+whose entries override the model's <code>globals</code> before each run; an entry holding
+more than one value is swept, one run per value, and several entries give
+every combination of them. <code>reps</code> repeats each of those combinations.</p>
+<p></p><div class="sourceCode abm_run(m, go, ticks = 500, params = list(d = c(0.1, 0.2, 0.3)), reps ="><pre><code></code></pre><p></p></div>
+    </div>
+    <div class="section level2">
+    <h2 id="measures">Measures<a class="anchor" aria-label="anchor" href="#measures"></a></h2>
+
+
+
+<p><code>measures</code> records a summary of the population once per tick, without keeping
+the population. Each entry is a one-sided formula evaluated the way an
+[abm_global()] right-hand side is – the globals are in scope, <code><a href="https://dplyr.tidyverse.org/reference/context.html" class="external-link">n()</a></code> is the
+population size – and must collapse to one value.</p>
+<p></p><div class="sourceCode abm_run(m, go, ticks = 500, record = " globals measures="list(gini"><pre><code></code></pre><p></p></div>
     </div>
 
     <div class="section level2">
@@ -151,6 +205,26 @@ reproduces end to end:</p>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;"> 9</span>     0     9 agents   100</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">10</span>     0    10 agents   100</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #949494;"># ℹ 540 more rows</span></span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co"># ten replicates, summarised as they go and keeping no populations</span></span></span>
+<span class="r-in"><span><span class="va">many</span> <span class="op">&lt;-</span> <span class="fu">abm_run</span><span class="op">(</span><span class="va">economy</span>, <span class="va">go</span>, ticks <span class="op">=</span> <span class="fl">10</span>, reps <span class="op">=</span> <span class="fl">10</span>, seed <span class="op">=</span> <span class="fl">1</span>,</span></span>
+<span class="r-in"><span>                record <span class="op">=</span> <span class="st">"globals"</span>,</span></span>
+<span class="r-in"><span>                measures <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>richest <span class="op">=</span> <span class="op">~</span><span class="fu"><a href="https://rdrr.io/r/base/Extremes.html" class="external-link">max</a></span><span class="op">(</span><span class="va">money</span><span class="op">)</span><span class="op">)</span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="fu"><a href="abm_measures.html">abm_measures</a></span><span class="op">(</span><span class="va">many</span><span class="op">)</span></span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #949494;"># A tibble: 110 × 4</span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>     .run  .rep  tick richest</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>    <span style="color: #949494; font-style: italic;">&lt;int&gt;</span> <span style="color: #949494; font-style: italic;">&lt;int&gt;</span> <span style="color: #949494; font-style: italic;">&lt;int&gt;</span>   <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;"> 1</span>     1     1     0     100</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;"> 2</span>     1     1     1     101</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;"> 3</span>     1     1     2     102</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;"> 4</span>     1     1     3     103</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;"> 5</span>     1     1     4     104</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;"> 6</span>     1     1     5     105</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;"> 7</span>     1     1     6     106</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;"> 8</span>     1     1     7     107</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;"> 9</span>     1     1     8     106</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">10</span>     1     1     9     107</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #949494;"># ℹ 100 more rows</span></span>
 </code></pre></div>
     </div>
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>

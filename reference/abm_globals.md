@@ -1,6 +1,10 @@
 # Global values recorded during a run
 
-Global values recorded during a run
+A global is model state: every rule in the model can read it. For a
+summary that the model must *not* be able to read, use
+[`abm_run()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_run.md)'s
+`measures` and
+[`abm_measures()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_measures.md).
 
 ## Usage
 
@@ -17,7 +21,9 @@ abm_globals(x)
 
 ## Value
 
-A tibble with one row per tick and one column per global.
+A tibble with one row per tick and one column per global, preceded by
+the run's `.run`, `.rep` and parameter columns when there was more than
+one run.
 
 ## Examples
 

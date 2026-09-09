@@ -11,7 +11,17 @@ whole population after every tick.
 ## Usage
 
 ``` r
-abm_run(model, go, ticks, seed = NULL, record = "all", progress = NULL)
+abm_run(
+  model,
+  go,
+  ticks,
+  params = NULL,
+  reps = 1,
+  measures = NULL,
+  seed = NULL,
+  record = "all",
+  progress = NULL
+)
 ```
 
 ## Arguments
@@ -29,11 +39,33 @@ abm_run(model, go, ticks, seed = NULL, record = "all", progress = NULL)
 
   Number of ticks to run.
 
+- params:
+
+  Optional named list of values overriding the model's `globals`, one
+  run per combination. An entry holding several values is swept; a
+  global that is itself a vector is held fixed by wrapping it in a
+  [`list()`](https://rdrr.io/r/base/list.html), the same way a
+  non-scalar global is written into the log. See *Many runs* below.
+
+- reps:
+
+  Number of replicates of each parameter combination. Replicates differ
+  in what the run draws, not in the population they start from.
+
+- measures:
+
+  Optional named list of one-sided formulas, each evaluated over the
+  whole population once per tick and recorded with
+  [`abm_measures()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_measures.md).
+  A measure cannot be read by any step. See *Measures* below.
+
 - seed:
 
-  Optional integer seed for the run. Set locally, so the caller's random
-  state is left untouched. See the details above on why a random
-  starting population also needs
+  Optional integer seed. Set locally, so the caller's random state is
+  left untouched. With more than one run this seeds the experiment and a
+  seed per run is derived from it, so the whole thing reproduces at
+  once. See the details above on why a random starting population also
+  needs
   [`abm_setup()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_setup.md)'s
   `seed`.
 
@@ -45,7 +77,8 @@ abm_run(model, go, ticks, seed = NULL, record = "all", progress = NULL)
   Globals are recorded every tick whatever this says, since they are one
   row each. A model whose population grows needs this: recording every
   agent of every tick is what makes such a run die of memory rather than
-  merely take a while.
+  merely take a while. It applies to each run, so its cost multiplies by
+  how many there are.
 
 - progress:
 
@@ -54,22 +87,21 @@ abm_run(model, go, ticks, seed = NULL, record = "all", progress = NULL)
   console once the run has been going long enough to be worth reporting,
   and nothing while knitr, pkgdown or `R CMD check` is running the code,
   so it never turns up in a rendered page. `TRUE` forces it on from the
-  first tick, `FALSE` off.
+  first tick, `FALSE` off. The bar counts ticks for a single run and
+  runs for many.
 
 ## Value
 
 An `abm_result`: a tibble of one row per agent per tick, carrying the
-run's globals and final network as attributes.
+run's globals, measures and final network as attributes.
 
 ## Details
 
 The result is one long tibble, `tick`, `.id`, `.group`, then every agent
 column, which is what you want for plotting and summarising. Tick 0 is
-the state produced by
-[`abm_setup()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_setup.md),
-before any step has run, so a run of `n` ticks returns `n + 1`
-snapshots. Global values are recorded alongside and are available with
-\[abm_globals()\].
+the state produced by \[abm_setup()\], before any step has run, so a run
+of `n` ticks returns `n + 1` snapshots. Global values are recorded
+alongside and are available with \[abm_globals()\].
 
 Agent-based models are stochastic, so `seed` is a first-class argument
 rather than something to arrange yourself: it makes the run reproducible
@@ -87,8 +119,25 @@ that reproduces end to end:
 
     <- abm_run(m, go, ticks = 100, seed = 1) ```
 
+    [abm_setup()]: R:abm_setup()
     [abm_globals()]: R:abm_globals()
     [abm_setup()]: R:abm_setup()
+
+## Many runs
+
+`params` and `reps` turn one call into several runs. `params` is a named
+list whose entries override the model's `globals` before each run; an
+entry holding more than one value is swept, one run per value, and
+several entries give every combination of them. `reps` repeats each of
+those combinations.
+
+## Measures
+
+`measures` records a summary of the population once per tick, without
+keeping the population. Each entry is a one-sided formula evaluated the
+way an \[abm_global()\] right-hand side is – the globals are in scope,
+[`n()`](https://dplyr.tidyverse.org/reference/context.html) is the
+population size – and must collapse to one value.
 
 ## Examples
 
@@ -115,4 +164,24 @@ result
 #>  9     0     9 agents   100
 #> 10     0    10 agents   100
 #> # ℹ 540 more rows
+
+# ten replicates, summarised as they go and keeping no populations
+many <- abm_run(economy, go, ticks = 10, reps = 10, seed = 1,
+                record = "globals",
+                measures = list(richest = ~max(money)))
+abm_measures(many)
+#> # A tibble: 110 × 4
+#>     .run  .rep  tick richest
+#>    <int> <int> <int>   <dbl>
+#>  1     1     1     0     100
+#>  2     1     1     1     101
+#>  3     1     1     2     102
+#>  4     1     1     3     103
+#>  5     1     1     4     104
+#>  6     1     1     5     105
+#>  7     1     1     6     106
+#>  8     1     1     7     107
+#>  9     1     1     8     106
+#> 10     1     1     9     107
+#> # ℹ 100 more rows
 ```

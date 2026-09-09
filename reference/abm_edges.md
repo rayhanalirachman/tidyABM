@@ -18,6 +18,8 @@ abm_edges(x)
 ## Value
 
 A tibble of `from`/`to` edges, or `NULL` if the model had no network.
+With more than one run the edges of every run are stacked, preceded by
+that run's `.run`, `.rep` and parameter columns.
 
 ## Examples
 

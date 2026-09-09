@@ -58,7 +58,9 @@
 </dl></div>
     <div class="section level2">
     <h2 id="value">Value<a class="anchor" aria-label="anchor" href="#value"></a></h2>
-    <p>A tibble of <code>from</code>/<code>to</code> edges, or <code>NULL</code> if the model had no network.</p>
+    <p>A tibble of <code>from</code>/<code>to</code> edges, or <code>NULL</code> if the model had no network.
+With more than one run the edges of every run are stacked, preceded by that
+run's <code>.run</code>, <code>.rep</code> and parameter columns.</p>
     </div>
 
     <div class="section level2">

@@ -94,6 +94,8 @@ Replaying a block of the steps above within a single tick.
 
 - [`abm_globals()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_globals.md)
   : Global values recorded during a run
+- [`abm_measures()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_measures.md)
+  : Measures recorded during a run
 - [`abm_edges()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_edges.md)
   : The network at the end of a run
 - [`n_agents()`](https://rayhanalirachman.github.io/tidyABM/reference/n_agents.md)

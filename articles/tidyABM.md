@@ -28,7 +28,8 @@ three statements:
     The ordered steps replayed once per tick.
 3.  **the run**,
     [`abm_run()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_run.md).
-    The two above, plus `ticks`, `seed` and `record`.
+    The two above, plus `ticks`, `seed` and `record` — and, for an
+    experiment rather than a run, `params`, `reps` and `measures`.
 
 ``` r
 
@@ -821,6 +822,86 @@ Globals are recorded every tick whatever you say, since they are one row
 each, so `"globals"` is the setting for a model whose output is an
 aggregate. The run itself is unchanged either way: the same seed gives
 the same final state at any setting.
+
+## Many runs
+
+One run is rarely the question. `params` overrides the model’s globals,
+one run per value, and `reps` repeats each of those. Both stack their
+results into one result, with `.run`, `.rep` and a column per parameter
+in front of the ordinary columns.
+
+The Simple Economy above hands over one dollar a tick. Make the size of
+the transfer a global and it becomes something to sweep:
+
+``` r
+
+economy2 <- abm_setup(agents  = abm_agents(n = 200, money = 100),
+                      globals = list(step = 1))
+go2 <- abm_go(
+  abm_match(pair = "random", role = list(giver = money >= step, receiver = TRUE)),
+  abm_rules(money ~ if_else(.role == "giver", money - step, money + step))
+)
+
+many <- abm_run(economy2, go2, ticks = 200, seed = 1, record = "final",
+                params = list(step = c(1, 5, 10)))
+many
+#> <abm_result> 3 runs, 200 ticks, 200 agents seen, 600 rows, recording "final"
+#> # A tibble: 600 × 7
+#>     .run  .rep  step  tick   .id .group money
+#>    <int> <int> <dbl> <int> <int> <chr>  <dbl>
+#>  1     1     1     1   200     1 agents   108
+#>  2     1     1     1   200     2 agents    76
+#>  3     1     1     1   200     3 agents   108
+#>  4     1     1     1   200     4 agents   104
+#>  5     1     1     1   200     5 agents   116
+#>  6     1     1     1   200     6 agents    80
+#>  7     1     1     1   200     7 agents   128
+#>  8     1     1     1   200     8 agents    92
+#>  9     1     1     1   200     9 agents   100
+#> 10     1     1     1   200    10 agents    82
+#> # ℹ 590 more rows
+```
+
+`measures` is how you get numbers out without keeping populations at
+all. Each one is a one-sided formula evaluated over the whole population
+once per tick, the way an
+[`abm_global()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_global.md)
+right-hand side is:
+
+``` r
+
+swept <- abm_run(economy2, go2, ticks = 200, seed = 1,
+                 params   = list(step = c(1, 5, 10)),
+                 reps     = 5,
+                 record   = "globals",
+                 measures = list(spread = ~sd(money), broke = ~mean(money == 0)))
+
+final <- subset(abm_measures(swept), tick == 200)
+aggregate(cbind(spread, broke) ~ step, data = final, FUN = mean)
+#>   step   spread broke
+#> 1    1 13.98040 0.000
+#> 2    5 62.03751 0.028
+#> 3   10 87.86888 0.040
+```
+
+Fifteen runs, and nothing kept but two numbers a tick. Writing those two
+summaries as
+[`abm_global()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_global.md)
+steps would have worked too, and would have been wrong in a way that is
+easy to miss: a global is model state, so every rule in the model could
+then read the spread of the wealth distribution. A measure goes to
+[`abm_measures()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_measures.md)
+and nowhere else.
+
+Two limits are worth knowing before you reach for this. A parameter is a
+global, so `n`,
+[`abm_network()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_network.md)’s
+`degree` and a lattice’s `dims` are out of reach — they are fixed when
+[`abm_setup()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_setup.md)
+builds the world, and sweeping one still means a world per value. And
+`reps` replicates the *run*, not the population: the starting columns
+were drawn when the world was built, so every replicate begins from the
+same agents and what differs is what the run itself draws.
 
 ## Where to go next
 

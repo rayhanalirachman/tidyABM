@@ -10,10 +10,14 @@ abm_globals(x)
 \item{x}{An \code{abm_result} from \code{\link[=abm_run]{abm_run()}}.}
 }
 \value{
-A tibble with one row per tick and one column per global.
+A tibble with one row per tick and one column per global, preceded by
+the run's \code{.run}, \code{.rep} and parameter columns when there was more than one
+run.
 }
 \description{
-Global values recorded during a run
+A global is model state: every rule in the model can read it. For a summary
+that the model must \emph{not} be able to read, use \code{\link[=abm_run]{abm_run()}}'s \code{measures} and
+\code{\link[=abm_measures]{abm_measures()}}.
 }
 \examples{
 m  <- abm_setup(agents = abm_agents(n = 20, x = 1), globals = list(total = 0))

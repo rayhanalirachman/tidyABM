@@ -72,4 +72,4 @@ reference:
   desc: Replaying a block of the steps above within a single tick.
   contents: [abm_repeat]
 - title: Working with results
-  contents: [abm_globals, abm_edges, n_agents]
+  contents: [abm_globals, abm_measures, abm_edges, n_agents]

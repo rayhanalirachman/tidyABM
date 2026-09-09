@@ -32,7 +32,8 @@ statements:
 
 1. **the world**, `abm_setup()`. The agents, the network, the globals.
 2. **the tick**, `abm_go()`. The ordered steps replayed once per tick.
-3. **the run**, `abm_run()`. The two above, plus `ticks`, `seed` and `record`.
+3. **the run**, `abm_run()`. The two above, plus `ticks`, `seed` and `record` —
+   and, for an experiment rather than a run, `params`, `reps` and `measures`.
 
 ```{r, eval = FALSE}
 world  <- abm_setup(...)                                # 1
@@ -622,6 +623,57 @@ recorded every tick whatever you say, since they are one row each, so
 `"globals"` is the setting for a model whose output is an aggregate. The run
 itself is unchanged either way: the same seed gives the same final state at any
 setting.
+
+## Many runs
+
+One run is rarely the question. `params` overrides the model's globals, one run
+per value, and `reps` repeats each of those. Both stack their results into one
+result, with `.run`, `.rep` and a column per parameter in front of the ordinary
+columns.
+
+The Simple Economy above hands over one dollar a tick. Make the size of the
+transfer a global and it becomes something to sweep:
+
+```{r}
+economy2 <- abm_setup(agents  = abm_agents(n = 200, money = 100),
+                      globals = list(step = 1))
+go2 <- abm_go(
+  abm_match(pair = "random", role = list(giver = money >= step, receiver = TRUE)),
+  abm_rules(money ~ if_else(.role == "giver", money - step, money + step))
+)
+
+many <- abm_run(economy2, go2, ticks = 200, seed = 1, record = "final",
+                params = list(step = c(1, 5, 10)))
+many
+```
+
+`measures` is how you get numbers out without keeping populations at all. Each
+one is a one-sided formula evaluated over the whole population once per tick,
+the way an `abm_global()` right-hand side is:
+
+```{r}
+swept <- abm_run(economy2, go2, ticks = 200, seed = 1,
+                 params   = list(step = c(1, 5, 10)),
+                 reps     = 5,
+                 record   = "globals",
+                 measures = list(spread = ~sd(money), broke = ~mean(money == 0)))
+
+final <- subset(abm_measures(swept), tick == 200)
+aggregate(cbind(spread, broke) ~ step, data = final, FUN = mean)
+```
+
+Fifteen runs, and nothing kept but two numbers a tick. Writing those two
+summaries as `abm_global()` steps would have worked too, and would have been
+wrong in a way that is easy to miss: a global is model state, so every rule in
+the model could then read the spread of the wealth distribution. A measure goes
+to `abm_measures()` and nowhere else.
+
+Two limits are worth knowing before you reach for this. A parameter is a global,
+so `n`, `abm_network()`'s `degree` and a lattice's `dims` are out of reach —
+they are fixed when `abm_setup()` builds the world, and sweeping one still means
+a world per value. And `reps` replicates the *run*, not the population: the
+starting columns were drawn when the world was built, so every replicate begins
+from the same agents and what differs is what the run itself draws.
 
 ## Where to go next
 

@@ -11,6 +11,8 @@ abm_edges(x)
 }
 \value{
 A tibble of \code{from}/\code{to} edges, or \code{NULL} if the model had no network.
+With more than one run the edges of every run are stacked, preceded by that
+run's \code{.run}, \code{.rep} and parameter columns.
 }
 \description{
 The network at the end of a run

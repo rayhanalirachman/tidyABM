@@ -1,5 +1,46 @@
 # tidyABM (development version)
 
+## Experiments: `params`, `reps` and `measures`
+
+`abm_run()` gains three arguments, and everything about a single run is
+unchanged: the same columns, the same numbers, the same seed used the same way.
+
+* `abm_run(params =)` takes a named list overriding the model's `globals`, one
+  run per value and every combination of several. Their results come back
+  stacked into one `abm_result` with `.run`, `.rep` and a column per parameter in
+  front of the ordinary columns; `abm_globals()`, `abm_measures()` and
+  `abm_edges()` carry the same identifying columns. A parameter is a global and
+  only a global — `n`, `abm_network(degree =)` and a lattice's `dims` are fixed
+  when the world is built, and the error says so rather than failing later.
+  A global that is itself a vector is held fixed by wrapping it in a `list()`,
+  the same rule `global_row()` already uses for a non-scalar global.
+* `abm_run(reps =)` repeats each combination. It replicates the *run*, not the
+  population: `abm_run()` is handed a world that has already been built, so a
+  starting column drawn with `~runif(n)` was drawn once, before this function saw
+  it. What varies across replicates is what the run draws — who is matched with
+  whom, which agent acts first, what a rule samples.
+* `abm_run(measures =)` records a named summary of the population once per tick,
+  read back with `abm_measures()`. A measure is evaluated the way an
+  `abm_global()` right-hand side is and must collapse to one value, but it is
+  written to the log and nowhere else: no step can read it. That is the point of
+  it. Writing the same summary as an `abm_global()` puts an observation where
+  every rule in the model can read it, which is a modelling error the grammar
+  used to have no way of avoiding. With `record = "globals"` it is also what
+  makes a sweep affordable — the whole trajectory of every run, at a few thousand
+  rows rather than a few million.
+
+Two smaller things came with them:
+
+* `seed` is validated. It was the only argument to `abm_run()` that was not, and
+  `seed = 1:20` — the obvious way to ask for twenty replicates — silently ran
+  once, on seed 1. It is now an error that points at `reps`.
+* With more than one run the progress bar counts runs rather than ticks, since
+  "tick 340 of 500" says little when there are sixty of them.
+
+One run still uses `seed` exactly as given, so every number pinned in the model
+corpus before these arguments existed is unchanged. More than one run derives a
+seed per run from it, so an experiment reproduces as a unit.
+
 ## The spatial grammar
 
 A lattice is now a network type, which is the whole idea: `abm_network(type =

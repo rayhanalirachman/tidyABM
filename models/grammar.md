@@ -273,10 +273,11 @@ state.
 
 ## 3. `abm_run()`: the run
 
-`abm_run(model, go, ticks, seed, record)` returns one long tibble of `tick`,
-`.id`, `.group` and then the agent columns, with globals and the final network
-attached, read with `abm_globals()` and `abm_edges()`. Tick 0 is the state
-`abm_setup()` produced, so globals are `NA` on that row.
+`abm_run(model, go, ticks, params, reps, measures, seed, record)` returns one
+long tibble of `tick`, `.id`, `.group` and then the agent columns, with globals,
+measures and the final network attached, read with `abm_globals()`,
+`abm_measures()` and `abm_edges()`. Tick 0 is the state `abm_setup()` produced,
+so globals are `NA` on that row.
 
 `record` says how much of that to keep: `"all"` (the default), a whole number for
 every *n*th tick plus the two ends, `"final"` for the last tick only, or
@@ -287,6 +288,27 @@ memory rather than merely take a while.
 
 `abm_setup(seed =)` fixes *who the agents are*. `abm_run(seed =)` fixes *what
 happens to them*. A model with randomly drawn starting columns needs both.
+
+`params` and `reps` make one call several runs. `params` is a named list
+overriding the model's globals — an entry holding more than one value is swept,
+several entries give every combination, and a global that is itself a vector is
+held fixed by wrapping it in a `list()`. `reps` repeats each combination. The
+results stack into one result with `.run`, `.rep` and a column per parameter in
+front; a single run is left exactly as it was, with neither column. One seed
+covers the whole experiment, a seed per run being derived from it.
+
+Two things `params` is not. It reaches globals and only globals, so `n`,
+`abm_network(degree =)` and a lattice's `dims` still want one world per value —
+they are fixed when the world is built. And `reps` replicates the run, not the
+population: a column drawn with `~runif(n)` was drawn before `abm_run()` saw the
+world, so every replicate starts from it and what varies is what the run draws.
+
+`measures` is a named list of one-sided formulas, each evaluated over the whole
+population once per tick the way an `abm_global()` right-hand side is, and read
+back with `abm_measures()`. The difference from a global is what the model can
+see: a global is state, readable by every rule; a measure is an observation,
+written to the log and invisible to every step. `measures` with
+`record = "globals"` is how a sweep returns numbers instead of populations.
 
 **Package-managed columns** are dot-prefixed: `.id`, `.group`, `.role`,
 `.partner`, `.group_id`. Everything else is yours.

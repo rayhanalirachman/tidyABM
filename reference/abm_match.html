@@ -119,7 +119,11 @@ an <code>own_&lt;col&gt;</code>. Then it is a question about the <em>pair</em> r
 the candidate, and it is evaluated over the same (chooser, candidate) view
 <code>cost</code> minimises over, so every chooser gets a candidate set of its own.
 <code>among = .id %in% own_sellers</code> is "one of the firms I buy from", which no
-population condition can say.</p></dd>
+population condition can say.</p>
+<p>A set-valued column is a list column, so <code>own_sellers</code> arrives here as a
+list with one element per (chooser, candidate) pair. <code>%in%</code> reads it row by
+row, which is what the condition plainly means; with an ordinary atomic
+column it is base's <code>%in%</code> unchanged.</p></dd>
 
 
 <dt id="arg-cost">cost<a class="anchor" aria-label="anchor" href="#arg-cost"></a></dt>

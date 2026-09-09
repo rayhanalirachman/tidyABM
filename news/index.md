@@ -2,6 +2,42 @@
 
 ## tidyABM (development version)
 
+### `%in%` reads a set-valued column
+
+A set-valued agent column is a list column, and until now `%in%` could
+not ask about one. In a pair view `own_sellers` arrives as a list with
+one element per (chooser, candidate) row; base `%in%` coerces that side
+with [`as.character()`](https://rdrr.io/r/base/character.html), compares
+`"4"` against `"4:5"`, and returns `FALSE` for every row. So
+
+``` r
+
+abm_match(pair = "one_of", among = .group == "firms" & .id %in% own_sellers)
+```
+
+– the form
+[`?abm_match`](https://rayhanalirachman.github.io/tidyABM/reference/abm_match.md)
+documented – built a match that paired nobody, with no error and no
+warning to say so. The condition type-checked, the step ran, every
+chooser sat it out, and the model carried on. The workaround was
+`mapply(`%in%`, .id, own_sellers)`, which says the same thing far less
+clearly.
+
+`%in%` now asks the question row by row when its right-hand side is a
+list, in
+[`abm_rules()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_rules.md),
+`abm_match(among =, weight =, cost =)`, `abm_neighbours(within =)` and
+`abm_move(to = uphill())` alike, so a formula means the same thing
+wherever it is written. With an atomic right-hand side it is base’s
+`%in%` unchanged, so no formula that already worked changes, and `NA`
+matches `NA` as it does in base.
+
+It is also faster than the
+[`mapply()`](https://rdrr.io/r/base/mapply.html) it replaces: one
+comparison over the unlisted sets rather than a
+[`match()`](https://rdrr.io/r/base/match.html) per row. The Lengnick
+(2013) model, which leans on this in six places, runs about 35% quicker.
+
 ### Experiments: `params`, `reps` and `measures`
 
 [`abm_run()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_run.md)

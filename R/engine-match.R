@@ -408,9 +408,7 @@ match_cheapest <- function(spec, agents, globals, pool, ch, call) {
   view$.candidate <- cand$.id[ci]
 
   quo <- spec$cost
-  env <- rlang::quo_get_env(quo)
-  if (length(globals)) env <- rlang::new_environment(globals, parent = env)
-  quo <- rlang::quo_set_env(quo, env)
+  quo <- rlang::quo_set_env(quo, abm_eval_env(quo, globals))
   val <- dplyr::pull(dplyr::mutate(view, .abm_cost = !!quo), ".abm_cost")
   if (length(val) == 1L) val <- rep(val, nrow(view))
   if (!is.numeric(val)) {

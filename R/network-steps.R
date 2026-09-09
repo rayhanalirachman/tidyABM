@@ -274,9 +274,7 @@ pair_view <- function(combined, focal_idx, cand_idx) {
 #' Evaluate one quosure against a pair view, with the globals in scope
 #' @noRd
 eval_over_view <- function(quo, view, globals) {
-  env <- rlang::quo_get_env(quo)
-  if (length(globals)) env <- rlang::new_environment(globals, parent = env)
-  quo <- rlang::quo_set_env(quo, env)
+  quo <- rlang::quo_set_env(quo, abm_eval_env(quo, globals))
   dplyr::pull(dplyr::mutate(view, .abm_value = !!quo), ".abm_value")
 }
 

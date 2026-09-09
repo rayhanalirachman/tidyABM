@@ -311,8 +311,7 @@ eval_gradient <- function(quo, cells, wired, mover_row, globals) {
   for (nm in names(own)) {
     view[[paste0("own_", nm)]] <- rep(own[[nm]], nrow(patch))
   }
-  env <- rlang::quo_get_env(quo)
-  if (length(globals)) env <- rlang::new_environment(globals, parent = env)
+  env <- abm_eval_env(quo, globals)
   val <- dplyr::pull(dplyr::mutate(view, .abm_value = !!rlang::quo_set_env(quo, env)),
                      ".abm_value")
   if (length(val) == 1L) val <- rep(val, nrow(patch))

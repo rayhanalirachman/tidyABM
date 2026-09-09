@@ -105,3 +105,58 @@ strip_draws <- function(edges) {
   keep <- !startsWith(names(edges), ".draw_") & !startsWith(names(edges), ".back_")
   edges[, keep, drop = FALSE]
 }
+
+#' Membership that understands a set-valued column
+#'
+#' A set-valued agent column is a list column, so in a pair view `own_sellers`
+#' arrives as a list with one element per (chooser, candidate) row. Base `%in%`
+#' coerces that side with `as.character()`, compares `"4"` against `"4:5"`, and
+#' quietly returns `FALSE` for every row -- which turns `among = .id %in%
+#' own_sellers` into a match that pairs nobody, with no error to say so. When
+#' the right-hand side is a list the question is asked row by row instead,
+#' which is what the formula plainly means.
+#'
+#' With an atomic right-hand side this is `match(x, table, nomatch = 0) > 0`,
+#' base's own definition, so every formula that already worked is unaffected.
+#'
+#' The list case runs on a pair view, so it is called with (choosers x
+#' candidates) rows and sits on the hot path of every `among`. It is done as
+#' one comparison over the unlisted sets rather than a `match()` per row: the
+#' loop cost 22% of a Lengnick month. `NA` matches `NA`, as it does in base.
+#' @noRd
+in_rowwise <- function(x, table) {
+  if (!is.list(table) || is.data.frame(table)) {
+    return(match(x, table, nomatch = 0L) > 0L)
+  }
+  n <- max(length(x), length(table))
+  if (n == 0L) return(logical(0))
+  table <- rep_len(table, n)
+  len <- lengths(table)
+
+  if (!is.list(x)) {
+    if (!sum(len)) return(rep(FALSE, n))
+    flat <- unlist(table, use.names = FALSE)
+    xi <- rep(rep_len(x, n), len)
+    hit <- (flat == xi) | (is.na(flat) & is.na(xi))
+    hit[is.na(hit)] <- FALSE
+    out <- logical(n)
+    out[rep(seq_len(n), len)[hit]] <- TRUE
+    return(out)
+  }
+  x <- rep_len(x, n)
+  vapply(seq_len(n),
+         function(i) any(match(x[[i]], table[[i]], nomatch = 0L) > 0L),
+         logical(1))
+}
+
+#' The environment one formula is evaluated in
+#'
+#' The globals go in scope, and the grammar's own operators go innermost so a
+#' formula means the same thing wherever it is written: in `abm_rules()`, in
+#' `abm_match(among =)`, in `abm_neighbours(within =)`.
+#' @noRd
+abm_eval_env <- function(quo, globals) {
+  env <- rlang::quo_get_env(quo)
+  if (length(globals)) env <- rlang::new_environment(globals, parent = env)
+  rlang::new_environment(list(`%in%` = in_rowwise), parent = env)
+}

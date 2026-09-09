@@ -98,6 +98,11 @@ new_abm_match <- function(pair, size, by, role, eligible, from, among, cost,
 #'   `cost` minimises over, so every chooser gets a candidate set of its own.
 #'   `among = .id %in% own_sellers` is "one of the firms I buy from", which no
 #'   population condition can say.
+#'
+#'   A set-valued column is a list column, so `own_sellers` arrives here as a
+#'   list with one element per (chooser, candidate) pair. `%in%` reads it row by
+#'   row, which is what the condition plainly means; with an ordinary atomic
+#'   column it is base's `%in%` unchanged.
 #' @param weight A draw probability for the candidates, for `"one_of"`. The
 #'   default is a uniform draw. Evaluated like `among`: over the population
 #'   unless it mentions an `own_<col>`, in which case it is per (chooser,

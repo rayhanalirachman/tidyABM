@@ -13,10 +13,11 @@ consumption goods traded daily and labour monthly, all of it through trading
 relationships between named individuals rather than through a market clearing
 mechanism.
 
-**It does not run against the released package.** It depends on four changes
-that are uncommitted in this tree:
+**It runs against the package as it stands.** The four changes it was written
+to stress landed in 928edbb; it is the only model in the corpus that needs all
+four at once:
 
-| change | why the model needs it |
+| grammar | why the model needs it |
 |---|---|
 | `abm_sequential()` writes `partner_<col>` through a standing match | the goods market is a queue: the second buyer at a shop sees the stock the first one took. `abm_tell()` resolves every sender at once, so inventories go negative |
 | `abm_match(weight = )` | "a firm I do not buy from, noticed in proportion to its size" |

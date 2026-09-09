@@ -83,9 +83,7 @@ augment_group <- function(g, match_state, combined) {
 #' @noRd
 eval_rule <- function(rule, aug, globals, grouped, by = NULL) {
   quo <- rule$quo
-  env <- rlang::quo_get_env(quo)
-  if (length(globals)) env <- rlang::new_environment(globals, parent = env)
-  quo <- rlang::quo_set_env(quo, env)
+  quo <- rlang::quo_set_env(quo, abm_eval_env(quo, globals))
 
   dat <- if (!is.null(by)) dplyr::group_by(aug, .data[[by]])
          else if (grouped) dplyr::group_by(aug, .data$.group_id)
@@ -243,8 +241,7 @@ global_keys <- function(by_quo, combined, current, globals) {
     }
     return(keys)
   }
-  env <- rlang::quo_get_env(by_quo)
-  if (length(globals)) env <- rlang::new_environment(globals, parent = env)
+  env <- abm_eval_env(by_quo, globals)
   keys <- rlang::eval_tidy(rlang::quo_set_env(by_quo, env), data = combined)
   if (!length(keys)) {
     abm_abort("{.arg .by} named no keys.", class = "tidyABM_empty_by")

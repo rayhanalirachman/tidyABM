@@ -56,7 +56,12 @@ an \verb{own_<col>}. Then it is a question about the \emph{pair} rather than abo
 the candidate, and it is evaluated over the same (chooser, candidate) view
 \code{cost} minimises over, so every chooser gets a candidate set of its own.
 \code{among = .id \%in\% own_sellers} is "one of the firms I buy from", which no
-population condition can say.}
+population condition can say.
+
+A set-valued column is a list column, so \code{own_sellers} arrives here as a
+list with one element per (chooser, candidate) pair. \code{\%in\%} reads it row by
+row, which is what the condition plainly means; with an ordinary atomic
+column it is base's \code{\%in\%} unchanged.}
 
 \item{cost}{For \code{"nearest"}, an expression naming what the chooser is
 minimising, used instead of \code{by}. It is evaluated once per (chooser,

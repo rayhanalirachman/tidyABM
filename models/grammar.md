@@ -62,7 +62,7 @@ bare `abm_match()`.
 
 | step | what it does |
 |---|---|
-| `abm_match(pair =, size =, by =, cost =, role =, eligible =, among =, ...)` | decides who meets whom |
+| `abm_match(pair =, size =, by =, cost =, role =, eligible =, among =, weight =, ...)` | decides who meets whom |
 | `abm_rules(col ~ expr, ..., .scope =, .by =)` | updates agent columns, simultaneously |
 | `abm_sequential(col ~ expr, ..., .order =)` | updates them one agent at a time, cascading |
 | `abm_neighbours(col ~ agg, within =)` | summarises each agent's neighbourhood, in the network or in attribute space |
@@ -118,6 +118,21 @@ teeth in the directional modes. `eligible` says who *takes part*. `among` says
 who may be *picked*. A buyer choosing the nearest shop wants
 `among = .group == "shops"`, or it will find that the nearest agent to it is
 another buyer.
+
+`among` is evaluated over the population, once per candidate, until it mentions
+an `own_<col>`. Then it is a question about the *pair* rather than about the
+candidate, evaluated over the same (chooser, candidate) view `cost` minimises
+over, so every chooser gets a candidate set of its own. `among = .id %in%
+own_sellers` is "one of the firms I buy from", which no population condition can
+say. A set-valued column is a list column, and `%in%` reads one row by row, so
+that condition says what it looks like it says.
+
+**`weight`** is a draw probability per candidate, for `"one_of"`, and is
+evaluated the same way: over the population unless it mentions an `own_<col>`.
+Non-positive and `NA` weights make a candidate unpickable, and a chooser whose
+candidates all weigh nothing sits the step out. "Noticed in proportion to its
+size" is a `weight`, and so is preferential attachment written as a step rather
+than as a network type.
 
 **`by` and `cost`** are the two ways to say what "nearest" means. `by` names
 coordinates and compares them by Euclidean distance. `cost` names a number the

@@ -1,9 +1,10 @@
 # Lengnick (2013), "Agent-based macroeconomics: A baseline model"
 # Journal of Economic Behavior & Organization 86, 102-120
 #
-# STATUS: work in progress. This model does not run against the released
-# package. It uses four pieces of grammar that are still uncommitted in this
-# working tree (see `git diff`):
+# STATUS: runs against the package as it stands. The four pieces of grammar it
+# was written to stress landed in 928edbb, so this no longer needs a dirty
+# working tree. They are still what the model leans on, and it is the only
+# model in the corpus that needs all four:
 #
 #   * `abm_sequential()` writing `partner_<col>` through a standing match,
 #     which is what makes the goods market a real queue: the second buyer at a
@@ -13,6 +14,7 @@
 #   * `among` evaluated per (chooser, candidate) when it mentions `own_<col>`,
 #     which is what "one of the firms I buy from" needs.
 #   * a match made inside `abm_repeat()` not escaping the block.
+
 #
 # Two agent types and two relations. Neither relation is a network, because
 # `abm_setup()` takes one and this model has two that both rewire: who I buy
@@ -163,10 +165,10 @@ month <- abm_go(
   # cheaper: a firm I do not buy from, noticed in proportion to its size,
   # weighed against one of the sellers I have
   abm_match(pair = "one_of", eligible = hunt_price, weight = n_emp,
-            among = .group == "firms" & !mapply(`%in%`, .id, own_sellers)),
+            among = .group == "firms" & !.id %in% own_sellers),
   abm_rules(cand ~ .partner, cand_price ~ partner_price, .scope = "population"),
   abm_match(pair = "one_of", eligible = hunt_price,
-            among = .group == "firms" & mapply(`%in%`, .id, own_sellers)),
+            among = .group == "firms" & .id %in% own_sellers),
   abm_rules(drop_id ~ .partner,
             swap    ~ !is.na(cand) & !is.na(.partner) &
                       cand_price < (1 - xi) * partner_price,
@@ -176,10 +178,10 @@ month <- abm_go(
 
   # reliable: drop a seller that rationed me, chosen in proportion to how much
   abm_match(pair = "one_of", eligible = hunt_quant & rationed, weight = n_emp,
-            among = .group == "firms" & !mapply(`%in%`, .id, own_sellers)),
+            among = .group == "firms" & !.id %in% own_sellers),
   abm_rules(cand ~ .partner, .scope = "population"),
   abm_match(pair = "one_of", eligible = hunt_quant & rationed,
-            among  = .group == "firms" & mapply(`%in%`, .id, own_sellers),
+            among  = .group == "firms" & .id %in% own_sellers,
             weight = mapply(unmet_at, .id, own_sellers, own_unmet)),
   abm_rules(drop_id ~ .partner,
             swap    ~ !is.na(cand) & !is.na(.partner),
@@ -189,7 +191,7 @@ month <- abm_go(
             .scope  = "population"),
 
   ## --- and decides what to spend -----------------------------------------
-  abm_neighbours(PI ~ mean(price), within = mapply(`%in%`, .id, own_sellers)),
+  abm_neighbours(PI ~ mean(price), within = .id %in% own_sellers),
   abm_rules(cr ~ pmin((mh / PI)^alpha, mh / PI), .scope = "population"),
   abm_rules(cr ~ if_else(is.finite(cr), cr, 0), .scope = "population"),
   abm_rules(daily ~ cr / days, .scope = "population"),
@@ -203,8 +205,8 @@ month <- abm_go(
       abm_rules(demand ~ 0, got ~ 0, .scope = "population"),
       abm_match(pair = "one_of", eligible = want > 0.05 * daily,
                 among = .group == "firms" &
-                        mapply(`%in%`, .id, own_sellers) &
-                        !mapply(`%in%`, .id, own_asked)),
+                        .id %in% own_sellers &
+                        !.id %in% own_asked),
       # the shop serves one customer at a time: what I carry away is what my
       # money buys and what the customers before me left on the shelf
       abm_sequential(

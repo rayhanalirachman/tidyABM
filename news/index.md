@@ -2,6 +2,37 @@
 
 ## tidyABM (development version)
 
+### `abm_odd()`: an ODD protocol skeleton from the model itself
+
+ODD (Grimm et al. 2006; 2010; 2020) is the template a paper describes an
+ABM in, and writing one by hand means restating from memory what the
+code already says – the entities, the state variables, the schedule, the
+equations. A tidyABM model is data rather than code, so
+`abm_odd(model, go, ticks)` reads that half off the two objects and
+returns it as an `abm_odd` object that
+[`print()`](https://rdrr.io/r/base/print.html) renders as markdown:
+
+``` r
+
+abm_odd(economy, go, ticks = 1000)
+```
+
+Element 2 (entities, state variables and scales), element 3 (process
+overview and scheduling), element 5 (initialisation) and element 7
+(submodels) are derived in full, as are three of element 4’s design
+concepts – sensing, interaction and stochasticity – which are
+mechanical: which columns each expression reads, which steps carry one
+agent’s state to another, and where each draw enters.
+
+Two things it deliberately does not do. Expressions are printed
+verbatim, never paraphrased, because element 7 wants the equations and
+an equation restated in prose is a different claim about the model. And
+it never writes that a concept is absent: purpose, emergence,
+adaptation, objectives, learning, prediction, collectives, observation
+and each submodel’s justification are statements about what the modeller
+meant, so they come back marked `[author input required]` for you to
+fill in.
+
 ### `%in%` reads a set-valued column
 
 A set-valued agent column is a list column, and until now `%in%` could

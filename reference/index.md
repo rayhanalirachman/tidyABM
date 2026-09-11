@@ -100,3 +100,11 @@ Replaying a block of the steps above within a single tick.
   : The network at the end of a run
 - [`n_agents()`](https://rayhanalirachman.github.io/tidyABM/reference/n_agents.md)
   : Total number of agents in a model
+
+## Describing a model
+
+Writing the model up. A tidyABM model is data, so the mechanical half of
+the ODD protocol can be read straight off it.
+
+- [`abm_odd()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_odd.md)
+  : Generate an ODD protocol skeleton

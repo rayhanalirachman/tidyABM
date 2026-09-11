@@ -73,3 +73,8 @@ reference:
   contents: [abm_repeat]
 - title: Working with results
   contents: [abm_globals, abm_measures, abm_edges, n_agents]
+- title: Describing a model
+  desc: >
+    Writing the model up. A tidyABM model is data, so the mechanical half of
+    the ODD protocol can be read straight off it.
+  contents: [abm_odd]

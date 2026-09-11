@@ -90,7 +90,7 @@ abm_setup <- function(agents, network = NULL, globals = list(), seed = NULL) {
   # in the wired group's formulas and its count can be inherited. Every other
   # network keeps the current order.
   if (is_lattice_spec(network)) {
-    return(setup_lattice(specs, network, globals))
+    return(with_agent_specs(setup_lattice(specs, network, globals), specs))
   }
 
   groups <- list()
@@ -116,7 +116,21 @@ abm_setup <- function(agents, network = NULL, globals = list(), seed = NULL) {
 
   edges <- materialise_network(network, n = offset)
 
-  new_abm_model(groups, as.list(globals), edges, network)
+  with_agent_specs(new_abm_model(groups, as.list(globals), edges, network),
+                   specs)
+}
+
+#' Keep the `abm_agents()` specifications alongside the population they built
+#'
+#' The model carries materialised tibbles, and a tibble cannot say *how* a
+#' column got its values: `money = 100` and `money = ~rep(100, n)` produce the
+#' same 500 numbers. [abm_odd()] has to tell them apart, since ODD's
+#' initialisation element is about the declaration rather than about the draw
+#' it happened to produce. Nothing in the run reads this.
+#' @noRd
+with_agent_specs <- function(model, specs) {
+  model$agent_specs <- specs
+  model
 }
 
 #' Coerce the `agents` argument into a named list of specs

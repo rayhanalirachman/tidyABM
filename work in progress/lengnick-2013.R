@@ -14,7 +14,6 @@
 #   * `among` evaluated per (chooser, candidate) when it mentions `own_<col>`,
 #     which is what "one of the firms I buy from" needs.
 #   * a match made inside `abm_repeat()` not escaping the block.
-
 #
 # Two agent types and two relations. Neither relation is a network, because
 # `abm_setup()` takes one and this model has two that both rewire: who I buy
@@ -65,6 +64,13 @@ unmet_at <- function(id, sellers, unmet) {
 }
 swap_seller <- function(s, out, into, do) {
   if (!do || is.na(out) || is.na(into)) s else replace(s, match(out, s), into)
+}
+# `unmet` is positionally aligned with `sellers`, so a swap has to clear the
+# entry at the index the swap writes. Without this the incoming firm inherits
+# the outgoing firm's rationing history and is weighted to be dropped for it.
+swap_unmet <- function(u, s, out, do) {
+  j <- if (do && !is.na(out)) match(out, s) else NA_integer_
+  if (is.na(j)) u else replace(u, j, 0)
 }
 
 ## ---- 1. the world --------------------------------------------------------
@@ -173,7 +179,9 @@ month <- abm_go(
             swap    ~ !is.na(cand) & !is.na(.partner) &
                       cand_price < (1 - xi) * partner_price,
             .scope = "population"),
+  # both rules see the pre-swap `sellers`, so the index they resolve is the same
   abm_rules(sellers ~ Map(swap_seller, sellers, drop_id, cand, swap),
+            unmet   ~ Map(swap_unmet,  unmet, sellers, drop_id, swap),
             .scope = "population"),
 
   # reliable: drop a seller that rationed me, chosen in proportion to how much

@@ -1,4 +1,4 @@
-# tidyABM
+# tidyABM <a href="https://rayhanalirachman.github.io/tidyABM/"><img src="man/figures/logo.png" align="right" height="139" alt="tidyABM website" /></a>
 
 <!-- badges: start -->
 [![Lifecycle: experimental](https://img.shields.io/badge/lifecycle-experimental-orange.svg)](https://lifecycle.r-lib.org/articles/stages.html#experimental)

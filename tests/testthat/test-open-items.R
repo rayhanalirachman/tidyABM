@@ -68,6 +68,61 @@ test_that("endpoint draws make two neighbourhood passes describe one event", {
   expect_equal(sum(last$acts), sum(last$suffered))
 })
 
+test_that("a draw is retired, loudly, once abm_link() adds edges after it", {
+  # a new edge has no drawn value. `bind_rows()` used to give it NA, and
+  # `sum()` carried that NA into every neighbourhood the edge touched, silently
+  e <- data.frame(from = 1L, to = 2L)
+  mk <- function() abm_setup(agents = abm_agents(n = 4, sv = 0, join = c(F, F, T, T)),
+                             network = abm_network(type = "manual", edges = e),
+                             seed = 1)
+  grow <- list(abm_match(pair = "one_of", eligible = join, among = join), abm_link())
+
+  # draw -> link -> read: the failure mode, now an error
+  expect_error(
+    abm_run(mk(), abm_go(abm_draw(w ~ 7), !!!grow, abm_neighbours(sv ~ sum(w))),
+            ticks = 1, seed = 1),
+    class = "tidyABM_stale_draw")
+
+  # draw -> read -> link: the draw was consumed before the edge set changed
+  r <- abm_run(mk(), abm_go(abm_draw(w ~ 7), abm_neighbours(sv ~ sum(w)), !!!grow),
+               ticks = 1, seed = 1)
+  expect_equal(r$sv[r$tick == 1][1:2], c(7, 7))
+
+  # a fresh draw covers the new edge and clears the record
+  r <- abm_run(mk(), abm_go(abm_draw(w ~ 7), !!!grow, abm_draw(w ~ 7),
+                            abm_neighbours(sv ~ sum(w))), ticks = 1, seed = 1)
+  expect_equal(r$sv[r$tick == 1], c(7, 7, 7, 7))
+
+  # reading something that was never drawn is unaffected
+  r <- abm_run(mk(), abm_go(abm_draw(w ~ 7), !!!grow, abm_neighbours(sv ~ n())),
+               ticks = 1, seed = 1)
+  expect_equal(r$sv[r$tick == 1], c(1, 1, 1, 1))
+})
+
+test_that("a draw is retired when abm_birth() attaches a newborn after it", {
+  m <- abm_setup(agents = abm_agents(n = 3, sv = 0),
+                 network = abm_network(type = "ring", degree = 2), seed = 1)
+  expect_error(
+    abm_run(m, abm_go(
+      abm_draw(w ~ 7),
+      abm_birth(n = 1, attach_via = abm_match(pair = "network", from = "random_edge")),
+      abm_neighbours(sv ~ sum(w))), ticks = 1, seed = 1),
+    class = "tidyABM_stale_draw")
+  # a birth that attaches nothing changes no edge, so the draw stands
+  r <- abm_run(m, abm_go(abm_draw(w ~ 7), abm_birth(n = 1),
+                         abm_neighbours(sv ~ sum(w))), ticks = 1, seed = 1)
+  expect_equal(r$sv[r$tick == 1][1:3], c(14, 14, 14))
+})
+
+test_that("a manual edge list with columns beyond from/to is refused", {
+  expect_error(
+    abm_network(type = "manual", edges = data.frame(from = 1L, to = 2L, kind = "x")),
+    class = "tidyABM_bad_edges")
+  expect_s3_class(
+    abm_network(type = "manual", edges = data.frame(from = 1L, to = 2L)),
+    "abm_network")
+})
+
 test_that("abm_draw() refuses to shadow an agent column", {
   m <- abm_setup(agents = abm_agents(n = 5, x = 1),
                  network = abm_network(type = "complete"))

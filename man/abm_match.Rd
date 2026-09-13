@@ -61,7 +61,13 @@ population condition can say.
 A set-valued column is a list column, so \code{own_sellers} arrives here as a
 list with one element per (chooser, candidate) pair. \code{\%in\%} reads it row by
 row, which is what the condition plainly means; with an ordinary atomic
-column it is base's \code{\%in\%} unchanged.}
+column it is base's \code{\%in\%} unchanged.
+
+A relation asks the same question more directly. With
+\code{abm_setup(relations = list(sellers = ...))}, \code{among = .sellers} is "one
+of the firms I buy from", \code{!.sellers} "one I do not", and \code{sellers_unmet}
+is the value on that pair -- see \code{\link[=abm_relation]{abm_relation()}}. Mentioning any of these
+makes the condition pairwise, as \verb{own_<col>} does.}
 
 \item{cost}{For \code{"nearest"}, an expression naming what the chooser is
 minimising, used instead of \code{by}. It is evaluated once per (chooser,
@@ -75,8 +81,9 @@ chooser with no acceptable candidate sits the step out.}
 
 \item{weight}{A draw probability for the candidates, for \code{"one_of"}. The
 default is a uniform draw. Evaluated like \code{among}: over the population
-unless it mentions an \verb{own_<col>}, in which case it is per (chooser,
-candidate). Non-positive and \code{NA} weights make a candidate unpickable, and
+unless it mentions an \verb{own_<col>} or a relation, in which case it is per
+(chooser, candidate) -- \code{weight = sellers_unmet} draws a seller in
+proportion to how much it has rationed \emph{this} chooser. Non-positive and \code{NA} weights make a candidate unpickable, and
 a chooser whose candidates all weigh nothing sits the step out. This is
 what "noticed in proportion to its size" and preferential attachment as a
 \emph{step} need.}

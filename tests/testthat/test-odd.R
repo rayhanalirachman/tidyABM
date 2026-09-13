@@ -42,7 +42,7 @@ test_that("every step class the scheduler dispatches can also be described", {
   expect_equal(run, sort(c("abm_match", "abm_rules", "abm_sequential",
                            "abm_global", "abm_neighbours", "abm_move",
                            "abm_draw", "abm_tell", "abm_birth", "abm_death",
-                           "abm_link", "abm_unlink", "abm_repeat")))
+                           "abm_link", "abm_unlink", "abm_pairs", "abm_repeat")))
 })
 
 test_that("one step of every class is described without error", {
@@ -65,6 +65,7 @@ test_that("one step of every class is described without error", {
     abm_death      = abm_death(when = x > 100),
     abm_link       = abm_link(),
     abm_unlink     = abm_unlink(),
+    abm_pairs      = abm_pairs(via = "ties", w ~ w + 1),
     abm_repeat     = abm_repeat(abm_rules(x ~ x + 1), max = 2)
   )
   # the list below must cover the dispatched set, or the loop proves nothing

@@ -9,7 +9,10 @@ abm_global(..., .by = NULL)
 \arguments{
 \item{...}{One or more \code{global_name ~ aggregate_expression} rules. The
 expression can use agent columns and other globals; each rule sees the
-globals as updated by the rules before it in the same call.}
+globals as updated by the rules before it in the same call. It evaluates
+over the bare population, so it does not see \code{\link[=abm_relation]{abm_relation()}} columns:
+aggregate a relation into an agent column with
+\code{abm_neighbours(within = .R)} first, then sum that.}
 
 \item{.by}{Optional index. Either a vector of keys or the name of an agent
 column whose distinct values are the keys. The global becomes a named

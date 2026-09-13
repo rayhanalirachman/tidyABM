@@ -490,7 +490,7 @@ directional_view <- function(step, combined, state) {
   keep <- which(!is.na(nb_cell))
   cand_idx <- match(nb_cell[keep], combined$.id)
   ok <- !is.na(cand_idx)
-  pair_view(combined, keep[ok], cand_idx[ok])
+  pair_view(combined, keep[ok], cand_idx[ok], state$relations)
 }
 
 # --- L2: the `within = .id == own_.cell` equijoin fast path -------------
@@ -538,7 +538,7 @@ equijoin_key <- function(within_expr) {
 #' when the pattern is not present, so the caller can fall back to the full
 #' [attribute_view()].
 #' @noRd
-equijoin_view <- function(step, combined, globals) {
+equijoin_view <- function(step, combined, globals, relations = NULL) {
   key <- equijoin_key(rlang::quo_get_expr(step$within))
   if (is.null(key)) return(NULL)
   if (!key$focal %in% names(combined) || !key$cand %in% names(combined)) {
@@ -551,7 +551,7 @@ equijoin_view <- function(step, combined, globals) {
   # A sort plus a run-length table, rather than a per-key list: this runs on
   # every tick of every co-location model, so it stays vectorised.
   ord <- order(cand_key, na.last = NA)
-  if (!length(ord)) return(pair_view(combined, integer(), integer()))
+  if (!length(ord)) return(pair_view(combined, integer(), integer(), relations))
   sorted <- cand_key[ord]
   runs <- rle(sorted)
   starts <- cumsum(c(1L, runs$lengths))[seq_along(runs$lengths)]
@@ -559,11 +559,11 @@ equijoin_view <- function(step, combined, globals) {
   j <- match(focal_key, runs$values)
   reps <- ifelse(is.na(j), 0L, runs$lengths[j])
   hit <- reps > 0L
-  if (!any(hit)) return(pair_view(combined, integer(), integer()))
+  if (!any(hit)) return(pair_view(combined, integer(), integer(), relations))
 
   cand_idx <- ord[sequence(reps[hit], from = starts[j[hit]])]
   focal_idx <- rep(seq_len(n), reps)
-  view <- pair_view(combined, focal_idx, cand_idx)
+  view <- pair_view(combined, focal_idx, cand_idx, relations)
   if (length(key$rest)) {
     env <- rlang::quo_get_env(step$within)
     rest_expr <- Reduce(function(a, b) rlang::call2("&", a, b), key$rest)

@@ -199,7 +199,7 @@ abm_run <- function(model, go, ticks, params = NULL, reps = 1, measures = NULL,
   if (!by_run) {
     one <- out[[1]]
     return(new_abm_result(one$population, one$globals, one$measures,
-                          one$network, ticks, record, 1L))
+                          one$network, one$relations, ticks, record, 1L))
   }
 
   meta <- lapply(runs, run_meta)
@@ -209,21 +209,29 @@ abm_run <- function(model, go, ticks, params = NULL, reps = 1, measures = NULL,
     if (!length(pieces)) return(NULL)
     dplyr::bind_rows(pieces)
   }
+  # a relation is one table per name, so each name is bound across runs on
+  # its own, the way the other pieces are
+  rel_names <- names(out[[1]]$relations)
+  relations <- if (!length(rel_names)) NULL else stats::setNames(lapply(rel_names, function(nm) {
+    pieces <- Map(function(o, mt) with_meta(o$relations[[nm]], mt), out, meta)
+    dplyr::bind_rows(Filter(Negate(is.null), pieces))
+  }), rel_names)
   new_abm_result(bind_piece("population"), bind_piece("globals"),
-                 bind_piece("measures"), bind_piece("network"),
+                 bind_piece("measures"), bind_piece("network"), relations,
                  ticks, record, n_runs)
 }
 
 #' Assemble an `abm_result` from the pieces one or many runs produced
 #' @noRd
-new_abm_result <- function(population, globals, measures, network, ticks,
-                           record, n_runs) {
+new_abm_result <- function(population, globals, measures, network, relations,
+                           ticks, record, n_runs) {
   structure(
     population,
-    globals  = globals,
-    measures = measures,
-    network  = network,
-    ticks    = ticks,
+    globals   = globals,
+    measures  = measures,
+    network   = network,
+    relations = relations,
+    ticks     = ticks,
     record   = record,
     runs     = n_runs,
     class    = c("abm_result", class(population))
@@ -248,12 +256,13 @@ run_once <- function(model, go, ticks, seed, keep, measures, bar = NULL) {
   }
 
   state <- list(
-    groups  = model$groups,
-    globals = model$globals,
-    edges   = model$edges,
-    lattice = model$lattice,
-    match   = NULL,
-    next_id = n_agents(model) + 1L
+    groups    = model$groups,
+    globals   = model$globals,
+    edges     = model$edges,
+    lattice   = model$lattice,
+    relations = model$relations,
+    match     = NULL,
+    next_id   = n_agents(model) + 1L
   )
 
   snapshots <- vector("list", ticks + 1L)
@@ -284,7 +293,8 @@ run_once <- function(model, go, ticks, seed, keep, measures, bar = NULL) {
     population = population,
     globals    = dplyr::bind_rows(global_log),
     measures   = if (is.null(measure_log)) NULL else dplyr::bind_rows(measure_log),
-    network    = strip_draws(state$edges)
+    network    = strip_draws(state$edges),
+    relations  = relation_tables(state$relations)
   )
 }
 
@@ -321,7 +331,8 @@ run_step <- function(step, state) {
   switch(
     class(step)[[1]],
     abm_match = {
-      m <- run_match(step, bind_groups(state$groups), state$edges, state$globals)
+      m <- run_match(step, bind_groups(state$groups), state$edges, state$globals,
+                     relations = state$relations)
       state$match <- list(match = m, size = step$size)
       state
     },
@@ -336,6 +347,7 @@ run_step <- function(step, state) {
     abm_death      = run_death(step, state),
     abm_link       = run_link(step, state),
     abm_unlink     = run_unlink(step, state),
+    abm_pairs      = run_pairs(step, state),
     abm_repeat     = run_repeat(step, state),
     abm_abort("Unknown step type {.cls {class(step)[[1]]}}.",
               class = "tidyABM_unknown_step")

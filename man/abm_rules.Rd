@@ -55,6 +55,14 @@ want, and it is what makes \code{sample(x, 1)} mean "once per pair". Occasionall
 a step in the middle of a tick is about the whole population instead,
 drawing the next generation from this one, say, and \code{.scope = "population"}
 evaluates it against every agent at once, ignoring the standing match.
+
+Under a pairing of two, a rule also sees the pair's \code{\link[=abm_relation]{abm_relation()}} values,
+\verb{R_<col>} for \code{(me -> .partner)} and \verb{R_<col>_back} for the reverse row, and
+a rule whose \emph{target} is one of those writes the pair rather than an agent
+column: \code{sellers_unmet ~ sellers_unmet + (demand - got)} records a shortfall
+on the pair it happened to. The pair must exist -- creating it is
+\code{\link[=abm_link]{abm_link()}}'s job -- and an agent with no partner this step is skipped, as
+a \verb{partner_<col>} write is. Not available with \code{.by}.
 }
 \examples{
 abm_rules(money ~ ifelse(.role == "giver", money - 1, money + 1))

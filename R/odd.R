@@ -117,10 +117,11 @@ odd_rng <- function(quos) {
 #' @noRd
 new_odd_ctx <- function(model) {
   list(
-    sizes   = vapply(model$groups, nrow, integer(1)),
-    columns = lapply(model$groups, function(g) setdiff(names(g), c(".id", ".group"))),
-    globals = names(model$globals),
-    match   = NULL
+    sizes     = vapply(model$groups, nrow, integer(1)),
+    columns   = lapply(model$groups, function(g) setdiff(names(g), c(".id", ".group"))),
+    globals   = names(model$globals),
+    relations = relation_derived_names(model$relations),
+    match     = NULL
   )
 }
 
@@ -154,6 +155,7 @@ describe_step <- function(step, ctx) {
     abm_death      = list(desc = describe_death(step, ctx), ctx = ctx),
     abm_link       = list(desc = describe_link(step, ctx), ctx = ctx),
     abm_unlink     = list(desc = describe_link(step, ctx), ctx = ctx),
+    abm_pairs      = list(desc = describe_pairs(step, ctx), ctx = ctx),
     abm_abort("Unknown step type {.cls {class(step)[[1]]}}.",
               class = "tidyABM_unknown_step")
   )
@@ -386,14 +388,36 @@ describe_death <- function(step, ctx) {
 #' @noRd
 describe_link <- function(step, ctx) {
   drop <- isTRUE(step$drop)
+  via <- step$via
+  who <- if (is.null(via)) "each matched pair"
+         else if (is.null(step$to)) sprintf("each matched agent, towards its partner, on relation `%s`", via)
+         else sprintf("each agent, towards `%s`, on relation `%s`", odd_expr(step$to), via)
+  quos <- c(list(step$when, step$to), odd_quos(step$rules %||% list()))
   list(
-    type = if (drop) "abm_unlink" else "abm_link", kind = "topology",
-    who = "each matched pair", drop = drop,
+    type = if (drop) "abm_unlink" else "abm_link",
+    kind = if (is.null(via)) "topology" else "relation",
+    who = who, drop = drop, via = via,
     when = odd_expr(step$when),
-    writes = character(), reads = odd_vars(list(step$when)),
-    rng = odd_rng(list(step$when)),
-    exprs = if (is.null(step$when)) "when = (every matched pair)"
-            else paste0("when = ", odd_expr(step$when))
+    writes = if (length(step$rules)) paste0(via, "_", odd_targets(step$rules)) else character(),
+    reads = odd_vars(quos), rng = odd_rng(quos),
+    exprs = c(
+      if (is.null(step$when)) "when = (every pair)" else paste0("when = ", odd_expr(step$when)),
+      if (!is.null(step$to)) paste0("to = ", odd_expr(step$to)),
+      if (length(step$rules)) odd_rule_exprs(step$rules))
+  )
+}
+
+#' @noRd
+describe_pairs <- function(step, ctx) {
+  quos <- c(odd_quos(step$rules), list(step$when))
+  list(
+    type = "abm_pairs", kind = "relation",
+    who = sprintf("every pair of relation `%s`", step$via), via = step$via,
+    simultaneous = TRUE,
+    when = odd_expr(step$when),
+    writes = paste0(step$via, "_", odd_targets(step$rules)),
+    reads = odd_vars(quos), rng = odd_rng(quos),
+    exprs = odd_rule_exprs(step$rules)
   )
 }
 
@@ -447,8 +471,16 @@ odd_entities <- function(model, ticks) {
                           USE.NAMES = FALSE))
   })
   names(types) <- names(model$groups)
+  rels <- lapply(names(model$relations), function(rn) {
+    rel <- model$relations[[rn]]
+    list(name = rn, n = nrow(rel$edges), variables = rel$cols,
+         classes = vapply(rel$cols, function(cc) class(rel$edges[[cc]])[[1]],
+                          character(1), USE.NAMES = FALSE))
+  })
+  names(rels) <- names(model$relations)
   list(
     agent_types = types,
+    relations = rels,
     globals = names(model$globals),
     global_classes = vapply(model$globals, function(v) class(v)[[1]], character(1),
                             USE.NAMES = FALSE),
@@ -543,7 +575,8 @@ odd_sensing <- function(flat, ctx) {
                        unlist(lapply(flat, function(d) d$writes))))
   partner <- grep("^partner_", vars, value = TRUE)
   pair_view <- grep("^own_", vars, value = TRUE)
-  rest <- setdiff(vars, c(partner, pair_view))
+  relation <- intersect(vars, ctx$relations)
+  rest <- setdiff(vars, c(partner, pair_view, relation))
   own <- intersect(rest, all_cols)
   globals <- intersect(rest, ctx$globals)
   left <- setdiff(rest, c(own, globals))
@@ -553,6 +586,7 @@ odd_sensing <- function(flat, ctx) {
     partner = partner,
     reads_partner = length(partner) > 0L,
     pair_view = pair_view,
+    relation = relation,
     reserved = grep("^\\.", left, value = TRUE),
     other = setdiff(left, grep("^\\.", left, value = TRUE))
   )
@@ -566,7 +600,8 @@ odd_interaction <- function(flat, model) {
     matching = pick("abm_match"),
     neighbourhood = pick("abm_neighbours"),
     messaging = pick("abm_tell"),
-    topology = pick(c("abm_link", "abm_unlink", "abm_draw")),
+    topology = Filter(function(d) is.null(d$via), pick(c("abm_link", "abm_unlink", "abm_draw"))),
+    relations = Filter(function(d) !is.null(d$via), pick(c("abm_link", "abm_unlink", "abm_pairs"))),
     space = odd_space(model)
   )
 }
@@ -782,6 +817,16 @@ odd_md_entities <- function(e) {
       out <- c(out, "This entity has no state variables of its own.", "")
     }
   }
+  for (t in e$relations) {
+    out <- c(out, sprintf("**%s** -- a relation between agents, %d pair%s.", t$name, t$n,
+                          if (t$n == 1L) "" else "s"), "")
+    if (length(t$variables)) {
+      out <- c(out, "| state variable (per pair) | type |", "| --- | --- |",
+               sprintf("| `%s` | %s |", t$variables, t$classes), "")
+    } else {
+      out <- c(out, "The pair either exists or does not; it carries no values.", "")
+    }
+  }
   out <- c(out, "### Global variables", "")
   out <- c(out, if (length(e$globals)) {
     sprintf("- `%s` (%s)", e$globals, e$global_classes)
@@ -827,6 +872,8 @@ odd_md_concepts <- function(dc) {
     if (length(s$partner)) paste0("- The partner's state, via ", odd_list(s$partner)),
     if (length(s$pair_view)) paste0("- Its own state seen from a candidate's row, via ",
                                     odd_list(s$pair_view)),
+    if (length(s$relation)) paste0("- State held on the pair it is looking at, via ",
+                                   odd_list(s$relation)),
     if (length(s$reserved)) paste0("- Reserved columns: ", odd_list(s$reserved)),
     if (length(s$other)) paste0("- Symbols resolved outside the model: ", odd_list(s$other)),
     "",
@@ -863,6 +910,12 @@ odd_md_concepts <- function(dc) {
         sprintf("- process %s (`%s`)",
                 vapply(i$topology, function(d) d$index, character(1)),
                 vapply(i$topology, function(d) d$type, character(1)))),
+    if (length(i$relations))
+      c("", "State held on pairs of agents changes during the run:",
+        sprintf("- process %s (`%s` on `%s`)",
+                vapply(i$relations, function(d) d$index, character(1)),
+                vapply(i$relations, function(d) d$type, character(1)),
+                vapply(i$relations, function(d) d$via, character(1)))),
     "", paste0("What the interaction represents: ", odd_hole, "."), ""
   )
   st <- dc$stochasticity

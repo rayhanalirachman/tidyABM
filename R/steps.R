@@ -58,6 +58,14 @@ collect_rules <- function(dots, fn, call = rlang::caller_env()) {
 #' drawing the next generation from this one, say, and `.scope = "population"`
 #' evaluates it against every agent at once, ignoring the standing match.
 #'
+#' Under a pairing of two, a rule also sees the pair's [abm_relation()] values,
+#' `R_<col>` for `(me -> .partner)` and `R_<col>_back` for the reverse row, and
+#' a rule whose *target* is one of those writes the pair rather than an agent
+#' column: `sellers_unmet ~ sellers_unmet + (demand - got)` records a shortfall
+#' on the pair it happened to. The pair must exist -- creating it is
+#' [abm_link()]'s job -- and an agent with no partner this step is skipped, as
+#' a `partner_<col>` write is. Not available with `.by`.
+#'
 #' @param ... One or more `column ~ expression` rules. The expression can use
 #'   any column of the agent tibble, any global, any `partner_<col>` produced by
 #'   a preceding [abm_match()], `.role`, and anything visible where the rule was
@@ -209,7 +217,10 @@ abm_sequential <- function(..., .order = NULL) {
 #'
 #' @param ... One or more `global_name ~ aggregate_expression` rules. The
 #'   expression can use agent columns and other globals; each rule sees the
-#'   globals as updated by the rules before it in the same call.
+#'   globals as updated by the rules before it in the same call. It evaluates
+#'   over the bare population, so it does not see [abm_relation()] columns:
+#'   aggregate a relation into an agent column with
+#'   `abm_neighbours(within = .R)` first, then sum that.
 #' @param .by Optional index. Either a vector of keys or the name of an agent
 #'   column whose distinct values are the keys. The global becomes a named
 #'   vector, `.key` is in scope, and the global's own name refers to that key's

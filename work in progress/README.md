@@ -13,9 +13,9 @@ consumption goods traded daily and labour monthly, all of it through trading
 relationships between named individuals rather than through a market clearing
 mechanism.
 
-**It runs against the package as it stands.** The four changes it was written
-to stress landed in 928edbb; it is the only model in the corpus that needs all
-four at once:
+**It runs against the package as it stands.** Five pieces of grammar were
+written to be stressed by this model and landed because of it; it is the only
+model in the corpus that needs all five at once:
 
 | grammar | why the model needs it |
 |---|---|
@@ -23,6 +23,15 @@ four at once:
 | `abm_match(weight = )` | "a firm I do not buy from, noticed in proportion to its size" |
 | per-chooser `among` | "one of the firms I buy from" is not a population condition |
 | a match does not escape its `abm_repeat()` block | the day loop would otherwise leave a pairing standing over the month end |
+| a **relation**, `sellers`, with `unmet` on the pair | how much *this* seller has rationed *this* household belongs to neither of them alone. Held as two list columns aligned by hand, it went out of step and shipped that way (below) |
+
+The relation rewrite reproduces the list-column version **to the digit**: every
+printed number of the 120-month run is identical, because `set.seed(1)` draws
+the same sellers `abm_agents()` drew and the relation path consumes the RNG the
+same way from there. What changed is that `unmet_at()`, `swap_seller()`,
+`swap_unmet()` and a five-line `Map()` closure are gone, and every household
+holds exactly seven sellers at the end -- the direct test that every unlink is
+paired with a link, which the file now prints.
 
 ### Where it stands
 
@@ -74,20 +83,21 @@ from seed to seed in both variants, and the paired difference the fix makes is
   them from the month-end block once created 18,000 units of money while every
   printed number stayed plausible. Either the semantics want tightening or
   `abm_go()` wants to complain.
-* **Fixed, and worth keeping on the record.** `sellers` and `unmet` are two
+* **Closed, and worth keeping on the record.** `sellers` and `unmet` were two
   positionally-aligned list columns, and the price swap changed one without the
-  other. `swap_seller()` writes the incoming firm at the *dropped* firm's index,
+  other: `swap_seller()` wrote the incoming firm at the *dropped* firm's index,
   and `unmet` was not reset until after the quantity hunt had already read it as
-  a draw weight — so a household that price-swapped weighted the firm it had
+  a draw weight, so a household that price-swapped weighted the firm it had
   just started buying from by the rationing history of the firm it had just
-  dropped, and was correspondingly more likely to drop it. `swap_unmet()` now
-  clears that entry in the same `abm_rules()` call, whose rules are simultaneous,
-  so both resolve the index against the pre-swap `sellers`. It does not visibly
-  move any stylised fact -- the seed sweep above says so -- which is precisely
-  why it survived: a misattributed draw weight changes who gets dropped without
-  changing any aggregate enough to notice. This is the strongest argument in the
-  corpus for per-pair state the grammar maintains itself: nothing checked the
-  alignment, and nothing could have.
+  dropped. It moved no stylised fact across five seeds, which is precisely why
+  it survived: a misattributed draw weight changes who gets dropped without
+  changing any aggregate enough to notice. A first fix added a `swap_unmet()`
+  companion write. The real fix was to stop having two columns: `sellers` is
+  now an `abm_relation()` with `unmet` on the pair, the swap is an
+  `abm_unlink()` and an `abm_link()`, the shortfall is written on the pair in
+  the same `abm_sequential()` as the sale, and there is no version of the file
+  in which the two can disagree. This was the model that put *state that
+  belongs to a pair* on `open-items.md`, and the one that took it off.
 * `abm_neighbours()` gives `NA` to an agent with no neighbours. Right for
   `mean(opinion)`, wrong for `n()`: a firm that lost its last worker got
   `n_emp = NA`, which ate its inventory and collapsed the economy 90 months

@@ -187,6 +187,15 @@ abm_network <- function(type = c("random", "poisson", "scale_free", "ring",
         class = "tidyABM_bad_edges"
       )
     }
+    extra <- setdiff(names(edges), c("from", "to"))
+    if (length(extra)) {
+      abm_abort(
+        c("{.arg edges} {?has a column/has columns} {.field {extra}} that {?is/are} not used.",
+          "i" = "An edge is {.field from} and {.field to}. A value drawn fresh each tick goes on the network with {.fn abm_draw}; a value that belongs to the pair and persists is a relation: {.fn abm_relation}.",
+          "i" = "Keep only the two: {.code edges[c(\"from\", \"to\")]}."),
+        class = "tidyABM_bad_edges"
+      )
+    }
     edges <- tibble::tibble(from = as.integer(edges$from),
                             to   = as.integer(edges$to))
   }

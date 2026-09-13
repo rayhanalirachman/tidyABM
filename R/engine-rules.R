@@ -41,8 +41,13 @@ condition_applies <- function(quo, g, all_cols, globals) {
 }
 
 #' Add match information and partner columns to a group tibble
+#'
+#' With a `size = 2` match standing, the pair's relation columns come too:
+#' `.R`, `R_<col>` for `(me -> .partner)` and their `_back` forms, `NA` (or
+#' `FALSE`) for an agent with no partner. They travel with `partner_<col>`
+#' because they are about the same pair.
 #' @noRd
-augment_group <- function(g, match_state, combined) {
+augment_group <- function(g, match_state, combined, relations = NULL) {
   if (is.null(match_state)) {
     g$.group_id <- seq_len(nrow(g))
     g$.role <- NA_character_
@@ -60,6 +65,7 @@ augment_group <- function(g, match_state, combined) {
       for (nm in setdiff(names(combined), c(".id", ".group"))) {
         g[[paste0("partner_", nm)]] <- combined[[nm]][NA_integer_][rep(1L, nrow(g))]
       }
+      g <- attach_relation_columns(g, relations, g$.id, g$.partner)
     }
     return(g)
   }
@@ -75,8 +81,42 @@ augment_group <- function(g, match_state, combined) {
     for (nm in pcols) {
       g[[paste0("partner_", nm)]] <- combined[[nm]][pidx]
     }
+    g <- attach_relation_columns(g, relations, g$.id, g$.partner)
   }
   g
+}
+
+#' Route a relation-targeted rule's values into the relation, under a match
+#'
+#' The pair written is `(me -> .partner)`, or the reverse for a `_back` target.
+#' An agent with no partner this step is skipped, exactly as a `partner_<col>`
+#' write is; a partner with no row is the error, because a write is about a
+#' pair that exists and creating it is `abm_link()`'s job.
+#' @noRd
+write_relation_rule <- function(state, hit, target, value, aug, rows, step,
+                                call = rlang::caller_env()) {
+  if (is.null(state$match) || state$match$size != 2L) {
+    abm_abort(
+      c("{.fn {step}} writes {.field {target}}, a value on a pair, but no pairing is standing.",
+        "i" = "Put an {.fn abm_match} that pairs agents two at a time before it."),
+      class = "tidyABM_no_match", call = call
+    )
+  }
+  if (is.null(hit$col)) {
+    abm_abort(
+      c("{.field {target}} says whether the pair exists; it is not written by a rule.",
+        "i" = 'Add or remove the pair with {.code abm_link(via = "{hit$rel}")} / {.code abm_unlink(via = "{hit$rel}")}.'),
+      class = "tidyABM_bad_target", call = call
+    )
+  }
+  w <- rows & !is.na(aug$.partner)
+  if (!any(w)) return(state)
+  value <- vctrs::vec_recycle(unname(value), nrow(aug))
+  from <- if (hit$back) aug$.partner[w] else aug$.id[w]
+  to   <- if (hit$back) aug$.id[w]      else aug$.partner[w]
+  state$relations[[hit$rel]] <- write_relation(
+    state$relations[[hit$rel]], hit$rel, hit$col, from, to, value[w], step, call)
+  state
 }
 
 #' Evaluate one rule against an augmented group tibble
@@ -131,7 +171,7 @@ run_rules <- function(step, state) {
   for (nm in names(state$groups)) {
     g <- state$groups[[nm]]
     if (nrow(g) == 0L) next
-    aug <- augment_group(g, state$match, combined)
+    aug <- augment_group(g, state$match, combined, state$relations)
     rows <- if (active && grouped) !is.na(aug$.group_id) else rep(TRUE, nrow(g))
 
     todo <- Filter(function(r) rule_applies(r, g, all_cols, state$globals),
@@ -142,7 +182,15 @@ run_rules <- function(step, state) {
     values <- lapply(todo, eval_rule, aug = aug, globals = state$globals,
                      grouped = grouped)
     for (i in seq_along(todo)) {
-      g <- assign_rule(g, todo[[i]]$target, values[[i]], rows)
+      # a target that names a value on a pair goes to the relation, not to an
+      # agent column of the same name
+      hit <- resolve_relation_name(todo[[i]]$target, state$relations)
+      if (!is.null(hit)) {
+        state <- write_relation_rule(state, hit, todo[[i]]$target, values[[i]],
+                                     aug, rows, "abm_rules")
+      } else {
+        g <- assign_rule(g, todo[[i]]$target, values[[i]], rows)
+      }
     }
     state$groups[[nm]] <- g
   }
@@ -175,7 +223,16 @@ run_rules_by <- function(step, state, combined) {
       class = "tidyABM_missing_column"
     )
   }
-  aug <- augment_group(combined, state$match, combined)
+  aug <- augment_group(combined, state$match, combined, state$relations)
+  for (r in step$rules) {
+    if (!is.null(resolve_relation_name(r$target, state$relations))) {
+      abm_abort(
+        c("{.field {r$target}} is a value on a pair, and {.arg .by} rules write agent columns.",
+          "i" = "Write it from an {.fn abm_rules} step without {.arg .by}."),
+        class = "tidyABM_bad_target"
+      )
+    }
+  }
   # `NA` is not a group. An agent with no value for the `.by` column sits the
   # step out and keeps what it had, the way `NA` does in `.order`.
   taking_part <- !is.na(combined[[by]])
@@ -365,16 +422,38 @@ run_sequential <- function(step, state) {
 
   partner_of <- role_of <- gid_of <- NULL
   p_cols <- character()
+  named <- c(unlist(lapply(step$rules, `[[`, "vars"), use.names = FALSE),
+             vapply(step$rules, `[[`, "", "target"))
   if (!is.null(m)) {
     partner_of <- stats::setNames(m$.partner,  as.character(m$.id))
     role_of    <- stats::setNames(m$.role,     as.character(m$.id))
     gid_of     <- stats::setNames(m$.group_id, as.character(m$.id))
     # only the partner columns the step names are materialised: doing it for
     # every column of every agent is what would make this loop slow
-    named <- c(unlist(lapply(step$rules, `[[`, "vars"), use.names = FALSE),
-               vapply(step$rules, `[[`, "", "target"))
     p_cols <- unique(sub("^partner_", "", grep("^partner_", named, value = TRUE)))
   }
+
+  # Relation columns the step mentions, resolved once. Their values are held
+  # as bare vectors keyed by pair for the loop's duration, like `cols`: a
+  # goods market makes tens of thousands of these writes per tick.
+  rel_refs <- Filter(Negate(is.null),
+                     stats::setNames(lapply(unique(named), resolve_relation_name,
+                                            relations = state$relations),
+                                     unique(named)))
+  rel_targets <- lapply(step$rules, function(r) resolve_relation_name(r$target, state$relations))
+  if (length(rel_refs) && (is.null(m) || state$match$size != 2L) &&
+      any(!vapply(rel_targets, is.null, logical(1)))) {
+    tg <- step$rules[[which(!vapply(rel_targets, is.null, logical(1)))[[1]]]]$target
+    abm_abort(
+      c("{.fn abm_sequential} writes {.field {tg}}, a value on a pair, but no pairing is standing.",
+        "i" = "Put an {.fn abm_match} that pairs agents two at a time before it."),
+      class = "tidyABM_no_match"
+    )
+  }
+  rels <- lapply(state$relations, function(rel) {
+    list(key = relation_key(rel$edges$from, rel$edges$to),
+         cols = as.list(rel$edges[rel$cols]), n = nrow(rel$edges))
+  })
 
   group_of <- rep(names(state$groups),
                   vapply(state$groups, nrow, integer(1)))
@@ -384,9 +463,7 @@ run_sequential <- function(step, state) {
   # each rule gets an environment of its own, holding the globals. Writing a
   # global assigns into those environments rather than rebuilding a mask, which
   # is what keeps "the next agent sees what I just spent" cheap.
-  envs <- lapply(step$rules, function(r) {
-    rlang::new_environment(state$globals, parent = rlang::quo_get_env(r$quo))
-  })
+  envs <- lapply(step$rules, function(r) abm_eval_env(r$quo, state$globals))
   quos <- Map(function(r, e) rlang::quo_set_env(r$quo, e), step$rules, envs)
   is_global <- vapply(step$rules, function(r) r$target %in% names(state$globals),
                       logical(1))
@@ -430,12 +507,44 @@ run_sequential <- function(step, state) {
         data[[paste0("partner_", nm)]] <-
           if (!is.null(src) && nm %in% names(src)) src[[nm]][[pj]] else NA
       }
+      for (nm in names(rel_refs)) {
+        h <- rel_refs[[nm]]
+        ri <- if (is.na(pid)) NA_integer_
+              else match(if (h$back) relation_key(pid, id) else relation_key(id, pid),
+                         rels[[h$rel]]$key)
+        data[[nm]] <- if (is.null(h$col)) !is.na(ri)
+                      else if (is.na(ri) || is.null(rels[[h$rel]]$cols[[h$col]])) NA
+                      else rels[[h$rel]]$cols[[h$col]][[ri]]
+      }
     }
 
     for (k in which_rules) {
       value <- rlang::eval_tidy(quos[[k]], data = data)
       target <- step$rules[[k]]$target
-      if (startsWith(target, "partner_") && !is.null(m)) {
+      h <- rel_targets[[k]]
+      if (!is.null(h)) {
+        # the only other place a sequential rule leaves its own row: the pair
+        if (is.null(h$col)) {
+          abm_abort(
+            c("{.field {target}} says whether the pair exists; it is not written by a rule.",
+              "i" = 'Add or remove the pair with {.code abm_link(via = "{h$rel}")} / {.code abm_unlink(via = "{h$rel}")}.'),
+            class = "tidyABM_bad_target"
+          )
+        }
+        if (is.na(pid)) next
+        a <- if (h$back) pid else id; b <- if (h$back) id else pid
+        ri <- match(relation_key(a, b), rels[[h$rel]]$key)
+        if (is.na(ri)) {
+          abm_abort(
+            c("{.fn abm_sequential} writes {.field {target}}, but agent {a} is not related to agent {b} via {.field {h$rel}}.",
+              "i" = 'Create the pair first with {.code abm_link(via = "{h$rel}")}.'),
+            class = "tidyABM_not_related"
+          )
+        }
+        rels[[h$rel]]$cols[[h$col]] <- write_at(rels[[h$rel]]$cols[[h$col]], ri,
+                                                value, rels[[h$rel]]$n)
+        data[[target]] <- value[[1]]
+      } else if (startsWith(target, "partner_") && !is.null(m)) {
         # the only place a sequential rule leaves its own row: the agent it is
         # matched with, which is what a transaction is
         nm <- sub("^partner_", "", target)
@@ -469,6 +578,17 @@ run_sequential <- function(step, state) {
 
   for (nm in names(cols)) {
     state$groups[[nm]] <- tibble::new_tibble(cols[[nm]], nrow = sizes[[nm]])
+  }
+  for (rn in names(rels)) {
+    rel <- state$relations[[rn]]
+    for (cc in names(rels[[rn]]$cols)) {
+      rel$edges[[cc]] <- rels[[rn]]$cols[[cc]]
+      if (!cc %in% rel$cols) {
+        rel$cols <- c(rel$cols, cc)
+        rel$defaults[[cc]] <- vctrs::vec_init(rels[[rn]]$cols[[cc]], 1L)
+      }
+    }
+    state$relations[[rn]] <- rel
   }
   state
 }

@@ -103,10 +103,17 @@ new_abm_match <- function(pair, size, by, role, eligible, from, among, cost,
 #'   list with one element per (chooser, candidate) pair. `%in%` reads it row by
 #'   row, which is what the condition plainly means; with an ordinary atomic
 #'   column it is base's `%in%` unchanged.
+#'
+#'   A relation asks the same question more directly. With
+#'   `abm_setup(relations = list(sellers = ...))`, `among = .sellers` is "one
+#'   of the firms I buy from", `!.sellers` "one I do not", and `sellers_unmet`
+#'   is the value on that pair -- see [abm_relation()]. Mentioning any of these
+#'   makes the condition pairwise, as `own_<col>` does.
 #' @param weight A draw probability for the candidates, for `"one_of"`. The
 #'   default is a uniform draw. Evaluated like `among`: over the population
-#'   unless it mentions an `own_<col>`, in which case it is per (chooser,
-#'   candidate). Non-positive and `NA` weights make a candidate unpickable, and
+#'   unless it mentions an `own_<col>` or a relation, in which case it is per
+#'   (chooser, candidate) -- `weight = sellers_unmet` draws a seller in
+#'   proportion to how much it has rationed *this* chooser. Non-positive and `NA` weights make a candidate unpickable, and
 #'   a chooser whose candidates all weigh nothing sits the step out. This is
 #'   what "noticed in proportion to its size" and preferential attachment as a
 #'   *step* need.

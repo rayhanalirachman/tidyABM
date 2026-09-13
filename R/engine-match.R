@@ -57,20 +57,23 @@ assign_roles <- function(role_quo, agents, globals, a_idx, b_idx) {
 #' Returns a tibble of .id/.partner/.role/.group_id, for participating agents
 #' only. A match decides who meets whom; it never writes an agent column.
 #' @noRd
-run_match <- function(spec, agents, edges, globals, call = rlang::caller_env()) {
-  if (!is.null(spec$dot_by)) return(run_match_by(spec, agents, edges, globals, call))
+run_match <- function(spec, agents, edges, globals, call = rlang::caller_env(),
+                      relations = NULL) {
+  if (!is.null(spec$dot_by)) {
+    return(run_match_by(spec, agents, edges, globals, call, relations))
+  }
   eligible <- eval_condition(spec$eligible, agents, globals)
   pool <- agents$.id[eligible]
   # `eligible` says who takes part; `among` says who may be picked. They are
   # different questions for the directional modes, where choosing is one-way.
-  ch <- choice_set(spec, agents, globals, pool, call)
+  ch <- choice_set(spec, agents, globals, pool, call, relations)
 
   res <- switch(
     spec$pair,
     random         = match_random(spec, agents, globals, pool),
     one_of         = match_one_of(spec, agents, globals, pool, ch),
     opposite_group = match_opposite(spec, agents, globals, pool, call),
-    nearest        = match_nearest(spec, agents, globals, pool, ch, call),
+    nearest        = match_nearest(spec, agents, globals, pool, ch, call, relations),
     network        = match_network(spec, agents, edges, pool)
   )
   res
@@ -84,7 +87,7 @@ run_match <- function(spec, agents, edges, globals, call = rlang::caller_env()) 
 #' one group per pair. `NA` is not a partition: an agent with no value sits the
 #' step out, the way it does in `abm_rules(.by =)`.
 #' @noRd
-run_match_by <- function(spec, agents, edges, globals, call) {
+run_match_by <- function(spec, agents, edges, globals, call, relations = NULL) {
   by <- by_columns(spec$dot_by, call)
   if (length(by) != 1L || !by %in% names(agents)) {
     abm_abort(
@@ -103,7 +106,7 @@ run_match_by <- function(spec, agents, edges, globals, call) {
   for (i in seq_along(parts)) {
     sub <- agents[parts[[i]], , drop = FALSE]
     if (nrow(sub) == 0L) next
-    m <- run_match(inner, sub, edges, globals, call)
+    m <- run_match(inner, sub, edges, globals, call, relations)
     if (nrow(m) == 0L) next
     m$.group_id <- m$.group_id + offset
     offset <- max(m$.group_id)
@@ -117,12 +120,14 @@ run_match_by <- function(spec, agents, edges, globals, call) {
 #' Does a condition ask about the pair rather than about the candidate?
 #'
 #' `among` and `weight` are ordinary population conditions until one of them
-#' mentions an `own_<col>`. That is the signal that the question is "may *I*
-#' pick this one", not "may anyone", and it is the same signal `cost` gives.
+#' mentions an `own_<col>` -- or a relation: `.sellers`, `sellers_unmet`. Either
+#' is the signal that the question is "may *I* pick this one", not "may
+#' anyone", and it is the same signal `cost` gives.
 #' @noRd
-mentions_own <- function(quo) {
+mentions_pair <- function(quo, relations = NULL) {
   if (is.null(quo)) return(FALSE)
-  any(startsWith(all.vars(rlang::quo_get_expr(quo)), "own_"))
+  any(startsWith(all.vars(rlang::quo_get_expr(quo)), "own_")) ||
+    mentions_relation(quo, relations)
 }
 
 #' Who each chooser may pick, and with what weight
@@ -132,9 +137,11 @@ mentions_own <- function(quo) {
 #' matrix whose rows follow `pool`) and `w` (`NULL`, a vector over `ids`, or a
 #' matrix shaped like `ok`).
 #' @noRd
-choice_set <- function(spec, agents, globals, pool, call = rlang::caller_env()) {
+choice_set <- function(spec, agents, globals, pool, call = rlang::caller_env(),
+                       relations = NULL) {
   if (!spec$pair %in% c("one_of", "nearest")) return(NULL)
-  pairwise <- mentions_own(spec$among) || mentions_own(spec$weight)
+  pairwise <- mentions_pair(spec$among, relations) ||
+    mentions_pair(spec$weight, relations)
 
   if (!pairwise) {
     ids <- agents$.id[eval_condition(spec$among, agents, globals)]
@@ -156,7 +163,8 @@ choice_set <- function(spec, agents, globals, pool, call = rlang::caller_env()) 
   ns <- length(focal); nc <- nrow(agents)
   view <- pair_view(agents,
                     focal_idx = rep(focal, each = nc),
-                    cand_idx  = rep(seq_len(nc), times = ns))
+                    cand_idx  = rep(seq_len(nc), times = ns),
+                    relations = relations)
 
   ok <- if (is.null(spec$among)) rep(TRUE, nrow(view))
         else eval_over_view(spec$among, view, globals)
@@ -343,10 +351,10 @@ match_opposite <- function(spec, agents, globals, pool, call) {
   m
 }
 
-match_nearest <- function(spec, agents, globals, pool, ch, call) {
+match_nearest <- function(spec, agents, globals, pool, ch, call, relations = NULL) {
   ch <- ch %||% list(ids = agents$.id, ok = NULL, w = NULL)
   if (!is.null(spec$cost)) {
-    return(match_cheapest(spec, agents, globals, pool, ch, call))
+    return(match_cheapest(spec, agents, globals, pool, ch, call, relations))
   }
   candidates <- ch$ids
   by <- by_columns(spec$by, call)
@@ -387,25 +395,20 @@ match_nearest <- function(spec, agents, globals, pool, ch, call) {
 #' `abm_neighbours()` gives, and it is what lets the thing being minimised be a
 #' delivered price or an energy deficit rather than a distance.
 #' @noRd
-match_cheapest <- function(spec, agents, globals, pool, ch, call) {
+match_cheapest <- function(spec, agents, globals, pool, ch, call, relations = NULL) {
   candidates <- ch$ids
-  sub  <- agents[agents$.id %in% pool, , drop = FALSE]
-  cand <- agents[agents$.id %in% candidates, , drop = FALSE]
-  if (nrow(sub) == 0L || nrow(cand) == 0L) {
+  sub_idx  <- which(agents$.id %in% pool)
+  cand_idx <- which(agents$.id %in% candidates)
+  if (!length(sub_idx) || !length(cand_idx)) {
     return(empty_match())
   }
+  cand <- agents[cand_idx, , drop = FALSE]
   # every column, `.id` and `.group` included, so a cost can say "my rank of
-  # this candidate" (`own_rank[[.]][.id]`) as well as "the price it charges"
-  cols <- names(agents)
-  ci <- rep(seq_len(nrow(cand)), times = nrow(sub))
-  si <- rep(seq_len(nrow(sub)),  each  = nrow(cand))
-
-  view <- cand[ci, cols, drop = FALSE]
-  own  <- sub[si, cols, drop = FALSE]
-  names(own) <- paste0("own_", cols)
-  view <- dplyr::bind_cols(view, own)
-  view$.chooser <- sub$.id[si]
-  view$.candidate <- cand$.id[ci]
+  # this candidate" (`own_rank[[.]][.id]`) as well as "the price it charges".
+  # `.of` is the chooser and `.id` the candidate, as in every other pair view.
+  ci <- rep(cand_idx, times = length(sub_idx))
+  si <- rep(sub_idx,  each  = length(cand_idx))
+  view <- pair_view(agents, si, ci, relations)
 
   quo <- spec$cost
   quo <- rlang::quo_set_env(quo, abm_eval_env(quo, globals))
@@ -418,15 +421,15 @@ match_cheapest <- function(spec, agents, globals, pool, ch, call) {
       class = "tidyABM_bad_cost", call = call
     )
   }
-  val[view$.chooser == view$.candidate] <- NA_real_   # never yourself
+  val[view$.of == view$.id] <- NA_real_   # never yourself
   # a candidate set of the chooser's own rules the rest out
   if (!is.null(ch$ok)) val[!as.vector(t(ch$ok[, match(cand$.id, ch$ids), drop = FALSE]))] <- NA_real_
   keep <- !is.na(val)
   if (!any(keep)) return(empty_match())
 
-  ord <- order(view$.chooser[keep], val[keep])
-  ch  <- view$.chooser[keep][ord]
-  cd  <- view$.candidate[keep][ord]
+  ord <- order(view$.of[keep], val[keep])
+  ch  <- view$.of[keep][ord]
+  cd  <- view$.id[keep][ord]
   first <- !duplicated(ch)
   m <- tibble::tibble(
     .id = ch[first], .partner = cd[first],

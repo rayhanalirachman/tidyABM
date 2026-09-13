@@ -120,8 +120,9 @@ print.abm_go <- function(x, ...) {
       abm_birth      = "birth",
       abm_death      = "death",
       abm_draw       = paste0("draw   ", length(s$rules), " value(s) per ", s$each),
-      abm_link       = "link",
-      abm_unlink     = "unlink",
+      abm_link       = paste0("link", if (!is.null(s$via)) paste0("   via ", s$via) else ""),
+      abm_unlink     = paste0("unlink", if (!is.null(s$via)) paste0(" via ", s$via) else ""),
+      abm_pairs      = paste0("pairs  via ", s$via, ", ", length(s$rules), " rule(s)"),
       abm_repeat     = paste0("repeat ", length(s$steps), " step(s), max ", s$max)
     )
     cli::cli_text("{.emph {sprintf('%2d.', i)}} {label}")

@@ -25,7 +25,7 @@ the other varies.
 
 ## 1. `abm_setup()`: the world
 
-- `abm_setup(agents =, network =, globals =, seed =)` builds the model itself.
+- `abm_setup(agents =, network =, relations =, globals =, seed =)` builds the model itself.
   `agents` is one `abm_agents()` or a named list of them. `globals` is a plain
   list, and `seed` fixes the draws that build the population.
 - `abm_agents(n, col = value_or_formula, ...)` declares one group. A plain value
@@ -33,6 +33,10 @@ the other varies.
   before it. A column may be a **list column**, which is how an agent holds a
   set, a vector or a matrix rather than a number.
 - `abm_network(type =, degree =, edges =)` builds a persistent edge list.
+- `abm_relation(edges, v = default, ...)` declares a **relation**: a directed,
+  valued table of agent pairs, for state that belongs to two agents together.
+  Several per model, named, alongside the network. See *State that belongs to
+  a pair* below.
 
 | `type` | what it builds |
 |---|---|
@@ -71,7 +75,8 @@ bare `abm_match()`.
 | `abm_global(name ~ agg, .by =)` | updates a population-level value, or a table of them |
 | `abm_birth(when =, n =, times =, cost =, inherit =, attach_via =, links =)` | adds agents |
 | `abm_death(when =, prune_edges =)` | removes them |
-| `abm_link(when =)` / `abm_unlink(when =)` | adds / removes network edges |
+| `abm_link(when =, via =, to =, ...)` / `abm_unlink(when =, via =, to =)` | adds / removes network edges, or with `via` the pairs of a relation |
+| `abm_pairs(via =, v ~ expr, ..., .when =)` | updates every pair of a relation at once |
 | `abm_repeat(..., until =, max =)` | replays a block of steps inside the tick |
 
 ### Matching modes
@@ -271,6 +276,46 @@ expression evaluated in the *sender's* row whose ascending order the messages ar
 considered in. `.resolve = "first", .order = arrived_at` is the first person to
 reach the counter, and `"collect"` hands over a list already in that order. `NA`
 sits a sender out.
+
+### State that belongs to a pair
+
+A **relation** is a directed, valued table of agent pairs, declared by name in
+`abm_setup(relations = list(sellers = abm_relation(edges, unmet = 0)))`. It is
+where a quantity lives when it belongs to neither agent alone -- how much this
+seller has rationed *this* household, what this bank owes *that* one. Several
+per model; they sit alongside the network, which is unchanged. The network is
+not this: it is one per model, undirected, and its only edge values are
+`abm_draw()`'s fresh coin per tick, which cannot accumulate.
+
+For a relation `R` with value `v`, every place that looks at a *pair* sees
+`.R` (the row `(me -> them)` exists), `.R_back` (the reverse row), `R_v` (the
+value on `(me -> them)`, `NA` if no row) and `R_v_back`. "Them" is the
+candidate in `among`, `weight`, `cost` and `within`, and the `.partner` under a
+standing match.
+
+| step | what a relation gives it |
+|---|---|
+| `abm_match(among = !.sellers, weight = sellers_unmet)` | a candidate set and a draw weight per pair; either makes the condition pairwise |
+| `abm_neighbours(PI ~ mean(price), within = .sellers)` | the neighbourhood *is* the relation: linear in its rows, and the aggregate reads `sellers_unmet` |
+| `abm_rules()` / `abm_sequential()`, pairing of two | read `R_v`; a rule *targeting* `R_v` **writes the pair**, `sellers_unmet ~ sellers_unmet + (demand - got)` |
+| `abm_link(via = "R", to = , when = , v ~ expr)` | add `(me -> to)` rows -- `to` defaults to `.partner`; with `to =` no pairing is needed. Rules set the new rows' values; an existing pair is left alone |
+| `abm_unlink(via = "R", to = , when = )` | remove rows; `when` can read `R_v` |
+| `abm_pairs(via = "R", v ~ expr, .when = )` | update every pair at once, seeing `from_<col>` and `to_<col>` |
+| `abm_relations(result)` | the tables at the end of the run |
+
+The point is one home for the number. Before relations, Lengnick held
+`sellers` and `unmet` as two list columns aligned by position, and shipped with
+them out of step: a price swap wrote one and not the other. On a relation the
+swap is an `abm_unlink()` and an `abm_link()`, the new pair starts at the
+declared default, and there is no second column to forget.
+
+What it is not: `abm_global()`, measures and `abm_tell()` evaluate over the
+bare population and cannot see a relation -- aggregate it into an agent column
+with `abm_neighbours(within = .R)` first. A `.by` rule cannot write one.
+Writing a pair that does not exist is an error, not a creation; `abm_link()`
+creates. A dead agent's rows go on either side. A single-valued pointer such as
+`employer` is still a column: a relation is for a *set* of counterparts with a
+value on each.
 
 ### Repeating a block
 

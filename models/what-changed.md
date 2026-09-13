@@ -356,3 +356,54 @@ complaint. PD N-Person at NetLogo's default of 60 agents was 3,600 cells and a
 60-branch `case_when()`; it is now a sparse set per agent and the same code as at
 24. The genetic algorithm's script runs three times faster with `L` out of the
 shape of the model.
+
+# What the Lengnick round changed
+
+One model from outside the fifty-six, and one addition. Lengnick (2013,
+`work in progress/`) holds seven sellers per household with a per-pair record
+of how much each has rationed it, and it had been written with `sellers` and
+`unmet` as two list columns kept aligned by position, by hand. It shipped with
+them out of step: the price swap wrote one and not the other, so a household
+weighted the firm it had just started buying from by the rationing history of
+the firm it had just dropped. It moved no printed number across five seeds,
+which is why it survived, and it was the first entry on *Open items* since the
+seventh round closed the page.
+
+| addition | forced by | what it does |
+|---|---|---|
+| `abm_relation()`, `abm_setup(relations =)` | Lengnick | a directed, valued table of agent pairs, several per model, alongside the network |
+| `.R`, `R_v`, `_back` forms in every pair view | Lengnick | `among = !.sellers`, `weight = sellers_unmet`, `within = .sellers` |
+| `R_v ~ expr` under a pairing of two | Lengnick | a rule writes the pair, in `abm_rules()` and `abm_sequential()` |
+| `abm_link(via =, to =, ...)` / `abm_unlink(via =, to =)` | Lengnick | directed rows added and removed, with or without a pairing |
+| `abm_pairs()` | Lengnick, interbank stub | every pair updated at once |
+| `abm_relations()` | -- | the tables read back |
+
+Three things were decided rather than inherited. A relation is **directed**,
+because a loan is, and the network's `pmin`/`pmax` canonicalisation is skipped
+under `via`. Writing a pair that does not exist is an **error**, because a
+write is about a pair and creating one is `abm_link()`'s job; a pair that
+already exists is left alone by `abm_link()`, so "add to a balance" is a link
+then a write, each meaning one thing. And `employer` **stayed a column**: a
+single-valued pointer is a column, and a relation is for a set of counterparts
+with a value on each -- the two idioms are for two different shapes, not two
+ways of writing one.
+
+Two consistency findings came out of the same review and were fixed first, as
+their own commit: an `abm_draw()` value was `NA` on any edge `abm_link()` or
+`abm_birth()` added later in the tick, and `sum()` carried that `NA` into every
+neighbourhood the new edge touched, silently -- the draw is now retired when the
+edge set changes and a read of it fails with the fix; and a manual edge list's
+extra columns were dropped without a word, where they are now refused with a
+pointer to `abm_relation()`.
+
+What was *not* built, and why: "a node I am not already linked to" was
+proposed as a pseudo-column and turned out to be two lines already --
+`abm_neighbours(nbrs ~ list(.id))` then `among = !(.id %in% own_nbrs)` -- so it
+earned no entry. Multiple networks were not added; Lengnick's second relation
+is a pointer and wants a column. Two shipped models could move onto relations
+and were left as they are: PD N-Person (26), whose `grudges` is a value-less
+relation, and Deferred Acceptance (55), whose `rank` is a fixed value per pair
+and whose "how does my partner rank me" is `prefs_rank_back`. Image Scoring
+(54) holds pair state too but updates it through `abm_tell()`, which does not
+write relations; it is the model that would motivate that.
+

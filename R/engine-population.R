@@ -20,7 +20,7 @@ birth_by_condition <- function(step, state) {
     g <- state$groups[[nm]]
     if (nrow(g) == 0L) next
     if (!condition_applies(step$when, g, all_cols, state$globals)) next
-    aug <- augment_group(g, state$match, combined)
+    aug <- augment_group(g, state$match, combined, state$relations)
     parents <- eval_condition(step$when, aug, state$globals)
     if (!any(parents)) next
 
@@ -121,6 +121,7 @@ attach_newborns <- function(step, state, newborns, parents = NULL) {
   }
   combined <- bind_groups(state$groups)
   links <- step$links %||% 1L
+  added <- FALSE
   for (k in seq_along(newborns)) {
     id <- newborns[[k]]
     existing <- combined[combined$.id != id & !combined$.id %in% newborns, ,
@@ -142,7 +143,9 @@ attach_newborns <- function(step, state, newborns, parents = NULL) {
       tibble::tibble(from = rep(as.integer(id), length(targets)),
                      to = as.integer(targets))
     )
+    added <- TRUE
   }
+  if (added) state <- invalidate_draws(state, "abm_birth")
   state
 }
 
@@ -157,7 +160,7 @@ run_death <- function(step, state) {
     if (nrow(g) == 0L) next
     # a condition about a column this group has not got is not about this group
     if (!condition_applies(step$when, g, all_cols, state$globals)) next
-    aug <- augment_group(g, state$match, combined)
+    aug <- augment_group(g, state$match, combined, state$relations)
     dead <- eval_condition(step$when, aug, state$globals)
     if (!any(dead)) next
     removed <- c(removed, g$.id[dead])
@@ -167,5 +170,7 @@ run_death <- function(step, state) {
     keep <- !(state$edges$from %in% removed | state$edges$to %in% removed)
     state$edges <- state$edges[keep, , drop = FALSE]
   }
+  # a dead agent holds no relation: its rows go, on either side
+  state$relations <- prune_relations(state$relations, removed)
   state
 }

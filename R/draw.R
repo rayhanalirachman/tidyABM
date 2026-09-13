@@ -85,6 +85,7 @@ run_draw <- function(step, state) {
     state$edges[[paste0(".draw_", r$target)]] <- fwd
     state$edges[[paste0(".back_", r$target)]] <- back
   }
+  state$stale_draws <- NULL
   state
 }
 
@@ -96,8 +97,9 @@ edge_value <- function(r, state) {
     rlang::new_environment(state$globals, parent = rlang::quo_get_env(r$quo))
   )
   edges <- state$edges
-  # the draw columns are internal; a rule sees `from`, `to` and the values it
-  # can already read by name
+  # the draw columns are internal and are stripped from the view: a draw rule
+  # sees `from` and `to`, never an earlier draw, so drawn values cannot
+  # accumulate across ticks -- they are a fresh coin each time
   view <- edges[, !startsWith(names(edges), ".draw_") &
                   !startsWith(names(edges), ".back_"), drop = FALSE]
   val <- dplyr::pull(dplyr::mutate(view, .abm_value = !!quo), ".abm_value")
@@ -110,6 +112,42 @@ edge_value <- function(r, state) {
     )
   }
   val
+}
+
+#' Retire a draw once the edge set it was drawn for has changed
+#'
+#' A draw is one value per edge that existed when [abm_draw()] ran. An edge
+#' added later in the tick, by [abm_link()] or [abm_birth()], has no such
+#' value, and `bind_rows()` used to give it `NA` -- which `sum()` then carried
+#' into every neighbourhood the new edge touched, silently. The drawn columns
+#' are dropped instead and the names remembered, so a read that still wants
+#' them fails with a message that says what to move. The next [abm_draw()]
+#' clears the record.
+#' @noRd
+invalidate_draws <- function(state, by) {
+  nms <- drawn_names(state$edges)
+  if (!length(nms)) return(state)
+  state$stale_draws <- list(names = nms, by = by)
+  state$edges <- strip_draws(state$edges)
+  state
+}
+
+#' Abort if a rule asks for a draw that has been retired this tick
+#' @noRd
+check_stale_draws <- function(step, state, call = rlang::caller_env()) {
+  st <- state$stale_draws
+  if (is.null(st)) return(invisible(NULL))
+  vars <- unique(unlist(lapply(step$rules, function(r) {
+    all.vars(rlang::quo_get_expr(r$quo))
+  })))
+  hit <- intersect(vars, c(st$names, paste0(st$names, "_back")))
+  if (!length(hit)) return(invisible(NULL))
+  abm_abort(
+    c("{.field {hit}} {?was/were} drawn by {.fn abm_draw}, but {.fn {st$by}} has added edges since.",
+      "x" = "The new edges have no drawn value, so the neighbourhood sum would be {.val NA}.",
+      "i" = "Put {.fn abm_draw} after {.fn {st$by}}, so every edge that exists is drawn for."),
+    class = "tidyABM_stale_draw", call = call
+  )
 }
 
 #' Which values has [abm_draw()] attached to the edges?

@@ -1,8 +1,31 @@
 # Network mutation and neighbourhood aggregates --------------------------
 
-new_abm_link <- function(when, drop) {
-  structure(list(when = when, drop = drop),
+new_abm_link <- function(when, drop, via = NULL, to = NULL, rules = NULL) {
+  structure(list(when = when, drop = drop, via = via, to = to, rules = rules),
             class = c(if (drop) "abm_unlink" else "abm_link", "abm_step"))
+}
+
+#' Check the `via` / `to` / rules combination a link step was given
+#' @noRd
+check_link_args <- function(via, to, n_rules, fn, call) {
+  if (!is.null(via) && !rlang::is_string(via)) {
+    abm_abort("{.arg via} must be the name of one relation, as a string.",
+              class = "tidyABM_no_relation", call = call)
+  }
+  if (is.null(via) && !is.null(to)) {
+    abm_abort(
+      c("{.arg to} names the other end of a relation pair, so it needs {.arg via}.",
+        "i" = "Without {.arg via}, {.fn {fn}} works on the network and the pair is the standing match."),
+      class = "tidyABM_bad_link", call = call
+    )
+  }
+  if (is.null(via) && n_rules > 0L) {
+    abm_abort(
+      c("Value rules set columns on a relation's new rows, so they need {.arg via}.",
+        "i" = "Values on the *network* are drawn per tick with {.fn abm_draw}."),
+      class = "tidyABM_bad_link", call = call
+    )
+  }
 }
 
 #' Add edges between matched agents
@@ -18,12 +41,40 @@ new_abm_link <- function(when, drop) {
 #' inside it gains an edge. That is what a team, a committee or a coalition
 #' means once it is written as a network.
 #'
+#' # On a relation
+#'
+#' With `via = "R"` the step adds rows to the [abm_relation()] named `R`
+#' instead. A relation is directed, so the row is `(me -> them)`: from each
+#' agent to its `.partner`, or to the agent named by `to =`. With `to =` no
+#' pairing is needed at all -- the other agent is read from a column, which is
+#' what a swap needs when the incumbent being dropped and the newcomer being
+#' taken on are two different agents held in two columns. `size > 2` pairings
+#' are not relations.
+#'
+#' Rules in `...` set the new rows' value columns; a column not named takes the
+#' relation's default. A pair that already exists is left exactly as it is --
+#' the rules do not re-apply -- so "add to an existing balance" is a link
+#' followed by a write:
+#'
+#' ```r
+#' abm_link(via = "loans"),                          # creates the pair at 0 if new
+#' abm_rules(loans_balance ~ loans_balance + take)   # adds either way
+#' ```
+#'
+#' @param ... For `via =` only: `col ~ expr` rules setting value columns on the
+#'   rows this step creates, evaluated per agent over the population with the
+#'   standing match in scope.
 #' @param when Optional condition. Only pairs where it holds are linked. It can
-#'   use the agent's own columns, `partner_<col>`, `.role`, and any global.
+#'   use the agent's own columns, `partner_<col>`, `.role`, any global and, on
+#'   a relation, the pair's `R_<col>` values.
+#' @param via Optional name of a relation, as a string. Absent, the step acts
+#'   on the network.
+#' @param to For `via =`: an expression naming the other agent's `.id`, one per
+#'   agent. Defaults to `.partner`.
 #'
 #' @return An `abm_link` step object.
 #' @seealso [abm_go()], which lists every step and fixes the order they run
-#'   in.
+#'   in; [abm_relation()] for what a relation is.
 #' @family network topology steps
 #' @export
 #' @examples
@@ -32,8 +83,19 @@ new_abm_link <- function(when, drop) {
 #'   abm_match(pair = "random", eligible = runif(n()) < 0.05),
 #'   abm_link()
 #' )
-abm_link <- function(when = NULL) {
-  new_abm_link(enquo_or_null(rlang::enquo(when)), drop = FALSE)
+#'
+#' # a household takes on the cheaper firm it found, held in `cand`
+#' abm_link(via = "sellers", to = cand, when = swap)
+#'
+#' # a new loan from my partner, starting at the amount just borrowed
+#' abm_link(via = "loans", balance ~ take)
+abm_link <- function(..., when = NULL, via = NULL, to = NULL) {
+  dots <- rlang::list2(...)
+  to <- enquo_or_null(rlang::enquo(to))
+  check_link_args(via, to, length(dots), "abm_link", rlang::caller_env())
+  rules <- if (length(dots)) collect_rules(dots, "abm_link") else NULL
+  new_abm_link(enquo_or_null(rlang::enquo(when)), drop = FALSE,
+               via = via, to = to, rules = rules)
 }
 
 #' Remove edges between matched agents
@@ -43,7 +105,14 @@ abm_link <- function(when = NULL) {
 #' agent from one of its neighbours, which, followed by a match and an
 #' [abm_link()], is how you rewire a network.
 #'
-#' @param when Optional condition. Only pairs where it holds are unlinked.
+#' With `via = "R"` it removes rows from the relation `R` instead, the row
+#' `(me -> them)` for each agent's `.partner` or for the agent named by `to =`;
+#' see [abm_link()] for how those are read.
+#'
+#' @param when Optional condition. Only pairs where it holds are unlinked. On
+#'   a relation it can read the pair's `R_<col>` values, so
+#'   `when = loans_balance <= 0` is "once repaid".
+#' @inheritParams abm_link
 #'
 #' @return An `abm_unlink` step object.
 #' @seealso [abm_go()], which lists every step and fixes the order they run
@@ -58,8 +127,13 @@ abm_link <- function(when = NULL) {
 #'   abm_match(pair = "random", eligible = runif(n()) < 0.1),
 #'   abm_link()
 #' )
-abm_unlink <- function(when = NULL) {
-  new_abm_link(enquo_or_null(rlang::enquo(when)), drop = TRUE)
+#'
+#' # a loan is closed once it is repaid
+#' abm_unlink(via = "loans", when = loans_balance <= 0)
+abm_unlink <- function(when = NULL, via = NULL, to = NULL) {
+  to <- enquo_or_null(rlang::enquo(to))
+  check_link_args(via, to, 0L, "abm_unlink", rlang::caller_env())
+  new_abm_link(enquo_or_null(rlang::enquo(when)), drop = TRUE, via = via, to = to)
 }
 
 #' Which matched pairs pass this step's condition?
@@ -77,7 +151,7 @@ linked_pairs <- function(step, state) {
     return(tibble::tibble(from = integer(), to = integer()))
   }
   combined <- bind_groups(state$groups)
-  aug <- augment_group(combined, state$match, combined)
+  aug <- augment_group(combined, state$match, combined, state$relations)
   keep <- eval_condition(step$when, aug, state$globals)
 
   if (state$match$size == 2L) {
@@ -101,8 +175,85 @@ linked_pairs <- function(step, state) {
   dplyr::distinct(out)
 }
 
+#' The directed `(me -> target)` pairs a `via =` link step acts on
+#'
+#' The target is `.partner` by default, which needs a standing pairing of two;
+#' or the agent named by `to =`, evaluated per agent over the population, which
+#' needs no pairing at all -- the incumbent a household drops and the newcomer
+#' it takes on are two different agents held in two columns, and neither is
+#' the partner of anything. No canonicalisation: a relation is directed.
+#' @noRd
+relation_pairs <- function(step, state, fn) {
+  empty <- list(from = integer(), to = integer(), values = list())
+  combined <- bind_groups(state$groups)
+  if (!nrow(combined)) return(empty)
+  if (is.null(step$to)) {
+    if (is.null(state$match)) {
+      abm_abort(
+        c("{.fn {fn}} with {.arg via} needs a standing pairing, or a {.arg to}.",
+          "i" = "Put an {.fn abm_match} before it, or name the other agent with {.code to = <column>}."),
+        class = "tidyABM_no_match"
+      )
+    }
+    if (state$match$size != 2L) {
+      abm_abort(
+        c("A relation joins two agents, and this pairing groups {state$match$size}.",
+          "i" = "Use a match of {.code size = 2}, or name the other agent with {.arg to}."),
+        class = "tidyABM_bad_link"
+      )
+    }
+    if (nrow(state$match$match) == 0L) return(empty)
+  }
+  aug <- augment_group(combined, state$match, combined, state$relations)
+  keep <- eval_condition(step$when, aug, state$globals)
+  keep[is.na(keep)] <- FALSE
+
+  if (is.null(step$to)) {
+    tgt <- aug$.partner
+  } else {
+    tgt <- eval_rule(list(quo = step$to), aug, state$globals, grouped = FALSE)
+    if (length(tgt) == 1L) tgt <- rep(tgt, nrow(aug))
+    if (is.list(tgt) || length(tgt) != nrow(aug)) {
+      abm_abort(
+        c("{.arg to} must give one agent {.code .id} per agent.",
+          "x" = "{.code {deparse1(rlang::quo_get_expr(step$to))}} did not."),
+        class = "tidyABM_bad_link"
+      )
+    }
+    tgt <- as.integer(tgt)
+  }
+  keep <- keep & !is.na(tgt)
+  if (!any(keep)) return(empty)
+  from <- aug$.id[keep]; to <- tgt[keep]
+  unknown <- setdiff(to, combined$.id)
+  if (length(unknown)) {
+    abm_abort(
+      c("{.fn {fn}} was pointed at an agent that does not exist.",
+        "x" = "No agent has {.code .id} {unknown[[1]]}."),
+      class = "tidyABM_bad_link"
+    )
+  }
+  if (any(from == to)) {
+    abm_abort("{.fn {fn}} would relate agent {from[from == to][[1]]} to itself.",
+              class = "tidyABM_bad_link")
+  }
+  values <- list()
+  for (r in step$rules) {
+    v <- eval_rule(r, aug, state$globals, grouped = FALSE)
+    if (!is.list(v) && !is.null(names(v))) v <- unname(v)
+    values[[r$target]] <- vctrs::vec_recycle(v, nrow(aug))[keep]
+  }
+  list(from = from, to = to, values = values)
+}
+
 #' @noRd
 run_link <- function(step, state) {
+  if (!is.null(step$via)) {
+    rel <- relation_or_abort(state, step$via, "abm_link")
+    p <- relation_pairs(step, state, "abm_link")
+    state$relations[[step$via]] <- add_relation_rows(rel, p$from, p$to, p$values)
+    return(state)
+  }
   if (is.null(state$edges)) {
     abm_abort(
       c("{.fn abm_link} needs a network to add edges to.",
@@ -115,12 +266,19 @@ run_link <- function(step, state) {
   existing <- tibble::tibble(from = pmin(state$edges$from, state$edges$to),
                              to   = pmax(state$edges$from, state$edges$to))
   new <- dplyr::anti_join(new, existing, by = c("from", "to"))
+  if (nrow(new) == 0L) return(state)
   state$edges <- dplyr::bind_rows(state$edges, new)
-  state
+  invalidate_draws(state, "abm_link")
 }
 
 #' @noRd
 run_unlink <- function(step, state) {
+  if (!is.null(step$via)) {
+    rel <- relation_or_abort(state, step$via, "abm_unlink")
+    p <- relation_pairs(step, state, "abm_unlink")
+    state$relations[[step$via]] <- drop_relation_rows(rel, p$from, p$to)
+    return(state)
+  }
   if (is.null(state$edges) || nrow(state$edges) == 0L) return(state)
   drop <- linked_pairs(step, state)
   if (nrow(drop) == 0L) return(state)
@@ -210,6 +368,13 @@ run_unlink <- function(step, state) {
 #'   every pair, so the co-location lookup
 #'   `within = .group == "patches" & .id == own_.cell` -- "the cell I am
 #'   standing on" -- is linear in the population rather than quadratic.
+#'
+#'   `within = .R` for a relation `R` (or `.R_back`, the reverse direction) is
+#'   the neighbourhood *being* the relation: the rows are the pairs, so it is
+#'   linear in the relation's size and the aggregate sees the pair's values --
+#'   `abm_neighbours(rationed ~ any(sellers_unmet > 0), within = .sellers)`.
+#'   A rule's target must be an agent column; a relation's values are updated
+#'   with [abm_pairs()].
 #' @param .where Optional lattice direction restricting the neighbourhood to a
 #'   single neighbour: `"north"`, `"south"`, `"east"` or `"west"` on a grid;
 #'   `"left"` / `"right"` (or `"west"` / `"east"`) on a line. Needs a lattice,
@@ -261,14 +426,14 @@ abm_neighbours <- function(..., within = NULL, .where = NULL) {
 #' `abm_match(cost =)` minimises over and the one `abm_neighbours()` aggregates
 #' over, so a comparison written for one means the same thing in the other.
 #' @noRd
-pair_view <- function(combined, focal_idx, cand_idx) {
+pair_view <- function(combined, focal_idx, cand_idx, relations = NULL) {
   cols <- names(combined)
   view <- combined[cand_idx, cols, drop = FALSE]
   own <- combined[focal_idx, cols, drop = FALSE]
   names(own) <- paste0("own_", cols)
   view <- dplyr::bind_cols(view, own)
   view$.of <- combined$.id[focal_idx]
-  view
+  attach_relation_columns(view, relations, view$.of, view$.id)
 }
 
 #' Evaluate one quosure against a pair view, with the globals in scope
@@ -285,17 +450,36 @@ network_view <- function(combined, state) {
   keep <- nb$.id %in% combined$.id & nb$.neighbour %in% combined$.id
   nb <- nb[keep, , drop = FALSE]
   view <- pair_view(combined, match(nb$.id, combined$.id),
-                    match(nb$.neighbour, combined$.id))
+                    match(nb$.neighbour, combined$.id), state$relations)
   attach_edge_columns(view, state$edges, nb)
+}
+
+#' The (focal, candidate) view for `within = .R` or `within = .R_back`
+#'
+#' A neighbourhood that *is* a relation needs no cross product: the relation's
+#' rows are the pairs. Linear in the relation's size, which is what keeps "the
+#' mean price across my sellers" cheap. Returns `NULL` for any other condition.
+#' @noRd
+relation_view <- function(step, combined, relations) {
+  expr <- rlang::quo_get_expr(step$within)
+  if (!rlang::is_symbol(expr) || !length(relations)) return(NULL)
+  hit <- resolve_relation_name(rlang::as_string(expr), relations)
+  if (is.null(hit) || !is.null(hit$col)) return(NULL)
+  e <- relations[[hit$rel]]$edges
+  focal <- if (hit$back) e$to else e$from
+  cand  <- if (hit$back) e$from else e$to
+  fi <- match(focal, combined$.id); ci <- match(cand, combined$.id)
+  ok <- !is.na(fi) & !is.na(ci)
+  pair_view(combined, fi[ok], ci[ok], relations)
 }
 
 #' The (focal, candidate) view for a neighbourhood in attribute space
 #' @noRd
-attribute_view <- function(step, combined, globals) {
+attribute_view <- function(step, combined, globals, relations = NULL) {
   n <- nrow(combined)
   ci <- rep(seq_len(n), times = n)
   si <- rep(seq_len(n), each = n)
-  view <- pair_view(combined, si, ci)
+  view <- pair_view(combined, si, ci, relations)
   keep <- eval_over_view(step$within, view, globals)
   if (!is.logical(keep)) {
     abm_abort(
@@ -318,9 +502,11 @@ run_neighbours <- function(step, state) {
     # L1: the single lattice neighbour in a named direction
     view <- directional_view(step, combined, state)
   } else if (!is.null(step$within)) {
-    # a `<col> == own_<col>` condition is a join, not a cross product
-    view <- equijoin_view(step, combined, state$globals) %||%
-      attribute_view(step, combined, state$globals)
+    # `within = .R` walks the relation's rows; a `<col> == own_<col>` condition
+    # is a join; anything else is the cross product
+    view <- relation_view(step, combined, state$relations) %||%
+      equijoin_view(step, combined, state$globals, state$relations) %||%
+      attribute_view(step, combined, state$globals, state$relations)
   } else {
     if (is.null(state$edges)) {
       abm_abort(
@@ -330,15 +516,20 @@ run_neighbours <- function(step, state) {
         class = "tidyABM_no_network"
       )
     }
+    check_stale_draws(step, state)
     view <- network_view(combined, state)
   }
 
   for (r in step$rules) {
-    env <- rlang::quo_get_env(r$quo)
-    if (length(state$globals)) {
-      env <- rlang::new_environment(state$globals, parent = env)
+    hit <- resolve_relation_name(r$target, state$relations)
+    if (!is.null(hit)) {
+      abm_abort(
+        c("{.fn abm_neighbours} writes agent columns, and {.field {r$target}} names a value on relation {.field {hit$rel}}.",
+          "i" = 'Update every pair with {.code abm_pairs(via = "{hit$rel}", ...)}, or one pair under a match with {.fn abm_rules}.'),
+        class = "tidyABM_bad_target"
+      )
     }
-    quo <- rlang::quo_set_env(r$quo, env)
+    quo <- rlang::quo_set_env(r$quo, abm_eval_env(r$quo, state$globals))
     agg <- dplyr::summarise(dplyr::group_by(view, .data$.of),
                             .abm_value = !!quo, .groups = "drop")
     for (nm in names(state$groups)) {
@@ -354,7 +545,13 @@ run_neighbours <- function(step, state) {
 
 #' @export
 print.abm_link <- function(x, ...) {
-  cli::cli_text("{.cls abm_link}")
+  cli::cli_text("{.cls abm_link}{if (!is.null(x$via)) paste0(' via ', x$via) else ''}")
+  if (!is.null(x$to)) {
+    cli::cli_bullets(c("*" = "to = {.code {deparse1(rlang::quo_get_expr(x$to))}}"))
+  }
+  for (r in x$rules) {
+    cli::cli_bullets(c("*" = "{.field {r$target}} ~ {.code {deparse1(rlang::quo_get_expr(r$quo))}}"))
+  }
   if (!is.null(x$when)) {
     cli::cli_bullets(c("*" = "when = {.code {deparse1(rlang::quo_get_expr(x$when))}}"))
   }
@@ -363,7 +560,10 @@ print.abm_link <- function(x, ...) {
 
 #' @export
 print.abm_unlink <- function(x, ...) {
-  cli::cli_text("{.cls abm_unlink}")
+  cli::cli_text("{.cls abm_unlink}{if (!is.null(x$via)) paste0(' via ', x$via) else ''}")
+  if (!is.null(x$to)) {
+    cli::cli_bullets(c("*" = "to = {.code {deparse1(rlang::quo_get_expr(x$to))}}"))
+  }
   if (!is.null(x$when)) {
     cli::cli_bullets(c("*" = "when = {.code {deparse1(rlang::quo_get_expr(x$when))}}"))
   }

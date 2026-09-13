@@ -1,5 +1,93 @@
 # tidyABM (development version)
 
+## Relations: state that belongs to a pair of agents
+
+A quantity that lives between two named agents -- how much this seller has
+rationed *this* household, what this bank owes *that* one, how highly I rank
+*you* -- had no home in the grammar. It had to be mirrored into agent list
+columns kept aligned by position, by hand, and nothing checked the alignment.
+Lengnick (2013) shipped with `sellers` and `unmet` out of step for exactly this
+reason; an interbank stub written to probe it went 327 units off on a two-line
+reorder while cash stayed perfectly conserved. The network could not hold it:
+one per model, undirected, and its only per-edge values are `abm_draw()`'s
+fresh coin per tick.
+
+A **relation** is a directed, valued table of agent pairs. A model declares
+several, by name, alongside the network, which is unchanged:
+
+```r
+abm_setup(agents = ..., relations = list(
+  sellers = abm_relation(edges = seller_edges, unmet = 0)))
+```
+
+For a relation `R` with value `v`, everywhere the grammar looks at a *pair*
+now also sees `.R` (the row `(me -> them)` exists), `.R_back`, `R_v` (its
+value) and `R_v_back`:
+
+* `abm_match(among = .group == "firms" & !.sellers, weight = n_emp)` is "a
+  firm I do not buy from"; `weight = sellers_unmet` draws in proportion to
+  how much *this* seller has rationed *me*. Either makes the condition
+  pairwise, as `own_<col>` does. `cost` sees them too.
+* `abm_neighbours(PI ~ mean(price), within = .sellers)` aggregates over the
+  relation's rows directly -- linear in its size, not quadratic in the
+  population -- and the aggregate can read `sellers_unmet`.
+* Under a pairing of two, `abm_rules()` and `abm_sequential()` read `R_v` for
+  `(me -> .partner)` and **write** it: `sellers_unmet ~ sellers_unmet +
+  (demand - got)` records a shortfall on the pair it happened to, in the same
+  step as the sale. The pair must exist; an agent with no partner is skipped.
+  `abm_global()`, measures and `abm_tell()` evaluate over the bare population
+  and do not see relations.
+* `abm_link(via = "sellers", to = cand, when = swap)` and
+  `abm_unlink(via = , to = , when = )` add and remove rows. With `to =` no
+  pairing is needed: the other agent is read from a column. A relation is
+  directed, so `via` skips the network's canonicalisation. Rules in `...`
+  set value columns on the rows a link creates, and a pair that already exists
+  is left alone, so "add to an existing balance" is a link followed by a
+  write.
+* New step `abm_pairs(via, ...)` updates every pair of a relation at once,
+  `abm_pairs(via = "loans", balance ~ balance * (1 + r))`, seeing `from_<col>`
+  and `to_<col>` for the two agents and honouring `.when`.
+* `abm_relations(result)` reads the tables back, with `.run`/`.rep` under a
+  sweep. `abm_death()` drops the rows of a dead agent on either side.
+  `abm_odd()` lists a relation as an entity with its value columns.
+
+The point is that the number has one home. Lengnick loses `unmet_at()`,
+`swap_seller()`, `swap_unmet()` and a five-line `Map()` closure, and there is
+no version of the file in which `sellers` and `unmet` can disagree, because
+there is no `unmet` apart from `sellers`. The interbank stub's four hand-aligned
+list columns become one relation, and the reorder that broke it has nothing to
+reorder. `models/open-items.md`, which had carried this as its one entry, is
+empty again.
+
+What a relation is not: it is not sweepable through `params`, not recorded per
+tick (final state only, like the network), and a draw rule, a `.by` rule and
+`abm_tell()` cannot write one. Nothing in the corpus changes; every existing
+model runs identically.
+
+## Two silent edge failures made loud
+
+* **A draw is retired once the edge set changes.** `abm_draw()` attaches one
+  value per edge that exists when it runs. An edge added later in the same
+  tick, by `abm_link()` or by `abm_birth(attach_via =)`, had no such value:
+  `bind_rows()` gave it `NA`, and `sum()` carried that `NA` into every
+  neighbourhood the new edge touched. A model that drew on its edges and grew
+  the network in the same tick returned `NA` aggregates with nothing to say so.
+  The drawn columns are now dropped when edges are added, and an
+  `abm_neighbours()` that still asks for one fails with
+  `tidyABM_stale_draw` and the fix -- put the draw after the step that adds
+  edges. The valid orderings are untouched: draw then read then link, or a
+  second draw after the link, both work as before.
+* **A manual edge list with columns beyond `from` and `to` is refused** rather
+  than having them silently dropped, with `tidyABM_bad_edges`. The message says
+  where such a value belongs: drawn per tick with `abm_draw()`, or kept in an
+  agent column if it has to persist. This is the same rule `abm_match()` already
+  applies to an argument its mode does not use.
+
+Neither changes any model in the corpus; no model draws and then grows its
+network inside one tick. Both came out of asking what per-edge state the
+grammar can and cannot hold, prompted by the Lengnick (2013) model in
+`work in progress/`.
+
 ## `abm_odd()`: an ODD protocol skeleton from the model itself
 
 ODD (Grimm et al. 2006; 2010; 2020) is the template a paper describes an ABM

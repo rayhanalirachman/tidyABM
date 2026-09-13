@@ -84,7 +84,7 @@ run_repeat <- function(step, state) {
     # condition is about the pairing ("until nobody's bid is still under their
     # partner's ask"), so `until` sees `.role` and `partner_<col>` as a rule does
     combined <- bind_groups(state$groups)
-    combined <- augment_group(combined, state$match, combined)
+    combined <- augment_group(combined, state$match, combined, state$relations)
     quo <- rlang::quo_set_env(
       step$until,
       rlang::new_environment(state$globals,

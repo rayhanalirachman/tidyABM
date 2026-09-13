@@ -4,7 +4,13 @@
 \alias{abm_setup}
 \title{Set up a model}
 \usage{
-abm_setup(agents, network = NULL, globals = list(), seed = NULL)
+abm_setup(
+  agents,
+  network = NULL,
+  relations = NULL,
+  globals = list(),
+  seed = NULL
+)
 }
 \arguments{
 \item{agents}{Either one \code{\link[=abm_agents]{abm_agents()}} specification, or a \emph{named} list of
@@ -17,6 +23,11 @@ may be an \code{\link[=abm_grid]{abm_grid()}}, which is sugar for a group plus t
 (\code{type = "grid"} or \code{"line"}) is built before the agent columns are
 materialised, so the wired group's formulas can read \code{.x} and \code{.y} and its
 count is inherited from \code{dims}.}
+
+\item{relations}{Optional named list of \code{\link[=abm_relation]{abm_relation()}} objects: directed,
+valued tables of agent pairs, for state that belongs to two agents
+together. They sit alongside the network, which is unchanged. See
+\code{\link[=abm_relation]{abm_relation()}} for what a rule can read and write on one.}
 
 \item{globals}{A named list of population-level values shared by every agent,
 for example \code{list(last_attendance = 60)}. Globals are readable inside every

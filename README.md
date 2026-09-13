@@ -85,10 +85,11 @@ is the walkthrough, and works the same example line by line.
 |-------------|-----------------|---------------------------------------------------|
 | `agents =`  | `abm_agents()`  | how many agents, and what columns they start with |
 | `network =` | `abm_network()` | a persistent set of connections between them      |
+| `relations =` | `abm_relation()` | directed, valued tables of agent pairs: state that belongs to two agents together |
 | `globals =` | a plain `list()`| values the whole population can read              |
 
 `abm_go()` declares what happens each tick, as a sequence of steps dispatched by
-type and position rather than by argument name. There are twelve of them, in six
+type and position rather than by argument name. There are thirteen of them, in six
 groups. The [reference index](https://rayhanalirachman.github.io/tidyABM/reference/index.html) uses the same six, in the
 same order, which is the order a tick works through them.
 
@@ -116,7 +117,7 @@ agent, everybody.
 
 | step               | what it does                                        |
 |--------------------|-----------------------------------------------------|
-| `abm_link()`       | adds an edge between matched agents                 |
+| `abm_link()`       | adds an edge between matched agents, or with `via =` a pair of a relation |
 | `abm_unlink()`     | removes one                                         |
 
 **4. Edge data.** A value carried by edges that already exist. The topology is
@@ -125,6 +126,7 @@ left alone, which is why this is not part of the group above.
 | step               | what it does                                        |
 |--------------------|-----------------------------------------------------|
 | `abm_draw()`       | attaches a value to every edge, readable from both ends |
+| `abm_pairs()`      | updates the values on every pair of a relation at once; a rule under a match writes one pair as `R_v ~ expr` |
 
 **5. Demographics.** The only steps that change how many agents there are.
 

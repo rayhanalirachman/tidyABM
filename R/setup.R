@@ -1,10 +1,11 @@
 # Model setup ------------------------------------------------------------
 
 new_abm_model <- function(groups, globals, edges, network_spec,
-                          lattice = NULL) {
+                          lattice = NULL, relations = NULL) {
   structure(
     list(groups = groups, globals = globals, edges = edges,
-         network_spec = network_spec, lattice = lattice),
+         network_spec = network_spec, lattice = lattice,
+         relations = relations),
     class = "abm_model"
   )
 }
@@ -30,6 +31,10 @@ new_abm_model <- function(groups, globals, edges, network_spec,
 #'   (`type = "grid"` or `"line"`) is built before the agent columns are
 #'   materialised, so the wired group's formulas can read `.x` and `.y` and its
 #'   count is inherited from `dims`.
+#' @param relations Optional named list of [abm_relation()] objects: directed,
+#'   valued tables of agent pairs, for state that belongs to two agents
+#'   together. They sit alongside the network, which is unchanged. See
+#'   [abm_relation()] for what a rule can read and write on one.
 #' @param globals A named list of population-level values shared by every agent,
 #'   for example `list(last_attendance = 60)`. Globals are readable inside every
 #'   rule and are updated by [abm_global()].
@@ -56,7 +61,8 @@ new_abm_model <- function(groups, globals, edges, network_spec,
 #' )
 #'
 #' abm_run(economy, go, ticks = 10, seed = 1)
-abm_setup <- function(agents, network = NULL, globals = list(), seed = NULL) {
+abm_setup <- function(agents, network = NULL, relations = NULL,
+                      globals = list(), seed = NULL) {
   if (!is.null(seed)) {
     if (!rlang::is_scalar_integerish(seed)) {
       abm_abort("{.arg seed} must be a single whole number.",
@@ -90,7 +96,8 @@ abm_setup <- function(agents, network = NULL, globals = list(), seed = NULL) {
   # in the wired group's formulas and its count can be inherited. Every other
   # network keeps the current order.
   if (is_lattice_spec(network)) {
-    return(with_agent_specs(setup_lattice(specs, network, globals), specs))
+    model <- with_agent_specs(setup_lattice(specs, network, globals), specs)
+    return(attach_relations(model, relations))
   }
 
   groups <- list()
@@ -116,8 +123,19 @@ abm_setup <- function(agents, network = NULL, globals = list(), seed = NULL) {
 
   edges <- materialise_network(network, n = offset)
 
-  with_agent_specs(new_abm_model(groups, as.list(globals), edges, network),
-                   specs)
+  model <- with_agent_specs(new_abm_model(groups, as.list(globals), edges, network),
+                            specs)
+  attach_relations(model, relations)
+}
+
+#' Validate the declared relations against the built population and keep them
+#' @noRd
+attach_relations <- function(model, relations, call = rlang::caller_env()) {
+  model$relations <- validate_relations(
+    relations, n = n_agents(model),
+    agent_cols = setdiff(model_columns(model$groups), c(".id", ".group")),
+    globals = model$globals, call = call)
+  model
 }
 
 #' Keep the `abm_agents()` specifications alongside the population they built
@@ -182,6 +200,10 @@ print.abm_model <- function(x, ...) {
   }
   if (!is.null(x$edges)) {
     cli::cli_bullets(c("*" = "network: {nrow(x$edges)} edge{?s}"))
+  }
+  for (rn in names(x$relations)) {
+    rel <- x$relations[[rn]]
+    cli::cli_bullets(c("*" = "relation {.field {rn}}: {nrow(rel$edges)} pair{?s} [{.val {rel$cols}}]"))
   }
   if (!is.null(x$lattice)) {
     l <- x$lattice

@@ -4,10 +4,18 @@
 \alias{abm_unlink}
 \title{Remove edges between matched agents}
 \usage{
-abm_unlink(when = NULL)
+abm_unlink(when = NULL, via = NULL, to = NULL)
 }
 \arguments{
-\item{when}{Optional condition. Only pairs where it holds are unlinked.}
+\item{when}{Optional condition. Only pairs where it holds are unlinked. On
+a relation it can read the pair's \verb{R_<col>} values, so
+\code{when = loans_balance <= 0} is "once repaid".}
+
+\item{via}{Optional name of a relation, as a string. Absent, the step acts
+on the network.}
+
+\item{to}{For \verb{via =}: an expression naming the other agent's \code{.id}, one per
+agent. Defaults to \code{.partner}.}
 }
 \value{
 An \code{abm_unlink} step object.
@@ -18,6 +26,11 @@ each matched pair. Paired with \code{abm_match(pair = "network")} it detaches an
 agent from one of its neighbours, which, followed by a match and an
 \code{\link[=abm_link]{abm_link()}}, is how you rewire a network.
 }
+\details{
+With \code{via = "R"} it removes rows from the relation \code{R} instead, the row
+\code{(me -> them)} for each agent's \code{.partner} or for the agent named by \verb{to =};
+see \code{\link[=abm_link]{abm_link()}} for how those are read.
+}
 \examples{
 # Watts-Strogatz rewiring: drop a neighbour, pick up a stranger
 abm_go(
@@ -26,6 +39,9 @@ abm_go(
   abm_match(pair = "random", eligible = runif(n()) < 0.1),
   abm_link()
 )
+
+# a loan is closed once it is repaid
+abm_unlink(via = "loans", when = loans_balance <= 0)
 }
 \seealso{
 \code{\link[=abm_go]{abm_go()}}, which lists every step and fixes the order they run

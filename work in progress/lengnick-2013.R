@@ -1,24 +1,30 @@
 # Lengnick (2013), "Agent-based macroeconomics: A baseline model"
 # Journal of Economic Behavior & Organization 86, 102-120
 #
-# STATUS: runs against the package as it stands. The four pieces of grammar it
-# was written to stress landed in 928edbb, so this no longer needs a dirty
-# working tree. They are still what the model leans on, and it is the only
-# model in the corpus that needs all four:
+# STATUS: runs against the package as it stands. Five pieces of grammar were
+# written to be stressed by this model and landed because of it, and it is the
+# only model in the corpus that needs all five:
 #
 #   * `abm_sequential()` writing `partner_<col>` through a standing match,
 #     which is what makes the goods market a real queue: the second buyer at a
 #     shop sees the stock the first one took. `abm_tell()` cannot say it,
 #     because it resolves every sender at once and the stock goes negative.
 #   * `abm_match(weight = )`, a draw probability per candidate.
-#   * `among` evaluated per (chooser, candidate) when it mentions `own_<col>`,
-#     which is what "one of the firms I buy from" needs.
+#   * `among` evaluated per (chooser, candidate) when it mentions `own_<col>`
+#     or a relation, which is what "one of the firms I buy from" needs.
 #   * a match made inside `abm_repeat()` not escaping the block.
+#   * a *relation*: `sellers`, seven firms per household, with `unmet` -- how
+#     much each of them has failed to deliver to *this* household -- living on
+#     the pair. Before relations, `sellers` and `unmet` were two list columns
+#     kept aligned by position by hand, and the model shipped with them out
+#     of step: a price swap wrote one and not the other. There is no version
+#     of this file in which that can happen.
 #
-# Two agent types and two relations. Neither relation is a network, because
-# `abm_setup()` takes one and this model has two that both rewire: who I buy
-# from (`sellers`, seven of them) and who I work for (`employer`). Both are
-# ordinary agent columns, read across with `abm_neighbours(within = )`.
+# Two relations, and only one of them is a relation. Who I work for
+# (`employer`) is a single-valued pointer, and a pointer is a column. Who I buy
+# from (`sellers`) is a set with a value on every pair, and that is a relation.
+# Neither is the network: `abm_setup()` takes one network and it is undirected,
+# and nothing in this model is either.
 #
 # NOTE ON `.scope = "population"`. Most rules here carry it and they are not
 # decoration. A match stands until the next one, so a plain `abm_rules()`
@@ -56,31 +62,18 @@ chi    <- 0.1    # liquidity buffer, times the wage bill
 
 FID <- H + seq_len(F)               # the firms' .ids
 
-## ---- helpers -------------------------------------------------------------
-# how badly this candidate has failed to deliver to this chooser
-unmet_at <- function(id, sellers, unmet) {
-  j <- match(id, sellers)
-  if (is.na(j)) 0 else unmet[[j]]
-}
-swap_seller <- function(s, out, into, do) {
-  if (!do || is.na(out) || is.na(into)) s else replace(s, match(out, s), into)
-}
-# `unmet` is positionally aligned with `sellers`, so a swap has to clear the
-# entry at the index the swap writes. Without this the incoming firm inherits
-# the outgoing firm's rationing history and is weighted to be dropped for it.
-swap_unmet <- function(u, s, out, do) {
-  j <- if (do && !is.na(out)) match(out, s) else NA_integer_
-  if (is.na(j)) u else replace(u, j, 0)
-}
-
 ## ---- 1. the world --------------------------------------------------------
+# The seller draw is built outside `abm_setup(seed =)`, so it is seeded here.
+set.seed(1)
+seller_edges <- data.frame(
+  from = rep(seq_len(H), each = nlink),
+  to   = unlist(lapply(seq_len(H), function(i) sample(FID, nlink))))
+
 economy <- abm_setup(
   agents = list(
     hh = abm_agents(
       n = H, mh = 100, wr = 63, wage = 63, income = 63, employed = TRUE,
       employer  = ~as.integer(rep_len(FID, n)),
-      sellers   = ~lapply(seq_len(n), function(i) sample(FID, nlink)),
-      unmet     = ~lapply(seq_len(n), function(i) numeric(nlink)),
       asked     = ~vector("list", n),
       PI = 1.05, cr = 63, daily = 3, want = 0, demand = 0, got = 0,
       searching = FALSE, visits_left = 0L, hired = FALSE,
@@ -93,6 +86,7 @@ economy <- abm_setup(
       vac = 0L, fire_now = FALSE, filled_run = 0L,
       zeta = 0, eta = 0, calvo = 0, lo_stock = FALSE, hi_stock = FALSE,
       p_lo = 0, p_hi = 0, wagebill = 0, payout = 0)),
+  relations = list(sellers = abm_relation(edges = seller_edges, unmet = 0)),
   globals = list(pool = 0, wealth = 0, excess_demand = 0, vacancy_rate = 0,
                  nonfinite = 0, lapsed = 0, planned = 0,
                  unemployment = 0, price_index = 0, output = 0),
@@ -163,43 +157,43 @@ month <- abm_go(
   ## --- the household looks for better sellers ----------------------------
   abm_neighbours(n_emp ~ n(), within = employer == own_.id),
   abm_rules(n_emp ~ coalesce(n_emp, 0), .scope = "population"),
-  abm_rules(rationed   ~ vapply(unmet, function(u) any(u > 0), logical(1)),
-            hunt_price ~ runif(n()) < th_p,
+  abm_neighbours(rationed ~ any(sellers_unmet > 0), within = .sellers),
+  abm_rules(hunt_price ~ runif(n()) < th_p,
             hunt_quant ~ runif(n()) < th_q,
             .scope = "population"),
 
   # cheaper: a firm I do not buy from, noticed in proportion to its size,
-  # weighed against one of the sellers I have
+  # weighed against one of the sellers I have. The swap is an unlink and a
+  # link; the new pair starts with `unmet = 0` because the relation says so.
   abm_match(pair = "one_of", eligible = hunt_price, weight = n_emp,
-            among = .group == "firms" & !.id %in% own_sellers),
+            among = .group == "firms" & !.sellers),
   abm_rules(cand ~ .partner, cand_price ~ partner_price, .scope = "population"),
   abm_match(pair = "one_of", eligible = hunt_price,
-            among = .group == "firms" & .id %in% own_sellers),
+            among = .group == "firms" & .sellers),
   abm_rules(drop_id ~ .partner,
             swap    ~ !is.na(cand) & !is.na(.partner) &
                       cand_price < (1 - xi) * partner_price,
             .scope = "population"),
-  # both rules see the pre-swap `sellers`, so the index they resolve is the same
-  abm_rules(sellers ~ Map(swap_seller, sellers, drop_id, cand, swap),
-            unmet   ~ Map(swap_unmet,  unmet, sellers, drop_id, swap),
-            .scope = "population"),
+  abm_unlink(via = "sellers", to = drop_id, when = swap),
+  abm_link(via = "sellers", to = cand, when = swap),
 
   # reliable: drop a seller that rationed me, chosen in proportion to how much
   abm_match(pair = "one_of", eligible = hunt_quant & rationed, weight = n_emp,
-            among = .group == "firms" & !.id %in% own_sellers),
+            among = .group == "firms" & !.sellers),
   abm_rules(cand ~ .partner, .scope = "population"),
   abm_match(pair = "one_of", eligible = hunt_quant & rationed,
-            among  = .group == "firms" & .id %in% own_sellers,
-            weight = mapply(unmet_at, .id, own_sellers, own_unmet)),
+            among  = .group == "firms" & .sellers,
+            weight = sellers_unmet),
   abm_rules(drop_id ~ .partner,
             swap    ~ !is.na(cand) & !is.na(.partner),
             .scope  = "population"),
-  abm_rules(sellers ~ Map(swap_seller, sellers, drop_id, cand, swap),
-            unmet   ~ lapply(sellers, function(s) numeric(length(s))),
-            .scope  = "population"),
+  abm_unlink(via = "sellers", to = drop_id, when = swap),
+  abm_link(via = "sellers", to = cand, when = swap),
+  # last month's rationing is forgotten, on every pair at once
+  abm_pairs(via = "sellers", unmet ~ 0),
 
   ## --- and decides what to spend -----------------------------------------
-  abm_neighbours(PI ~ mean(price), within = .id %in% own_sellers),
+  abm_neighbours(PI ~ mean(price), within = .sellers),
   abm_rules(cr ~ pmin((mh / PI)^alpha, mh / PI), .scope = "population"),
   abm_rules(cr ~ if_else(is.finite(cr), cr, 0), .scope = "population"),
   abm_rules(daily ~ cr / days, .scope = "population"),
@@ -212,11 +206,10 @@ month <- abm_go(
     abm_repeat(
       abm_rules(demand ~ 0, got ~ 0, .scope = "population"),
       abm_match(pair = "one_of", eligible = want > 0.05 * daily,
-                among = .group == "firms" &
-                        .id %in% own_sellers &
-                        !.id %in% own_asked),
+                among = .group == "firms" & .sellers & !.id %in% own_asked),
       # the shop serves one customer at a time: what I carry away is what my
-      # money buys and what the customers before me left on the shelf
+      # money buys and what the customers before me left on the shelf. The
+      # shortfall is written on the pair, in the same breath as the sale.
       abm_sequential(
         demand        ~ pmin(want, mh / partner_price),
         got           ~ pmin(demand, partner_inv),
@@ -224,13 +217,9 @@ month <- abm_go(
         want          ~ want - got,
         partner_inv   ~ partner_inv - got,
         partner_mf    ~ partner_mf + got * partner_price,
-        partner_d_cur ~ partner_d_cur + demand),
+        partner_d_cur ~ partner_d_cur + demand,
+        sellers_unmet ~ sellers_unmet + (demand - got)),
       abm_rules(
-        unmet ~ Map(function(u, s, p, x) {
-                      j <- match(p, s)
-                      if (!is.na(j) && isTRUE(x > 0)) u[[j]] <- u[[j]] + x
-                      u
-                    }, unmet, sellers, .partner, demand - got),
         asked ~ Map(function(a, p) if (is.na(p)) a else c(a, p), asked, .partner),
         .scope = "population"),
       until = !any(want > 0.05 * daily, na.rm = TRUE),
@@ -312,7 +301,12 @@ cat(sprintf("price changes per firm-month   median %.2f  skew %+.2f  [paper 0.09
 
 # invariants. The paper is a pure exchange economy, so money only circulates,
 # and inventories can never go negative -- that second one is the direct test
-# of the sequential partner write.
+# of the sequential partner write. Every household keeps exactly `nlink`
+# sellers, which is the direct test that every unlink is paired with a link.
+sel <- abm_relations(result, "sellers")
+per_hh <- tabulate(sel$from, nbins = H)
 cat(sprintf("\nmoney %.2f (should be %d)   min inventory %.2f   non-finite %d\n",
             sum(final_h$mh) + sum(final_f$mf), H * 100 + F * 100,
             min(fm$inv), sum(g$nonfinite)))
+cat(sprintf("sellers per household  min %d  max %d  (should be %d)   unmet >= 0: %s\n",
+            min(per_hh), max(per_hh), nlink, all(sel$unmet >= 0)))

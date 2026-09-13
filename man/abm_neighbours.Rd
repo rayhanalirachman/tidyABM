@@ -33,7 +33,14 @@ A condition of the shape \verb{<col> == own_<col>} (optionally \code{&}-ed with
 more) is recognised and resolved as a hash join rather than by building
 every pair, so the co-location lookup
 \code{within = .group == "patches" & .id == own_.cell} -- "the cell I am
-standing on" -- is linear in the population rather than quadratic.}
+standing on" -- is linear in the population rather than quadratic.
+
+\code{within = .R} for a relation \code{R} (or \code{.R_back}, the reverse direction) is
+the neighbourhood \emph{being} the relation: the rows are the pairs, so it is
+linear in the relation's size and the aggregate sees the pair's values --
+\code{abm_neighbours(rationed ~ any(sellers_unmet > 0), within = .sellers)}.
+A rule's target must be an agent column; a relation's values are updated
+with \code{\link[=abm_pairs]{abm_pairs()}}.}
 
 \item{.where}{Optional lattice direction restricting the neighbourhood to a
 single neighbour: \code{"north"}, \code{"south"}, \code{"east"} or \code{"west"} on a grid;

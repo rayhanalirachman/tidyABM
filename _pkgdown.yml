@@ -58,13 +58,22 @@ reference:
     id in `.cell`, and moving is writing that column.
   contents: [abm_move]
 - title: "Steps: network topology"
-  desc: Changing what is connected to what.
+  desc: >
+    Changing what is connected to what. With `via =`, the same two steps add
+    and remove pairs of a relation.
   contents: [abm_link, abm_unlink]
 - title: "Steps: edge data"
   desc: >
     Attaching a value to edges that already exist, without touching the
     topology.
   contents: [abm_draw]
+- title: Relations
+  desc: >
+    State that belongs to a pair of agents. A relation is a directed, valued
+    table of pairs, several per model, declared alongside the network; a rule
+    reads and writes the pair's values under a match, and `abm_pairs()`
+    updates them all at once.
+  contents: [abm_relation, abm_pairs, abm_relations]
 - title: "Steps: demographics"
   desc: The only steps that change the size of the population.
   contents: [abm_birth, abm_death]
@@ -72,7 +81,7 @@ reference:
   desc: Replaying a block of the steps above within a single tick.
   contents: [abm_repeat]
 - title: Working with results
-  contents: [abm_globals, abm_measures, abm_edges, n_agents]
+  contents: [abm_globals, abm_measures, abm_edges, abm_relations, n_agents]
 - title: Describing a model
   desc: >
     Writing the model up. A tidyABM model is data, so the mechanical half of

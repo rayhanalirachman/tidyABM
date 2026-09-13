@@ -64,7 +64,10 @@ tibble, so it normally collapses to a single value.</p>
 <dl><dt id="arg--">...<a class="anchor" aria-label="anchor" href="#arg--"></a></dt>
 <dd><p>One or more <code>global_name ~ aggregate_expression</code> rules. The
 expression can use agent columns and other globals; each rule sees the
-globals as updated by the rules before it in the same call.</p></dd>
+globals as updated by the rules before it in the same call. It evaluates
+over the bare population, so it does not see <code><a href="abm_relation.html">abm_relation()</a></code> columns:
+aggregate a relation into an agent column with
+<code>abm_neighbours(within = .R)</code> first, then sum that.</p></dd>
 
 
 <dt id="arg--by">.by<a class="anchor" aria-label="anchor" href="#arg--by"></a></dt>

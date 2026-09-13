@@ -98,11 +98,12 @@ declares the world, out of two other specifications and a list:
 |----|----|----|
 | `agents =` | [`abm_agents()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_agents.md) | how many agents, and what columns they start with |
 | `network =` | [`abm_network()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_network.md) | a persistent set of connections between them |
+| `relations =` | [`abm_relation()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_relation.md) | directed, valued tables of agent pairs: state that belongs to two agents together |
 | `globals =` | a plain [`list()`](https://rdrr.io/r/base/list.html) | values the whole population can read |
 
 [`abm_go()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_go.md)
 declares what happens each tick, as a sequence of steps dispatched by
-type and position rather than by argument name. There are twelve of
+type and position rather than by argument name. There are thirteen of
 them, in six groups. The [reference
 index](https://rayhanalirachman.github.io/tidyABM/reference/index.html)
 uses the same six, in the same order, which is the order a tick works
@@ -133,7 +134,7 @@ neighbourhood, one other agent, everybody.
 
 | step | what it does |
 |----|----|
-| [`abm_link()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_link.md) | adds an edge between matched agents |
+| [`abm_link()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_link.md) | adds an edge between matched agents, or with `via =` a pair of a relation |
 | [`abm_unlink()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_unlink.md) | removes one |
 
 **4. Edge data.** A value carried by edges that already exist. The
@@ -143,6 +144,7 @@ above.
 | step | what it does |
 |----|----|
 | [`abm_draw()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_draw.md) | attaches a value to every edge, readable from both ends |
+| [`abm_pairs()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_pairs.md) | updates the values on every pair of a relation at once; a rule under a match writes one pair as `R_v ~ expr` |
 
 **5. Demographics.** The only steps that change how many agents there
 are.
@@ -382,7 +384,8 @@ patch id in `.cell`, and moving is writing that column.
 
 ## Steps: network topology
 
-Changing what is connected to what.
+Changing what is connected to what. With `via =`, the same two steps add
+and remove pairs of a relation.
 
 - [`abm_link()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_link.md)
   : Add edges between matched agents
@@ -396,6 +399,21 @@ topology.
 
 - [`abm_draw()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_draw.md)
   : Attach a value to every edge, visible from both ends
+
+## Relations
+
+State that belongs to a pair of agents. A relation is a directed, valued
+table of pairs, several per model, declared alongside the network; a
+rule reads and writes the pair’s values under a match, and
+[`abm_pairs()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_pairs.md)
+updates them all at once.
+
+- [`abm_relation()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_relation.md)
+  : Declare a relation between agents
+- [`abm_pairs()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_pairs.md)
+  : Update every pair of a relation
+- [`abm_relations()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_relations.md)
+  : Read a run's relations back
 
 ## Steps: demographics
 
@@ -421,6 +439,8 @@ Replaying a block of the steps above within a single tick.
   : Measures recorded during a run
 - [`abm_edges()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_edges.md)
   : The network at the end of a run
+- [`abm_relations()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_relations.md)
+  : Read a run's relations back
 - [`n_agents()`](https://rayhanalirachman.github.io/tidyABM/reference/n_agents.md)
   : Total number of agents in a model
 

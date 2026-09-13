@@ -176,7 +176,7 @@
       </dl></div><div class="section level2">
       <h2 id="steps-network-topology">Steps: network topology<a class="anchor" aria-label="anchor" href="#steps-network-topology"></a></h2>
 
-      <div class="section-desc"><p>Changing what is connected to what.</p></div>
+      <div class="section-desc"><p>Changing what is connected to what. With <code>via =</code>, the same two steps add and remove pairs of a relation.</p></div>
 
       <dl></dl></div><div class="section level2">
 
@@ -212,6 +212,36 @@
 
         </dt>
         <dd>Attach a value to every edge, visible from both ends</dd>
+      </dl></div><div class="section level2">
+      <h2 id="relations">Relations<a class="anchor" aria-label="anchor" href="#relations"></a></h2>
+
+      <div class="section-desc"><p>State that belongs to a pair of agents. A relation is a directed, valued table of pairs, several per model, declared alongside the network; a rule reads and writes the pair’s values under a match, and <code><a href="../reference/abm_pairs.html">abm_pairs()</a></code> updates them all at once.</p></div>
+
+      <dl></dl></div><div class="section level2">
+
+
+
+
+      <dl><dt>
+
+          <code><a href="abm_relation.html">abm_relation()</a></code>
+
+        </dt>
+        <dd>Declare a relation between agents</dd>
+
+        <dt>
+
+          <code><a href="abm_pairs.html">abm_pairs()</a></code>
+
+        </dt>
+        <dd>Update every pair of a relation</dd>
+
+        <dt>
+
+          <code><a href="abm_relations.html">abm_relations()</a></code>
+
+        </dt>
+        <dd>Read a run's relations back</dd>
       </dl></div><div class="section level2">
       <h2 id="steps-demographics">Steps: demographics<a class="anchor" aria-label="anchor" href="#steps-demographics"></a></h2>
 
@@ -281,6 +311,13 @@
 
         </dt>
         <dd>The network at the end of a run</dd>
+
+        <dt>
+
+          <code><a href="abm_relations.html">abm_relations()</a></code>
+
+        </dt>
+        <dd>Read a run's relations back</dd>
 
         <dt>
 

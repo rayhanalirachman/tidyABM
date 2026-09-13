@@ -50,6 +50,15 @@ abm_neighbours(..., within = NULL, .where = NULL)
   `within = .group == "patches" & .id == own_.cell` – "the cell I am
   standing on" – is linear in the population rather than quadratic.
 
+  `within = .R` for a relation `R` (or `.R_back`, the reverse direction)
+  is the neighbourhood *being* the relation: the rows are the pairs, so
+  it is linear in the relation's size and the aggregate sees the pair's
+  values –
+  `abm_neighbours(rationed ~ any(sellers_unmet > 0), within = .sellers)`.
+  A rule's target must be an agent column; a relation's values are
+  updated with
+  [`abm_pairs()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_pairs.md).
+
 - .where:
 
   Optional lattice direction restricting the neighbourhood to a single

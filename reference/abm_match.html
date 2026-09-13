@@ -123,7 +123,12 @@ population condition can say.</p>
 <p>A set-valued column is a list column, so <code>own_sellers</code> arrives here as a
 list with one element per (chooser, candidate) pair. <code>%in%</code> reads it row by
 row, which is what the condition plainly means; with an ordinary atomic
-column it is base's <code>%in%</code> unchanged.</p></dd>
+column it is base's <code>%in%</code> unchanged.</p>
+<p>A relation asks the same question more directly. With
+<code>abm_setup(relations = list(sellers = ...))</code>, <code>among = .sellers</code> is "one
+of the firms I buy from", <code>!.sellers</code> "one I do not", and <code>sellers_unmet</code>
+is the value on that pair – see <code><a href="abm_relation.html">abm_relation()</a></code>. Mentioning any of these
+makes the condition pairwise, as <code>own_&lt;col&gt;</code> does.</p></dd>
 
 
 <dt id="arg-cost">cost<a class="anchor" aria-label="anchor" href="#arg-cost"></a></dt>
@@ -141,8 +146,9 @@ chooser with no acceptable candidate sits the step out.</p></dd>
 <dt id="arg-weight">weight<a class="anchor" aria-label="anchor" href="#arg-weight"></a></dt>
 <dd><p>A draw probability for the candidates, for <code>"one_of"</code>. The
 default is a uniform draw. Evaluated like <code>among</code>: over the population
-unless it mentions an <code>own_&lt;col&gt;</code>, in which case it is per (chooser,
-candidate). Non-positive and <code>NA</code> weights make a candidate unpickable, and
+unless it mentions an <code>own_&lt;col&gt;</code> or a relation, in which case it is per
+(chooser, candidate) – <code>weight = sellers_unmet</code> draws a seller in
+proportion to how much it has rationed <em>this</em> chooser. Non-positive and <code>NA</code> weights make a candidate unpickable, and
 a chooser whose candidates all weigh nothing sits the step out. This is
 what "noticed in proportion to its size" and preferential attachment as a
 <em>step</em> need.</p></dd>

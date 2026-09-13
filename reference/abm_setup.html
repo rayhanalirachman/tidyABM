@@ -57,7 +57,13 @@ shared globals. The result is the <code>model</code> argument of <code><a href="
 
     <div class="section level2">
     <h2 id="ref-usage">Usage<a class="anchor" aria-label="anchor" href="#ref-usage"></a></h2>
-    <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">abm_setup</span><span class="op">(</span><span class="va">agents</span>, network <span class="op">=</span> <span class="cn">NULL</span>, globals <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="op">)</span>, seed <span class="op">=</span> <span class="cn">NULL</span><span class="op">)</span></span></code></pre></div>
+    <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">abm_setup</span><span class="op">(</span></span>
+<span>  <span class="va">agents</span>,</span>
+<span>  network <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  relations <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  globals <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="op">)</span>,</span>
+<span>  seed <span class="op">=</span> <span class="cn">NULL</span></span>
+<span><span class="op">)</span></span></code></pre></div>
     </div>
 
     <div class="section level2">
@@ -77,6 +83,13 @@ may be an <code><a href="abm_grid.html">abm_grid()</a></code>, which is sugar fo
 (<code>type = "grid"</code> or <code>"line"</code>) is built before the agent columns are
 materialised, so the wired group's formulas can read <code>.x</code> and <code>.y</code> and its
 count is inherited from <code>dims</code>.</p></dd>
+
+
+<dt id="arg-relations">relations<a class="anchor" aria-label="anchor" href="#arg-relations"></a></dt>
+<dd><p>Optional named list of <code><a href="abm_relation.html">abm_relation()</a></code> objects: directed,
+valued tables of agent pairs, for state that belongs to two agents
+together. They sit alongside the network, which is unchanged. See
+<code><a href="abm_relation.html">abm_relation()</a></code> for what a rule can read and write on one.</p></dd>
 
 
 <dt id="arg-globals">globals<a class="anchor" aria-label="anchor" href="#arg-globals"></a></dt>

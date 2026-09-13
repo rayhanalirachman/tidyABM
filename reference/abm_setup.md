@@ -16,7 +16,13 @@ and stores the starting values of any shared globals. The result is the
 ## Usage
 
 ``` r
-abm_setup(agents, network = NULL, globals = list(), seed = NULL)
+abm_setup(
+  agents,
+  network = NULL,
+  relations = NULL,
+  globals = list(),
+  seed = NULL
+)
 ```
 
 ## Arguments
@@ -41,6 +47,16 @@ abm_setup(agents, network = NULL, globals = list(), seed = NULL)
   specification. A lattice (`type = "grid"` or `"line"`) is built before
   the agent columns are materialised, so the wired group's formulas can
   read `.x` and `.y` and its count is inherited from `dims`.
+
+- relations:
+
+  Optional named list of
+  [`abm_relation()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_relation.md)
+  objects: directed, valued tables of agent pairs, for state that
+  belongs to two agents together. They sit alongside the network, which
+  is unchanged. See
+  [`abm_relation()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_relation.md)
+  for what a rule can read and write on one.
 
 - globals:
 

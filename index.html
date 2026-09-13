@@ -165,6 +165,11 @@
 <td>a persistent set of connections between them</td>
 </tr>
 <tr>
+<td><code>relations =</code></td>
+<td><code><a href="reference/abm_relation.html">abm_relation()</a></code></td>
+<td>directed, valued tables of agent pairs: state that belongs to two agents together</td>
+</tr>
+<tr>
 <td><code>globals =</code></td>
 <td>a plain <code><a href="https://rdrr.io/r/base/list.html" class="external-link">list()</a></code>
 </td>
@@ -172,7 +177,7 @@
 </tr>
 </tbody>
 </table>
-<p><code><a href="reference/abm_go.html">abm_go()</a></code> declares what happens each tick, as a sequence of steps dispatched by type and position rather than by argument name. There are twelve of them, in six groups. The <a href="https://rayhanalirachman.github.io/tidyABM/reference/index.html">reference index</a> uses the same six, in the same order, which is the order a tick works through them.</p>
+<p><code><a href="reference/abm_go.html">abm_go()</a></code> declares what happens each tick, as a sequence of steps dispatched by type and position rather than by argument name. There are thirteen of them, in six groups. The <a href="https://rayhanalirachman.github.io/tidyABM/reference/index.html">reference index</a> uses the same six, in the same order, which is the order a tick works through them.</p>
 <p><strong>1. Interaction and matching.</strong> Who interacts with whom this tick. It comes first, because everything below reads the pairing it leaves standing.</p>
 <table class="table">
 <colgroup>
@@ -234,7 +239,7 @@
 <tbody>
 <tr>
 <td><code><a href="reference/abm_link.html">abm_link()</a></code></td>
-<td>adds an edge between matched agents</td>
+<td>adds an edge between matched agents, or with <code>via =</code> a pair of a relation</td>
 </tr>
 <tr>
 <td><code><a href="reference/abm_unlink.html">abm_unlink()</a></code></td>
@@ -252,10 +257,17 @@
 <th>step</th>
 <th>what it does</th>
 </tr></thead>
-<tbody><tr>
+<tbody>
+<tr>
 <td><code><a href="reference/abm_draw.html">abm_draw()</a></code></td>
 <td>attaches a value to every edge, readable from both ends</td>
-</tr></tbody>
+</tr>
+<tr>
+<td><code><a href="reference/abm_pairs.html">abm_pairs()</a></code></td>
+<td>updates the values on every pair of a relation at once; a rule under a match writes one pair as <code>R_v ~ expr</code>
+</td>
+</tr>
+</tbody>
 </table>
 <p><strong>5. Demographics.</strong> The only steps that change how many agents there are.</p>
 <table class="table">

@@ -17,7 +17,11 @@ abm_global(..., .by = NULL)
 
   One or more `global_name ~ aggregate_expression` rules. The expression
   can use agent columns and other globals; each rule sees the globals as
-  updated by the rules before it in the same call.
+  updated by the rules before it in the same call. It evaluates over the
+  bare population, so it does not see
+  [`abm_relation()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_relation.md)
+  columns: aggregate a relation into an agent column with
+  `abm_neighbours(within = .R)` first, then sum that.
 
 - .by:
 

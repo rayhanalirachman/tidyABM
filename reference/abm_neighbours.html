@@ -90,7 +90,13 @@ the candidate's columns under their own names and the focal agent's under
 more) is recognised and resolved as a hash join rather than by building
 every pair, so the co-location lookup
 <code>within = .group == "patches" &amp; .id == own_.cell</code> – "the cell I am
-standing on" – is linear in the population rather than quadratic.</p></dd>
+standing on" – is linear in the population rather than quadratic.</p>
+<p><code>within = .R</code> for a relation <code>R</code> (or <code>.R_back</code>, the reverse direction) is
+the neighbourhood <em>being</em> the relation: the rows are the pairs, so it is
+linear in the relation's size and the aggregate sees the pair's values –
+<code>abm_neighbours(rationed ~ any(sellers_unmet &gt; 0), within = .sellers)</code>.
+A rule's target must be an agent column; a relation's values are updated
+with <code><a href="abm_pairs.html">abm_pairs()</a></code>.</p></dd>
 
 
 <dt id="arg--where">.where<a class="anchor" aria-label="anchor" href="#arg--where"></a></dt>

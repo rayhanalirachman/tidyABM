@@ -51,16 +51,33 @@ born, random-graph percolation, tie formation, coalition building.</p>
 
     <div class="section level2">
     <h2 id="ref-usage">Usage<a class="anchor" aria-label="anchor" href="#ref-usage"></a></h2>
-    <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">abm_link</span><span class="op">(</span>when <span class="op">=</span> <span class="cn">NULL</span><span class="op">)</span></span></code></pre></div>
+    <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">abm_link</span><span class="op">(</span><span class="va">...</span>, when <span class="op">=</span> <span class="cn">NULL</span>, via <span class="op">=</span> <span class="cn">NULL</span>, to <span class="op">=</span> <span class="cn">NULL</span><span class="op">)</span></span></code></pre></div>
     </div>
 
     <div class="section level2">
     <h2 id="arguments">Arguments<a class="anchor" aria-label="anchor" href="#arguments"></a></h2>
 
 
-<dl><dt id="arg-when">when<a class="anchor" aria-label="anchor" href="#arg-when"></a></dt>
+<dl><dt id="arg--">...<a class="anchor" aria-label="anchor" href="#arg--"></a></dt>
+<dd><p>For <code>via =</code> only: <code>col ~ expr</code> rules setting value columns on the
+rows this step creates, evaluated per agent over the population with the
+standing match in scope.</p></dd>
+
+
+<dt id="arg-when">when<a class="anchor" aria-label="anchor" href="#arg-when"></a></dt>
 <dd><p>Optional condition. Only pairs where it holds are linked. It can
-use the agent's own columns, <code>partner_&lt;col&gt;</code>, <code>.role</code>, and any global.</p></dd>
+use the agent's own columns, <code>partner_&lt;col&gt;</code>, <code>.role</code>, any global and, on
+a relation, the pair's <code>R_&lt;col&gt;</code> values.</p></dd>
+
+
+<dt id="arg-via">via<a class="anchor" aria-label="anchor" href="#arg-via"></a></dt>
+<dd><p>Optional name of a relation, as a string. Absent, the step acts
+on the network.</p></dd>
+
+
+<dt id="arg-to">to<a class="anchor" aria-label="anchor" href="#arg-to"></a></dt>
+<dd><p>For <code>via =</code>: an expression naming the other agent's <code>.id</code>, one per
+agent. Defaults to <code>.partner</code>.</p></dd>
 
 </dl></div>
     <div class="section level2">
@@ -76,9 +93,26 @@ inside it gains an edge. That is what a team, a committee or a coalition
 means once it is written as a network.</p>
     </div>
     <div class="section level2">
+    <h2 id="on-a-relation">On a relation<a class="anchor" aria-label="anchor" href="#on-a-relation"></a></h2>
+    <p>With <code>via = "R"</code> the step adds rows to the <code><a href="abm_relation.html">abm_relation()</a></code> named <code>R</code>
+instead. A relation is directed, so the row is <code>(me -&gt; them)</code>: from each
+agent to its <code>.partner</code>, or to the agent named by <code>to =</code>. With <code>to =</code> no
+pairing is needed at all – the other agent is read from a column, which is
+what a swap needs when the incumbent being dropped and the newcomer being
+taken on are two different agents held in two columns. <code>size &gt; 2</code> pairings
+are not relations.</p>
+<p>Rules in <code>...</code> set the new rows' value columns; a column not named takes the
+relation's default. A pair that already exists is left exactly as it is –
+the rules do not re-apply – so "add to an existing balance" is a link
+followed by a write:</p>
+<p></p><div class="sourceCode r"><pre><code>abm_link(via = "loans"),                          # creates the pair at 0 if new
+abm_rules(loans_balance ~ loans_balance + take)   # adds either way
+</code></pre><p></p></div>
+    </div>
+    <div class="section level2">
     <h2 id="see-also">See also<a class="anchor" aria-label="anchor" href="#see-also"></a></h2>
     <div class="dont-index"><p><code><a href="abm_go.html">abm_go()</a></code>, which lists every step and fixes the order they run
-in.</p>
+in; <code><a href="abm_relation.html">abm_relation()</a></code> for what a relation is.</p>
 <p>Other network topology steps:
 <code><a href="abm_unlink.html">abm_unlink()</a></code></p></div>
     </div>
@@ -93,6 +127,17 @@ in.</p>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #0000BB;">&lt;abm_go&gt;</span> 2 steps, 1 match phase</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="font-style: italic;">1.</span> match random</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="font-style: italic;">2.</span> link</span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co"># a household takes on the cheaper firm it found, held in `cand`</span></span></span>
+<span class="r-in"><span><span class="fu">abm_link</span><span class="op">(</span>via <span class="op">=</span> <span class="st">"sellers"</span>, to <span class="op">=</span> <span class="va">cand</span>, when <span class="op">=</span> <span class="va">swap</span><span class="op">)</span></span></span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #0000BB;">&lt;abm_link&gt;</span> via sellers</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">•</span> to = `cand`</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">•</span> when = `swap`</span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co"># a new loan from my partner, starting at the amount just borrowed</span></span></span>
+<span class="r-in"><span><span class="fu">abm_link</span><span class="op">(</span>via <span class="op">=</span> <span class="st">"loans"</span>, <span class="va">balance</span> <span class="op">~</span> <span class="va">take</span><span class="op">)</span></span></span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #0000BB;">&lt;abm_link&gt;</span> via loans</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">•</span> <span style="color: #00BB00;">balance</span> ~ `take`</span>
 </code></pre></div>
     </div>
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>

@@ -98,11 +98,12 @@ declares the world, out of two other specifications and a list:
 |----|----|----|
 | `agents =` | [`abm_agents()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_agents.md) | how many agents, and what columns they start with |
 | `network =` | [`abm_network()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_network.md) | a persistent set of connections between them |
+| `relations =` | [`abm_relation()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_relation.md) | directed, valued tables of agent pairs: state that belongs to two agents together |
 | `globals =` | a plain [`list()`](https://rdrr.io/r/base/list.html) | values the whole population can read |
 
 [`abm_go()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_go.md)
 declares what happens each tick, as a sequence of steps dispatched by
-type and position rather than by argument name. There are twelve of
+type and position rather than by argument name. There are thirteen of
 them, in six groups. The [reference
 index](https://rayhanalirachman.github.io/tidyABM/reference/index.html)
 uses the same six, in the same order, which is the order a tick works
@@ -133,7 +134,7 @@ neighbourhood, one other agent, everybody.
 
 | step | what it does |
 |----|----|
-| [`abm_link()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_link.md) | adds an edge between matched agents |
+| [`abm_link()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_link.md) | adds an edge between matched agents, or with `via =` a pair of a relation |
 | [`abm_unlink()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_unlink.md) | removes one |
 
 **4. Edge data.** A value carried by edges that already exist. The
@@ -143,6 +144,7 @@ above.
 | step | what it does |
 |----|----|
 | [`abm_draw()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_draw.md) | attaches a value to every edge, readable from both ends |
+| [`abm_pairs()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_pairs.md) | updates the values on every pair of a relation at once; a rule under a match writes one pair as `R_v ~ expr` |
 
 **5. Demographics.** The only steps that change how many agents there
 are.

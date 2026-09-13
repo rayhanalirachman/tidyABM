@@ -70,6 +70,17 @@ population instead, drawing the next generation from this one, say, and
 `.scope = "population"` evaluates it against every agent at once,
 ignoring the standing match.
 
+Under a pairing of two, a rule also sees the pair's
+[`abm_relation()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_relation.md)
+values, `R_<col>` for `(me -> .partner)` and `R_<col>_back` for the
+reverse row, and a rule whose *target* is one of those writes the pair
+rather than an agent column:
+`sellers_unmet ~ sellers_unmet + (demand - got)` records a shortfall on
+the pair it happened to. The pair must exist – creating it is
+[`abm_link()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_link.md)'s
+job – and an agent with no partner this step is skipped, as a
+`partner_<col>` write is. Not available with `.by`.
+
 ## See also
 
 [`abm_go()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_go.md),

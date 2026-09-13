@@ -54,7 +54,7 @@ agent from one of its neighbours, which, followed by a match and an
 
     <div class="section level2">
     <h2 id="ref-usage">Usage<a class="anchor" aria-label="anchor" href="#ref-usage"></a></h2>
-    <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">abm_unlink</span><span class="op">(</span>when <span class="op">=</span> <span class="cn">NULL</span><span class="op">)</span></span></code></pre></div>
+    <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">abm_unlink</span><span class="op">(</span>when <span class="op">=</span> <span class="cn">NULL</span>, via <span class="op">=</span> <span class="cn">NULL</span>, to <span class="op">=</span> <span class="cn">NULL</span><span class="op">)</span></span></code></pre></div>
     </div>
 
     <div class="section level2">
@@ -62,12 +62,30 @@ agent from one of its neighbours, which, followed by a match and an
 
 
 <dl><dt id="arg-when">when<a class="anchor" aria-label="anchor" href="#arg-when"></a></dt>
-<dd><p>Optional condition. Only pairs where it holds are unlinked.</p></dd>
+<dd><p>Optional condition. Only pairs where it holds are unlinked. On
+a relation it can read the pair's <code>R_&lt;col&gt;</code> values, so
+<code>when = loans_balance &lt;= 0</code> is "once repaid".</p></dd>
+
+
+<dt id="arg-via">via<a class="anchor" aria-label="anchor" href="#arg-via"></a></dt>
+<dd><p>Optional name of a relation, as a string. Absent, the step acts
+on the network.</p></dd>
+
+
+<dt id="arg-to">to<a class="anchor" aria-label="anchor" href="#arg-to"></a></dt>
+<dd><p>For <code>via =</code>: an expression naming the other agent's <code>.id</code>, one per
+agent. Defaults to <code>.partner</code>.</p></dd>
 
 </dl></div>
     <div class="section level2">
     <h2 id="value">Value<a class="anchor" aria-label="anchor" href="#value"></a></h2>
     <p>An <code>abm_unlink</code> step object.</p>
+    </div>
+    <div class="section level2">
+    <h2 id="details">Details<a class="anchor" aria-label="anchor" href="#details"></a></h2>
+    <p>With <code>via = "R"</code> it removes rows from the relation <code>R</code> instead, the row
+<code>(me -&gt; them)</code> for each agent's <code>.partner</code> or for the agent named by <code>to =</code>;
+see <code><a href="abm_link.html">abm_link()</a></code> for how those are read.</p>
     </div>
     <div class="section level2">
     <h2 id="see-also">See also<a class="anchor" aria-label="anchor" href="#see-also"></a></h2>
@@ -91,6 +109,11 @@ in.</p>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="font-style: italic;">2.</span> unlink</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="font-style: italic;">3.</span> match random</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="font-style: italic;">4.</span> link</span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co"># a loan is closed once it is repaid</span></span></span>
+<span class="r-in"><span><span class="fu">abm_unlink</span><span class="op">(</span>via <span class="op">=</span> <span class="st">"loans"</span>, when <span class="op">=</span> <span class="va">loans_balance</span> <span class="op">&lt;=</span> <span class="fl">0</span><span class="op">)</span></span></span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #0000BB;">&lt;abm_unlink&gt;</span> via loans</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">•</span> when = `loans_balance &lt;= 0`</span>
 </code></pre></div>
     </div>
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>

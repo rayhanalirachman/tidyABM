@@ -109,6 +109,13 @@ want, and it is what makes <code>sample(x, 1)</code> mean "once per pair". Occas
 a step in the middle of a tick is about the whole population instead,
 drawing the next generation from this one, say, and <code>.scope = "population"</code>
 evaluates it against every agent at once, ignoring the standing match.</p>
+<p>Under a pairing of two, a rule also sees the pair's <code><a href="abm_relation.html">abm_relation()</a></code> values,
+<code>R_&lt;col&gt;</code> for <code>(me -&gt; .partner)</code> and <code>R_&lt;col&gt;_back</code> for the reverse row, and
+a rule whose <em>target</em> is one of those writes the pair rather than an agent
+column: <code>sellers_unmet ~ sellers_unmet + (demand - got)</code> records a shortfall
+on the pair it happened to. The pair must exist – creating it is
+<code><a href="abm_link.html">abm_link()</a></code>'s job – and an agent with no partner this step is skipped, as
+a <code>partner_&lt;col&gt;</code> write is. Not available with <code>.by</code>.</p>
     </div>
     <div class="section level2">
     <h2 id="see-also">See also<a class="anchor" aria-label="anchor" href="#see-also"></a></h2>

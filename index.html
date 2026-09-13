@@ -13,6 +13,7 @@
 <script src="deps/headroom-0.11.0/headroom.min.js"></script><script src="deps/headroom-0.11.0/jQuery.headroom.min.js"></script><script src="deps/bootstrap-toc-1.0.1/bootstrap-toc.min.js"></script><script src="deps/clipboard.js-2.0.11/clipboard.min.js"></script><script src="deps/search-1.0.0/autocomplete.jquery.min.js"></script><script src="deps/search-1.0.0/fuse.min.js"></script><script src="deps/search-1.0.0/mark.min.js"></script><!-- pkgdown --><script src="pkgdown.js"></script><meta property="og:title" content="Agent-Based Modelling with Tidy Data and a Declarative Grammar">
 <meta name="description" content="A declarative grammar for writing agent-based models (ABMs) in R. Models are described as data rather than as loops, in three parts: abm_setup() declares the agent population, an optional network and shared globals; abm_go() declares an ordered sequence of typed steps (matching, rules, births, deaths and global updates) replayed once per tick; and abm_run() takes the two and returns the result. Agents are stored as tibbles and rules are written as dplyr-style formulas, so a model reads as a specification and its output is tidy data ready for analysis. The design follows the block structure of NetLogo (setup / go) while keeping the interface idiomatic to the tidyverse.">
 <meta property="og:description" content="A declarative grammar for writing agent-based models (ABMs) in R. Models are described as data rather than as loops, in three parts: abm_setup() declares the agent population, an optional network and shared globals; abm_go() declares an ordered sequence of typed steps (matching, rules, births, deaths and global updates) replayed once per tick; and abm_run() takes the two and returns the result. Agents are stored as tibbles and rules are written as dplyr-style formulas, so a model reads as a specification and its output is tidy data ready for analysis. The design follows the block structure of NetLogo (setup / go) while keeping the interface idiomatic to the tidyverse.">
+<meta property="og:image" content="https://rayhanalirachman.github.io/tidyABM/logo.svg">
 </head>
 <body>
     <a href="#main" class="visually-hidden-focusable">Skip to contents</a>
@@ -55,8 +56,11 @@
 </nav><div class="container template-home">
 <div class="row">
   <main id="main" class="col-md-9"><div class="section level1">
-<div class="page-header"><h1 id="tidyabm">tidyABM<a class="anchor" aria-label="anchor" href="#tidyabm"></a>
-</h1></div>
+<div class="page-header">
+<img src="logo.svg" class="logo" alt=""><h1 id="tidyabm-">tidyABM 
+<a class="anchor" aria-label="anchor" href="#tidyabm-"></a>
+</h1>
+</div>
 <!-- badges: start -->
 
 <p>Agent-based models, written as a specification rather than a loop.</p>

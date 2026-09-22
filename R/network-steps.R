@@ -302,7 +302,15 @@ run_unlink <- function(step, state) {
 #' Each rule is `column ~ aggregate_expression`, and the expression is
 #' evaluated over the neighbours' rows, so `sum(infected)` means "how many of
 #' my neighbours are infected" and `mean(opinion)` means "what my neighbours
-#' think on average". An agent with no neighbours gets `NA`.
+#' think on average".
+#'
+#' An agent with no neighbours gets `NA`, with one exception: a rule that is
+#' exactly `n()` gets `0`. The size of a neighbourhood is never unknown, so a
+#' count of nobody is nought and needs no `coalesce()` to guard it. Every other
+#' aggregate keeps `NA`, because `mean()` over nobody is genuinely unknown and
+#' because a `sum()` over a neighbourhood of one -- a lookup of the single
+#' agent a column points at -- is how a model asks whether that agent exists
+#' at all.
 #'
 #' Alongside each neighbour column the expression also sees `own_<col>`, the
 #' focal agent's own value of that column, recycled down its neighbourhood.
@@ -426,13 +434,21 @@ abm_neighbours <- function(..., within = NULL, .where = NULL) {
 #' `abm_match(cost =)` minimises over and the one `abm_neighbours()` aggregates
 #' over, so a comparison written for one means the same thing in the other.
 #' @noRd
-pair_view <- function(combined, focal_idx, cand_idx, relations = NULL) {
+pair_view <- function(combined, focal_idx, cand_idx, relations = NULL,
+                      vars = NULL) {
+  # `vars` are the names the caller's expressions read; only those columns
+  # are copied into the view, which for a lattice is tens of thousands of
+  # rows wide. `NULL` copies every column.
   cols <- names(combined)
-  view <- combined[cand_idx, cols, drop = FALSE]
-  own <- combined[focal_idx, cols, drop = FALSE]
-  names(own) <- paste0("own_", cols)
-  view <- dplyr::bind_cols(view, own)
-  view$.of <- combined$.id[focal_idx]
+  cand_cols <- if (is.null(vars)) cols else intersect(cols, c(".id", vars))
+  own_cols <- if (is.null(vars)) cols else
+    intersect(cols, sub("^own_", "", grep("^own_", vars, value = TRUE)))
+  view <- tibble::new_tibble(c(
+    as.list(vctrs::vec_slice(combined[cand_cols], cand_idx)),
+    stats::setNames(as.list(vctrs::vec_slice(combined[own_cols], focal_idx)),
+                    sprintf("own_%s", own_cols)),
+    list(.of = combined$.id[focal_idx])
+  ), nrow = length(cand_idx))
   attach_relation_columns(view, relations, view$.of, view$.id)
 }
 
@@ -445,12 +461,12 @@ eval_over_view <- function(quo, view, globals) {
 
 #' The (focal, neighbour) view for a network neighbourhood
 #' @noRd
-network_view <- function(combined, state) {
-  nb <- neighbour_table(state$edges)
+network_view <- function(combined, state, vars = NULL) {
+  nb <- state$nb_cache$nb
   keep <- nb$.id %in% combined$.id & nb$.neighbour %in% combined$.id
-  nb <- nb[keep, , drop = FALSE]
+  nb <- vctrs::vec_slice(nb, keep)
   view <- pair_view(combined, match(nb$.id, combined$.id),
-                    match(nb$.neighbour, combined$.id), state$relations)
+                    match(nb$.neighbour, combined$.id), state$relations, vars)
   attach_edge_columns(view, state$edges, nb)
 }
 
@@ -497,6 +513,8 @@ attribute_view <- function(step, combined, globals, relations = NULL) {
 run_neighbours <- function(step, state) {
   combined <- bind_groups(state$groups)
   if (nrow(combined) == 0L) return(state)
+  vars <- unique(c(unlist(lapply(step$rules, `[[`, "vars"), use.names = FALSE),
+                   if (!is.null(step$within)) all.vars(rlang::quo_get_expr(step$within))))
 
   if (!is.null(step$where)) {
     # L1: the single lattice neighbour in a named direction
@@ -505,7 +523,7 @@ run_neighbours <- function(step, state) {
     # `within = .R` walks the relation's rows; a `<col> == own_<col>` condition
     # is a join; anything else is the cross product
     view <- relation_view(step, combined, state$relations) %||%
-      equijoin_view(step, combined, state$globals, state$relations) %||%
+      equijoin_view(step, combined, state$globals, state$relations, vars) %||%
       attribute_view(step, combined, state$globals, state$relations)
   } else {
     if (is.null(state$edges)) {
@@ -517,7 +535,11 @@ run_neighbours <- function(step, state) {
       )
     }
     check_stale_draws(step, state)
-    view <- network_view(combined, state)
+    # the neighbour table only changes when the edges do, and edges rarely do
+    if (!identical(state$nb_cache$edges, state$edges)) {
+      state$nb_cache <- list(edges = state$edges, nb = neighbour_table(state$edges))
+    }
+    view <- network_view(combined, state, vars)
   }
 
   for (r in step$rules) {
@@ -530,17 +552,84 @@ run_neighbours <- function(step, state) {
       )
     }
     quo <- rlang::quo_set_env(r$quo, abm_eval_env(r$quo, state$globals))
-    agg <- dplyr::summarise(dplyr::group_by(view, .data$.of),
-                            .abm_value = !!quo, .groups = "drop")
+    agg <- neighbour_aggregate(quo, view) %||%
+      dplyr::summarise(dplyr::group_by(view, .data$.of),
+                       .abm_value = !!quo, .groups = "drop")
+    # An agent with no neighbours contributes no row, so the aggregate has no
+    # value for it and the agent gets `NA`. That is right for `mean()`, whose
+    # value over nobody is genuinely unknown, and for a `sum()` used as a
+    # lookup, where `NA` is how a model asks whether the neighbour exists at
+    # all. It is wrong for `n()` alone: the size of a neighbourhood is never
+    # unknown, and the count of nobody is nought.
+    count_rule <- is_bare_count(r$quo) && is.null(step$where)
     for (nm in names(state$groups)) {
       g <- state$groups[[nm]]
       if (nrow(g) == 0L) next
-      value <- agg$.abm_value[match(g$.id, agg$.of)]
+      idx <- match(g$.id, agg$.of)
+      value <- agg$.abm_value[idx]
+      if (count_rule && anyNA(idx)) value[is.na(idx)] <- 0L
       g[[r$target]] <- value
       state$groups[[nm]] <- g
     }
   }
   state
+}
+
+#' `sum()`, `mean()`, `any()`, `all()` and `n()` over every neighbourhood at once
+#'
+#' The argument is elementwise, so it is evaluated once over the whole view and
+#' folded per focal agent with `rowsum()`, instead of `summarise()` evaluating
+#' the aggregate once per group. Exact for integer and logical input, which is
+#' what a count or a share of neighbours is; a double `sum()` or `mean()` keeps
+#' the `summarise()` path, whose long-double accumulation this does not
+#' reproduce bit for bit. Returns `NULL` for any other shape.
+#' ponytail: five aggregate shapes, extend when a model's hot rule has another
+#' @noRd
+neighbour_aggregate <- function(quo, view) {
+  expr <- rlang::quo_get_expr(quo)
+  if (!rlang::is_call(expr) || !rlang::is_symbol(expr[[1]])) return(NULL)
+  fn <- rlang::as_string(expr[[1]])
+  g <- view$.of
+  if (fn == "n" && length(expr) == 1L) {
+    s <- rowsum(rep(1L, length(g)), g)
+    return(list(.of = as.integer(rownames(s)), .abm_value = as.vector(s)))
+  }
+  if (!fn %in% c("sum", "mean", "any", "all") || length(expr) != 2L ||
+      !is_elementwise(expr[[2]])) {
+    return(NULL)
+  }
+  v <- rlang::eval_tidy(rlang::new_quosure(expr[[2]], rlang::quo_get_env(quo)),
+                        data = view)
+  if (length(v) == 1L) v <- rep(v, nrow(view))
+  if (length(v) != nrow(view)) return(NULL)
+  if (fn %in% c("sum", "mean")) {
+    if (!is.integer(v) && !is.logical(v)) return(NULL)
+    s <- rowsum(as.integer(v), g)
+    out <- as.vector(s)
+    if (fn == "mean") out <- out / as.vector(rowsum(rep(1L, length(g)), g))
+  } else {
+    if (!is.logical(v)) return(NULL)
+    na <- as.vector(rowsum(as.integer(is.na(v)), g)) > 0
+    s <- rowsum(as.integer(v %in% (fn == "any")), g)
+    hit <- as.vector(s) > 0
+    out <- if (fn == "any") hit else !hit
+    out[!hit & na] <- NA
+  }
+  list(.of = as.integer(rownames(s)), .abm_value = out)
+}
+
+#' Is this rule exactly `n()` -- the size of the neighbourhood and nothing else?
+#'
+#' Only the bare count is treated as nought over an empty neighbourhood. `n()`
+#' inside a larger expression is not: `sum(on) / n()` over nobody is `0 / 0`,
+#' and answering `0` there would be a different claim than the arithmetic makes.
+#' @noRd
+is_bare_count <- function(quo) {
+  expr <- rlang::quo_get_expr(quo)
+  if (!rlang::is_call(expr) || length(expr) != 1L) return(FALSE)
+  head <- expr[[1]]
+  if (rlang::is_call(head, "::")) head <- head[[3]]
+  rlang::is_symbol(head) && rlang::as_string(head) == "n"
 }
 
 #' @export

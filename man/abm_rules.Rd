@@ -56,6 +56,15 @@ a step in the middle of a tick is about the whole population instead,
 drawing the next generation from this one, say, and \code{.scope = "population"}
 evaluates it against every agent at once, ignoring the standing match.
 
+A match stands until the next one or until the tick ends, and it decides
+\emph{who is written} as well as how the rules are grouped: an agent the match
+left out keeps the value it had, silently. That is the intended reading of
+"only the agents who met do this", and it is the wrong one for a rule that
+happens to sit after a match and is meant for everybody. When the pairing
+is partial or directional -- \code{"one_of"}, \code{"network"}, \code{"nearest"}, or any
+mode under an \code{eligible} -- say \code{.scope = "population"} on such a rule
+rather than relying on position.
+
 Under a pairing of two, a rule also sees the pair's \code{\link[=abm_relation]{abm_relation()}} values,
 \verb{R_<col>} for \code{(me -> .partner)} and \verb{R_<col>_back} for the reverse row, and
 a rule whose \emph{target} is one of those writes the pair rather than an agent

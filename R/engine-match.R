@@ -1,9 +1,13 @@
 # Match execution --------------------------------------------------------
 
-empty_match <- function() {
-  tibble::tibble(.id = integer(), .partner = integer(),
-                 .role = character(), .group_id = integer())
-}
+# built once: `abm_match(.by =)` returns this for every partition it skips,
+# and `tibble::tibble()` costs more than the partitions it was skipping
+.empty_match <- tibble::new_tibble(
+  list(.id = integer(), .partner = integer(), .role = character(),
+       .group_id = integer()),
+  nrow = 0L
+)
+empty_match <- function() .empty_match
 
 #' Evaluate a condition quosure against the agent tibble + globals
 #' @noRd
@@ -58,11 +62,13 @@ assign_roles <- function(role_quo, agents, globals, a_idx, b_idx) {
 #' only. A match decides who meets whom; it never writes an agent column.
 #' @noRd
 run_match <- function(spec, agents, edges, globals, call = rlang::caller_env(),
-                      relations = NULL) {
+                      relations = NULL, eligible = NULL) {
   if (!is.null(spec$dot_by)) {
     return(run_match_by(spec, agents, edges, globals, call, relations))
   }
-  eligible <- eval_condition(spec$eligible, agents, globals)
+  # `eligible` arrives precomputed from `run_match_by()`, which evaluates it
+  # once over the population rather than once per partition
+  eligible <- eligible %||% eval_condition(spec$eligible, agents, globals)
   pool <- agents$.id[eligible]
   # `eligible` says who takes part; `among` says who may be picked. They are
   # different questions for the directional modes, where choosing is one-way.
@@ -101,12 +107,19 @@ run_match_by <- function(spec, agents, edges, globals, call, relations = NULL) {
 
   key <- agents[[by]]
   parts <- split(seq_len(nrow(agents)), key)          # `split()` drops NA keys
+  eligible <- eval_condition(spec$eligible, agents, globals)
+  # a partition with nobody eligible pairs nobody, and a mutual mode needs two;
+  # on a lattice most cells are one of those, so they are skipped before any
+  # tibble is built for them
+  need <- if (spec$pair %in% c("random", "opposite_group")) spec$size else 1L
   out <- vector("list", length(parts))
   offset <- 0L
   for (i in seq_along(parts)) {
-    sub <- agents[parts[[i]], , drop = FALSE]
-    if (nrow(sub) == 0L) next
-    m <- run_match(inner, sub, edges, globals, call, relations)
+    idx <- parts[[i]]
+    el <- eligible[idx]
+    if (sum(el) < need) next
+    sub <- vctrs::vec_slice(agents, idx)
+    m <- run_match(inner, sub, edges, globals, call, relations, eligible = el)
     if (nrow(m) == 0L) next
     m$.group_id <- m$.group_id + offset
     offset <- max(m$.group_id)

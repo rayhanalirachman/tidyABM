@@ -78,11 +78,23 @@ from seed to seed in both variants, and the paired difference the fix makes is
   +0.50 before the fix. Given how much the Phillips correlation moves on seed
   alone, this has not been checked across seeds either and should not be read as
   the fix making it worse.
-* A standing match reaches further than it looks. Most rules here carry
+* **Closed: the semantics stand, and it is a documentation matter.** A standing
+  match reaches further than it looks. Most rules here carry
   `.scope = "population"` because a match stands until the next one; dropping
   them from the month-end block once created 18,000 units of money while every
-  printed number stayed plausible. Either the semantics want tightening or
-  `abm_go()` wants to complain.
+  printed number stayed plausible. The question was whether the semantics wanted
+  tightening or `abm_go()` wanted to complain, so the complaint was written and
+  measured before being shipped: a static scan of all 69 scripts in the corpus
+  for an `abm_rules()` downstream of a match that names nothing about the
+  pairing and sets no `.scope` or `.by`. Seven steps matched. Three are grouped
+  aggregates that mean "per pair" (`sum(contribution)` in the public goods
+  game), one writes a relation value and *needs* the match (the interbank stub),
+  and the remaining three -- bank reserves, Axelrod, N-person PD -- are all
+  deliberate and all correct, because their pairing matches everybody. Zero
+  bugs. A warning that is wrong on every instance in the corpus is noise, so
+  none was added; `abm_rules()` now says instead that a match decides *who is
+  written* as well as how the rules are grouped, and names the partial modes
+  where that bites.
 * **Closed, and worth keeping on the record.** `sellers` and `unmet` were two
   positionally-aligned list columns, and the price swap changed one without the
   other: `swap_seller()` wrote the incoming firm at the *dropped* firm's index,
@@ -98,7 +110,48 @@ from seed to seed in both variants, and the paired difference the fix makes is
   the same `abm_sequential()` as the sale, and there is no version of the file
   in which the two can disagree. This was the model that put *state that
   belongs to a pair* on `open-items.md`, and the one that took it off.
-* `abm_neighbours()` gives `NA` to an agent with no neighbours. Right for
-  `mean(opinion)`, wrong for `n()`: a firm that lost its last worker got
-  `n_emp = NA`, which ate its inventory and collapsed the economy 90 months
-  later. Hence the `coalesce(n_emp, 0)` after every count.
+* **Closed, narrowly.** `abm_neighbours()` gave `NA` to an agent with no
+  neighbours. Right for `mean(opinion)`, wrong for `n()`: a firm that lost its
+  last worker got `n_emp = NA`, which ate its inventory and collapsed the
+  economy 90 months later. Hence the `coalesce(n_emp, 0)` after every count. A
+  rule that is exactly `n()` now gives `0`, and those three guards are
+  redundant. Nothing else changed, and the reason is in this file: the wider
+  fix -- every aggregate evaluated over no rows, so `sum()` is `0` and `any()`
+  is `FALSE` by R's own semantics -- was written and run against this model,
+  which reported unemployment of exactly zero in all 96 months and `NA` for
+  both correlations. Line 136 is why. `employed ~ !is.na(income)` against
+  `income ~ sum(wage_f), within = .id == own_employer` uses `NA` to mean "no
+  employer", so an empty-set `sum()` employs everybody. A `sum()` over a
+  neighbourhood of one is a *lookup* of the agent a column points at, and the
+  package cannot tell that from a count. Only the case that cannot be a lookup
+  moved. Whether the lookup shape deserves a grammar of its own -- something
+  that says "the one agent I point at" rather than a neighbourhood of one --
+  is the open question this left behind.
+* **Closed, and worth keeping on the record.** `sellers` and `unmet` were two
+  positionally-aligned list columns, and the price swap changed one without the
+  other: `swap_seller()` wrote the incoming firm at the *dropped* firm's index,
+  and `unmet` was not reset until after the quantity hunt had already read it as
+  a draw weight, so a household that price-swapped weighted the firm it had
+  just started buying from by the rationing history of the firm it had just
+  dropped. It moved no stylised fact across five seeds, which is precisely why
+  it survived: a misattributed draw weight changes who gets dropped without
+  changing any aggregate enough to notice. A first fix added a `swap_unmet()`
+  companion write. The real fix was to stop having two columns: `sellers` is
+  now an `abm_relation()` with `unmet` on the pair, the swap is an
+  `abm_unlink()` and an `abm_link()`, the shortfall is written on the pair in
+  the same `abm_sequential()` as the sale, and there is no version of the file
+  in which the two can disagree. This was the model that put *state that
+  belongs to a pair* on `open-items.md`, and the one that took it off.
+* **Closed.** `abm_neighbours()` gave `NA` to an agent with no neighbours.
+  Right for `mean(opinion)`, wrong for `n()`: a firm that lost its last worker
+  got `n_emp = NA`, which ate its inventory and collapsed the economy 90 months
+  later. Hence the `coalesce(n_emp, 0)` after every count -- and after 12 more
+  counts elsewhere in the corpus, which is what finally made the case. An empty
+  neighbourhood is now an empty *set* rather than an unknown one: the aggregate
+  is evaluated over no rows and R's own semantics answer, so `n()` and `sum()`
+  are nought, `any()` is `FALSE`, `all()` is `TRUE` and `mean()` is still
+  `NaN`. Nothing enumerates aggregates or picks a fill value. `.where` is the
+  exception and keeps `NA`, because it names a single neighbour that may not
+  exist rather than a set that may be empty -- a bounded edge has no cell
+  there, and answering `0` would invent a dead one. The `coalesce()` calls are
+  now redundant rather than load-bearing.

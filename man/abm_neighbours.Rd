@@ -61,7 +61,15 @@ the agents around it.
 Each rule is \code{column ~ aggregate_expression}, and the expression is
 evaluated over the neighbours' rows, so \code{sum(infected)} means "how many of
 my neighbours are infected" and \code{mean(opinion)} means "what my neighbours
-think on average". An agent with no neighbours gets \code{NA}.
+think on average".
+
+An agent with no neighbours gets \code{NA}, with one exception: a rule that is
+exactly \code{n()} gets \code{0}. The size of a neighbourhood is never unknown, so a
+count of nobody is nought and needs no \code{coalesce()} to guard it. Every other
+aggregate keeps \code{NA}, because \code{mean()} over nobody is genuinely unknown and
+because a \code{sum()} over a neighbourhood of one -- a lookup of the single
+agent a column points at -- is how a model asks whether that agent exists
+at all.
 
 Alongside each neighbour column the expression also sees \verb{own_<col>}, the
 focal agent's own value of that column, recycled down its neighbourhood.

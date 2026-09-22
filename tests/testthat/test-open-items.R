@@ -25,7 +25,9 @@ test_that("within = needs no network, and the focal agent is inside its own", {
 
   r2 <- abm_run(pop, abm_go(abm_neighbours(
     near ~ dplyr::n(), within = x == own_x & .id != own_.id)), ticks = 1)
-  expect_true(all(is.na(dplyr::filter(r2, tick == 1)$near)))
+  # nobody else shares an x, so every confidence set is empty -- and the
+  # count of an empty set is nought, not unknown
+  expect_true(all(dplyr::filter(r2, tick == 1)$near == 0L))
 })
 
 test_that("bounded confidence fragments below its critical eps", {

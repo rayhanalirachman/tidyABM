@@ -156,7 +156,9 @@ resolve_messages <- function(value, to, resolve, target,
 run_tell <- function(step, state) {
   combined <- bind_groups(state$groups)
   if (nrow(combined) == 0L) return(state)
-  aug <- augment_group(combined, state$match, combined, state$relations)
+  aug <- augment_group(combined, state$match, combined, state$relations,
+                       partner = partner_vars(c(list(step$when, step$to_quo, step$order),
+                                                lapply(step$rules, `[[`, "quo"))))
 
   speaks <- eval_condition(step$when, aug, state$globals)
   speaks[is.na(speaks)] <- FALSE

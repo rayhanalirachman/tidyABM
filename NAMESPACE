@@ -66,7 +66,10 @@ importFrom(dplyr,
   if_else,
   n
 )
-importFrom(rlang,.data)
+importFrom(rlang,
+  "%||%",
+  .data
+)
 importFrom(stats,
   rlnorm,
   rnorm,

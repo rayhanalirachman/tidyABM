@@ -538,7 +538,8 @@ equijoin_key <- function(within_expr) {
 #' when the pattern is not present, so the caller can fall back to the full
 #' [attribute_view()].
 #' @noRd
-equijoin_view <- function(step, combined, globals, relations = NULL) {
+equijoin_view <- function(step, combined, globals, relations = NULL,
+                          vars = NULL) {
   key <- equijoin_key(rlang::quo_get_expr(step$within))
   if (is.null(key)) return(NULL)
   if (!key$focal %in% names(combined) || !key$cand %in% names(combined)) {
@@ -563,7 +564,7 @@ equijoin_view <- function(step, combined, globals, relations = NULL) {
 
   cand_idx <- ord[sequence(reps[hit], from = starts[j[hit]])]
   focal_idx <- rep(seq_len(n), reps)
-  view <- pair_view(combined, focal_idx, cand_idx, relations)
+  view <- pair_view(combined, focal_idx, cand_idx, relations, vars)
   if (length(key$rest)) {
     env <- rlang::quo_get_env(step$within)
     rest_expr <- Reduce(function(a, b) rlang::call2("&", a, b), key$rest)

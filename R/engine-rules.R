@@ -47,7 +47,13 @@ condition_applies <- function(quo, g, all_cols, globals) {
 #' `FALSE`) for an agent with no partner. They travel with `partner_<col>`
 #' because they are about the same pair.
 #' @noRd
-augment_group <- function(g, match_state, combined, relations = NULL) {
+augment_group <- function(g, match_state, combined, relations = NULL,
+                          partner = NULL) {
+  # `partner` names the columns the step reads as `partner_<col>`; the rest
+  # are not built, since copying every column of every agent for every step
+  # is most of what a step costs. `NULL` builds them all.
+  pcols <- setdiff(names(combined), c(".id", ".group"))
+  if (!is.null(partner)) pcols <- intersect(pcols, partner)
   if (is.null(match_state)) {
     g$.group_id <- seq_len(nrow(g))
     g$.role <- NA_character_
@@ -62,7 +68,7 @@ augment_group <- function(g, match_state, combined, relations = NULL) {
     g$.role <- NA_character_
     g$.partner <- NA_integer_
     if (match_state$size == 2L) {
-      for (nm in setdiff(names(combined), c(".id", ".group"))) {
+      for (nm in pcols) {
         g[[paste0("partner_", nm)]] <- combined[[nm]][NA_integer_][rep(1L, nrow(g))]
       }
       g <- attach_relation_columns(g, relations, g$.id, g$.partner)
@@ -76,7 +82,6 @@ augment_group <- function(g, match_state, combined, relations = NULL) {
   g$.group_id <- m$.group_id[idx]
 
   if (match_state$size == 2L) {
-    pcols <- setdiff(names(combined), c(".id", ".group"))
     pidx <- match(g$.partner, combined$.id)
     for (nm in pcols) {
       g[[paste0("partner_", nm)]] <- combined[[nm]][pidx]
@@ -123,6 +128,16 @@ write_relation_rule <- function(state, hit, target, value, aug, rows, step,
 #' @noRd
 eval_rule <- function(rule, aug, globals, grouped, by = NULL) {
   quo <- rule$quo
+  # ungrouped, the data mask gives an expression nothing `eval_tidy()` over the
+  # same tibble does not, and `mutate()` costs a hundred times more. A result
+  # of the wrong length goes back through `mutate()` so its error is the one
+  # raised.
+  if (is.null(by) && !grouped && !needs_mask(rlang::quo_get_expr(quo))) {
+    out <- rlang::eval_tidy(
+      rlang::quo_set_env(quo, abm_eval_env(quo, globals, n = nrow(aug))),
+      data = aug)
+    if (length(out) == nrow(aug) || length(out) == 1L) return(out)
+  }
   quo <- rlang::quo_set_env(quo, abm_eval_env(quo, globals))
 
   dat <- if (!is.null(by)) dplyr::group_by(aug, .data[[by]])
@@ -171,7 +186,8 @@ run_rules <- function(step, state) {
   for (nm in names(state$groups)) {
     g <- state$groups[[nm]]
     if (nrow(g) == 0L) next
-    aug <- augment_group(g, state$match, combined, state$relations)
+    aug <- augment_group(g, state$match, combined, state$relations,
+                         partner = partner_vars(lapply(step$rules, `[[`, "quo")))
     rows <- if (active && grouped) !is.na(aug$.group_id) else rep(TRUE, nrow(g))
 
     todo <- Filter(function(r) rule_applies(r, g, all_cols, state$globals),
@@ -179,8 +195,11 @@ run_rules <- function(step, state) {
     if (!length(todo)) next
     applied_anywhere <- TRUE
 
-    values <- lapply(todo, eval_rule, aug = aug, globals = state$globals,
-                     grouped = grouped)
+    # an elementwise rule gives the same answer per pair as over the whole
+    # group, so it is evaluated once rather than once per pair
+    values <- lapply(todo, function(r) {
+      eval_rule(r, aug, state$globals, grouped = grouped && !isTRUE(r$elementwise))
+    })
     for (i in seq_along(todo)) {
       # a target that names a value on a pair goes to the relation, not to an
       # agent column of the same name

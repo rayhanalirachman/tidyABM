@@ -91,12 +91,19 @@ bind_groups <- function(groups) {
   if (length(groups) == 1L) {
     return(tibble::as_tibble(groups[[1]]))
   }
-  dplyr::bind_rows(groups)
+  # what `bind_rows()` does, without its argument handling: this runs on
+  # every step of every tick
+  do.call(vctrs::vec_rbind, unname(groups))
 }
 
-#' Shorthand for a tibble of NA-padded columns
+#' The columns a set of quosures reads through `partner_<col>`
 #' @noRd
-`%||%` <- function(x, y) if (is.null(x)) y else x
+partner_vars <- function(quos) {
+  vars <- unlist(lapply(Filter(Negate(is.null), quos), function(q) {
+    all.vars(rlang::quo_get_expr(q))
+  }), use.names = FALSE)
+  sub("^partner_", "", grep("^partner_", vars, value = TRUE))
+}
 
 #' Edges without the internal columns `abm_draw()` attaches to them
 #' @noRd
@@ -155,8 +162,63 @@ in_rowwise <- function(x, table) {
 #' formula means the same thing wherever it is written: in `abm_rules()`, in
 #' `abm_match(among =)`, in `abm_neighbours(within =)`.
 #' @noRd
-abm_eval_env <- function(quo, globals) {
+abm_eval_env <- function(quo, globals, n = NULL) {
   env <- rlang::quo_get_env(quo)
   if (length(globals)) env <- rlang::new_environment(globals, parent = env)
-  rlang::new_environment(list(`%in%` = in_rowwise), parent = env)
+  # `n` is bound when the expression is evaluated outside a dplyr mask, so
+  # `n()` still means the number of rows
+  ops <- list(`%in%` = in_rowwise)
+  if (!is.null(n)) ops$n <- function() n
+  rlang::new_environment(ops, parent = env)
+}
+
+# dplyr's context helpers: the only things an ungrouped `mutate()` supplies
+# that `eval_tidy()` over the same tibble does not. `n()` is bound by
+# [abm_eval_env()] instead, so it is not listed.
+mask_only_fns <- c(
+  "row_number", "cur_group", "cur_group_id", "cur_group_rows", "cur_column",
+  "cur_data", "cur_data_all", "across", "pick", "if_any", "if_all", "c_across"
+)
+
+#' Does an expression call anything only a dplyr mask can answer?
+#'
+#' A qualified `dplyr::n()` counts too: it reaches past the bound `n`.
+#' @noRd
+needs_mask <- function(expr) {
+  if (!is.call(expr)) return(FALSE)
+  head <- expr[[1]]
+  if (rlang::is_call(head, "::")) {
+    fn <- rlang::as_string(head[[3]])
+    if (fn == "n" || fn %in% mask_only_fns) return(TRUE)
+  } else if (rlang::is_symbol(head) && rlang::as_string(head) %in% mask_only_fns) {
+    return(TRUE)
+  }
+  any(vapply(as.list(expr)[-1], needs_mask, logical(1)))
+}
+
+# Functions whose value on a row depends on that row alone. A rule built only
+# from these means the same thing evaluated per pair as over the population,
+# so the per-group evaluation a standing match normally forces can be skipped.
+# Nothing here draws, counts, indexes or aggregates: `n()`, `sample()`, `[`,
+# `sum()` and any function not listed keep the grouped path.
+# ponytail: an allowlist; a rule calling anything else is merely slow, not wrong
+elementwise_fns <- c(
+  "+", "-", "*", "/", "^", "%%", "%/%", "==", "!=", "<", ">", "<=", ">=",
+  "&", "|", "!", "(", "~", "if_else", "ifelse", "case_when", "coalesce",
+  "between", "is.na", "pmin", "pmax", "abs", "sqrt", "exp", "log", "log1p",
+  "round", "floor", "ceiling", "trunc", "sign", "%in%", "xor", "as.integer",
+  "as.numeric", "as.double", "as.logical", "as.character", "paste", "paste0",
+  "nchar", "tolower", "toupper"
+)
+
+#' Is every call in an expression elementwise?
+#' @noRd
+is_elementwise <- function(expr) {
+  if (!is.call(expr)) return(TRUE)
+  head <- expr[[1]]
+  if (rlang::is_call(head, "::")) head <- head[[3]]
+  if (!rlang::is_symbol(head) || !rlang::as_string(head) %in% elementwise_fns) {
+    return(FALSE)
+  }
+  all(vapply(as.list(expr)[-1], is_elementwise, logical(1)))
 }

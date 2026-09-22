@@ -20,7 +20,9 @@ birth_by_condition <- function(step, state) {
     g <- state$groups[[nm]]
     if (nrow(g) == 0L) next
     if (!condition_applies(step$when, g, all_cols, state$globals)) next
-    aug <- augment_group(g, state$match, combined, state$relations)
+    aug <- augment_group(g, state$match, combined, state$relations,
+                         partner = partner_vars(c(list(step$when, step$times),
+                                                  lapply(c(step$cost, step$inherit), `[[`, "quo"))))
     parents <- eval_condition(step$when, aug, state$globals)
     if (!any(parents)) next
 
@@ -160,7 +162,8 @@ run_death <- function(step, state) {
     if (nrow(g) == 0L) next
     # a condition about a column this group has not got is not about this group
     if (!condition_applies(step$when, g, all_cols, state$globals)) next
-    aug <- augment_group(g, state$match, combined, state$relations)
+    aug <- augment_group(g, state$match, combined, state$relations,
+                         partner = partner_vars(list(step$when)))
     dead <- eval_condition(step$when, aug, state$globals)
     if (!any(dead)) next
     removed <- c(removed, g$.id[dead])

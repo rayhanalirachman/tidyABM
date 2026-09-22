@@ -58,12 +58,16 @@ test_that("abm_neighbours aggregates over the whole neighbourhood", {
   expect_equal(last$total, c(20, 40, 60, 30))
 })
 
-test_that("an agent with no neighbours gets NA", {
+test_that("an agent with no neighbours aggregates over the empty set", {
   m <- abm_setup(agents = abm_agents(n = 3, x = 1),
                  network = abm_network(type = "manual",
                                        edges = data.frame(from = 1, to = 2)))
-  r <- abm_run(m, abm_go(abm_neighbours(k ~ n())), ticks = 1, seed = 1)
-  expect_equal(r$k[r$tick == 1], c(1, 1, NA))
+  # the size of a neighbourhood is never unknown, so a count of nobody is
+  # nought; a mean over nobody still is unknown
+  r <- abm_run(m, abm_go(abm_neighbours(k ~ n(), mu ~ mean(x))), ticks = 1,
+               seed = 1)
+  expect_equal(r$k[r$tick == 1], c(1, 1, 0))
+  expect_equal(r$mu[r$tick == 1], c(1, 1, NA))
 })
 
 test_that("abm_neighbours refuses a model with no network", {

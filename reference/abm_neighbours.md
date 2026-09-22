@@ -75,7 +75,18 @@ An `abm_neighbours` step object.
 Each rule is `column ~ aggregate_expression`, and the expression is
 evaluated over the neighbours' rows, so `sum(infected)` means "how many
 of my neighbours are infected" and `mean(opinion)` means "what my
-neighbours think on average". An agent with no neighbours gets `NA`.
+neighbours think on average".
+
+An agent with no neighbours gets `NA`, with one exception: a rule that
+is exactly [`n()`](https://dplyr.tidyverse.org/reference/context.html)
+gets `0`. The size of a neighbourhood is never unknown, so a count of
+nobody is nought and needs no
+[`coalesce()`](https://dplyr.tidyverse.org/reference/coalesce.html) to
+guard it. Every other aggregate keeps `NA`, because
+[`mean()`](https://rdrr.io/r/base/mean.html) over nobody is genuinely
+unknown and because a [`sum()`](https://rdrr.io/r/base/sum.html) over a
+neighbourhood of one – a lookup of the single agent a column points at –
+is how a model asks whether that agent exists at all.
 
 Alongside each neighbour column the expression also sees `own_<col>`,
 the focal agent's own value of that column, recycled down its

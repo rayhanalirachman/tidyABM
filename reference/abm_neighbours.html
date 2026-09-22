@@ -114,7 +114,14 @@ and cannot be combined with <code>within</code>.</p></dd>
     <p>Each rule is <code>column ~ aggregate_expression</code>, and the expression is
 evaluated over the neighbours' rows, so <code>sum(infected)</code> means "how many of
 my neighbours are infected" and <code>mean(opinion)</code> means "what my neighbours
-think on average". An agent with no neighbours gets <code>NA</code>.</p>
+think on average".</p>
+<p>An agent with no neighbours gets <code>NA</code>, with one exception: a rule that is
+exactly <code><a href="https://dplyr.tidyverse.org/reference/context.html" class="external-link">n()</a></code> gets <code>0</code>. The size of a neighbourhood is never unknown, so a
+count of nobody is nought and needs no <code><a href="https://dplyr.tidyverse.org/reference/coalesce.html" class="external-link">coalesce()</a></code> to guard it. Every other
+aggregate keeps <code>NA</code>, because <code><a href="https://rdrr.io/r/base/mean.html" class="external-link">mean()</a></code> over nobody is genuinely unknown and
+because a <code><a href="https://rdrr.io/r/base/sum.html" class="external-link">sum()</a></code> over a neighbourhood of one – a lookup of the single
+agent a column points at – is how a model asks whether that agent exists
+at all.</p>
 <p>Alongside each neighbour column the expression also sees <code>own_&lt;col&gt;</code>, the
 focal agent's own value of that column, recycled down its neighbourhood.
 That is what makes a <em>comparison</em> possible, <code>sum(wealth &gt; own_wealth)</code> is

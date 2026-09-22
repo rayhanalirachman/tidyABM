@@ -291,6 +291,92 @@ Wolf–Sheep–Grass, Ants, Langton’s Ant against a reference
 implementation, the Ising transition at *T*_(c), Daisyworld and
 Rebellion.
 
+### A count of nobody is nought
+
+[`abm_neighbours()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_neighbours.md)
+gave `NA` to an agent with no neighbours, whatever the aggregate. That
+is right for [`mean()`](https://rdrr.io/r/base/mean.html), whose value
+over nobody is genuinely unknown, and wrong for
+[`n()`](https://dplyr.tidyverse.org/reference/context.html): the size of
+a neighbourhood is never unknown. It propagated quietly – in the
+Lengnick stress model a firm that lost its last worker got `n_emp = NA`,
+which ate its inventory and collapsed the economy ninety months later,
+and three `coalesce(n_emp, 0)` calls exist to guard it.
+
+A rule that is exactly
+[`n()`](https://dplyr.tidyverse.org/reference/context.html) now gives
+`0` over an empty neighbourhood. Every other aggregate keeps `NA`, and
+so does [`n()`](https://dplyr.tidyverse.org/reference/context.html)
+inside a larger expression: `sum(on) / n()` over nobody is `0 / 0`, and
+answering `0` there would be a different claim than the arithmetic
+makes.
+
+The wider version of this – evaluating every aggregate over no rows, so
+that [`sum()`](https://rdrr.io/r/base/sum.html) is `0` and
+[`any()`](https://rdrr.io/r/base/any.html) is `FALSE` by R’s own
+semantics – was written, measured and backed out. A
+[`sum()`](https://rdrr.io/r/base/sum.html) over a neighbourhood of one
+is how a model looks up the single agent a column points at, and `NA` is
+how it asks whether there is one at all: Lengnick reads
+`employed ~ !is.na(income)` against
+`income ~ sum(wage_f), within = .id == own_employer`, and under
+empty-set semantics every household is employed and unemployment is
+identically zero. The package cannot tell a count from a lookup, so only
+the case that cannot be a lookup changed.
+
+`.where` is untouched and still gives `NA`. It names one neighbour
+rather than a set, and a bounded lattice edge has no cell there at all.
+
+### Faster ticks
+
+No model changes and no result does: the five benchmark models (simple
+economy, SIR on a network, Life on a 100x100 torus, wolf-sheep on a
+40x40 lattice, a sequential bank) return byte-identical results under
+the same seed and run two to seventeen times faster. Four shortcuts in
+the engine, each falling back to the old path whenever it cannot prove
+itself equivalent:
+
+- `abm_match(.by = )` evaluates `eligible` once over the population
+  rather than once per partition, and skips a partition with nobody to
+  pair before building anything for it. On a lattice most cells are such
+  a partition.
+- An
+  [`abm_rules()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_rules.md)
+  rule built only from elementwise functions
+  ([`if_else()`](https://dplyr.tidyverse.org/reference/if_else.html),
+  arithmetic, comparison,
+  [`case_when()`](https://dplyr.tidyverse.org/reference/case-and-replace-when.html),
+  [`coalesce()`](https://dplyr.tidyverse.org/reference/coalesce.html)
+  and the like) is evaluated once under a standing match rather than
+  once per pair. A rule that draws, counts, indexes or aggregates keeps
+  the per-pair evaluation.
+- An ungrouped expression – a condition, a population-scope rule, a
+  birth’s `inherit` – is evaluated with
+  [`rlang::eval_tidy()`](https://rlang.r-lib.org/reference/eval_tidy.html)
+  instead of through a
+  [`dplyr::mutate()`](https://dplyr.tidyverse.org/reference/mutate.html)
+  mask, which costs a hundred times more per call.
+  [`n()`](https://dplyr.tidyverse.org/reference/context.html) still
+  means the number of rows; an expression using another dplyr context
+  helper, or returning the wrong length, goes back through
+  [`mutate()`](https://dplyr.tidyverse.org/reference/mutate.html).
+- [`abm_neighbours()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_neighbours.md)
+  folds [`sum()`](https://rdrr.io/r/base/sum.html),
+  [`mean()`](https://rdrr.io/r/base/mean.html),
+  [`any()`](https://rdrr.io/r/base/any.html),
+  [`all()`](https://rdrr.io/r/base/all.html) and
+  [`n()`](https://dplyr.tidyverse.org/reference/context.html) of an
+  elementwise expression with
+  [`rowsum()`](https://rdrr.io/r/base/rowsum.html) over the whole view
+  instead of
+  [`summarise()`](https://dplyr.tidyverse.org/reference/summarise.html)
+  evaluating the aggregate once per agent. Exact for integer and logical
+  input; a double [`sum()`](https://rdrr.io/r/base/sum.html) or
+  [`mean()`](https://rdrr.io/r/base/mean.html) keeps
+  [`summarise()`](https://dplyr.tidyverse.org/reference/summarise.html).
+  The view itself now carries only the columns the rules read, and the
+  neighbour table is rebuilt only when the edges change.
+
 ### Also
 
 - [`abm_death()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_death.md)

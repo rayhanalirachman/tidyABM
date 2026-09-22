@@ -70,6 +70,15 @@ population instead, drawing the next generation from this one, say, and
 `.scope = "population"` evaluates it against every agent at once,
 ignoring the standing match.
 
+A match stands until the next one or until the tick ends, and it decides
+*who is written* as well as how the rules are grouped: an agent the
+match left out keeps the value it had, silently. That is the intended
+reading of "only the agents who met do this", and it is the wrong one
+for a rule that happens to sit after a match and is meant for everybody.
+When the pairing is partial or directional – `"one_of"`, `"network"`,
+`"nearest"`, or any mode under an `eligible` – say
+`.scope = "population"` on such a rule rather than relying on position.
+
 Under a pairing of two, a rule also sees the pair's
 [`abm_relation()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_relation.md)
 values, `R_<col>` for `(me -> .partner)` and `R_<col>_back` for the

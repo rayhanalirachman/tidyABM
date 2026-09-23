@@ -88,7 +88,7 @@ from seed to seed in both variants, and the paired difference the fix makes is
   for an `abm_rules()` downstream of a match that names nothing about the
   pairing and sets no `.scope` or `.by`. Seven steps matched. Three are grouped
   aggregates that mean "per pair" (`sum(contribution)` in the public goods
-  game), one writes a relation value and *needs* the match (the interbank stub),
+  game), one writes a relation value and *needs* the match,
   and the remaining three -- bank reserves, Axelrod, N-person PD -- are all
   deliberate and all correct, because their pairing matches everybody. Zero
   bugs. A warning that is wrong on every instance in the corpus is noise, so

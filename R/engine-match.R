@@ -173,11 +173,20 @@ choice_set <- function(spec, agents, globals, pool, call = rlang::caller_env(),
   # a comparison written for one means the same thing in the other.
   focal <- which(agents$.id %in% pool)
   if (!length(focal)) return(list(ids = agents$.id, ok = NULL, w = NULL))
-  ns <- length(focal); nc <- nrow(agents)
+  # the parts of `among` that ask only about the candidate (`.group == "firms"`)
+  # are settled once over the population, so the cross product is built only
+  # for candidates that could pass: 1000 households x 100 firms rather than
+  # x 1100 agents
+  cand <- which(candidate_filter(spec$among, agents, globals))
+  if (!length(cand)) return(list(ids = agents$.id[0], ok = NULL, w = NULL))
+  ns <- length(focal); nc <- length(cand)
   view <- pair_view(agents,
                     focal_idx = rep(focal, each = nc),
-                    cand_idx  = rep(seq_len(nc), times = ns),
-                    relations = relations)
+                    cand_idx  = rep(cand, times = ns),
+                    relations = relations,
+                    vars = unique(c(
+                      if (!is.null(spec$among)) all.vars(rlang::quo_get_expr(spec$among)),
+                      if (!is.null(spec$weight)) all.vars(rlang::quo_get_expr(spec$weight)))))
 
   ok <- if (is.null(spec$among)) rep(TRUE, nrow(view))
         else eval_over_view(spec$among, view, globals)
@@ -197,7 +206,34 @@ choice_set <- function(spec, agents, globals, pool, call = rlang::caller_env(),
     if (length(wv) == 1L) wv <- rep(wv, nrow(view))
     w <- matrix(check_weight(wv, spec, call), nrow = ns, byrow = TRUE)
   }
-  list(ids = agents$.id, ok = matrix(ok, nrow = ns, byrow = TRUE), w = w)
+  list(ids = agents$.id[cand], ok = matrix(ok, nrow = ns, byrow = TRUE), w = w)
+}
+
+#' Which agents pass the candidate-only conjuncts of `among`
+#'
+#' A conjunct reading only agent columns and globals, through elementwise
+#' functions, means the same per candidate as per (chooser, candidate) row.
+#' Anything else -- `own_<col>`, a relation, `.of`, an aggregate, a variable
+#' from the model's environment -- is left to the pair view.
+#' @noRd
+candidate_filter <- function(quo, agents, globals) {
+  keep <- rep(TRUE, nrow(agents))
+  if (is.null(quo)) return(keep)
+  known <- c(names(agents), names(globals))
+  for (e in conjuncts(rlang::quo_get_expr(quo))) {
+    if (!is_elementwise(e) || !all(all.vars(e) %in% known)) next
+    keep <- keep & eval_condition(rlang::new_quosure(e, rlang::quo_get_env(quo)),
+                                  agents, globals)
+  }
+  keep
+}
+
+#' The top-level `&` terms of an expression
+#' @noRd
+conjuncts <- function(e) {
+  if (rlang::is_call(e, "(")) return(conjuncts(e[[2]]))
+  if (rlang::is_call(e, "&", n = 2)) return(c(conjuncts(e[[2]]), conjuncts(e[[3]])))
+  list(e)
 }
 
 #' @noRd

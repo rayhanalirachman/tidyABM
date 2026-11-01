@@ -92,17 +92,15 @@ run_draw <- function(step, state) {
 #' Evaluate one draw rule over the edge table
 #' @noRd
 edge_value <- function(r, state) {
-  quo <- rlang::quo_set_env(
-    r$quo,
-    rlang::new_environment(state$globals, parent = rlang::quo_get_env(r$quo))
-  )
   edges <- state$edges
   # the draw columns are internal and are stripped from the view: a draw rule
   # sees `from` and `to`, never an earlier draw, so drawn values cannot
   # accumulate across ticks -- they are a fresh coin each time
   view <- edges[, !startsWith(names(edges), ".draw_") &
                   !startsWith(names(edges), ".back_"), drop = FALSE]
-  val <- dplyr::pull(dplyr::mutate(view, .abm_value = !!quo), ".abm_value")
+  # through `eval_rule()` for its fast path: `mutate()` over the edge table was
+  # most of what a draw cost
+  val <- eval_rule(list(quo = r$quo), view, state$globals, grouped = FALSE)
   if (length(val) == 1L) val <- rep(val, nrow(edges))
   if (length(val) != nrow(edges)) {
     abm_abort(

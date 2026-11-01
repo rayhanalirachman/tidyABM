@@ -286,8 +286,19 @@ run_global <- function(step, state) {
       r$quo,
       rlang::new_environment(state$globals, parent = rlang::quo_get_env(r$quo))
     )
-    val <- dplyr::pull(dplyr::reframe(combined, .abm_value = !!quo),
-                       ".abm_value")
+    # `reframe()` costs a hundred times what `eval_tidy()` does, for the same
+    # answer whenever the expression needs nothing only a mask supplies. A
+    # result of the wrong length goes back through `reframe()`.
+    val <- NULL
+    if (!needs_mask(rlang::quo_get_expr(r$quo))) {
+      val <- rlang::eval_tidy(
+        rlang::quo_set_env(r$quo, abm_eval_env(r$quo, state$globals, n = nrow(combined))),
+        data = combined)
+    }
+    if (length(val) != 1L) {
+      val <- dplyr::pull(dplyr::reframe(combined, .abm_value = !!quo),
+                         ".abm_value")
+    }
     if (length(val) != 1L) {
       abm_abort(
         c("{.fn abm_global} rules must collapse to a single value.",
@@ -439,14 +450,10 @@ run_sequential <- function(step, state) {
     if (!length(order_ids)) return(state)
   }
 
-  partner_of <- role_of <- gid_of <- NULL
   p_cols <- character()
   named <- c(unlist(lapply(step$rules, `[[`, "vars"), use.names = FALSE),
              vapply(step$rules, `[[`, "", "target"))
   if (!is.null(m)) {
-    partner_of <- stats::setNames(m$.partner,  as.character(m$.id))
-    role_of    <- stats::setNames(m$.role,     as.character(m$.id))
-    gid_of     <- stats::setNames(m$.group_id, as.character(m$.id))
     # only the partner columns the step names are materialised: doing it for
     # every column of every agent is what would make this loop slow
     p_cols <- unique(sub("^partner_", "", grep("^partner_", named, value = TRUE)))
@@ -474,11 +481,6 @@ run_sequential <- function(step, state) {
          cols = as.list(rel$edges[rel$cols]), n = nrow(rel$edges))
   })
 
-  group_of <- rep(names(state$groups),
-                  vapply(state$groups, nrow, integer(1)))
-  names(group_of) <- unlist(lapply(state$groups, function(g) g$.id),
-                            use.names = FALSE)
-
   # each rule gets an environment of its own, holding the globals. Writing a
   # global assigns into those environments rather than rebuilding a mask, which
   # is what keeps "the next agent sees what I just spent" cheap.
@@ -489,14 +491,39 @@ run_sequential <- function(step, state) {
 
   cols <- lapply(state$groups, function(g) as.list(g))
   sizes <- vapply(state$groups, nrow, integer(1))
-  index <- lapply(state$groups, function(g) stats::setNames(seq_len(nrow(g)), g$.id))
   todo <- stats::setNames(vector("list", length(cols)), names(cols))
 
-  for (id in order_ids) {
-    gname <- group_of[[as.character(id)]]
+  # Everything the loop would otherwise look up per agent by name -- its group
+  # and row, its partner's, and where the pair sits in a relation -- resolved
+  # here in one vectorised pass. `x[["17"]]` on a named vector is a linear
+  # scan, so per agent it made the loop quadratic in the population. A
+  # relation gains no rows inside the loop, so a pair's row cannot move.
+  gnames <- names(state$groups)
+  all_ids <- unlist(lapply(state$groups, function(g) g$.id), use.names = FALSE)
+  all_g <- rep(seq_along(gnames), sizes)
+  all_row <- sequence(sizes)
+  pos <- match(order_ids, all_ids)
+  pid_v <- rep(NA_integer_, length(order_ids))
+  if (!is.null(m)) {
+    mi <- match(order_ids, m$.id)
+    pid_v <- m$.partner[mi]; role_v <- m$.role[mi]; gid_v <- m$.group_id[mi]
+    ppos <- match(pid_v, all_ids)
+  }
+  pair_row <- function(h) {
+    if (is.null(h) || is.null(m)) return(NULL)
+    match(if (h$back) relation_key(pid_v, order_ids) else relation_key(order_ids, pid_v),
+          rels[[h$rel]]$key)
+  }
+  ref_ri <- lapply(rel_refs, pair_row)
+  tgt_ri <- lapply(rel_targets, pair_row)
+  partner_tgt <- sub("^partner_", "", vapply(step$rules, `[[`, "", "target"))
+  n_one <- function() 1L
+
+  for (ai in seq_along(order_ids)) {
+    id <- order_ids[[ai]]
+    gname <- gnames[[all_g[[pos[[ai]]]]]]
     v <- cols[[gname]]
-    i <- index[[gname]][[as.character(id)]]
-    if (is.na(i)) next
+    i <- all_row[[pos[[ai]]]]
 
     if (is.null(todo[[gname]])) {
       todo[[gname]] <- applicable_rules(step, names(v), cols, state$globals)
@@ -506,19 +533,20 @@ run_sequential <- function(step, state) {
 
     # one mask per agent, kept up to date in place: a rule sees what the rule
     # above it wrote, which is what "one agent at a time" already implies
-    data <- lapply(v, function(x) x[[i]])
-    if (!"n" %in% names(data)) data$n <- function() 1L
+    # `.subset2` rather than `function(x) x[[i]]`: a closure made per agent
+    # is byte-compiled per agent
+    data <- lapply(v, .subset2, i)
+    if (!"n" %in% names(data)) data$n <- n_one
 
     pid <- NA_integer_; pg <- NULL; pj <- NA_integer_
     if (!is.null(m)) {
-      key <- as.character(id)
-      data$.partner  <- partner_of[[key]]
-      data$.role     <- role_of[[key]]
-      data$.group_id <- gid_of[[key]]
+      data$.partner  <- pid_v[[ai]]
+      data$.role     <- role_v[[ai]]
+      data$.group_id <- gid_v[[ai]]
       pid <- data$.partner
       if (!is.na(pid)) {
-        pg <- group_of[[as.character(pid)]]
-        pj <- index[[pg]][[as.character(pid)]]
+        pg <- gnames[[all_g[[ppos[[ai]]]]]]
+        pj <- all_row[[ppos[[ai]]]]
       }
       for (nm in p_cols) {
         src <- if (is.na(pid)) NULL
@@ -528,9 +556,7 @@ run_sequential <- function(step, state) {
       }
       for (nm in names(rel_refs)) {
         h <- rel_refs[[nm]]
-        ri <- if (is.na(pid)) NA_integer_
-              else match(if (h$back) relation_key(pid, id) else relation_key(id, pid),
-                         rels[[h$rel]]$key)
+        ri <- ref_ri[[nm]][[ai]]
         data[[nm]] <- if (is.null(h$col)) !is.na(ri)
                       else if (is.na(ri) || is.null(rels[[h$rel]]$cols[[h$col]])) NA
                       else rels[[h$rel]]$cols[[h$col]][[ri]]
@@ -552,7 +578,7 @@ run_sequential <- function(step, state) {
         }
         if (is.na(pid)) next
         a <- if (h$back) pid else id; b <- if (h$back) id else pid
-        ri <- match(relation_key(a, b), rels[[h$rel]]$key)
+        ri <- tgt_ri[[k]][[ai]]
         if (is.na(ri)) {
           abm_abort(
             c("{.fn abm_sequential} writes {.field {target}}, but agent {a} is not related to agent {b} via {.field {h$rel}}.",
@@ -566,7 +592,7 @@ run_sequential <- function(step, state) {
       } else if (startsWith(target, "partner_") && !is.null(m)) {
         # the only place a sequential rule leaves its own row: the agent it is
         # matched with, which is what a transaction is
-        nm <- sub("^partner_", "", target)
+        nm <- partner_tgt[[k]]
         if (!is.na(pid)) {
           if (identical(pg, gname)) {
             if (nm %in% names(v)) {

@@ -140,7 +140,11 @@ print.abm_relation <- function(x, ...) {
 
 #' The key one pair is looked up by
 #' @noRd
-relation_key <- function(from, to) paste(from, to)
+# `paste()` here was half of a 1000-agent run: a pair view looks up every
+# (chooser, candidate) row, and formatting numbers as strings is slow. Packed
+# into one double, `match()` hashes numbers instead.
+# ponytail: exact while ids < 2^27 (134M agents ever born); 2 int cols via vctrs past that
+relation_key <- function(from, to) as.double(from) * 2^26 + to
 
 #' Row indices of `(from, to)` pairs in a relation, `NA` where absent
 #' @noRd

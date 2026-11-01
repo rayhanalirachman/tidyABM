@@ -123,11 +123,16 @@ attach_newborns <- function(step, state, newborns, parents = NULL) {
   }
   combined <- bind_groups(state$groups)
   links <- step$links %||% 1L
+  # the same for every newborn, since each one is in `newborns`: built once,
+  # and the new edges bound once at the end, rather than an O(population)
+  # copy of each per newborn. `random_edge` draws from the edges as they
+  # grow, so it still sees each newborn's links as they are made.
+  existing <- combined[!combined$.id %in% newborns, , drop = FALSE]
+  grow <- identical(step$attach_via$from, "random_edge")
+  new_from <- new_to <- vector("list", length(newborns))
   added <- FALSE
   for (k in seq_along(newborns)) {
     id <- newborns[[k]]
-    existing <- combined[combined$.id != id & !combined$.id %in% newborns, ,
-                         drop = FALSE]
     # A newborn joins the population, not the cohort it was born with: its
     # siblings are excluded from every target, so a clutch does not link to
     # itself and count as a neighbourhood.
@@ -140,12 +145,22 @@ attach_newborns <- function(step, state, newborns, parents = NULL) {
     }
     targets <- unique(targets[!is.na(targets)])
     if (!length(targets)) next
+    if (grow) {
+      state$edges <- dplyr::bind_rows(
+        state$edges,
+        tibble::tibble(from = rep(as.integer(id), length(targets)),
+                       to = as.integer(targets))
+      )
+    } else {
+      new_from[[k]] <- rep(as.integer(id), length(targets))
+      new_to[[k]] <- as.integer(targets)
+    }
+    added <- TRUE
+  }
+  if (added && !grow) {
     state$edges <- dplyr::bind_rows(
       state$edges,
-      tibble::tibble(from = rep(as.integer(id), length(targets)),
-                     to = as.integer(targets))
-    )
-    added <- TRUE
+      tibble::tibble(from = unlist(new_from), to = unlist(new_to)))
   }
   if (added) state <- invalidate_draws(state, "abm_birth")
   state

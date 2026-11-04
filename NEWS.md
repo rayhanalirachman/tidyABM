@@ -1,5 +1,48 @@
 # tidyABM (development version)
 
+## The spatial grammar, audited
+
+* **A torus one or two cells wide double-counted its neighbours.** With
+  `dims = c(2, 2)` a cell's east and west neighbours are the same cell, and
+  the lattice listed it twice (and, one cell wide, listed the cell as its own
+  neighbour): `abm_neighbours()` summed a neighbour twice and a random walk
+  landed on it twice as often. A neighbourhood is a set of other cells, so
+  each is listed once; the directional lookups `.where = "north"` and
+  `abm_move(direction =)` are unchanged, since "the cell to the north" on a
+  one-high torus genuinely is the cell itself.
+* **A rule may write `.cell`, and `.x` / `.y` now follow.** Writing the
+  location column from `abm_rules()`, `abm_sequential()`, `abm_tell()` or
+  `abm_birth(inherit =)` moved the agent but left its coordinates where they
+  were. They are re-derived after any of those steps, a value that is not a
+  cell id is an error (`tidyABM_bad_cell`), and writing `.x` or `.y`
+  themselves is refused (`tidyABM_reserved_column`): they are derived.
+* `abm_agents(at =)` refuses a logical mask or a fractional value instead of
+  truncating it to a cell id; `abm_grid()` refuses `n` and `at` in `...`
+  instead of making them patch columns; `abm_move(direction =)` refuses a
+  heading name the lattice has no side for (`tidyABM_bad_heading`) instead of
+  leaving the agent where it is; and `abm_move()` in a model where nothing
+  stands on a lattice says so instead of doing nothing.
+* New `abm_plot_lattice(result, fill, tick, agents)` draws a frame of a
+  lattice model as a ggplot (`geom_raster()`, fixed aspect, no axes, the mobile
+  agents as points on top). It is the start every spatial figure shared, and
+  needs the ggplot2 package, which stays in Suggests.
+* Sugarscape (model 8) has a page and a script of its own in
+  `models/spatial/`, which also shows the idiom for per-agent vision: `range`
+  is the model's maximum reach and the agent's own `vision` masks the
+  candidates inside `uphill()`.
+
+## Faster lattices, same answers
+
+`abm_move(to = uphill())` with an elementwise expression is evaluated once
+over every mover's candidate cells rather than once per mover (Sugarscape
+5.7x faster); the co-location join `within = .id == own_.cell` is a `match()`
+when the key is unique rather than a sort of the whole lattice, and the rest
+of the condition is evaluated without a dplyr mask (Langton 1.6x); an
+attribute-space `within =` copies only the columns its rules read (Rebellion
+1.7x); and the network view skips the id lookup when the ids are the row
+numbers, which is every patch-only model (Life 1.5x, Ising 1.4x). Every model
+in the corpus returns bit-identical results under the same seed.
+
 ## Faster ticks, same answers
 
 The per-tick bookkeeping around a step was costing more than the step. The

@@ -50,13 +50,17 @@ cat(sprintf("  velocity: (%+.2f, %+.2f) per tick -- one cell diagonally per 4\n"
 # --- the random soup -----------------------------------------------------
 # The published "ash" density is about 0.0287, and it is approached slowly from
 # above; this shows the trajectory rather than claiming the limit at t = 400.
+# One run per seed, kept for the figures too: the globals are recorded every
+# tick whatever `record =` says, and `"final"` keeps the last frame.
 cat("\nRandom soup, 100x100 torus, density 0.10 at t = 0\n")
-soup <- vapply(1:3, function(s) {
+soups <- lapply(1:3, function(s) {
   m <- abm_setup(agents  = abm_agents(alive = ~runif(n) < 0.10),
                  network = abm_network(type = "grid", dims = c(100, 100)),
                  seed = s)
-  g <- abm_globals(abm_run(m, life_go, ticks = 1500, seed = s,
-                           record = "globals", progress = FALSE))
+  abm_run(m, life_go, ticks = 1500, seed = s, record = "final", progress = FALSE)
+})
+soup <- vapply(soups, function(r) {
+  g <- abm_globals(r)
   g$density[match(c(50, 100, 250, 500, 1000, 1500), g$tick)]
 }, numeric(6))
 tab <- data.frame(tick = c(50, 100, 250, 500, 1000, 1500),
@@ -67,9 +71,11 @@ print(tab, row.names = FALSE)
 cat("  the density decays from above towards the published ash density,\n")
 cat("  about 0.0287; a 100x100 torus is small enough that the tail is noisy.\n")
 
-# --- figure ---------------------------------------------------------------
+# --- figures --------------------------------------------------------------
 # Time series: the random soup's density relaxing towards the published ash
-# density, which is the quantitative claim on this page.
+# density, which is the quantitative claim on this page. Then the lattice
+# itself: what is left of seed 1's soup at tick 1500 -- still lifes, blinkers
+# and the odd glider, which is what "ash" means.
 library(ggplot2)
 
 fig_file <- function(name) {
@@ -78,13 +84,14 @@ fig_file <- function(name) {
   dir.create(file.path(d, "..", "figures"), showWarnings = FALSE)
   file.path(d, "..", "figures", name)
 }
+# Okabe-Ito, colour-blind safe; the same series colours in every script
+pal <- c("#0072B2", "#E69F00", "#009E73")
+fig_theme <- theme_minimal(base_size = 12) +
+  theme(panel.grid.minor = element_blank(), legend.position = "bottom",
+        plot.title.position = "plot")
 
 d <- do.call(rbind, lapply(1:3, function(s) {
-  m <- abm_setup(agents  = abm_agents(alive = ~runif(n) < 0.10),
-                 network = abm_network(type = "grid", dims = c(100, 100)),
-                 seed = s)
-  g <- abm_globals(abm_run(m, life_go, ticks = 1500, seed = s,
-                           record = "globals", progress = FALSE))
+  g <- abm_globals(soups[[s]])
   data.frame(seed = factor(s), tick = g$tick, density = g$density)
 }))
 d <- d[d$tick > 0, ]
@@ -92,9 +99,20 @@ d <- d[d$tick > 0, ]
 p <- ggplot(d, aes(tick, density, colour = seed)) +
   geom_hline(yintercept = 0.0287, linetype = "dashed", colour = "grey40") +
   geom_line(linewidth = 0.5) +
-  theme_minimal() +
+  scale_colour_manual(values = pal) +
+  fig_theme +
   labs(title = "Game of Life: a random soup relaxes to the ash density",
-       subtitle = "100x100 torus, started at density 0.10; dashed line is 0.0287",
+       subtitle = "100x100 torus, started at density 0.10; dashed line is the published 0.0287",
        x = "tick", y = "live fraction", colour = "seed")
 print(p)
-ggsave(fig_file("01-life.png"), p, width = 6, height = 4, dpi = 120)
+ggsave(fig_file("01-life.png"), p, width = 7, height = 4.5, dpi = 150, bg = "white")
+
+p2 <- abm_plot_lattice(soups[[1]], fill = alive) +
+  scale_fill_manual(values = c(`FALSE` = "grey94", `TRUE` = "grey10"),
+                    guide = "none") +
+  labs(title = "The ash: seed 1 at tick 1500",
+       subtitle = sprintf("live fraction %.4f; still lifes and oscillators, nothing moving",
+                          soup[6, 1]))
+print(p2)
+ggsave(fig_file("01-life-lattice.png"), p2, width = 6, height = 6.4, dpi = 150,
+       bg = "white")

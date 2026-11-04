@@ -85,8 +85,10 @@ decays as the piles are spent and the deposits stop.
 
 ![6. Ants, pheromone foraging](figures/06-ants.png)
 
+![6. The trail at tick 150](figures/06-ants-lattice.png)
+
 **Reproduce:** [`06-ants.R`](scripts/06-ants.R)
 
 ---
 
-← [5. Wolf–Sheep–Grass](05-wolf-sheep.md) · [all spatial models](README.md) · [9. Langton's Ant](09-langton.md) →
+← [5. Wolf–Sheep–Grass](05-wolf-sheep.md) · [all spatial models](README.md) · [8. Sugarscape](08-sugarscape.md) →

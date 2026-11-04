@@ -78,17 +78,26 @@ fig_file <- function(name) {
   file.path(d, "..", "figures", name)
 }
 
+# Okabe-Ito, colour-blind safe; the same series colours in every script
+pal <- c("#0072B2", "#E69F00", "#009E73")
+fig_theme <- theme_minimal(base_size = 12) +
+  theme(panel.grid.minor = element_blank(), legend.position = "bottom",
+        plot.title.position = "plot")
+
 d <- rbind(
   data.frame(luminosity = tab$luminosity, world = "with daisies",
              temp = tab$temp),
   data.frame(luminosity = tab$luminosity, world = "bare rock",
              temp = tab$bare_rock))
+d$world <- factor(d$world, levels = c("with daisies", "bare rock"))
 
 p <- ggplot(d, aes(luminosity, temp, colour = world)) +
-  geom_line(linewidth = 0.7) + geom_point() +
-  theme_minimal() +
+  geom_line(linewidth = 0.7) + geom_point(size = 2) +
+  scale_colour_manual(values = pal) +
+  fig_theme +
   labs(title = "Daisyworld: the daisies hold the temperature flat",
        subtitle = "40x40 torus, 300 ticks per luminosity",
        x = "luminosity", y = "mean temperature", colour = NULL)
 print(p)
-ggsave(fig_file("11-daisyworld.png"), p, width = 6, height = 4, dpi = 120)
+ggsave(fig_file("11-daisyworld.png"), p, width = 7, height = 4.5, dpi = 150,
+       bg = "white")

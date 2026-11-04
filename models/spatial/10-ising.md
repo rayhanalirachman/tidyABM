@@ -48,9 +48,12 @@ simultaneous updates on a bipartite graph oscillate rather than equilibrate.*
 
 **Replication**
 
-Magnetisation falls from 0.999 at *T* = 1.0 to 0.040 at *T* = 3.5, with the
-susceptibility peaking at the Onsager temperature
-*T*<sub>c</sub> = 2 / ln(1 + √2) = 2.2692.
+Magnetisation falls from 0.999 at *T* = 1.0 to 0.040 at *T* = 3.5, dropping
+through 0.70 at the Onsager temperature *T*<sub>c</sub> = 2 / ln(1 + √2) =
+2.2692. The susceptibility (the variance of the magnetisation, scaled by *N*)
+is 20 at *T* = 2.27 and 21 at 2.6 against 0.5 at 2.0 and 3 at 3.5: on a 50×50
+lattice sampled at six temperatures the finite-size peak sits just above
+*T*<sub>c</sub>, which is where a finite lattice puts it.
 
 Started ordered and equilibrated, which is how spontaneous magnetisation is
 measured. Quenching from a random start instead traps the lattice in striped
@@ -58,6 +61,8 @@ metastable states at low *T* — a finite-size artefact of the model, not of the
 grammar.
 
 ![10. Ising, checkerboard Metropolis](figures/10-ising.png)
+
+![10. The lattice at three temperatures](figures/10-ising-lattice.png)
 
 **Reproduce:** [`10-ising.R`](scripts/10-ising.R)
 

@@ -22,7 +22,7 @@ that column. There is no second medium and no patch-specific rule syntax.
 | **L0** | `abm_network(type = "grid" \| "line", dims, diagonals, torus, on)`, `.x` / `.y`, count inheritance, `abm_grid()` | every patch-only model |
 | **L1** | `abm_neighbours(..., .where = "west")` | ordered-neighbour lattices (1-D CA) |
 | **L2** | `.cell`, `at =`, the `within =` equijoin, `abm_tell(to = <id col>)`, `abm_match(.by = <col>)`, `abm_move()` | turtle-≠-patch models |
-| **L2+** | `abm_move(direction =, range =, axes_only =, avoid_occupied =)` | Sugarscape, Langton's Ant, Rebellion |
+| **L2+** | `abm_move(direction =, range =, axes_only =, avoid_occupied =)`, a rule writing `.cell` | Sugarscape, Langton's Ant, Rebellion |
 
 ## The models
 
@@ -33,22 +33,20 @@ figure, and a script that reproduces all three.
 |---|---|---|---|
 | 1 | [Conway's Game of Life](01-life.md) | L0 | blinker period 2; glider centroid gains exactly (+1, −1) every 4 ticks; random soup relaxes to 0.0281 by tick 1500 against a published ash density of 0.0287 |
 | 2 | [Elementary 1-D CA (rule 90)](02-ca1d.md) | L0 + L1 | row *t* equals `choose(t, 0:t) %% 2` exactly, every row to *t* = 24 |
-| 3 | [Forest Fire](03-fire.md) | L0 | burned fraction 0.05 → 0.70 and spanning 0 → 1 between density 0.55 and 0.60, bracketing *p*<sub>c</sub> ≈ 0.5927 |
+| 3 | [Forest Fire](03-fire.md) | L0 | burned fraction 0.05 → 0.20 → 0.70 across density 0.50, 0.55, 0.60 and spanning 0 → 1 between 0.55 and 0.60, bracketing *p*<sub>c</sub> ≈ 0.5927 |
 | 4 | [Schelling, with geography](04-schelling.md) | L0 | same-type share 0.575 (the random 70/30 baseline) → 0.713 at 30% tolerance |
 | 5 | [Wolf–Sheep–Grass](05-wolf-sheep.md) | L2 | `wolf_gain = 10` starves the wolves out; at 20 both persist in a bounded cycle, out of phase (peak cross-correlation at lag −39) |
 | 6 | [Ants (pheromone foraging)](06-ants.md) | L2 | 35 of 42 food units taken in 400 ticks; trail strength peaks at 938 and decays as piles are spent |
+| 8 | [Sugarscape](08-sugarscape.md) | L2+ | 400 agents fall to a carrying capacity of 191 and hold it; survivors' mean metabolism 2.48 → 1.46 and vision 3.46 → 3.72; one agent per cell at every tick |
 | 9 | [Langton's Ant](09-langton.md) | L2+ | cell-for-cell agreement with a reference implementation at 100, 500 and 2000 steps |
-| 10 | [Ising (checkerboard)](10-ising.md) | L0 | magnetisation 0.999 → 0.040 across *T*<sub>c</sub> = 2.2692, susceptibility peaking there |
-| 11 | [Daisyworld](11-daisyworld.md) | L0 | temperature spans 12.7 while bare rock spans 16.8; white fraction rises 0.34 → 0.66 to hold it |
+| 10 | [Ising (checkerboard)](10-ising.md) | L0 | magnetisation 0.999 → 0.040 across *T*<sub>c</sub> = 2.2692, with the susceptibility two orders of magnitude higher at 2.27–2.6 than either side |
+| 11 | [Daisyworld](11-daisyworld.md) | L0 | temperature spans 12.6 while bare rock spans 16.8; the white fraction climbs 0.34 → 0.66 (black 0.55 → 0.22) to hold the middle of the range flat |
 | 13 | [Rebellion](13-rebellion.md) | L2+ | quiet ticks 100% → 92% → 56% as legitimacy falls 0.88 → 0.82 → 0.70 |
 
-The numbering follows the design probe, which is why 7, 8 and 12 are missing.
+The numbering follows the design probe, which is why 7 and 12 are missing.
 Models 7 (Flocking) and 12 (Traffic) are **continuous-space** and need nothing
 from this grammar — they are ordinary column arithmetic and belong with the
-non-spatial corpus. Model 8 (Sugarscape) is covered by the `range =` /
-`axes_only =` / `avoid_occupied =` tests in
-[`../../tests/testthat/test-spatial.R`](../../tests/testthat/test-spatial.R)
-rather than by a page of its own.
+non-spatial corpus.
 
 ## Running them
 
@@ -57,8 +55,10 @@ Rscript models/spatial/scripts/01-life.R
 ```
 
 Each script is self-contained — its own `library(tidyABM)` — prints its table
-and writes its page's figure into `figures/`. It needs `tidyABM` and `ggplot2`
-installed. See [`scripts/README.md`](scripts/README.md) for runtimes.
+and writes its page's figures into `figures/`. It needs `tidyABM` and `ggplot2`
+installed. See [`scripts/README.md`](scripts/README.md) for runtimes. A frame
+of the lattice is drawn with `abm_plot_lattice()`, which is the one piece of
+plotting the package offers; everything else on the figures is plain ggplot2.
 
 The `testthat` cases in
 [`../../tests/testthat/test-spatial.R`](../../tests/testthat/test-spatial.R) run

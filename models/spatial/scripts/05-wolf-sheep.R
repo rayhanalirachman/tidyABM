@@ -16,7 +16,7 @@
 
 library(tidyABM)
 
-run_one <- function(wolf_gain, w = 40, ticks = 400, seed = 1) {
+run_one <- function(wolf_gain, w = 40, ticks = 400, seed = 1, record = "globals") {
   world <- abm_setup(
     agents = list(
       patches = abm_agents(grass     = ~sample(c(TRUE, FALSE), n, TRUE),
@@ -62,14 +62,17 @@ run_one <- function(wolf_gain, w = 40, ticks = 400, seed = 1) {
     abm_global(n_sheep  ~ sum(.group == "sheep"),
                n_wolves ~ sum(.group == "wolves")))
 
-  g <- abm_globals(abm_run(world, go, ticks = ticks, seed = seed,
-                           record = "globals", progress = FALSE))
-  g[-1, ]
+  abm_run(world, go, ticks = ticks, seed = seed, record = record,
+          progress = FALSE)
 }
+series <- function(r) abm_globals(r)[-1, ]
 
 cat("40x40 torus, 120 sheep, 40 wolves, 400 ticks\n\n")
+runs <- list()
 for (wg in c(10, 20, 40)) {
-  g <- run_one(wg)
+  # the standard regime keeps its last frame, for the figure
+  runs[[as.character(wg)]] <- run_one(wg, record = if (wg == 20) "final" else "globals")
+  g <- series(runs[[as.character(wg)]])
   label <- c("10" = "predation too weak to sustain wolves",
              "20" = "standard regime",
              "40" = "stronger predation, sharper cycle")[[as.character(wg)]]
@@ -100,9 +103,10 @@ cat("  draw ends the run. That is the collapse the design notes anticipated;\n")
 cat("  it just arrives as a bottleneck rather than as a clean extinction at\n")
 cat("  the tick counts used here.\n")
 
-# --- figure ---------------------------------------------------------------
+# --- figures --------------------------------------------------------------
 # Time series: the standard regime, where both populations persist in a
-# bounded cycle out of phase with each other.
+# bounded cycle out of phase with each other. Then the world at tick 400:
+# the grass, and the sheep and wolves standing on it.
 library(ggplot2)
 
 fig_file <- function(name) {
@@ -111,16 +115,34 @@ fig_file <- function(name) {
   dir.create(file.path(d, "..", "figures"), showWarnings = FALSE)
   file.path(d, "..", "figures", name)
 }
+# Okabe-Ito, colour-blind safe; the same series colours in every script
+pal <- c("#0072B2", "#E69F00", "#009E73")
+fig_theme <- theme_minimal(base_size = 12) +
+  theme(panel.grid.minor = element_blank(), legend.position = "bottom",
+        plot.title.position = "plot")
 
-g20 <- run_one(20)
+g20 <- series(runs[["20"]])
 d <- rbind(data.frame(tick = g20$tick, species = "sheep",  n = g20$n_sheep),
            data.frame(tick = g20$tick, species = "wolves", n = g20$n_wolves))
 
 p <- ggplot(d, aes(tick, n, colour = species)) +
-  geom_line(linewidth = 0.5) +
-  theme_minimal() +
+  geom_line(linewidth = 0.6) +
+  scale_colour_manual(values = c(sheep = pal[1], wolves = pal[2])) +
+  fig_theme +
   labs(title = "Wolf-Sheep-Grass: a bounded cycle, out of phase",
        subtitle = "40x40 torus, wolf_gain = 20, 400 ticks",
        x = "tick", y = "population", colour = NULL)
 print(p)
-ggsave(fig_file("05-wolf-sheep.png"), p, width = 6, height = 4, dpi = 120)
+ggsave(fig_file("05-wolf-sheep.png"), p, width = 7, height = 4.5, dpi = 150,
+       bg = "white")
+
+p2 <- abm_plot_lattice(runs[["20"]], fill = grass, agents = TRUE) +
+  scale_fill_manual(values = c(`TRUE` = "#B8E0A0", `FALSE` = "#EBDDC2"),
+                    labels = c(`TRUE` = "grass", `FALSE` = "bare"), name = NULL) +
+  scale_colour_manual(values = c(sheep = pal[1], wolves = "grey10"), name = NULL) +
+  labs(title = "The world at tick 400, wolf_gain = 20",
+       subtitle = sprintf("%d sheep and %d wolves on the grass",
+                          g20$n_sheep[nrow(g20)], g20$n_wolves[nrow(g20)]))
+print(p2)
+ggsave(fig_file("05-wolf-sheep-lattice.png"), p2, width = 7, height = 6, dpi = 150,
+       bg = "white")

@@ -54,6 +54,8 @@ is the whole Schelling point.
 
 ![4. Schelling segregation, with geography](figures/04-schelling.png)
 
+![4. Tolerance 0.30, before and after](figures/04-schelling-lattice.png)
+
 **Reproduce:** [`04-schelling.R`](scripts/04-schelling.R)
 
 ---

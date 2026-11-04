@@ -89,6 +89,8 @@ both populations survive 300 ticks even at 160, on the edge of ending.
 
 ![5. Wolf–Sheep–Grass](figures/05-wolf-sheep.png)
 
+![5. The world at tick 400](figures/05-wolf-sheep-lattice.png)
+
 **Reproduce:** [`05-wolf-sheep.R`](scripts/05-wolf-sheep.R)
 
 ---

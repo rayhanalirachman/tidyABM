@@ -47,12 +47,13 @@ turn.*
 The model is deterministic, so this is checked against a plain-R reference
 implementation rather than against a summary statistic: cell for cell, plus the
 ant's own position and heading, at 100, 500 and 2000 steps. All three match
-exactly.
+exactly. The figure runs on to 11,500 steps, past the point (around step
+10,000) where the chaotic phase ends and the period-104 highway sets off.
 
-![9. Langton's Ant after 2000 steps](figures/09-langton.png)
+![9. Langton's Ant after 11,500 steps](figures/09-langton.png)
 
 **Reproduce:** [`09-langton.R`](scripts/09-langton.R)
 
 ---
 
-← [6. Ants](06-ants.md) · [all spatial models](README.md) · [10. Ising](10-ising.md) →
+← [8. Sugarscape](08-sugarscape.md) · [all spatial models](README.md) · [10. Ising](10-ising.md) →

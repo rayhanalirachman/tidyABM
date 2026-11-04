@@ -69,8 +69,9 @@ go <- abm_go(
 )
 
 cat("35x35 bounded grid, 80 ants, nest at the centre, two food piles\n\n")
-g <- abm_globals(abm_run(world, go, ticks = 400, seed = 1,
-                         record = "globals", progress = FALSE))
+# every 50th frame is kept for the figure; the globals are recorded every tick
+r <- abm_run(world, go, ticks = 400, seed = 1, record = 50, progress = FALSE)
+g <- abm_globals(r)
 g <- g[-1, ]
 print(as.data.frame(g[seq(1, nrow(g), by = 50),
                       c("tick", "food_left", "carrying_n", "chem_total")]),
@@ -82,9 +83,11 @@ cat(sprintf("  peak trail strength: %.0f, at tick %d\n",
 cat(sprintf("  trail strength at the end: %.0f  (spent piles evaporate)\n",
             g$chem_total[nrow(g)]))
 
-# --- figure ---------------------------------------------------------------
+# --- figures --------------------------------------------------------------
 # Time series: food remaining and trail strength. The trail builds while there
-# is food to fetch and evaporates once the piles are spent.
+# is food to fetch and evaporates once the piles are spent. Then the field at
+# tick 150, near the trail's peak: the pheromone, the two piles, and where the
+# ants are.
 library(ggplot2)
 
 fig_file <- function(name) {
@@ -93,6 +96,11 @@ fig_file <- function(name) {
   dir.create(file.path(d, "..", "figures"), showWarnings = FALSE)
   file.path(d, "..", "figures", name)
 }
+# Okabe-Ito, colour-blind safe; the same series colours in every script
+pal <- c("#0072B2", "#E69F00", "#009E73")
+fig_theme <- theme_minimal(base_size = 12) +
+  theme(panel.grid.minor = element_blank(), legend.position = "bottom",
+        plot.title.position = "plot")
 
 d <- rbind(
   data.frame(tick = g$tick, measure = "food remaining", value = g$food_left),
@@ -100,11 +108,28 @@ d <- rbind(
              value = g$chem_total))
 
 p <- ggplot(d, aes(tick, value)) +
-  geom_line(linewidth = 0.5) +
+  geom_line(linewidth = 0.6, colour = pal[1]) +
   facet_wrap(~measure, ncol = 1, scales = "free_y") +
-  theme_minimal() +
+  fig_theme +
+  theme(strip.text = element_text(face = "bold", hjust = 0)) +
   labs(title = "Ants: a pheromone trail builds, then evaporates",
        subtitle = "35x35 bounded grid, 80 ants, two food piles, 400 ticks",
        x = "tick", y = NULL)
 print(p)
-ggsave(fig_file("06-ants.png"), p, width = 6, height = 4, dpi = 120)
+ggsave(fig_file("06-ants.png"), p, width = 7, height = 4.5, dpi = 150, bg = "white")
+
+at150 <- r[r$tick == 150, ]
+food_cells <- at150[at150$.group == "patches" & at150$food > 0, ]
+nest_cells <- at150[at150$.group == "patches" & at150$nest, ]
+p2 <- abm_plot_lattice(at150, fill = chemical, agents = TRUE) +
+  geom_tile(data = food_cells, fill = pal[2]) +
+  geom_tile(data = nest_cells, fill = pal[3]) +
+  scale_fill_gradient(low = "white", high = pal[1], name = "pheromone",
+                      trans = "sqrt") +
+  scale_colour_manual(values = c(ants = "grey10"), name = NULL) +
+  labs(title = "The trail at tick 150",
+       subtitle = sprintf("%d ants; the nest (green) at the centre, %d units of food (orange) left in two piles",
+                          sum(at150$.group == "ants"), sum(food_cells$food)))
+print(p2)
+ggsave(fig_file("06-ants-lattice.png"), p2, width = 7, height = 6, dpi = 150,
+       bg = "white")

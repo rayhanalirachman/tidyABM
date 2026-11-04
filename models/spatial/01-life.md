@@ -40,6 +40,8 @@ the known velocity. A 100×100 random soup started at density 0.10 relaxes to
 
 ![1. Conway's Game of Life](figures/01-life.png)
 
+![1. The ash at tick 1500](figures/01-life-lattice.png)
+
 **Reproduce:** [`01-life.R`](scripts/01-life.R)
 
 ---

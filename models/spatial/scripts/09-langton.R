@@ -58,12 +58,14 @@ for (N in c(100, 500, 2000)) {
                 a$heading == ref$heading))
 }
 cat("\n  From an all-white field the trajectory is chaotic for about 10,000\n")
-cat("  steps and then locks into a period-104 highway. Raise the tick count\n")
-cat("  above 11,000 to see it.\n")
+cat("  steps and then locks into a period-104 highway; the figure runs on\n")
+cat("  to 11,500 steps to show it.\n")
 
 # --- figure ---------------------------------------------------------------
-# Final state: the field after 2000 steps. Langton's ant is a picture, and
-# this is the picture the cell-for-cell check above is checking.
+# Final state: the field after 11,500 steps. Langton's ant is a picture -- the
+# chaotic blob and, from step 10,000 or so, the highway running off it -- and
+# the first 2000 steps of this picture are what the cell-for-cell check above
+# is checking.
 library(ggplot2)
 
 fig_file <- function(name) {
@@ -73,17 +75,17 @@ fig_file <- function(name) {
   file.path(d, "..", "figures", name)
 }
 
-r_fig <- abm_run(langton, go, ticks = 2000, seed = 1, record = "final",
+N <- 11500
+r_fig <- abm_run(langton, go, ticks = N, seed = 1, record = "final",
                  progress = FALSE)
-fin <- r_fig[r_fig$tick == 2000 & r_fig$.group == "patches", ]
-black <- fin[!fin$white, c(".x", ".y")]
-
-p <- ggplot(black, aes(.x, .y)) +
-  geom_raster(fill = "grey15") +
-  coord_fixed(xlim = c(1, 121), ylim = c(1, 121)) +
-  theme_minimal() +
-  labs(title = "Langton's Ant after 2000 steps",
-       subtitle = "121x121 torus; matches a plain-R reference cell for cell",
-       x = "x", y = "y")
+p <- abm_plot_lattice(r_fig, fill = white, agents = TRUE) +
+  scale_fill_manual(values = c(`TRUE` = "white", `FALSE` = "grey15"),
+                    guide = "none") +
+  scale_colour_manual(values = c(ant = "#D55E00"), guide = "none") +
+  theme(panel.border = element_rect(fill = NA, colour = "grey70")) +
+  labs(title = sprintf("Langton's Ant after %s steps", format(N, big.mark = ",")),
+       subtitle = sprintf("121x121 torus, %d black cells; the ant (orange) is on the highway",
+                          sum(!r_fig$white[r_fig$.group == "patches"])))
 print(p)
-ggsave(fig_file("09-langton.png"), p, width = 6, height = 4, dpi = 120)
+ggsave(fig_file("09-langton.png"), p, width = 6, height = 6.4, dpi = 150,
+       bg = "white")

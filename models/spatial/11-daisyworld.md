@@ -61,9 +61,11 @@ again it is the grammar behaving as documented.*
 
 **Replication**
 
-Across luminosity 0.7 to 1.4 the planetary temperature spans 12.7 degrees while
-bare rock over the same range spans 16.8. The white daisy fraction rises 0.34 →
-0.66 to hold it there.
+Across luminosity 0.7 to 1.4 the planetary temperature spans 12.6 degrees while
+bare rock over the same range spans 16.8. The white daisy fraction climbs from
+0.34 at *L* = 0.7 to 0.66 at *L* = 1.1 while the black fraction falls 0.55 →
+0.22, which is what holds the middle of the range flat; past *L* = 1.2 the
+planet warms with the sun.
 
 ![11. Daisyworld](figures/11-daisyworld.png)
 

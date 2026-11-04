@@ -23,7 +23,7 @@ go <- abm_go(
 )
 
 w <- 121; centre <- w %/% 2 + 1
-r <- abm_run(ca(90, w), go, ticks = 24, seed = 1)
+r <- abm_run(ca(90, w), go, ticks = 60, seed = 1)
 
 cat("Rule 90, first 16 rows (the space-time diagram is the result tibble)\n")
 for (t in 0:15) {
@@ -46,8 +46,10 @@ cat(sprintf("Rule 30 centre column, first 60 bits: %s\n",
             paste(ctr[1:60], collapse = "")))
 
 # --- figure ---------------------------------------------------------------
-# Time series: the number of live cells in row t, against the number of odd
-# entries in Pascal's row t. Rule 90 is Sierpinski, and this is the check.
+# The space-time diagram itself: row t of each rule, time running downwards.
+# Rule 90 is the Sierpinski triangle, and that picture *is* the check above
+# (row t has one live cell per odd entry of Pascal's row t). Rule 30 from the
+# same seed is the one that looks random.
 library(ggplot2)
 
 fig_file <- function(name) {
@@ -57,20 +59,23 @@ fig_file <- function(name) {
   file.path(d, "..", "figures", name)
 }
 
-rows <- data.frame(
-  t = 0:24,
-  observed = vapply(0:24, function(t) sum(r$s[r$tick == t]), numeric(1)),
-  pascal   = vapply(0:24, function(t) sum(choose(t, 0:t) %% 2 == 1), numeric(1)))
-
 d <- rbind(
-  data.frame(t = rows$t, what = "live cells in row t", n = rows$observed),
-  data.frame(t = rows$t, what = "odd entries of Pascal row t", n = rows$pascal))
+  data.frame(rule = "rule 90", x = r$.x, t = r$tick, s = r$s),
+  data.frame(rule = "rule 30", x = r30$.x, t = r30$tick, s = r30$s)[r30$tick <= 60, ])
+d$rule <- factor(d$rule, levels = c("rule 90", "rule 30"))
 
-p <- ggplot(d, aes(t, n, colour = what)) +
-  geom_line(linewidth = 0.7) + geom_point(size = 1) +
-  theme_minimal() +
-  labs(title = "Rule 90 is Pascal's triangle mod 2, exactly",
-       subtitle = "121-cell ring, single seeded cell, rows 0 to 24",
-       x = "row t", y = "live cells", colour = NULL)
+p <- ggplot(d, aes(x, t, fill = s == 1)) +
+  geom_raster() +
+  scale_fill_manual(values = c(`FALSE` = "grey94", `TRUE` = "grey10"),
+                    guide = "none") +
+  scale_y_reverse(breaks = seq(0, 60, by = 20)) +
+  coord_fixed(xlim = c(0.5, w + 0.5), ylim = c(60.5, -0.5), expand = FALSE) +
+  facet_wrap(~rule) +
+  theme_minimal(base_size = 12) +
+  theme(panel.grid = element_blank(), plot.title.position = "plot",
+        strip.text = element_text(face = "bold")) +
+  labs(title = "Rule 90 is Pascal's triangle mod 2; rule 30 looks like noise",
+       subtitle = "121-cell ring, one seeded cell, rows 0 to 60; time runs downwards",
+       x = "cell", y = "row t")
 print(p)
-ggsave(fig_file("02-ca1d.png"), p, width = 6, height = 4, dpi = 120)
+ggsave(fig_file("02-ca1d.png"), p, width = 7, height = 3.4, dpi = 150, bg = "white")

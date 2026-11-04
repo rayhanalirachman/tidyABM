@@ -46,11 +46,14 @@ instead of grinding through a fixed tick budget.*
 
 **Replication**
 
-Between density 0.55 and 0.60 the burned fraction goes 0.05 → 0.70 and the
-proportion of fires that reach the far edge goes 0 → 1, bracketing the
-square-lattice site-percolation threshold *p*<sub>c</sub> ≈ 0.5927.
+Between density 0.50 and 0.60 the burned fraction goes 0.05 → 0.20 → 0.70, and
+between 0.55 and 0.60 the proportion of fires that reach the far edge goes
+0 → 1, bracketing the square-lattice site-percolation threshold
+*p*<sub>c</sub> ≈ 0.5927.
 
 ![3. Forest Fire](figures/03-fire.png)
+
+![3. Two forests either side of the threshold](figures/03-fire-lattice.png)
 
 **Reproduce:** [`03-fire.R`](scripts/03-fire.R)
 

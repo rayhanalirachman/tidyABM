@@ -89,14 +89,23 @@ fig_file <- function(name) {
   file.path(d, "..", "figures", name)
 }
 
+# Okabe-Ito, colour-blind safe; the same series colours in every script
+pal <- c("#0072B2", "#E69F00", "#009E73")
+fig_theme <- theme_minimal(base_size = 12) +
+  theme(panel.grid.minor = element_blank(), legend.position = "bottom",
+        plot.title.position = "plot")
+
 d <- do.call(rbind, traces)
+d$legitimacy <- factor(d$legitimacy, levels = unique(d$legitimacy))
 
 p <- ggplot(d, aes(tick, active)) +
-  geom_line(linewidth = 0.4) +
+  geom_line(linewidth = 0.5, colour = pal[1]) +
   facet_wrap(~legitimacy, ncol = 1, scales = "free_y") +
-  theme_minimal() +
+  fig_theme +
+  theme(strip.text = element_text(face = "bold", hjust = 0)) +
   labs(title = "Rebellion: quiet, punctuated by bursts, until legitimacy falls",
        subtitle = "22x22 torus, 339 people, 19 cops, 200 ticks",
        x = "tick", y = "rebels active")
 print(p)
-ggsave(fig_file("13-rebellion.png"), p, width = 6, height = 4, dpi = 120)
+ggsave(fig_file("13-rebellion.png"), p, width = 7, height = 5, dpi = 150,
+       bg = "white")

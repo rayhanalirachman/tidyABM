@@ -158,7 +158,7 @@ ignored:
 |--------------------|-----------------------------------------------|
 | mode               | uses                                          |
 | `"random"`         | `size`, `role`, `eligible`                    |
-| `"one_of"`         | `role`, `eligible`, `among`                   |
+| `"one_of"`         | `role`, `eligible`, `among`, `weight`         |
 | `"opposite_group"` | `by`, `role`, `eligible`                      |
 | `"nearest"`        | `by` *or* `cost`, `size`, `eligible`, `among` |
 | `"network"`        | `from`, `eligible`                            |

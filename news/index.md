@@ -2,6 +2,57 @@
 
 ## tidyABM (development version)
 
+### Faster ticks, same answers
+
+The per-tick bookkeeping around a step was costing more than the step.
+The match table, the neighbour table, each tick’s snapshot and global
+row, and the `.partner` / `partner_<col>` columns a rule sees were all
+built through
+[`tibble()`](https://tibble.tidyverse.org/reference/tibble.html) and
+`$<-.tbl_df`, which re-validate the whole table on every call; they are
+now assembled as bare columns and wrapped once.
+[`abm_move()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_move.md)’s
+`uphill()` / `downhill()` expression and
+[`abm_run()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_run.md)’s
+`measures` take the same `eval_tidy()` shortcut
+[`abm_rules()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_rules.md)
+already takes, and the [`rowsum()`](https://rdrr.io/r/base/rowsum.html)
+fast path in
+[`abm_neighbours()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_neighbours.md)
+now also covers [`sum()`](https://rdrr.io/r/base/sum.html),
+[`mean()`](https://rdrr.io/r/base/mean.html),
+[`any()`](https://rdrr.io/r/base/any.html) and
+[`all()`](https://rdrr.io/r/base/all.html) written with a literal
+`na.rm = TRUE`. Every model in the corpus returns bit-identical results
+under the same seed; the representative models run between 1.1x (a model
+whose time is its own
+[`abm_sequential()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_sequential.md)
+rule) and 6x faster, and an `uphill()` model five times faster.
+
+### Fixes
+
+- `abm_match(pair = "opposite_group")` paired a real agent with a
+  phantom `NA` agent whenever the `by` column held `NA` for somebody. An
+  agent with no value now sits the step out, as the documentation says.
+- A seeded
+  [`abm_setup()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_setup.md)
+  or
+  [`abm_run()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_run.md)
+  left `.Random.seed` set in a session that had drawn nothing yet, so
+  the caller’s next draw was on a fixed stream. The seed is now removed
+  again, as it was always restored when there was one.
+- `abm_network(type = "manual")` refuses an edge list whose ids are
+  `NA`, below 1 or not whole numbers (`tidyABM_bad_edges`), instead of
+  accepting them and failing later or silently naming no agent.
+- `ticks`, `seed`, `size`, `max`, `degree` and
+  [`abm_birth()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_birth.md)’s
+  `n` reject `NA` with their own message rather than a bare “missing
+  value” error.
+- The
+  [`abm_match()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_match.md)
+  mode table now lists `weight` under `"one_of"`, which the function has
+  always accepted there.
+
 ### Relations: state that belongs to a pair of agents
 
 A quantity that lives between two named agents – how much this seller

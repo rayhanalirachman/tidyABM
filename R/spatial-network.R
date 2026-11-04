@@ -600,29 +600,42 @@ equijoin_view <- function(step, combined, globals, relations = NULL,
   focal_key <- combined[[key$focal]]
   cand_key <- combined[[key$cand]]
 
-  # A sort plus a run-length table, rather than a per-key list: this runs on
-  # every tick of every co-location model, so it stays vectorised.
-  ord <- order(cand_key, na.last = NA)
-  if (!length(ord)) return(pair_view(combined, integer(), integer(), relations))
-  sorted <- cand_key[ord]
-  runs <- rle(sorted)
-  starts <- cumsum(c(1L, runs$lengths))[seq_along(runs$lengths)]
+  if (key$cand == ".id" || !anyDuplicated(cand_key[!is.na(cand_key)])) {
+    # The usual direction -- a mobile agent reading the cell it stands on --
+    # joins on the candidate's `.id`, which is unique, so the join is one
+    # `match()`: no sort over the whole lattice for the sake of a handful of
+    # movers.
+    cand_idx <- match(focal_key, cand_key)
+    focal_idx <- which(!is.na(cand_idx))
+    cand_idx <- cand_idx[focal_idx]
+  } else {
+    # Otherwise a sort plus a run-length table, rather than a per-key list:
+    # this runs on every tick of every co-location model, so it stays
+    # vectorised.
+    ord <- order(cand_key, na.last = NA)
+    if (!length(ord)) return(pair_view(combined, integer(), integer(), relations))
+    sorted <- cand_key[ord]
+    runs <- rle(sorted)
+    starts <- cumsum(c(1L, runs$lengths))[seq_along(runs$lengths)]
 
-  j <- match(focal_key, runs$values)
-  reps <- ifelse(is.na(j), 0L, runs$lengths[j])
-  hit <- reps > 0L
-  if (!any(hit)) return(pair_view(combined, integer(), integer(), relations))
+    j <- match(focal_key, runs$values)
+    reps <- ifelse(is.na(j), 0L, runs$lengths[j])
+    hit <- reps > 0L
+    if (!any(hit)) return(pair_view(combined, integer(), integer(), relations))
 
-  cand_idx <- ord[sequence(reps[hit], from = starts[j[hit]])]
-  focal_idx <- rep(seq_len(n), reps)
+    cand_idx <- ord[sequence(reps[hit], from = starts[j[hit]])]
+    focal_idx <- rep(seq_len(n), reps)
+  }
+  if (!length(cand_idx)) return(pair_view(combined, integer(), integer(), relations))
   view <- pair_view(combined, focal_idx, cand_idx, relations, vars)
   if (length(key$rest)) {
     env <- rlang::quo_get_env(step$within)
     rest_expr <- Reduce(function(a, b) rlang::call2("&", a, b), key$rest)
     keep <- eval_over_view(rlang::new_quosure(rest_expr, env), view, globals)
     if (!is.logical(keep)) keep <- as.logical(keep)
+    if (length(keep) == 1L) keep <- rep(keep, nrow(view))
     keep[is.na(keep)] <- FALSE
-    view <- view[keep, , drop = FALSE]
+    view <- vctrs::vec_slice(view, keep)
   }
   view
 }

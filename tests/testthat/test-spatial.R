@@ -423,6 +423,19 @@ test_that("the equijoin fast path agrees with the full pair scan", {
   # a `within` with no equality falls back rather than misfiring
   expect_null(equijoin_view(abm_neighbours(k ~ sum(v), within = v > own_v),
                             combined, list()))
+
+  # the reverse join -- a patch reading the bugs standing on it -- keys on
+  # `.cell`, which repeats, so it takes the sorted path; same answer
+  step <- abm_neighbours(k ~ n(), within = .group == "bugs" & .cell == own_.id)
+  fast2 <- equijoin_view(step, combined, list())
+  slow2 <- attribute_view(step, combined, list())
+  expect_equal(key(fast2), key(slow2))
+  expect_gt(nrow(fast2), 0L)
+  r <- abm_run(m, abm_go(step), ticks = 1, seed = 1)
+  p <- r[r$tick == 1 & r$.group == "patches", ]
+  expect_equal(sum(p$k), 10L)
+  expect_equal(p$k[p$.id == m$groups$bugs$.cell[[1]]],
+               sum(m$groups$bugs$.cell == m$groups$bugs$.cell[[1]]))
 })
 
 test_that("abm_tell(to = .cell) writes into the patch an agent stands on", {

@@ -461,6 +461,15 @@ pair_view <- function(combined, focal_idx, cand_idx, relations = NULL,
 #' Evaluate one quosure against a pair view, with the globals in scope
 #' @noRd
 eval_over_view <- function(quo, view, globals) {
+  # the same shortcut `eval_rule()` takes: `eval_tidy()` over the view unless
+  # the expression needs something only a dplyr mask supplies, or comes back
+  # the wrong length. `n()` is bound to the number of rows either way.
+  n <- nrow(view)
+  if (!needs_mask(rlang::quo_get_expr(quo))) {
+    val <- rlang::eval_tidy(
+      rlang::quo_set_env(quo, abm_eval_env(quo, globals, n = n)), data = view)
+    if (length(val) == 1L || length(val) == n) return(val)
+  }
   quo <- rlang::quo_set_env(quo, abm_eval_env(quo, globals))
   dplyr::pull(dplyr::mutate(view, .abm_value = !!quo), ".abm_value")
 }
@@ -469,10 +478,19 @@ eval_over_view <- function(quo, view, globals) {
 #' @noRd
 network_view <- function(combined, state, vars = NULL) {
   nb <- state$nb_cache$nb
-  keep <- nb$.id %in% combined$.id & nb$.neighbour %in% combined$.id
-  nb <- vctrs::vec_slice(nb, keep)
-  view <- pair_view(combined, match(nb$.id, combined$.id),
-                    match(nb$.neighbour, combined$.id), state$relations, vars)
+  ids <- combined$.id
+  if (identical(ids, seq_along(ids))) {
+    # the ids are the row numbers, which is every patch-only lattice model:
+    # an edge endpoint is then its own row index and nobody is missing
+    focal_idx <- nb$.id
+    cand_idx <- nb$.neighbour
+  } else {
+    keep <- nb$.id %in% ids & nb$.neighbour %in% ids
+    nb <- vctrs::vec_slice(nb, keep)
+    focal_idx <- match(nb$.id, ids)
+    cand_idx <- match(nb$.neighbour, ids)
+  }
+  view <- pair_view(combined, focal_idx, cand_idx, state$relations, vars)
   attach_edge_columns(view, state$edges, nb)
 }
 
@@ -497,11 +515,14 @@ relation_view <- function(step, combined, relations) {
 
 #' The (focal, candidate) view for a neighbourhood in attribute space
 #' @noRd
-attribute_view <- function(step, combined, globals, relations = NULL) {
+attribute_view <- function(step, combined, globals, relations = NULL,
+                           vars = NULL) {
   n <- nrow(combined)
   ci <- rep(seq_len(n), times = n)
   si <- rep(seq_len(n), each = n)
-  view <- pair_view(combined, si, ci, relations)
+  # every (focal, candidate) pair, so only the columns the rules read are
+  # copied in: on a lattice the cross product is the population squared
+  view <- pair_view(combined, si, ci, relations, vars)
   keep <- eval_over_view(step$within, view, globals)
   if (!is.logical(keep)) {
     abm_abort(
@@ -512,7 +533,7 @@ attribute_view <- function(step, combined, globals, relations = NULL) {
   }
   if (length(keep) == 1L) keep <- rep(keep, nrow(view))
   keep[is.na(keep)] <- FALSE
-  view[keep, , drop = FALSE]
+  vctrs::vec_slice(view, keep)
 }
 
 #' @noRd
@@ -530,7 +551,7 @@ run_neighbours <- function(step, state) {
     # is a join; anything else is the cross product
     view <- relation_view(step, combined, state$relations) %||%
       equijoin_view(step, combined, state$globals, state$relations, vars) %||%
-      attribute_view(step, combined, state$globals, state$relations)
+      attribute_view(step, combined, state$globals, state$relations, vars)
   } else {
     if (is.null(state$edges)) {
       abm_abort(

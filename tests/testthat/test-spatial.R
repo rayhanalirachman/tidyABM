@@ -61,6 +61,42 @@ test_that("a line lattice gives .x only, and wraps when asked", {
   expect_equal(nrow(bounded$edges), 5L)
 })
 
+test_that("a torus one or two cells wide lists each neighbour once and never itself", {
+  # on a 2x2 torus a cell's east and west neighbours are the same cell, and on
+  # a 1-high torus its north neighbour is itself; a neighbourhood is a set of
+  # *other* cells, so the edge list and the adjacency must not double-count
+  m <- abm_setup(agents = abm_agents(z = 0),
+                 network = abm_network(type = "grid", dims = c(2, 2)))
+  expect_equal(nrow(m$edges), 6L)
+  expect_equal(anyDuplicated(m$edges), 0L)
+  expect_true(all(lengths(m$lattice$nb) == 3L))
+  expect_false(any(vapply(1:4, function(i) i %in% m$lattice$nb[[i]], logical(1))))
+
+  row <- abm_setup(agents = abm_agents(z = 0),
+                   network = abm_network(type = "grid", dims = c(3, 1)))
+  expect_equal(nrow(row$edges), 3L)
+  r <- abm_run(row, abm_go(abm_neighbours(k ~ n())), ticks = 1, seed = 1)
+  expect_equal(r$k[r$tick == 1], rep(2L, 3))
+  # the directional lookup is left alone: "north" on a 1-high torus is itself
+  expect_equal(row$lattice$dir_nb$north, 1:3)
+
+  one <- abm_setup(agents = abm_agents(z = 0),
+                   network = abm_network(type = "grid", dims = c(1, 1)))
+  expect_equal(nrow(one$edges), 0L)
+  expect_equal(one$lattice$nb[[1]], integer())
+
+  # ...and a random walk on it is uniform over the three other cells
+  withr::local_seed(4)
+  bugs <- abm_setup(
+    agents = list(patches = abm_agents(z = 0), bugs = abm_agents(n = 600, at = ~1L)),
+    network = abm_network(type = "grid", dims = c(2, 2), on = "patches"))
+  r <- abm_run(bugs, abm_go(abm_move(along = "patches", who = "bugs")),
+               ticks = 1, seed = 4)
+  landed <- table(factor(r$.cell[r$tick == 1 & r$.group == "bugs"], levels = 1:4))
+  expect_equal(as.integer(landed[["1"]]), 0L)
+  expect_true(all(landed[2:4] > 150))
+})
+
 test_that("abm_grid() desugars to the same model as the two-line form", {
   a <- abm_setup(agents = abm_grid(dims = c(6, 6), diagonals = FALSE,
                                    torus = FALSE, z = ~.x))
@@ -83,6 +119,10 @@ test_that("the lattice constructor refuses arguments it cannot honour", {
   # and the non-lattice types still refuse the lattice arguments
   expect_error(abm_network(type = "random", degree = 2, dims = c(4, 4)),
                class = "tidyABM_irrelevant_arg")
+  # `...` of abm_grid() are patch columns, so `n` and `at` would silently
+  # become columns
+  expect_error(abm_grid(dims = c(3, 3), n = 9, z = 0), class = "tidyABM_bad_n")
+  expect_error(abm_grid(dims = c(3, 3), at = ~1L), class = "tidyABM_irrelevant_arg")
 })
 
 test_that("the wired group inherits n, and a mismatch is an error", {
@@ -279,6 +319,62 @@ test_that("placement is uniform at random by default, and `at` can read the patc
                   ants = abm_agents(n = 5, at = ~which(nest)[1])),
     network = abm_network(type = "grid", dims = c(w, h), on = "patches"))
   expect_equal(unique(nested$groups$ants$.cell), cid(4, 4, w))
+})
+
+test_that("at = must yield whole cell ids, not a mask or a fraction", {
+  grid <- abm_network(type = "grid", dims = c(4, 4), on = "patches")
+  expect_error(
+    abm_setup(agents = list(patches = abm_agents(nest = ~.id == 3L),
+                            bugs = abm_agents(n = 16, at = ~nest)),
+              network = grid),
+    class = "tidyABM_bad_arg")
+  expect_error(
+    abm_setup(agents = list(patches = abm_agents(z = 0),
+                            bugs = abm_agents(n = 2, at = ~c(1.5, 2))),
+              network = grid),
+    class = "tidyABM_bad_arg")
+  # a double that is a whole number is fine, and lands as an integer
+  m <- abm_setup(agents = list(patches = abm_agents(z = 0),
+                               bugs = abm_agents(n = 2, at = ~c(1, 16))),
+                 network = grid)
+  expect_identical(m$groups$bugs$.cell, c(1L, 16L))
+})
+
+test_that("a rule may write .cell, and .x / .y follow it", {
+  w <- h <- 4
+  m <- abm_setup(
+    agents = list(patches = abm_agents(z = 0),
+                  bugs = abm_agents(n = 2, at = ~c(1L, 2L), e = 1)),
+    network = abm_network(type = "grid", dims = c(w, h), on = "patches"))
+  r <- abm_run(m, abm_go(abm_rules(.cell ~ 16L)), ticks = 1, seed = 1)
+  b <- r[r$tick == 1 & r$.group == "bugs", ]
+  expect_equal(b$.cell, c(16L, 16L))
+  expect_equal(b$.x, c(4L, 4L))
+  expect_equal(b$.y, c(4L, 4L))
+  # a newborn placed elsewhere by `inherit`, and a double cell id, both land
+  r2 <- abm_run(m, abm_go(abm_birth(when = .group == "bugs",
+                                    inherit = list(.cell ~ 7))),
+                ticks = 1, seed = 1)
+  b2 <- r2[r2$tick == 1 & r2$.group == "bugs", ]
+  expect_identical(b2$.cell, c(1L, 2L, 7L, 7L))
+  expect_equal(b2$.x[3:4], c(3L, 3L))
+  expect_equal(b2$.y[3:4], c(2L, 2L))
+  # a telling writes it too
+  r3 <- abm_run(m, abm_go(abm_tell(.cell ~ 9L, to = .id, when = .group == "bugs")),
+                ticks = 1, seed = 1)
+  b3 <- r3[r3$tick == 1 & r3$.group == "bugs", ]
+  expect_equal(b3$.cell, c(9L, 9L))
+  expect_equal(b3$.x, c(1L, 1L))
+  expect_equal(b3$.y, c(3L, 3L))
+
+  # what is written has to be a cell, and the derived columns are read-only
+  expect_error(abm_run(m, abm_go(abm_rules(.cell ~ 99L)), ticks = 1, seed = 1),
+               class = "tidyABM_bad_cell")
+  expect_error(abm_run(m, abm_go(abm_rules(.cell ~ NA_integer_)), ticks = 1,
+                       seed = 1),
+               class = "tidyABM_bad_cell")
+  expect_error(abm_rules(.x ~ 1L), class = "tidyABM_reserved_column")
+  expect_error(abm_tell(.y ~ 1L, to = .partner), class = "tidyABM_reserved_column")
 })
 
 test_that("at = without a lattice, and on the wired group, are both errors", {

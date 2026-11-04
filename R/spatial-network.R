@@ -123,6 +123,14 @@ build_lattice <- function(spec, group_name) {
       v[!is.na(v)]
     })
   }
+  # On a torus one or two cells wide a cell's east and west neighbours are the
+  # same cell, or the cell itself. A neighbourhood is a set of other cells, so
+  # each one is listed once and the cell is never its own neighbour; the
+  # directional lookups in `dir_nb` are left as they are, since "the cell to
+  # the east" on a one-wide torus genuinely is the cell itself.
+  if (torus && any(dims <= 2L)) {
+    nb <- lapply(seq_len(ncell), function(i) setdiff(unique(nb[[i]]), i))
+  }
 
   list(
     type = type, dims = dims, torus = torus, diagonals = diagonals,
@@ -297,14 +305,18 @@ place_on_lattice <- function(g, spec, group_name, lat, wired,
   } else {
     cell <- sample.int(lat$ncell, n, replace = TRUE)
   }
-  cell <- as.integer(cell)
-  if (anyNA(cell) || any(cell < 1L | cell > lat$ncell)) {
+  # a cell id is a whole number; `TRUE` or `2.5` is a formula that meant
+  # something else (`which(nest)` rather than `nest`), not a cell
+  if (!is.numeric(cell) || anyNA(cell) || any(cell != round(cell)) ||
+      any(cell < 1L | cell > lat$ncell)) {
     abm_abort(
       c("{.arg at} for group {.field {group_name}} must land on a cell.",
-        "x" = "A value is missing or outside {.code 1:{lat$ncell}}."),
+        "x" = "Every value must be a whole number in {.code 1:{lat$ncell}}, with no {.val NA}.",
+        "i" = if (is.logical(cell)) "A logical mask is not a cell id: try {.code which(...)}."),
       class = "tidyABM_bad_arg", call = call
     )
   }
+  cell <- as.integer(cell)
   g$.cell <- cell
   g$.x <- lat$x[cell]
   if (!is.null(lat$y)) g$.y <- lat$y[cell]
@@ -322,8 +334,31 @@ sync_cell_coords <- function(state) {
   for (nm in names(state$groups)) {
     g <- state$groups[[nm]]
     if (!".cell" %in% names(g) || !nrow(g)) next
-    g$.x <- lat$x[g$.cell]
-    if (!is.null(lat$y)) g$.y <- lat$y[g$.cell]
+    cell <- g$.cell
+    # A rule may write `.cell` -- that is what moving is -- so what it wrote has
+    # to be a cell. Checked here rather than in every step that can write a
+    # column, since every one of them ends up here.
+    if (!is.numeric(cell) || anyNA(cell) || any(cell != round(cell)) ||
+        any(cell < 1L | cell > lat$ncell)) {
+      abm_abort(
+        c("{.code .cell} on group {.field {nm}} does not name a cell.",
+          "x" = "Every value must be a whole number in {.code 1:{lat$ncell}}, with no {.val NA}.",
+          "i" = "A mobile agent's {.code .cell} is the {.code .id} of the cell it stands on."),
+        class = "tidyABM_bad_cell"
+      )
+    }
+    if (!is.integer(cell)) {
+      cell <- as.integer(cell)
+      g$.cell <- cell
+    }
+    # this runs after every step that can write a column, so it writes only
+    # when something has actually moved
+    x <- lat$x[cell]
+    if (!identical(x, g$.x)) g$.x <- x
+    if (!is.null(lat$y)) {
+      y <- lat$y[cell]
+      if (!identical(y, g$.y)) g$.y <- y
+    }
     state$groups[[nm]] <- g
   }
   state
@@ -359,7 +394,8 @@ sync_cell_coords <- function(state) {
 #' @param torus `TRUE` (the default) wraps the edges; `FALSE` gives a bounded
 #'   grid whose border cells have fewer neighbours.
 #' @param ... Patch column specifications, exactly as [abm_agents()] takes them
-#'   (`n` is available inside a formula and equals `prod(dims)`).
+#'   (`n` is available inside a formula and equals `prod(dims)`, but cannot be
+#'   passed; neither can `at`, which places the groups standing *on* the grid).
 #'
 #' @return An `abm_grid` object, recognised by [abm_setup()].
 #' @seealso [abm_network()], [abm_agents()].
@@ -380,6 +416,21 @@ abm_grid <- function(dims, diagonals = TRUE, torus = TRUE, ...) {
       c("Column names beginning with {.code .} are reserved by tidyABM.",
         "x" = "Rename {.field {bad}}."),
       class = "tidyABM_reserved_column"
+    )
+  }
+  # `...` are patch columns, so an `n` or `at` here would silently become one
+  if ("n" %in% names(cols)) {
+    abm_abort(
+      c("{.fn abm_grid} has no {.arg n}: the cell count is {.code prod(dims)}.",
+        "i" = "Drop it; {.code n} is still usable inside a column formula."),
+      class = "tidyABM_bad_n"
+    )
+  }
+  if ("at" %in% names(cols)) {
+    abm_abort(
+      c("{.arg at} places mobile agents on the lattice; the grid *is* the lattice.",
+        "i" = "Give {.arg at} to the group standing on the grid, in {.fn abm_agents}."),
+      class = "tidyABM_irrelevant_arg"
     )
   }
   structure(

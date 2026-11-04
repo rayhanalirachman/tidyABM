@@ -32,7 +32,15 @@ f_lhs_name <- function(x, arg = "rule", call = rlang::caller_env()) {
       class = "tidyABM_bad_formula", call = call
     )
   }
-  rlang::as_string(lhs)
+  name <- rlang::as_string(lhs)
+  if (name %in% c(".x", ".y")) {
+    abm_abort(
+      c("{.code {name}} is derived from {.code .cell} and cannot be written.",
+        "i" = "Write {.code .cell} instead, or move with {.fn abm_move}; {.code .x} and {.code .y} follow."),
+      class = "tidyABM_reserved_column", call = call
+    )
+  }
+  name
 }
 
 #' Variables referenced on the right-hand side of a formula

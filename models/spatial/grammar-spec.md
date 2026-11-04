@@ -54,7 +54,8 @@ Three tiers, separable for scoping:
 
 `.x` / `.y` / `.cell` are readable in `abm_agents()` column formulas, in every
 `abm_go()` step, and in the `abm_run()` output. They are reserved (dot-prefixed,
-like `.id`) — a user cannot declare them, only read them.
+like `.id`) — a user cannot declare them. A rule may *write* `.cell` (that is a
+move, and `.x` / `.y` follow); `.x` and `.y` themselves are read-only.
 
 **Count inheritance.** The wired group omits `n` in `abm_agents()`; it is
 `prod(dims)`. `n` is still usable inside that group's formulas. A matching `n`

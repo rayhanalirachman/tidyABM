@@ -94,7 +94,8 @@ Two things are injected. The wired group gains \code{.x} and \code{.y} (a line g
 and \code{.y} increasing upward. Every \emph{other} group gains \code{.cell}, an integer
 holding the wired group's \code{.id} for the cell that agent is standing on, plus
 \code{.x} / \code{.y} mirroring it. All three are reserved: a model reads them, it does
-not declare them.
+not declare them. A rule may write \code{.cell} (that is a move, and \code{.x} / \code{.y}
+follow); \code{.x} and \code{.y} themselves are read-only.
 
 The wired group also \strong{inherits its count}, so it omits \code{n} in
 \code{\link[=abm_agents]{abm_agents()}} and gets \code{prod(dims)}. \code{n} is still usable inside that group's

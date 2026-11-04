@@ -323,7 +323,7 @@ recorded_ticks <- function(record, ticks) {
 }
 
 run_step <- function(step, state) {
-  switch(
+  state <- switch(
     class(step)[[1]],
     abm_match = {
       m <- run_match(step, bind_groups(state$groups), state$edges, state$globals,
@@ -347,6 +347,13 @@ run_step <- function(step, state) {
     abm_abort("Unknown step type {.cls {class(step)[[1]]}}.",
               class = "tidyABM_unknown_step")
   )
+  # a rule, a message or an inherited value may have written `.cell`, which is
+  # how a mobile agent is moved by hand; `.x` / `.y` have to follow
+  if (!is.null(state$lattice) &&
+      inherits(step, c("abm_rules", "abm_sequential", "abm_tell", "abm_birth"))) {
+    state <- sync_cell_coords(state)
+  }
+  state
 }
 
 snapshot <- function(state, t) {

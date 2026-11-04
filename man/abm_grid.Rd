@@ -17,7 +17,8 @@ wired group inherits it -- do not pass \code{n}.}
 grid whose border cells have fewer neighbours.}
 
 \item{...}{Patch column specifications, exactly as \code{\link[=abm_agents]{abm_agents()}} takes them
-(\code{n} is available inside a formula and equals \code{prod(dims)}).}
+(\code{n} is available inside a formula and equals \code{prod(dims)}, but cannot be
+passed; neither can \code{at}, which places the groups standing \emph{on} the grid).}
 }
 \value{
 An \code{abm_grid} object, recognised by \code{\link[=abm_setup]{abm_setup()}}.

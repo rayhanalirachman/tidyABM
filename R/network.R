@@ -50,7 +50,8 @@ new_abm_network <- function(type, degree, edges, dims = NULL, diagonals = NULL,
 #' and `.y` increasing upward. Every *other* group gains `.cell`, an integer
 #' holding the wired group's `.id` for the cell that agent is standing on, plus
 #' `.x` / `.y` mirroring it. All three are reserved: a model reads them, it does
-#' not declare them.
+#' not declare them. A rule may write `.cell` (that is a move, and `.x` / `.y`
+#' follow); `.x` and `.y` themselves are read-only.
 #'
 #' The wired group also **inherits its count**, so it omits `n` in
 #' [abm_agents()] and gets `prod(dims)`. `n` is still usable inside that group's

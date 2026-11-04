@@ -116,7 +116,7 @@ Each \code{pair} mode uses a fixed set of the other arguments, and passing one
 that the chosen mode does not use is an error rather than being ignored:\tabular{ll}{
    mode \tab uses \cr
    \code{"random"} \tab \code{size}, \code{role}, \code{eligible} \cr
-   \code{"one_of"} \tab \code{role}, \code{eligible}, \code{among} \cr
+   \code{"one_of"} \tab \code{role}, \code{eligible}, \code{among}, \code{weight} \cr
    \code{"opposite_group"} \tab \code{by}, \code{role}, \code{eligible} \cr
    \code{"nearest"} \tab \code{by} \emph{or} \code{cost}, \code{size}, \code{eligible}, \code{among} \cr
    \code{"network"} \tab \code{from}, \code{eligible} \cr

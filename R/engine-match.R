@@ -377,11 +377,14 @@ match_opposite <- function(spec, agents, globals, pool, call) {
   # step where nobody pairs up, not an error
   sub <- agents[agents$.id %in% pool, , drop = FALSE]
   vals <- all_vals
-  if (length(all_vals) < 2L || length(unique(sub[[by]])) < 2L) {
+  if (length(all_vals) < 2L || length(unique(sub[[by]][!is.na(sub[[by]])])) < 2L) {
     return(empty_match())
   }
-  g1 <- shuffle(sub$.id[sub[[by]] == vals[[1]]])
-  g2 <- shuffle(sub$.id[sub[[by]] == vals[[2]]])
+  # `which()` rather than logical indexing: an agent whose `by` value is `NA`
+  # is in neither side, and `sub$.id[NA]` would have put a phantom `NA` agent
+  # into one of them, to be paired with a real one
+  g1 <- shuffle(sub$.id[which(sub[[by]] == vals[[1]])])
+  g2 <- shuffle(sub$.id[which(sub[[by]] == vals[[2]])])
   k <- min(length(g1), length(g2))
   if (k == 0L) return(empty_match())
   a <- g1[seq_len(k)]; b <- g2[seq_len(k)]

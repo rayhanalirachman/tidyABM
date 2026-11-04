@@ -64,7 +64,7 @@ abm_repeat <- function(..., until = NULL, max) {
       class = "tidyABM_missing_arg"
     )
   }
-  if (!rlang::is_scalar_integerish(max) || max < 1) {
+  if (!rlang::is_scalar_integerish(max) || is.na(max) || max < 1) {
     abm_abort("{.arg max} must be a single whole number of at least 1.",
               class = "tidyABM_bad_max")
   }
@@ -101,7 +101,6 @@ run_repeat <- function(step, state) {
     }
     if (isTRUE(val)) break
   }
-  state$repeats <- i
   state$match <- outer_match
   state
 }

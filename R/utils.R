@@ -70,6 +70,29 @@ by_columns <- function(by_quo, call = rlang::caller_env()) {
   )
 }
 
+#' Seed the random number generator for the calling function only
+#'
+#' The caller's random state is put back when it returns: restored if there
+#' was one, removed if there was none, so a seeded run in a fresh session does
+#' not leave the session on a fixed stream.
+#' @noRd
+local_seed <- function(seed, frame = parent.frame()) {
+  had <- exists(".Random.seed", .GlobalEnv, inherits = FALSE)
+  old <- if (had) get(".Random.seed", .GlobalEnv, inherits = FALSE) else NULL
+  set.seed(seed)
+  restore <- function() {
+    if (had) {
+      assign(".Random.seed", old, envir = .GlobalEnv)
+    } else if (exists(".Random.seed", .GlobalEnv, inherits = FALSE)) {
+      rm(".Random.seed", envir = .GlobalEnv)
+    }
+  }
+  # registered on the caller's exit; the call holds the closure itself, so it
+  # needs no name to be visible from there
+  do.call(on.exit, list(as.call(list(restore)), TRUE), envir = frame)
+  invisible(seed)
+}
+
 #' Shuffle a vector, safely
 #'
 #' `sample(x)` reinterprets a length-1 numeric `x` as `seq_len(x)`, which for a

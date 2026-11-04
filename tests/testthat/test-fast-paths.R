@@ -97,3 +97,30 @@ test_that("a .where neighbour that does not exist is still NA", {
   r <- abm_run(m, abm_go(abm_neighbours(w ~ sum(v), .where = "west")), ticks = 1)
   expect_equal(r$w[r$tick == 1], c(NA, 1, 2, 3))
 })
+
+test_that("rowsum aggregates honour a literal na.rm = TRUE", {
+  edges <- data.frame(from = c(1, 1, 2, 3, 5), to = c(2, 3, 3, 4, 6))
+  m <- abm_setup(agents = abm_agents(n = 6, v = c(1L, NA, 3L, 4L, 5L, NA),
+                                     b = c(TRUE, NA, FALSE, TRUE, TRUE, NA)),
+                 network = abm_network(type = "manual", edges = edges))
+  go <- abm_go(abm_neighbours(
+    s1 ~ sum(v, na.rm = TRUE),  s2 ~ identity(sum(v, na.rm = TRUE)),
+    m1 ~ mean(b, na.rm = TRUE), m2 ~ identity(mean(b, na.rm = TRUE)),
+    a1 ~ any(b, na.rm = TRUE),  a2 ~ identity(any(b, na.rm = TRUE)),
+    l1 ~ all(b, na.rm = TRUE),  l2 ~ identity(all(b, na.rm = TRUE)),
+    # a flag that is not a literal keeps the summarise() path
+    f1 ~ sum(v, na.rm = FALSE), f2 ~ identity(sum(v, na.rm = FALSE))))
+  r <- abm_run(m, go, ticks = 1)
+  r <- r[r$tick == 1, ]
+  expect_identical(r$s1, r$s2)
+  expect_identical(r$m1, r$m2)
+  expect_identical(r$a1, r$a2)
+  expect_identical(r$l1, r$l2)
+  expect_identical(r$f1, r$f2)
+  # agent 5's only neighbour (6) is NA throughout: a sum of nothing is 0 and
+  # a mean of nothing is NaN, as base says
+  expect_equal(r$s1[5], 0L)
+  expect_true(is.nan(r$m1[5]))
+  expect_false(r$a1[5])
+  expect_true(r$l1[5])
+})

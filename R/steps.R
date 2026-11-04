@@ -355,7 +355,7 @@ abm_birth <- function(when = NULL, n = NULL, times = NULL, cost = NULL,
       class = "tidyABM_conflicting_args"
     )
   }
-  if (!is.null(n) && (!rlang::is_scalar_integerish(n) || n < 0)) {
+  if (!is.null(n) && (!rlang::is_scalar_integerish(n) || is.na(n) || n < 0)) {
     abm_abort("{.arg n} must be a single non-negative whole number.",
               class = "tidyABM_bad_n")
   }

@@ -133,7 +133,7 @@ abm_run <- function(model, go, ticks, params = NULL, reps = 1, measures = NULL,
     abm_abort("{.arg go} must come from {.fn abm_go}.",
               class = "tidyABM_bad_go")
   }
-  if (!rlang::is_scalar_integerish(ticks) || ticks < 0) {
+  if (!rlang::is_scalar_integerish(ticks) || is.na(ticks) || ticks < 0) {
     abm_abort("{.arg ticks} must be a single non-negative whole number.",
               class = "tidyABM_bad_ticks")
   }
@@ -142,7 +142,7 @@ abm_run <- function(model, go, ticks, params = NULL, reps = 1, measures = NULL,
   # `seed` used to be handed straight to `set.seed()`, which made `seed = 1:20`
   # -- the obvious way to ask for twenty replicates -- a single run on seed 1,
   # silently. Replicates are `reps` now, and this says so.
-  if (!is.null(seed) && !rlang::is_scalar_integerish(seed)) {
+  if (!is.null(seed) && (!rlang::is_scalar_integerish(seed) || is.na(seed))) {
     abm_abort(
       c("{.arg seed} must be a single whole number.",
         "i" = "For several runs use {.arg reps} or {.arg params}; the seed for each
@@ -247,13 +247,7 @@ new_abm_result <- function(population, globals, measures, network, relations,
 #' one run to tell apart.
 #' @noRd
 run_once <- function(model, go, ticks, seed, keep, measures, bar = NULL) {
-  if (!is.null(seed)) {
-    old <- if (exists(".Random.seed", .GlobalEnv)) get(".Random.seed", .GlobalEnv) else NULL
-    set.seed(seed)
-    on.exit({
-      if (!is.null(old)) assign(".Random.seed", old, envir = .GlobalEnv)
-    }, add = TRUE)
-  }
+  if (!is.null(seed)) local_seed(seed)
 
   state <- list(
     groups    = model$groups,

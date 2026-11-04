@@ -114,3 +114,15 @@ test_that("network specs reject arguments the type does not use", {
   expect_error(abm_network("manual", degree = 2), class = "tidyABM_irrelevant_arg")
   expect_error(abm_network("manual"), class = "tidyABM_missing_arg")
 })
+
+test_that("opposite_group leaves an agent with an NA split value out", {
+  # `sub$.id[sub[[by]] == v]` used to carry a phantom `NA` agent into one
+  # side of the split, which a real agent could then be paired with
+  m <- abm_setup(agents = abm_agents(n = 4, sex = c("f", "m", NA, NA), x = 0L))
+  go <- abm_go(abm_match(pair = "opposite_group", by = sex),
+               abm_rules(x ~ coalesce(.partner, -1L)))
+  for (s in 1:6) {
+    r <- abm_run(m, go, ticks = 1, seed = s)
+    expect_equal(r$x[r$tick == 1], c(2L, 1L, 0L, 0L))
+  }
+})

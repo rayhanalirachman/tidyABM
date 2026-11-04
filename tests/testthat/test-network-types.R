@@ -42,3 +42,14 @@ test_that("the new types still refuse arguments they do not use", {
                class = "tidyABM_irrelevant_arg")
   expect_error(abm_network(type = "poisson"), class = "tidyABM_missing_arg")
 })
+
+test_that("a manual edge list must hold agent ids", {
+  bad <- function(from, to) {
+    abm_network(type = "manual", edges = data.frame(from = from, to = to))
+  }
+  expect_error(bad(0, 1), class = "tidyABM_bad_edges")
+  expect_error(bad(NA, 1), class = "tidyABM_bad_edges")
+  expect_error(bad(1.5, 2), class = "tidyABM_bad_edges")
+  expect_error(bad("a", "b"), class = "tidyABM_bad_edges")
+  expect_s3_class(bad(1, 2), "abm_network")
+})

@@ -64,15 +64,11 @@ new_abm_model <- function(groups, globals, edges, network_spec,
 abm_setup <- function(agents, network = NULL, relations = NULL,
                       globals = list(), seed = NULL) {
   if (!is.null(seed)) {
-    if (!rlang::is_scalar_integerish(seed)) {
+    if (!rlang::is_scalar_integerish(seed) || is.na(seed)) {
       abm_abort("{.arg seed} must be a single whole number.",
                 class = "tidyABM_bad_seed")
     }
-    old <- if (exists(".Random.seed", .GlobalEnv)) get(".Random.seed", .GlobalEnv) else NULL
-    set.seed(seed)
-    on.exit({
-      if (!is.null(old)) assign(".Random.seed", old, envir = .GlobalEnv)
-    }, add = TRUE)
+    local_seed(seed)
   }
 
   # `abm_grid()` is sugar for a group plus the grid network wired to it

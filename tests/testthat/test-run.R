@@ -68,3 +68,28 @@ test_that("abm_run's seed alone does not fix a randomly drawn population", {
   withr::local_seed(2); b <- abm_run(abm_setup(agents = abm_agents(n = 50, x = ~runif(n))), go, 1, seed = 5)
   expect_false(isTRUE(all.equal(a$x, b$x)))
 })
+
+test_that("a seeded run or setup leaves no random state behind", {
+  # in a session that had drawn nothing yet, the seed used to stay set after
+  # the run, so the caller's next draw was on a fixed stream
+  if (exists(".Random.seed", .GlobalEnv, inherits = FALSE)) {
+    rm(".Random.seed", envir = .GlobalEnv)
+  }
+  m <- abm_setup(agents = abm_agents(n = 5, x = ~runif(n)), seed = 1)
+  expect_false(exists(".Random.seed", .GlobalEnv, inherits = FALSE))
+  invisible(abm_run(m, abm_go(abm_rules(x ~ runif(n()))), ticks = 2, seed = 1))
+  expect_false(exists(".Random.seed", .GlobalEnv, inherits = FALSE))
+})
+
+test_that("NA is not a whole number", {
+  m <- abm_setup(agents = abm_agents(n = 2, x = 1))
+  go <- abm_go(abm_rules(x ~ x))
+  expect_error(abm_run(m, go, ticks = NA_integer_), class = "tidyABM_bad_ticks")
+  expect_error(abm_run(m, go, ticks = 1, seed = NA_integer_), class = "tidyABM_bad_seed")
+  expect_error(abm_setup(agents = abm_agents(n = 2, x = 1), seed = NA_integer_),
+               class = "tidyABM_bad_seed")
+  expect_error(abm_match(pair = "random", size = NA_integer_), class = "tidyABM_bad_size")
+  expect_error(abm_repeat(abm_rules(x ~ x), max = NA_integer_), class = "tidyABM_bad_max")
+  expect_error(abm_network(type = "random", degree = NA_integer_), class = "tidyABM_bad_degree")
+  expect_error(abm_birth(n = NA_integer_), class = "tidyABM_bad_n")
+})

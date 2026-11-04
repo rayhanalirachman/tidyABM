@@ -159,11 +159,12 @@ abm_network <- function(type = c("random", "poisson", "scale_free", "ring",
       )
     }
     if (!rlang::is_scalar_integerish(degree) && type == "poisson") {
-      if (!rlang::is_scalar_double(degree) || degree <= 0) {
+      if (!rlang::is_scalar_double(degree) || is.na(degree) || degree <= 0) {
         abm_abort("{.arg degree} must be a single positive number.",
                   class = "tidyABM_bad_degree")
       }
-    } else if (!rlang::is_scalar_integerish(degree) || degree < 1) {
+    } else if (!rlang::is_scalar_integerish(degree) || is.na(degree) ||
+               degree < 1) {
       abm_abort("{.arg degree} must be a single positive whole number.",
                 class = "tidyABM_bad_degree")
     }
@@ -193,6 +194,14 @@ abm_network <- function(type = c("random", "poisson", "scale_free", "ring",
         c("{.arg edges} {?has a column/has columns} {.field {extra}} that {?is/are} not used.",
           "i" = "An edge is {.field from} and {.field to}. A value drawn fresh each tick goes on the network with {.fn abm_draw}; a value that belongs to the pair and persists is a relation: {.fn abm_relation}.",
           "i" = "Keep only the two: {.code edges[c(\"from\", \"to\")]}."),
+        class = "tidyABM_bad_edges"
+      )
+    }
+    ids <- c(edges$from, edges$to)
+    if (!is.numeric(ids) || anyNA(ids) || any(ids < 1 | ids != round(ids))) {
+      abm_abort(
+        c("{.arg edges} must hold agent ids: whole numbers from 1 up, with no {.val NA}.",
+          "x" = "{.field from} or {.field to} holds something else."),
         class = "tidyABM_bad_edges"
       )
     }

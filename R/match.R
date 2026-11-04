@@ -40,7 +40,7 @@ new_abm_match <- function(pair, size, by, role, eligible, from, among, cost,
 #' | mode               | uses                                                                  |
 #' |--------------------|-----------------------------------------------------------------------|
 #' | `"random"`         | `size`, `role`, `eligible`                                            |
-#' | `"one_of"`         | `role`, `eligible`, `among`                                           |
+#' | `"one_of"`         | `role`, `eligible`, `among`, `weight`                                 |
 #' | `"opposite_group"` | `by`, `role`, `eligible`                                              |
 #' | `"nearest"`        | `by` *or* `cost`, `size`, `eligible`, `among`                         |
 #' | `"network"`        | `from`, `eligible`                                                    |
@@ -188,7 +188,7 @@ abm_match <- function(pair = c("random", "one_of", "opposite_group", "nearest",
   }
 
   size <- size %||% 2L
-  if (!rlang::is_scalar_integerish(size) || size < 2) {
+  if (!rlang::is_scalar_integerish(size) || is.na(size) || size < 2) {
     abm_abort("{.arg size} must be a single whole number of at least 2.",
               class = "tidyABM_bad_size")
   }

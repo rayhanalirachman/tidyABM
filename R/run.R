@@ -268,8 +268,9 @@ run_once <- function(model, go, ticks, seed, keep, measures, bar = NULL) {
   snapshots <- vector("list", ticks + 1L)
   global_log <- vector("list", ticks + 1L)
   measure_log <- if (length(measures)) vector("list", ticks + 1L) else NULL
-  empty <- snapshot(state, 0L)[0, , drop = FALSE]
-  if (keep[[1]]) snapshots[[1]] <- snapshot(state, 0L)
+  first <- snapshot(state, 0L)
+  empty <- first[0, , drop = FALSE]
+  if (keep[[1]]) snapshots[[1]] <- first
   global_log[[1]] <- global_row(state, 0L)
   if (!is.null(measure_log)) measure_log[[1]] <- measure_row(measures, state, 0L)
 
@@ -356,12 +357,18 @@ run_step <- function(step, state) {
 
 snapshot <- function(state, t) {
   out <- bind_groups(state$groups)
-  out$tick <- t
-  out
+  # the tick column is added on a bare list rather than through `$<-.tbl_df`,
+  # which re-checks the whole tibble once per recorded tick
+  n <- nrow(out)
+  cols <- as.list(out)
+  cols$tick <- rep(t, n)
+  tibble::new_tibble(cols, nrow = n)
 }
 
 global_row <- function(state, t) {
-  if (!length(state$globals)) return(tibble::tibble(tick = t))
+  if (!length(state$globals)) {
+    return(tibble::new_tibble(list(tick = t), nrow = 1L))
+  }
   # A global need not be a scalar -- a lookup table, a matrix of payoffs, a
   # vector of prices. One row per tick is still the right shape for the log, so
   # anything that is not a single value is wrapped in a list column rather than
@@ -369,7 +376,7 @@ global_row <- function(state, t) {
   vals <- lapply(state$globals, function(v) {
     if (is.null(dim(v)) && length(v) == 1L) v else list(v)
   })
-  dplyr::bind_cols(tibble::tibble(tick = t), tibble::as_tibble(vals))
+  tibble::new_tibble(c(list(tick = t), vals), nrow = 1L)
 }
 
 #' Global values recorded during a run

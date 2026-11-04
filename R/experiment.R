@@ -153,11 +153,21 @@ check_measures <- function(measures, call = rlang::caller_env()) {
 measure_row <- function(quos, state, t) {
   combined <- bind_groups(state$groups)
   vals <- lapply(names(quos), function(nm) {
-    quo <- rlang::quo_set_env(
-      quos[[nm]],
-      rlang::new_environment(state$globals, parent = rlang::quo_get_env(quos[[nm]]))
-    )
-    val <- dplyr::pull(dplyr::reframe(combined, .abm_value = !!quo), ".abm_value")
+    q <- quos[[nm]]
+    # the same shortcut `run_global()` takes: `eval_tidy()` over the tibble
+    # unless the expression needs something only a dplyr mask supplies, with
+    # `reframe()` as the fallback for anything else
+    val <- NULL
+    if (!needs_mask(rlang::quo_get_expr(q))) {
+      val <- rlang::eval_tidy(
+        rlang::quo_set_env(q, abm_eval_env(q, state$globals, n = nrow(combined))),
+        data = combined)
+    }
+    if (length(val) != 1L) {
+      quo <- rlang::quo_set_env(
+        q, rlang::new_environment(state$globals, parent = rlang::quo_get_env(q)))
+      val <- dplyr::pull(dplyr::reframe(combined, .abm_value = !!quo), ".abm_value")
+    }
     if (length(val) != 1L) {
       abm_abort(
         c("A measure must collapse to a single value.",
@@ -169,7 +179,7 @@ measure_row <- function(quos, state, t) {
     if (is.null(dim(val)) && length(val) == 1L) val else list(val)
   })
   names(vals) <- names(quos)
-  dplyr::bind_cols(tibble::tibble(tick = t), tibble::as_tibble(vals))
+  tibble::new_tibble(c(list(tick = t), vals), nrow = 1L)
 }
 
 #' Prefix a run's identifying columns onto one of its tables

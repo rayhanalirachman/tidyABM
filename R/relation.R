@@ -255,6 +255,9 @@ validate_relations <- function(relations, n, agent_cols, globals,
 # --- the pair view -------------------------------------------------------
 
 #' Add `.R`, `.R_back`, `R_<col>` and `R_<col>_back` to a (focal, candidate) view
+#'
+#' `view` is a tibble or the bare list of its columns; the columns are added
+#' with `[[<-`, which works on both, and the caller rebuilds the tibble.
 #' @noRd
 attach_relation_columns <- function(view, relations, focal_ids, cand_ids) {
   if (!length(relations)) return(view)
@@ -469,14 +472,14 @@ run_pairs <- function(step, state) {
 #' One row per pair, with both agents' columns alongside the pair's values
 #' @noRd
 pairs_view <- function(rel, combined) {
-  view <- rel$edges
+  view <- as.list(rel$edges)
   fi <- match(view$from, combined$.id)
   ti <- match(view$to, combined$.id)
   for (nm in names(combined)) {
     view[[paste0("from_", nm)]] <- combined[[nm]][fi]
     view[[paste0("to_", nm)]]   <- combined[[nm]][ti]
   }
-  view
+  tibble::new_tibble(view, nrow = nrow(rel$edges))
 }
 
 #' @export

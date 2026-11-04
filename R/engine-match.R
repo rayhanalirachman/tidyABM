@@ -9,6 +9,21 @@
 )
 empty_match <- function() .empty_match
 
+#' The match table every pairing mode returns
+#'
+#' Built with `new_tibble()` rather than `tibble()`: a match is made every
+#' tick, and `tibble()`'s argument handling was a third of a simple model's
+#' run. `partner` and `role` may be a single value to recycle.
+#' @noRd
+new_match <- function(id, partner, role, group_id) {
+  n <- length(id)
+  tibble::new_tibble(
+    list(.id = id, .partner = rep_len(partner, n), .role = rep_len(role, n),
+         .group_id = group_id),
+    nrow = n
+  )
+}
+
 #' Evaluate a condition quosure against the agent tibble + globals
 #' @noRd
 eval_condition <- function(quo, agents, globals) {
@@ -281,25 +296,17 @@ match_random <- function(spec, agents, globals, pool) {
     a_idx <- match(a, agents$.id); b_idx <- match(b, agents$.id)
 
     if (is.null(spec$role)) {
-      m <- tibble::tibble(
-        .id = c(a, b), .partner = c(b, a),
-        .role = NA_character_, .group_id = rep(seq_along(a), 2)
-      )
+      m <- new_match(c(a, b), c(b, a), NA_character_, rep(seq_along(a), 2))
     } else {
       r <- assign_roles(spec$role, agents, globals, a_idx, b_idx)
       keep <- r$ok
-      m <- tibble::tibble(
-        .id = c(a[keep], b[keep]), .partner = c(b[keep], a[keep]),
-        .role = c(r$a[keep], r$b[keep]),
-        .group_id = rep(seq_len(sum(keep)), 2)
-      )
+      m <- new_match(c(a[keep], b[keep]), c(b[keep], a[keep]),
+                     c(r$a[keep], r$b[keep]), rep(seq_len(sum(keep)), 2))
     }
     return(m)
   }
 
-  m <- tibble::tibble(.id = ch$ids, .partner = NA_integer_,
-                      .role = NA_character_, .group_id = ch$gid)
-  m
+  new_match(ch$ids, NA_integer_, NA_character_, ch$gid)
 }
 
 match_one_of <- function(spec, agents, globals, pool, ch = NULL) {
@@ -341,11 +348,7 @@ match_one_of <- function(spec, agents, globals, pool, ch = NULL) {
     role_a <- r$a; role_b <- r$b; keep <- r$ok
   }
 
-  m <- tibble::tibble(
-    .id = pool[keep], .partner = draw[keep], .role = role_a[keep],
-    .group_id = seq_len(sum(keep))
-  )
-  m
+  new_match(pool[keep], draw[keep], role_a[keep], seq_len(sum(keep)))
 }
 
 match_opposite <- function(spec, agents, globals, pool, call) {
@@ -391,13 +394,8 @@ match_opposite <- function(spec, agents, globals, pool, call) {
     role_a <- r$a; role_b <- r$b; keep <- r$ok
   }
 
-  m <- tibble::tibble(
-    .id = c(a[keep], b[keep]), .partner = c(b[keep], a[keep]),
-    .role = c(role_a[keep], role_b[keep]),
-    .group_id = rep(seq_len(sum(keep)), 2)
-  )
-
-  m
+  new_match(c(a[keep], b[keep]), c(b[keep], a[keep]),
+            c(role_a[keep], role_b[keep]), rep(seq_len(sum(keep)), 2))
 }
 
 match_nearest <- function(spec, agents, globals, pool, ch, call, relations = NULL) {
@@ -430,11 +428,7 @@ match_nearest <- function(spec, agents, globals, pool, ch, call, relations = NUL
   if (!any(ok)) return(empty_match())
   nearest <- max.col(-d, ties.method = "first")
 
-  m <- tibble::tibble(
-    .id = sub$.id[ok], .partner = cand$.id[nearest[ok]],
-    .role = NA_character_, .group_id = seq_len(sum(ok))
-  )
-  m
+  new_match(sub$.id[ok], cand$.id[nearest[ok]], NA_character_, seq_len(sum(ok)))
 }
 
 #' `pair = "nearest"` with a cost expression rather than a coordinate
@@ -480,11 +474,7 @@ match_cheapest <- function(spec, agents, globals, pool, ch, call, relations = NU
   ch  <- view$.of[keep][ord]
   cd  <- view$.id[keep][ord]
   first <- !duplicated(ch)
-  m <- tibble::tibble(
-    .id = ch[first], .partner = cd[first],
-    .role = NA_character_, .group_id = seq_len(sum(first))
-  )
-  m
+  new_match(ch[first], cd[first], NA_character_, seq_len(sum(first)))
 }
 
 #' Row minima of a matrix, without a dependency
@@ -495,19 +485,20 @@ matrixStats_rowMins <- function(x) {
 }
 
 match_network <- function(spec, agents, edges, pool) {
-  nb <- neighbour_table(edges)
-  nb <- nb[nb$.id %in% pool & nb$.neighbour %in% agents$.id, , drop = FALSE]
-  if (nrow(nb) == 0L) return(empty_match())
+  if (is.null(edges) || nrow(edges) == 0L) return(empty_match())
+  # the neighbour table as two bare vectors: each edge read both ways round.
+  # The same rows `neighbour_table()` gives, without building a tibble and
+  # slicing it twice per tick.
+  id  <- c(edges$from, edges$to)
+  nbr <- c(edges$to, edges$from)
+  keep <- id %in% pool & nbr %in% agents$.id
+  id <- id[keep]; nbr <- nbr[keep]
+  if (!length(id)) return(empty_match())
 
-  nb <- nb[sample.int(nrow(nb)), , drop = FALSE]
-  pick <- !duplicated(nb$.id)
-  chosen <- nb[pick, , drop = FALSE]
-
-  m <- tibble::tibble(
-    .id = chosen$.id, .partner = chosen$.neighbour,
-    .role = NA_character_, .group_id = seq_len(nrow(chosen))
-  )
-  m
+  o <- sample.int(length(id))
+  id <- id[o]; nbr <- nbr[o]
+  pick <- !duplicated(id)
+  new_match(id[pick], nbr[pick], NA_character_, seq_len(sum(pick)))
 }
 
 #' Pick `k` distinct target agents for a newborn

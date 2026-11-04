@@ -54,41 +54,46 @@ augment_group <- function(g, match_state, combined, relations = NULL,
   # is most of what a step costs. `NULL` builds them all.
   pcols <- setdiff(names(combined), c(".id", ".group"))
   if (!is.null(partner)) pcols <- intersect(pcols, partner)
+  # the columns are added to a bare list and the tibble rebuilt once at the
+  # end: `$<-.tbl_df` re-checks the whole tibble on every assignment, several
+  # times per group per step
+  n <- nrow(g)
+  cols <- as.list(g)
   if (is.null(match_state)) {
-    g$.group_id <- seq_len(nrow(g))
-    g$.role <- NA_character_
-    g$.partner <- NA_integer_
-    return(g)
+    cols$.group_id <- seq_len(n)
+    cols$.role <- rep(NA_character_, n)
+    cols$.partner <- rep(NA_integer_, n)
+    return(tibble::new_tibble(cols, nrow = n))
   }
   if (nrow(match_state$match) == 0L) {
     # a match step ran and paired nobody. The partner columns still have to
     # exist, all missing, so that a tick where nobody meets anyone does not
     # crash the rules written for the ticks where they do.
-    g$.group_id <- NA_integer_
-    g$.role <- NA_character_
-    g$.partner <- NA_integer_
+    cols$.group_id <- rep(NA_integer_, n)
+    cols$.role <- rep(NA_character_, n)
+    cols$.partner <- rep(NA_integer_, n)
     if (match_state$size == 2L) {
       for (nm in pcols) {
-        g[[paste0("partner_", nm)]] <- combined[[nm]][NA_integer_][rep(1L, nrow(g))]
+        cols[[paste0("partner_", nm)]] <- combined[[nm]][NA_integer_][rep(1L, n)]
       }
-      g <- attach_relation_columns(g, relations, g$.id, g$.partner)
+      cols <- attach_relation_columns(cols, relations, cols$.id, cols$.partner)
     }
-    return(g)
+    return(tibble::new_tibble(cols, nrow = n))
   }
   m <- match_state$match
-  idx <- match(g$.id, m$.id)
-  g$.partner  <- m$.partner[idx]
-  g$.role     <- m$.role[idx]
-  g$.group_id <- m$.group_id[idx]
+  idx <- match(cols$.id, m$.id)
+  cols$.partner  <- m$.partner[idx]
+  cols$.role     <- m$.role[idx]
+  cols$.group_id <- m$.group_id[idx]
 
   if (match_state$size == 2L) {
-    pidx <- match(g$.partner, combined$.id)
+    pidx <- match(cols$.partner, combined$.id)
     for (nm in pcols) {
-      g[[paste0("partner_", nm)]] <- combined[[nm]][pidx]
+      cols[[paste0("partner_", nm)]] <- combined[[nm]][pidx]
     }
-    g <- attach_relation_columns(g, relations, g$.id, g$.partner)
+    cols <- attach_relation_columns(cols, relations, cols$.id, cols$.partner)
   }
-  g
+  tibble::new_tibble(cols, nrow = n)
 }
 
 #' Route a relation-targeted rule's values into the relation, under a match
@@ -183,11 +188,12 @@ run_rules <- function(step, state) {
   grouped <- active && (step$scope %||% "match") == "match"
 
   applied_anywhere <- FALSE
+  pvars <- partner_vars(lapply(step$rules, `[[`, "quo"))
   for (nm in names(state$groups)) {
     g <- state$groups[[nm]]
     if (nrow(g) == 0L) next
     aug <- augment_group(g, state$match, combined, state$relations,
-                         partner = partner_vars(lapply(step$rules, `[[`, "quo")))
+                         partner = pvars)
     rows <- if (active && grouped) !is.na(aug$.group_id) else rep(TRUE, nrow(g))
 
     todo <- Filter(function(r) rule_applies(r, g, all_cols, state$globals),

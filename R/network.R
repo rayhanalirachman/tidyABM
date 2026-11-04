@@ -299,17 +299,21 @@ edge_tibble <- function(g) {
 #' @noRd
 neighbour_table <- function(edges) {
   if (is.null(edges) || nrow(edges) == 0L) {
-    return(tibble::tibble(.id = integer(), .neighbour = integer()))
+    return(tibble::new_tibble(list(.id = integer(), .neighbour = integer()),
+                              nrow = 0L))
   }
   # `.edge` and `.forward` say which edge this row came from and which way round
   # it is being read, so that a value attached to the edge by [abm_draw()] can be
   # handed to whichever endpoint is looking at it.
   n <- nrow(edges)
-  tibble::tibble(
-    .id        = c(edges$from, edges$to),
-    .neighbour = c(edges$to,   edges$from),
-    .edge      = c(seq_len(n), seq_len(n)),
-    .forward   = c(rep(TRUE, n), rep(FALSE, n))
+  tibble::new_tibble(
+    list(
+      .id        = c(edges$from, edges$to),
+      .neighbour = c(edges$to,   edges$from),
+      .edge      = c(seq_len(n), seq_len(n)),
+      .forward   = c(rep(TRUE, n), rep(FALSE, n))
+    ),
+    nrow = 2L * n
   )
 }
 

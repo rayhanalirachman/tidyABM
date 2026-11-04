@@ -52,7 +52,7 @@ birth_by_condition <- function(step, state) {
         kids[[r$target]] <- val
       }
     }
-    state$groups[[nm]] <- dplyr::bind_rows(g, kids)
+    state$groups[[nm]] <- vctrs::vec_rbind(g, kids)
     newborns <- c(newborns, kids$.id)
     parents_of <- c(parents_of, rep(g$.id[parents], reps))
   }
@@ -99,7 +99,7 @@ birth_by_count <- function(step, state) {
     val <- eval_rule(r, template, state$globals, grouped = FALSE)
     template[[r$target]] <- val
   }
-  state$groups[[nm]] <- dplyr::bind_rows(g, template)
+  state$groups[[nm]] <- vctrs::vec_rbind(g, template)
   attach_newborns(step, state, template$.id, rep(NA_integer_, step$n))
 }
 
@@ -146,10 +146,9 @@ attach_newborns <- function(step, state, newborns, parents = NULL) {
     targets <- unique(targets[!is.na(targets)])
     if (!length(targets)) next
     if (grow) {
-      state$edges <- dplyr::bind_rows(
+      state$edges <- vctrs::vec_rbind(
         state$edges,
-        tibble::tibble(from = rep(as.integer(id), length(targets)),
-                       to = as.integer(targets))
+        edge_tbl(rep(as.integer(id), length(targets)), as.integer(targets))
       )
     } else {
       new_from[[k]] <- rep(as.integer(id), length(targets))
@@ -158,9 +157,9 @@ attach_newborns <- function(step, state, newborns, parents = NULL) {
     added <- TRUE
   }
   if (added && !grow) {
-    state$edges <- dplyr::bind_rows(
+    state$edges <- vctrs::vec_rbind(
       state$edges,
-      tibble::tibble(from = unlist(new_from), to = unlist(new_to)))
+      edge_tbl(as.integer(unlist(new_from)), as.integer(unlist(new_to))))
   }
   if (added) state <- invalidate_draws(state, "abm_birth")
   state

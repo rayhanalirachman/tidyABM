@@ -148,7 +148,7 @@ linked_pairs <- function(step, state) {
   }
   # a match that ran and paired nobody is a quiet no-op, not an error
   if (nrow(state$match$match) == 0L) {
-    return(tibble::tibble(from = integer(), to = integer()))
+    return(edge_tbl(integer(), integer()))
   }
   combined <- bind_groups(state$groups)
   aug <- augment_group(combined, state$match, combined, state$relations)
@@ -156,7 +156,7 @@ linked_pairs <- function(step, state) {
 
   if (state$match$size == 2L) {
     keep <- keep & !is.na(aug$.partner)
-    pairs <- tibble::tibble(from = aug$.id[keep], to = aug$.partner[keep])
+    pairs <- edge_tbl(aug$.id[keep], aug$.partner[keep])
   } else {
     # a group of three or more is linked as a clique: every pair inside it.
     # That is what a team, a committee or a coalition means as a network.
@@ -167,12 +167,17 @@ linked_pairs <- function(step, state) {
       cb <- utils::combn(g, 2L)
       tibble::tibble(from = as.integer(cb[1, ]), to = as.integer(cb[2, ]))
     }))
-    if (nrow(pairs) == 0L) return(tibble::tibble(from = integer(), to = integer()))
+    if (nrow(pairs) == 0L) return(edge_tbl(integer(), integer()))
   }
   # each pair may appear twice; keep one copy, oriented consistently
-  out <- tibble::tibble(from = pmin(pairs$from, pairs$to),
-                        to   = pmax(pairs$from, pairs$to))
+  out <- edge_tbl(pmin(pairs$from, pairs$to), pmax(pairs$from, pairs$to))
   dplyr::distinct(out)
+}
+
+#' A `from`/`to` edge tibble, built without `tibble()`'s per-call overhead
+#' @noRd
+edge_tbl <- function(from, to) {
+  tibble::new_tibble(list(from = from, to = to), nrow = length(from))
 }
 
 #' The directed `(me -> target)` pairs a `via =` link step acts on
@@ -263,11 +268,11 @@ run_link <- function(step, state) {
   }
   new <- linked_pairs(step, state)
   if (nrow(new) == 0L) return(state)
-  existing <- tibble::tibble(from = pmin(state$edges$from, state$edges$to),
-                             to   = pmax(state$edges$from, state$edges$to))
+  existing <- edge_tbl(pmin(state$edges$from, state$edges$to),
+                       pmax(state$edges$from, state$edges$to))
   new <- dplyr::anti_join(new, existing, by = c("from", "to"))
   if (nrow(new) == 0L) return(state)
-  state$edges <- dplyr::bind_rows(state$edges, new)
+  state$edges <- vctrs::vec_rbind(state$edges, new)
   invalidate_draws(state, "abm_link")
 }
 
@@ -443,13 +448,14 @@ pair_view <- function(combined, focal_idx, cand_idx, relations = NULL,
   cand_cols <- if (is.null(vars)) cols else intersect(cols, c(".id", vars))
   own_cols <- if (is.null(vars)) cols else
     intersect(cols, sub("^own_", "", grep("^own_", vars, value = TRUE)))
-  view <- tibble::new_tibble(c(
+  view <- c(
     as.list(vctrs::vec_slice(combined[cand_cols], cand_idx)),
     stats::setNames(as.list(vctrs::vec_slice(combined[own_cols], focal_idx)),
                     sprintf("own_%s", own_cols)),
     list(.of = combined$.id[focal_idx])
-  ), nrow = length(cand_idx))
-  attach_relation_columns(view, relations, view$.of, view$.id)
+  )
+  view <- attach_relation_columns(view, relations, view$.of, view$.id)
+  tibble::new_tibble(view, nrow = length(cand_idx))
 }
 
 #' Evaluate one quosure against a pair view, with the globals in scope
@@ -582,7 +588,9 @@ run_neighbours <- function(step, state) {
 #' the aggregate once per group. Exact for integer and logical input, which is
 #' what a count or a share of neighbours is; a double `sum()` or `mean()` keeps
 #' the `summarise()` path, whose long-double accumulation this does not
-#' reproduce bit for bit. Returns `NULL` for any other shape.
+#' reproduce bit for bit. A literal `na.rm = TRUE` is honoured, as base does:
+#' the missing rows are left out of the sum and the count. Returns `NULL` for
+#' any other shape.
 #' ponytail: five aggregate shapes, extend when a model's hot rule has another
 #' @noRd
 neighbour_aggregate <- function(quo, view) {
@@ -594,26 +602,38 @@ neighbour_aggregate <- function(quo, view) {
     s <- rowsum(rep(1L, length(g)), g)
     return(list(.of = as.integer(rownames(s)), .abm_value = as.vector(s)))
   }
-  if (!fn %in% c("sum", "mean", "any", "all") || length(expr) != 2L ||
-      !is_elementwise(expr[[2]])) {
+  if (!fn %in% c("sum", "mean", "any", "all")) return(NULL)
+  args <- as.list(expr)[-1]
+  nms <- names(args) %||% rep("", length(args))
+  na_rm <- FALSE
+  if (length(args) == 2L && nms[[2]] == "na.rm" && rlang::is_bool(args[[2]])) {
+    na_rm <- args[[2]]
+    args <- args[1]; nms <- nms[1]
+  }
+  if (length(args) != 1L || nzchar(nms[[1]]) || !is_elementwise(args[[1]])) {
     return(NULL)
   }
-  v <- rlang::eval_tidy(rlang::new_quosure(expr[[2]], rlang::quo_get_env(quo)),
+  v <- rlang::eval_tidy(rlang::new_quosure(args[[1]], rlang::quo_get_env(quo)),
                         data = view)
   if (length(v) == 1L) v <- rep(v, nrow(view))
   if (length(v) != nrow(view)) return(NULL)
   if (fn %in% c("sum", "mean")) {
     if (!is.integer(v) && !is.logical(v)) return(NULL)
-    s <- rowsum(as.integer(v), g)
+    s <- rowsum(as.integer(v), g, na.rm = na_rm)
     out <- as.vector(s)
-    if (fn == "mean") out <- out / as.vector(rowsum(rep(1L, length(g)), g))
+    if (fn == "mean") {
+      # `mean(x, na.rm = TRUE)` divides by the number of values that were not
+      # missing, so a neighbourhood of nothing but `NA` comes out `NaN`
+      counted <- if (na_rm) as.integer(!is.na(v)) else rep(1L, length(g))
+      out <- out / as.vector(rowsum(counted, g))
+    }
   } else {
     if (!is.logical(v)) return(NULL)
     na <- as.vector(rowsum(as.integer(is.na(v)), g)) > 0
     s <- rowsum(as.integer(v %in% (fn == "any")), g)
     hit <- as.vector(s) > 0
     out <- if (fn == "any") hit else !hit
-    out[!hit & na] <- NA
+    if (!na_rm) out[!hit & na] <- NA
   }
   list(.of = as.integer(rownames(s)), .abm_value = out)
 }

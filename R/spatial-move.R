@@ -299,22 +299,36 @@ heading_names <- function(v) {
 #' names, the mover's own columns over the top of them (except the engine-owned
 #' ones), and every mover column again as `own_<col>`.
 #' @noRd
-eval_gradient <- function(quo, cells, wired, mover_row, globals) {
-  patch <- wired[match(cells, wired$.id), , drop = FALSE]
+eval_gradient <- function(quo, cells, wired, own, globals) {
+  # `own` is the mover's row as a list of length-one columns. The view is a
+  # bare list too: this runs once per mover per tick, and `mutate()` over a
+  # tibble built with `[[<-` was nine tenths of what an `uphill()` model cost.
+  np <- length(cells)
+  view <- lapply(as.list(wired), `[`, match(cells, wired$.id))
   reserved <- c(".id", ".group", ".x", ".y", ".cell")
-  own <- as.list(mover_row)
-  view <- patch
   for (nm in names(own)) {
     if (nm %in% reserved) next
-    view[[nm]] <- rep(own[[nm]], nrow(patch))
+    view[[nm]] <- rep(own[[nm]], np)
   }
   for (nm in names(own)) {
-    view[[paste0("own_", nm)]] <- rep(own[[nm]], nrow(patch))
+    view[[paste0("own_", nm)]] <- rep(own[[nm]], np)
   }
-  env <- abm_eval_env(quo, globals)
-  val <- dplyr::pull(dplyr::mutate(view, .abm_value = !!rlang::quo_set_env(quo, env)),
-                     ".abm_value")
-  if (length(val) == 1L) val <- rep(val, nrow(patch))
+  # the same shortcut `eval_rule()` takes: `eval_tidy()` unless the expression
+  # needs something only a dplyr mask supplies
+  val <- NULL
+  if (!needs_mask(rlang::quo_get_expr(quo))) {
+    val <- rlang::eval_tidy(
+      rlang::quo_set_env(quo, abm_eval_env(quo, globals, n = np)), data = view)
+    if (length(val) != 1L && length(val) != np) val <- NULL
+  }
+  if (is.null(val)) {
+    env <- abm_eval_env(quo, globals)
+    val <- dplyr::pull(
+      dplyr::mutate(tibble::new_tibble(view, nrow = np),
+                    .abm_value = !!rlang::quo_set_env(quo, env)),
+      ".abm_value")
+  }
+  if (length(val) == 1L) val <- rep(val, np)
   as.numeric(val)
 }
 
@@ -387,6 +401,9 @@ run_move <- function(step, state) {
   order_rows <- order_rows[ord, , drop = FALSE]
 
   cells <- lapply(which_groups, function(nm) state$groups[[nm]]$.cell)
+  # each mover's own row is sliced out of these bare columns rather than with
+  # `[.tbl_df`, once per mover
+  gcols <- lapply(which_groups, function(nm) as.list(state$groups[[nm]]))
   # Occupancy is a *count* per cell, not a set of cells: several movers can
   # start stacked on one cell, and the first of them leaving must not mark that
   # cell free while the rest are still standing on it.
@@ -439,8 +456,7 @@ run_move <- function(step, state) {
     if (!length(cand)) next
 
     if (step$mode %in% c("uphill", "downhill")) {
-      g <- state$groups[[which_groups[[gi]]]]
-      val <- eval_gradient(step$expr, cand, wired, g[ri, , drop = FALSE],
+      val <- eval_gradient(step$expr, cand, wired, lapply(gcols[[gi]], `[`, ri),
                            state$globals)
       val[is.na(val)] <- if (step$mode == "uphill") -Inf else Inf
       best <- if (step$mode == "uphill") which(val == max(val))

@@ -89,7 +89,11 @@ draw_from <- function(x, k) x[sample.int(length(x), k, replace = TRUE)]
 #' @noRd
 bind_groups <- function(groups) {
   if (length(groups) == 1L) {
-    return(tibble::as_tibble(groups[[1]]))
+    g <- groups[[1]]
+    # a group is already a tibble; `as_tibble()` would re-validate its names
+    # on every step of every tick
+    if (inherits(g, "tbl_df")) return(g)
+    return(tibble::as_tibble(g))
   }
   # what `bind_rows()` does, without its argument handling: this runs on
   # every step of every tick

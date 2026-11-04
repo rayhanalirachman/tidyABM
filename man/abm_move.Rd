@@ -36,8 +36,9 @@ cells only. Larger values reach further, following the lattice's own
 \code{diagonals} and \code{torus} settings.}
 
 \item{axes_only}{Whether to scan only along the four axes (north, south,
-east, west) rather than over the whole neighbourhood. Only meaningful with
-\code{range > 1}.}
+east, west) rather than over the whole neighbourhood. With \code{range = 1} on
+a Moore lattice that is the four orthogonal neighbours; with a larger
+\code{range} it is the four lines of sight a Sugarscape agent looks along.}
 
 \item{avoid_occupied}{Whether to refuse a cell that another mover is already
 standing on. Movers are resolved in a random order and each one claims the
@@ -51,7 +52,9 @@ An \code{abm_move} step object.
 A mobile agent's location is a patch \code{.id} held in a reserved \code{.cell}
 column, and moving is writing that column. \code{abm_move()} is the step that
 writes it: each mover's \code{.cell} is reassigned to a cell reachable from the
-one it is standing on, and \code{.x} / \code{.y} follow automatically.
+one it is standing on, and \code{.x} / \code{.y} follow automatically. A rule may also
+write \code{.cell} directly (\code{abm_rules(.cell ~ which(nest)[1])} sends everyone
+home); \code{.x} / \code{.y} follow that too, and are themselves read-only.
 }
 \section{Choosing where to go}{
 \code{to} says how the destination is picked among the candidate cells:

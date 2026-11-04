@@ -22,7 +22,9 @@ new_abm_move <- function(along, to, mode, expr, who, direction, range,
 #' A mobile agent's location is a patch `.id` held in a reserved `.cell`
 #' column, and moving is writing that column. `abm_move()` is the step that
 #' writes it: each mover's `.cell` is reassigned to a cell reachable from the
-#' one it is standing on, and `.x` / `.y` follow automatically.
+#' one it is standing on, and `.x` / `.y` follow automatically. A rule may also
+#' write `.cell` directly (`abm_rules(.cell ~ which(nest)[1])` sends everyone
+#' home); `.x` / `.y` follow that too, and are themselves read-only.
 #'
 #' # Choosing where to go
 #'
@@ -91,8 +93,9 @@ new_abm_move <- function(along, to, mode, expr, who, direction, range,
 #'   cells only. Larger values reach further, following the lattice's own
 #'   `diagonals` and `torus` settings.
 #' @param axes_only Whether to scan only along the four axes (north, south,
-#'   east, west) rather than over the whole neighbourhood. Only meaningful with
-#'   `range > 1`.
+#'   east, west) rather than over the whole neighbourhood. With `range = 1` on
+#'   a Moore lattice that is the four orthogonal neighbours; with a larger
+#'   `range` it is the four lines of sight a Sugarscape agent looks along.
 #' @param avoid_occupied Whether to refuse a cell that another mover is already
 #'   standing on. Movers are resolved in a random order and each one claims the
 #'   cell it lands on, so two agents never end up on the same cell through this
@@ -293,43 +296,68 @@ heading_names <- function(v) {
   c("north", "east", "south", "west")[(idx %% 4L) + 1L]
 }
 
-#' Evaluate an `uphill()` / `downhill()` expression over candidate cells
+#' The (candidate cell, mover) view an `uphill()` expression is evaluated in
 #'
 #' One row per candidate: the candidate cell's patch columns under their own
 #' names, the mover's own columns over the top of them (except the engine-owned
-#' ones), and every mover column again as `own_<col>`.
+#' ones), and every mover column again as `own_<col>`. `own` holds the movers'
+#' columns, one value per mover; `lens` says how many candidate rows each
+#' mover has, so a single mover is `lens = length(cells)`.
 #' @noRd
-eval_gradient <- function(quo, cells, wired, own, globals) {
-  # `own` is the mover's row as a list of length-one columns. The view is a
-  # bare list too: this runs once per mover per tick, and `mutate()` over a
-  # tibble built with `[[<-` was nine tenths of what an `uphill()` model cost.
-  np <- length(cells)
+gradient_view <- function(cells, wired, own, lens) {
   view <- lapply(as.list(wired), `[`, match(cells, wired$.id))
   reserved <- c(".id", ".group", ".x", ".y", ".cell")
   for (nm in names(own)) {
     if (nm %in% reserved) next
-    view[[nm]] <- rep(own[[nm]], np)
+    view[[nm]] <- rep(own[[nm]], lens)
   }
   for (nm in names(own)) {
-    view[[paste0("own_", nm)]] <- rep(own[[nm]], np)
+    view[[paste0("own_", nm)]] <- rep(own[[nm]], lens)
   }
-  # the same shortcut `eval_rule()` takes: `eval_tidy()` unless the expression
-  # needs something only a dplyr mask supplies
+  view
+}
+
+#' Evaluate an `uphill()` / `downhill()` expression over a view
+#'
+#' `ctx` is built once per step by [gradient_context()]: the quosure, whether
+#' it needs a dplyr mask, and the environment the globals live in. The view
+#' is a bare list: this can run once per mover per tick, and `mutate()` over
+#' a tibble built with `[[<-` was nine tenths of what an `uphill()` model
+#' cost. The same shortcut `eval_rule()` takes: `eval_tidy()` unless the
+#' expression needs something only a dplyr mask supplies.
+#' @noRd
+eval_gradient <- function(ctx, view, np) {
   val <- NULL
-  if (!needs_mask(rlang::quo_get_expr(quo))) {
-    val <- rlang::eval_tidy(
-      rlang::quo_set_env(quo, abm_eval_env(quo, globals, n = np)), data = view)
+  if (!ctx$mask) {
+    env <- rlang::new_environment(list(n = function() np), parent = ctx$env)
+    val <- rlang::eval_tidy(rlang::quo_set_env(ctx$quo, env), data = view)
     if (length(val) != 1L && length(val) != np) val <- NULL
   }
   if (is.null(val)) {
-    env <- abm_eval_env(quo, globals)
     val <- dplyr::pull(
       dplyr::mutate(tibble::new_tibble(view, nrow = np),
-                    .abm_value = !!rlang::quo_set_env(quo, env)),
+                    .abm_value = !!rlang::quo_set_env(ctx$quo, ctx$env)),
       ".abm_value")
   }
   if (length(val) == 1L) val <- rep(val, np)
   as.numeric(val)
+}
+
+#' What an `uphill()` expression needs, worked out once per step
+#'
+#' `batch` says whether the expression can be evaluated over every mover's
+#' candidates at once rather than once per mover. It can when every call in it
+#' is elementwise: the value on a row then depends on that row alone, and
+#' nothing in it draws, so the result is the same and so is the random stream
+#' (ties are still broken mover by mover, in order). An expression that draws
+#' or aggregates keeps the per-mover evaluation, which is what it was written
+#' against.
+#' @noRd
+gradient_context <- function(step, globals) {
+  quo <- step$expr
+  expr <- rlang::quo_get_expr(quo)
+  list(quo = quo, mask = needs_mask(expr), env = abm_eval_env(quo, globals),
+       batch = is_elementwise(expr))
 }
 
 #' @noRd
@@ -361,6 +389,13 @@ run_move <- function(step, state) {
       )
     }
     which_groups <- step$who
+  } else if (!length(which_groups)) {
+    abm_abort(
+      c("{.fn abm_move} found nothing that can move.",
+        "x" = "No group has a {.code .cell}: nothing is standing on a lattice.",
+        "i" = "The grid-wired group is the lattice itself; a group that moves is another group, placed on it by {.code abm_network(on = )}."),
+      class = "tidyABM_bad_arg"
+    )
   }
   if (!length(which_groups)) return(state)
 
@@ -380,8 +415,8 @@ run_move <- function(step, state) {
   }
 
   wired <- if (!is.null(lat)) state$groups[[lat$on]] else NULL
-  needs_wired <- step$mode %in% c("uphill", "downhill")
-  if (needs_wired && (is.null(wired) || !nrow(wired))) {
+  gradient <- step$mode %in% c("uphill", "downhill")
+  if (gradient && (is.null(wired) || !nrow(wired))) {
     abm_abort(
       c("{.fn uphill} and {.fn downhill} read the cells being chosen between.",
         "i" = "The grid-wired group is empty."),
@@ -399,6 +434,9 @@ run_move <- function(step, state) {
   if (is.null(order_rows) || !nrow(order_rows)) return(state)
   ord <- if (nrow(order_rows) > 1L) sample.int(nrow(order_rows)) else 1L
   order_rows <- order_rows[ord, , drop = FALSE]
+  n_movers <- nrow(order_rows)
+  grp <- order_rows[, "group"]
+  row <- order_rows[, "row"]
 
   cells <- lapply(which_groups, function(nm) state$groups[[nm]]$.cell)
   # each mover's own row is sliced out of these bare columns rather than with
@@ -416,26 +454,30 @@ run_move <- function(step, state) {
   taken <- function(i) !is.null(occupied) && i >= 1L &&
     i <= length(occupied) && occupied[[i]] > 0L
 
-  headings <- NULL
   if (identical(step$mode, "direction")) {
     headings <- lapply(which_groups, function(nm) {
       g <- state$groups[[nm]]
       v <- eval_rule(list(quo = step$direction), g, state$globals,
                      grouped = FALSE)
       if (length(v) == 1L) v <- rep(v, nrow(g))
-      heading_names(v)
+      d <- heading_names(v)
+      bad <- unique(d[!is.na(d) & !d %in% names(lat$dir_nb)])
+      if (length(bad)) {
+        abm_abort(
+          c("{.arg direction} holds a heading the lattice has no side for.",
+            "x" = "Got {.val {bad}} in group {.field {nm}}.",
+            "i" = "A heading is {.val {names(lat$dir_nb)}}, or {.code 0} north, {.code 1} east, {.code 2} south, {.code 3} west."),
+          class = "tidyABM_bad_heading"
+        )
+      }
+      d
     })
-  }
-
-  for (k in seq_len(nrow(order_rows))) {
-    gi <- order_rows[k, "group"]
-    ri <- order_rows[k, "row"]
-    here <- cells[[gi]][[ri]]
-    if (is.na(here)) next
-
-    if (identical(step$mode, "direction")) {
+    for (k in seq_len(n_movers)) {
+      gi <- grp[[k]]; ri <- row[[k]]
+      here <- cells[[gi]][[ri]]
+      if (is.na(here)) next
       d <- headings[[gi]][[ri]]
-      if (is.na(d) || !d %in% names(lat$dir_nb)) next
+      if (is.na(d)) next
       target <- lat$dir_nb[[d]][here]
       if (is.na(target)) next
       if (step$avoid_occupied) {
@@ -444,20 +486,69 @@ run_move <- function(step, state) {
         occupied[[target]] <- occupied[[target]] + 1L
       }
       cells[[gi]][[ri]] <- target
-      next
     }
+    for (i in seq_along(which_groups)) {
+      state$groups[[which_groups[[i]]]]$.cell <- as.integer(cells[[i]])
+    }
+    return(sync_cell_coords(state))
+  }
 
-    cand <- candidate_cells(here, nb, lat, step)
-    if (step$mode %in% c("uphill", "downhill")) cand <- unique(c(here, cand))
-    cand <- cand[!is.na(cand)]
+  # The candidates of every mover, before any occupancy claim: adjacency is
+  # fixed for the step, so this is done up front, and the common case (the
+  # adjacent cells, nothing more) skips the general scan
+  simple <- step$range <= 1L && !step$axes_only
+  n_nb <- length(nb)
+  cands <- vector("list", n_movers)
+  for (k in seq_len(n_movers)) {
+    here <- cells[[grp[[k]]]][[row[[k]]]]
+    if (is.na(here)) next
+    cand <- if (simple) {
+      if (here >= 1L && here <= n_nb) nb[[here]] %||% integer() else integer()
+    } else {
+      candidate_cells(here, nb, lat, step)
+    }
+    if (gradient) cand <- unique(c(here, cand))
+    cands[[k]] <- cand[!is.na(cand)]
+  }
+
+  # An elementwise `uphill()` expression is evaluated once over every mover's
+  # candidates, in mover order; anything else once per mover, inside the loop
+  ctx <- NULL
+  vals <- NULL
+  if (gradient) {
+    ctx <- gradient_context(step, state$globals)
+    if (ctx$batch && length(which_groups) == 1L) {
+      lens <- lengths(cands)
+      if (sum(lens)) {
+        own <- lapply(gcols[[1L]], `[`, row)
+        view <- gradient_view(unlist(cands, use.names = FALSE), wired, own, lens)
+        flat <- eval_gradient(ctx, view, sum(lens))
+        vals <- split(flat, factor(rep.int(seq_len(n_movers), lens),
+                                 levels = seq_len(n_movers)))
+      }
+    }
+  }
+
+  for (k in seq_len(n_movers)) {
+    gi <- grp[[k]]; ri <- row[[k]]
+    here <- cells[[gi]][[ri]]
+    if (is.na(here)) next
+    cand <- cands[[k]]
+    keep <- NULL
     if (step$avoid_occupied && length(cand)) {
-      cand <- cand[cand == here | !vapply(cand, taken, logical(1))]
+      keep <- cand == here | !vapply(cand, taken, logical(1))
+      cand <- cand[keep]
     }
     if (!length(cand)) next
 
-    if (step$mode %in% c("uphill", "downhill")) {
-      val <- eval_gradient(step$expr, cand, wired, lapply(gcols[[gi]], `[`, ri),
-                           state$globals)
+    if (gradient) {
+      val <- if (!is.null(vals)) {
+        v <- vals[[k]]
+        if (is.null(keep)) v else v[keep]
+      } else {
+        eval_gradient(ctx, gradient_view(cand, wired, lapply(gcols[[gi]], `[`, ri),
+                                         length(cand)), length(cand))
+      }
       val[is.na(val)] <- if (step$mode == "uphill") -Inf else Inf
       best <- if (step$mode == "uphill") which(val == max(val))
               else which(val == min(val))

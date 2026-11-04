@@ -551,6 +551,64 @@ test_that("range and axes_only widen the scan the way Sugarscape needs", {
   expect_true(r2$.x[r2$.group == "people" & r2$tick == 1] > 1)
 })
 
+test_that("an elementwise uphill() is evaluated for every mover at once, to the same answer", {
+  # `uphill(height)` is evaluated once over every mover's candidates;
+  # `uphill(height + 0 * n())` is not elementwise, so it goes mover by mover.
+  # Same values, same ties broken in the same order: identical paths.
+  w <- h <- 9
+  mk <- function() abm_setup(
+    agents = list(patches = abm_agents(height = ~ -(abs(.x - 5) + abs(.y - 5))),
+                  walkers = abm_agents(n = 12, at = ~c(1:6, 76:81), tag = ~seq_len(n))),
+    network = abm_network(type = "grid", dims = c(w, h), on = "patches",
+                          torus = FALSE), seed = 2)
+  a <- abm_run(mk(), abm_go(abm_move(along = "patches", who = "walkers",
+                                     to = uphill(height),
+                                     avoid_occupied = TRUE)), ticks = 6, seed = 3)
+  b <- abm_run(mk(), abm_go(abm_move(along = "patches", who = "walkers",
+                                     to = uphill(height + 0 * n()),
+                                     avoid_occupied = TRUE)), ticks = 6, seed = 3)
+  expect_identical(a$.cell, b$.cell)
+  fin <- a[a$tick == 6 & a$.group == "walkers", ]
+  expect_equal(anyDuplicated(fin$.cell), 0L)
+  # everyone has climbed: the summit is taken and the rest sit next to it
+  expect_true(all(-(abs(fin$.x - 5) + abs(fin$.y - 5)) >= -2))
+  # the mover's own columns are in the view both ways
+  c1 <- abm_run(mk(), abm_go(abm_move(along = "patches", who = "walkers",
+                                      to = uphill(height * tag))), ticks = 2, seed = 3)
+  c2 <- abm_run(mk(), abm_go(abm_move(along = "patches", who = "walkers",
+                                      to = uphill(height * own_tag + 0 * n()))),
+                ticks = 2, seed = 3)
+  expect_identical(c1$.cell, c2$.cell)
+})
+
+test_that("abm_move refuses a heading it has no side for, and a model with nothing to move", {
+  w <- h <- 4
+  m <- abm_setup(
+    agents = list(patches = abm_agents(z = 0),
+                  bugs = abm_agents(n = 3, at = ~c(6L, 6L, 6L),
+                                    h = ~c("North", NA, "up"))),
+    network = abm_network(type = "grid", dims = c(w, h), on = "patches",
+                          torus = FALSE))
+  expect_error(abm_run(m, abm_go(abm_move(along = "patches", who = "bugs",
+                                          direction = h)), ticks = 1, seed = 1),
+               class = "tidyABM_bad_heading")
+  # a missing heading stays put; a name is case-insensitive
+  ok <- abm_setup(
+    agents = list(patches = abm_agents(z = 0),
+                  bugs = abm_agents(n = 2, at = ~c(6L, 6L), h = ~c("North", NA))),
+    network = abm_network(type = "grid", dims = c(w, h), on = "patches",
+                          torus = FALSE))
+  r <- abm_run(ok, abm_go(abm_move(along = "patches", who = "bugs",
+                                   direction = h)), ticks = 1, seed = 1)
+  expect_equal(r$.cell[r$tick == 1 & r$.group == "bugs"], c(10L, 6L))
+
+  # a patch-only model has nothing standing on the lattice
+  flat <- abm_setup(agents = abm_agents(z = 0),
+                    network = abm_network(type = "grid", dims = c(3, 3)))
+  expect_error(abm_run(flat, abm_go(abm_move(along = "agents")), ticks = 1),
+               class = "tidyABM_bad_arg")
+})
+
 test_that("avoid_occupied never puts two movers on one cell", {
   withr::local_seed(5)
   w <- h <- 11

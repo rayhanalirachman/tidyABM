@@ -26,7 +26,3 @@ VignetteBuilder: knitr
 URL: https://github.com/rayhanalirachman/tidyABM
 BugReports: https://github.com/rayhanalirachman/tidyABM/issues
 Config/roxygen2/version: 8.1.0
-NeedsCompilation: no
-Packaged: 2026-08-21 20:44:26 UTC; root
-Author: Rayhan Ali Rachman [aut, cre]
-Maintainer: Rayhan Ali Rachman <rayhanalirachman@gmail.com>

@@ -56,7 +56,7 @@ reference:
   desc: >
     Where an agent is. A lattice is a network, an agent's location is a patch
     id in `.cell`, and moving is writing that column.
-  contents: [abm_move]
+  contents: [abm_move, abm_plot_lattice]
 - title: "Steps: network topology"
   desc: >
     Changing what is connected to what. With `via =`, the same two steps add

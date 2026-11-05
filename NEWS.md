@@ -1,5 +1,30 @@
 # tidyABM (development version)
 
+## Seeing a spatial model
+
+* New `abm_view_lattice(result, fill, file, agents, colour, mark, hover, ...)`
+  writes a recorded run (`abm_run(record = "all")` or a number) to a single
+  self-contained HTML file that plays it back in the browser: a canvas of the
+  lattice with the mobile agents on it, play / pause, a tick slider, a speed
+  control, keyboard stepping, a legend with the counts at the current tick,
+  and a readout of the cell or agent under the pointer. Nothing is fetched,
+  so the file opens from disk, travels as an attachment and works on a phone,
+  in light or dark mode. Cell values are quantised to at most 64 levels and
+  run-length encoded, so a 50 x 50 lattice over 200 frames is a few hundred
+  kilobytes. No new dependency: the JSON is written by hand.
+* `abm_plot_lattice()` gains `colour`, `shape`, `size` and `colours` for the
+  agent layer, so one frame can show the whole world: the patches shaded by a
+  value and the agents on top coloured by their own (Ants carrying food or
+  not, Rebellion's quiet / active / jailed / cop). The agents' default palette
+  is now Okabe-Ito rather than ggplot2's hue scale, and several ticks are laid
+  out as a single-row strip when there are six or fewer. Existing calls draw
+  the same frame; only the default point colours changed.
+* The spatial corpus shows it: Wolf-Sheep's grass is shaded by how far it has
+  regrown, Sugarscape's by the sugar standing on each cell, Rebellion has a
+  lattice figure, and Life, Fire, Schelling, Wolf-Sheep, Ants and Sugarscape
+  have strips of the world through the run. Each of those seven has a viewer
+  under `models/spatial/viewers/`.
+
 ## The spatial grammar, audited
 
 * **A torus one or two cells wide double-counted its neighbours.** With

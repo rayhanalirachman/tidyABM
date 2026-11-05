@@ -85,7 +85,16 @@ every recorded tick no two agents share a cell.
 
 ![8. The sugarscape at tick 500](figures/08-sugarscape-lattice.png)
 
-**Reproduce:** [`08-sugarscape.R`](scripts/08-sugarscape.R)
+The cells are shaded by the sugar standing on them rather than by their
+capacity, so a cell an agent has just left shows as a pale hole in the
+mountain that fills back in at one unit a tick.
+
+![8. The die-off, five ticks](figures/08-sugarscape-strip.png)
+
+**Reproduce:** [`08-sugarscape.R`](scripts/08-sugarscape.R) · **Watch:**
+[`viewers/08-sugarscape.html`](viewers/08-sugarscape.html), every fifth tick,
+with each agent's wealth, vision and metabolism in the readout (download and
+open; see [the viewers](viewers/README.md))
 
 ---
 

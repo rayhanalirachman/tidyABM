@@ -70,8 +70,8 @@ series <- function(r) abm_globals(r)[-1, ]
 cat("40x40 torus, 120 sheep, 40 wolves, 400 ticks\n\n")
 runs <- list()
 for (wg in c(10, 20, 40)) {
-  # the standard regime keeps its last frame, for the figure
-  runs[[as.character(wg)]] <- run_one(wg, record = if (wg == 20) "final" else "globals")
+  # the standard regime keeps every other frame, for the figures and the viewer
+  runs[[as.character(wg)]] <- run_one(wg, record = if (wg == 20) 2 else "globals")
   g <- series(runs[[as.character(wg)]])
   label <- c("10" = "predation too weak to sustain wolves",
              "20" = "standard regime",
@@ -105,15 +105,17 @@ cat("  the tick counts used here.\n")
 
 # --- figures --------------------------------------------------------------
 # Time series: the standard regime, where both populations persist in a
-# bounded cycle out of phase with each other. Then the world at tick 400:
-# the grass, and the sheep and wolves standing on it.
+# bounded cycle out of phase with each other. Then the world at tick 400 --
+# the grass shaded by how far it has regrown, and the sheep and wolves
+# standing on it -- and a strip of the same world every 100 ticks. Finally
+# the whole run as an interactive viewer.
 library(ggplot2)
 
-fig_file <- function(name) {
+fig_file <- function(name, dir = "figures") {
   a <- grep("^--file=", commandArgs(), value = TRUE)
   d <- if (length(a)) dirname(sub("^--file=", "", a[1])) else "."
-  dir.create(file.path(d, "..", "figures"), showWarnings = FALSE)
-  file.path(d, "..", "figures", name)
+  dir.create(file.path(d, "..", dir), showWarnings = FALSE)
+  file.path(d, "..", dir, name)
 }
 # Okabe-Ito, colour-blind safe; the same series colours in every script
 pal <- c("#0072B2", "#E69F00", "#009E73")
@@ -136,13 +138,42 @@ print(p)
 ggsave(fig_file("05-wolf-sheep.png"), p, width = 7, height = 4.5, dpi = 150,
        bg = "white")
 
-p2 <- abm_plot_lattice(runs[["20"]], fill = grass, agents = TRUE) +
-  scale_fill_manual(values = c(`TRUE` = "#B8E0A0", `FALSE` = "#EBDDC2"),
-                    labels = c(`TRUE` = "grass", `FALSE` = "bare"), name = NULL) +
-  scale_colour_manual(values = c(sheep = pal[1], wolves = "grey10"), name = NULL) +
+# A patch's grass is either there or on a 30-tick regrowth timer; shading the
+# bare patches by how far along that timer they are shows the sheep's grazing
+# as a wake behind them rather than as a binary.
+grass_scale <- scale_fill_gradientn(
+  colours = c("#E8DCC5", "#C9DFA3", "#78B86C", "#2E8B3A"), limits = c(0, 30),
+  breaks = c(0, 15, 30), labels = c("just eaten", "regrowing", "grass"),
+  name = NULL)
+animal_colours <- c(sheep = pal[1], wolves = "grey10")
+
+p2 <- abm_plot_lattice(runs[["20"]], fill = if_else(grass, 30L, 30L - countdown),
+                       agents = TRUE, colours = animal_colours, size = 1.4) +
+  grass_scale +
   labs(title = "The world at tick 400, wolf_gain = 20",
-       subtitle = sprintf("%d sheep and %d wolves on the grass",
+       subtitle = sprintf("%d sheep and %d wolves; the grass shaded by how far it has regrown",
                           g20$n_sheep[nrow(g20)], g20$n_wolves[nrow(g20)]))
 print(p2)
 ggsave(fig_file("05-wolf-sheep-lattice.png"), p2, width = 7, height = 6, dpi = 150,
        bg = "white")
+
+p3 <- abm_plot_lattice(runs[["20"]], fill = if_else(grass, 30L, 30L - countdown),
+                       tick = seq(0, 400, by = 100), agents = TRUE,
+                       colours = animal_colours, size = 0.45) +
+  grass_scale +
+  theme(legend.position = "bottom", legend.key.width = unit(24, "pt")) +
+  labs(title = "Every 100 ticks: the sheep graze the grass down, the wolves follow the sheep",
+       subtitle = "wolf_gain = 20; sheep in blue, wolves in black")
+print(p3)
+ggsave(fig_file("05-wolf-sheep-strip.png"), p3, width = 11, height = 3.4, dpi = 150,
+       bg = "white")
+
+# --- viewer ---------------------------------------------------------------
+# The same run, every other tick, played back in the browser.
+abm_view_lattice(
+  runs[["20"]], fill = if_else(grass, 30L, 30L - countdown), agents = TRUE,
+  hover = "energy", file = fig_file("05-wolf-sheep.html", dir = "viewers"),
+  title = "Wolf-Sheep-Grass", subtitle = "40x40 torus, wolf_gain = 20, every other tick of 400",
+  labels = c(fill = "grass height"),
+  fill_colours = c("#E8DCC5", "#C9DFA3", "#78B86C", "#2E8B3A"),
+  agent_colours = animal_colours)

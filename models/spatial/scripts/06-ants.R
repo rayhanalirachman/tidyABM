@@ -69,8 +69,9 @@ go <- abm_go(
 )
 
 cat("35x35 bounded grid, 80 ants, nest at the centre, two food piles\n\n")
-# every 50th frame is kept for the figure; the globals are recorded every tick
-r <- abm_run(world, go, ticks = 400, seed = 1, record = 50, progress = FALSE)
+# every other frame is kept for the figures and the viewer; the globals are
+# recorded every tick
+r <- abm_run(world, go, ticks = 400, seed = 1, record = 2, progress = FALSE)
 g <- abm_globals(r)
 g <- g[-1, ]
 print(as.data.frame(g[seq(1, nrow(g), by = 50),
@@ -87,14 +88,15 @@ cat(sprintf("  trail strength at the end: %.0f  (spent piles evaporate)\n",
 # Time series: food remaining and trail strength. The trail builds while there
 # is food to fetch and evaporates once the piles are spent. Then the field at
 # tick 150, near the trail's peak: the pheromone, the two piles, and where the
-# ants are.
+# ants are, coloured by whether they are carrying food home. Then a strip of
+# the field through the run, and the whole run as an interactive viewer.
 library(ggplot2)
 
-fig_file <- function(name) {
+fig_file <- function(name, dir = "figures") {
   a <- grep("^--file=", commandArgs(), value = TRUE)
   d <- if (length(a)) dirname(sub("^--file=", "", a[1])) else "."
-  dir.create(file.path(d, "..", "figures"), showWarnings = FALSE)
-  file.path(d, "..", "figures", name)
+  dir.create(file.path(d, "..", dir), showWarnings = FALSE)
+  file.path(d, "..", dir, name)
 }
 # Okabe-Ito, colour-blind safe; the same series colours in every script
 pal <- c("#0072B2", "#E69F00", "#009E73")
@@ -118,18 +120,56 @@ p <- ggplot(d, aes(tick, value)) +
 print(p)
 ggsave(fig_file("06-ants.png"), p, width = 7, height = 4.5, dpi = 150, bg = "white")
 
+# The pheromone is the fill; the nest and the food piles are tiles drawn over
+# it in fixed colours, which is the ggplot idiom for a second, categorical
+# layer on the same cells.
+patches <- r[r$.group == "patches", ]
+food_cells <- patches[patches$food > 0, ]
+nest_cells <- patches[patches$nest, ]
+ant_colours <- c(`carrying food` = "#D55E00", foraging = "grey10")
+trail_scale <- scale_fill_gradient(low = "#F4F7FA", high = pal[1], name = "pheromone",
+                                   trans = "sqrt")
+
 at150 <- r[r$tick == 150, ]
-food_cells <- at150[at150$.group == "patches" & at150$food > 0, ]
-nest_cells <- at150[at150$.group == "patches" & at150$nest, ]
-p2 <- abm_plot_lattice(at150, fill = chemical, agents = TRUE) +
-  geom_tile(data = food_cells, fill = pal[2]) +
-  geom_tile(data = nest_cells, fill = pal[3]) +
-  scale_fill_gradient(low = "white", high = pal[1], name = "pheromone",
-                      trans = "sqrt") +
-  scale_colour_manual(values = c(ants = "grey10"), name = NULL) +
+p2 <- abm_plot_lattice(at150, fill = chemical, agents = TRUE,
+                       colour = if_else(carrying, "carrying food", "foraging"),
+                       colours = ant_colours, size = 1.6) +
+  geom_tile(data = food_cells[food_cells$tick == 150, ], fill = pal[2]) +
+  geom_tile(data = nest_cells[nest_cells$tick == 150, ], fill = pal[3]) +
+  trail_scale +
   labs(title = "The trail at tick 150",
        subtitle = sprintf("%d ants; the nest (green) at the centre, %d units of food (orange) left in two piles",
-                          sum(at150$.group == "ants"), sum(food_cells$food)))
+                          sum(at150$.group == "ants"),
+                          sum(food_cells$food[food_cells$tick == 150])),
+       colour = NULL)
 print(p2)
 ggsave(fig_file("06-ants-lattice.png"), p2, width = 7, height = 6, dpi = 150,
        bg = "white")
+
+strip_ticks <- c(20, 60, 100, 150, 250, 400)
+p3 <- abm_plot_lattice(r, fill = chemical, tick = strip_ticks, agents = TRUE,
+                       colour = if_else(carrying, "carrying food", "foraging"),
+                       colours = ant_colours, size = 0.5) +
+  geom_tile(data = food_cells[food_cells$tick %in% strip_ticks, ], fill = pal[2]) +
+  geom_tile(data = nest_cells[nest_cells$tick %in% strip_ticks, ], fill = pal[3]) +
+  trail_scale +
+  theme(legend.position = "bottom", legend.key.width = unit(24, "pt")) +
+  labs(title = "The trail forms, forks to the second pile, and evaporates once the food is gone",
+       subtitle = "the nest in green, food in orange; ants carrying food in red, foraging in black",
+       colour = NULL)
+print(p3)
+ggsave(fig_file("06-ants-strip.png"), p3, width = 11, height = 3.2, dpi = 150,
+       bg = "white")
+
+# --- viewer ---------------------------------------------------------------
+# The pheromone on a square-root scale so the faint edges of the trail show;
+# the exact value is in the readout.
+abm_view_lattice(
+  r, fill = sqrt(chemical), agents = TRUE,
+  mark = case_when(nest ~ "nest", food > 0 ~ "food"),
+  colour = if_else(carrying, "carrying food", "foraging"),
+  hover = "chemical", file = fig_file("06-ants.html", dir = "viewers"),
+  title = "Ants", subtitle = "35x35 bounded grid, 80 ants, every other tick of 400",
+  labels = c(fill = "sqrt(pheromone)"),
+  fill_colours = c("#F4F7FA", pal[1]),
+  mark_colours = c(nest = pal[3], food = pal[2]), agent_colours = ant_colours)

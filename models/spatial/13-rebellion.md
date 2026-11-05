@@ -75,7 +75,17 @@ sustained rebellion.
 
 ![13. Rebellion](figures/13-rebellion.png)
 
-**Reproduce:** [`13-rebellion.R`](scripts/13-rebellion.R)
+On the grid, a burst is a cluster: citizens turn active where the ratio of
+cops to active neighbours within their vision is lowest, the cops arrest one
+each per tick, and the jailed (grey) sit out up to 30 ticks while the rest go
+quiet again.
+
+![13. A burst on the lattice](figures/13-rebellion-lattice.png)
+
+**Reproduce:** [`13-rebellion.R`](scripts/13-rebellion.R) · **Watch:**
+[`viewers/13-rebellion.html`](viewers/13-rebellion.html), legitimacy 0.82 for
+150 ticks, every tick (download and open; see
+[the viewers](viewers/README.md))
 
 ---
 

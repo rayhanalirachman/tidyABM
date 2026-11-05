@@ -55,7 +55,16 @@ between 0.55 and 0.60 the proportion of fires that reach the far edge goes
 
 ![3. Two forests either side of the threshold](figures/03-fire-lattice.png)
 
-**Reproduce:** [`03-fire.R`](scripts/03-fire.R)
+The density study wraps a whole fire in one tick with `abm_repeat()`. To watch
+one spread, the same two steps are the tick instead and the ignition moves
+into the setup; at density 0.65 the front takes about 200 ticks to cross the
+100 columns, meandering through the gaps.
+
+![3. The front crossing the grid at density 0.65](figures/03-fire-strip.png)
+
+**Reproduce:** [`03-fire.R`](scripts/03-fire.R) · **Watch:**
+[`viewers/03-fire.html`](viewers/03-fire.html), a 60×60 forest at density 0.63
+until the fire is out (download and open; see [the viewers](viewers/README.md))
 
 ---
 

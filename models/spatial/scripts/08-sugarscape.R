@@ -62,7 +62,8 @@ go <- abm_go(
 )
 
 cat("50x50 torus, two sugar mountains, 400 agents, 500 ticks\n\n")
-r <- abm_run(sugarscape, go, ticks = 500, seed = 1, record = 100, progress = FALSE)
+# every fifth frame is kept, for the figures and the viewer
+r <- abm_run(sugarscape, go, ticks = 500, seed = 1, record = 5, progress = FALSE)
 g <- abm_globals(r)
 # a global is first computed at the end of tick 1, so tick 0 is read off the
 # starting population
@@ -101,15 +102,16 @@ cat("  wealth Gini converges on the Gini of those income rates.\n")
 
 # --- figures --------------------------------------------------------------
 # Time series: population and wealth inequality. Then the landscape at tick
-# 500 with the survivors on it: the two mountains, and the agents clustered
-# on them.
+# 500 with the survivors on it: the sugar standing on each cell, which the
+# agents graze down to zero, and the agents clustered on the mountains. Then
+# a strip of the die-off, and the run as a viewer.
 library(ggplot2)
 
-fig_file <- function(name) {
+fig_file <- function(name, dir = "figures") {
   a <- grep("^--file=", commandArgs(), value = TRUE)
   d <- if (length(a)) dirname(sub("^--file=", "", a[1])) else "."
-  dir.create(file.path(d, "..", "figures"), showWarnings = FALSE)
-  file.path(d, "..", "figures", name)
+  dir.create(file.path(d, "..", dir), showWarnings = FALSE)
+  file.path(d, "..", dir, name)
 }
 # Okabe-Ito, colour-blind safe; the same series colours in every script
 pal <- c("#0072B2", "#E69F00", "#009E73")
@@ -131,12 +133,30 @@ print(p)
 ggsave(fig_file("08-sugarscape.png"), p, width = 7, height = 4.5, dpi = 150,
        bg = "white")
 
-p2 <- abm_plot_lattice(r, fill = capacity, agents = TRUE) +
-  scale_fill_gradient(low = "white", high = pal[2], name = "capacity",
-                      breaks = 0:4) +
-  scale_colour_manual(values = c(people = "grey10"), guide = "none") +
+sugar_scale <- scale_fill_gradient(low = "#FFFCF5", high = pal[2], name = "sugar",
+                                   breaks = 0:4, limits = c(0, 4))
+p2 <- abm_plot_lattice(r, fill = sugar, agents = TRUE, size = 1.4) +
+  sugar_scale +
   labs(title = "The sugarscape at tick 500",
-       subtitle = sprintf("%d survivors (black) on two sugar mountains", nrow(fin)))
+       subtitle = sprintf("%d survivors on two sugar mountains; a cell an agent stands on has just been eaten bare",
+                          nrow(fin)))
 print(p2)
 ggsave(fig_file("08-sugarscape-lattice.png"), p2, width = 7, height = 6, dpi = 150,
        bg = "white")
+
+p3 <- abm_plot_lattice(r, fill = sugar, tick = c(0, 5, 20, 100, 500), agents = TRUE,
+                       size = 0.5) +
+  sugar_scale +
+  theme(legend.position = "bottom", legend.key.width = unit(24, "pt")) +
+  labs(title = "The die-off: 400 agents scattered at random, the survivors on the mountains",
+       subtitle = "the sugar on each cell, 0 to 4; the agents in blue")
+print(p3)
+ggsave(fig_file("08-sugarscape-strip.png"), p3, width = 11, height = 3.4, dpi = 150,
+       bg = "white")
+
+# --- viewer ---------------------------------------------------------------
+abm_view_lattice(
+  r, fill = sugar, agents = TRUE, hover = c("wealth", "vision", "metabolism"),
+  file = fig_file("08-sugarscape.html", dir = "viewers"),
+  title = "Sugarscape", subtitle = "50x50 torus, 400 agents, every fifth tick of 500",
+  fill_colours = c("#FFFCF5", pal[2]))

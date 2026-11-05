@@ -91,7 +91,17 @@ both populations survive 300 ticks even at 160, on the edge of ending.
 
 ![5. The world at tick 400](figures/05-wolf-sheep-lattice.png)
 
-**Reproduce:** [`05-wolf-sheep.R`](scripts/05-wolf-sheep.R)
+A patch is either grass or on its 30-tick regrowth timer, and shading the bare
+patches by how far along that timer they are shows the grazing as a wake
+behind the sheep: the sheep crowd the grass, strip it, and move on, and the
+wolves sit where the sheep are.
+
+![5. Every 100 ticks](figures/05-wolf-sheep-strip.png)
+
+**Reproduce:** [`05-wolf-sheep.R`](scripts/05-wolf-sheep.R) · **Watch:**
+[`viewers/05-wolf-sheep.html`](viewers/05-wolf-sheep.html), the standard regime
+every other tick, with each animal's energy in the readout (download and open;
+see [the viewers](viewers/README.md))
 
 ---
 

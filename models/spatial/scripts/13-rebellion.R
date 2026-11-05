@@ -15,7 +15,7 @@
 
 library(tidyABM)
 
-run_one <- function(legitimacy, w = 22, ticks = 200, seed = 1) {
+run_one <- function(legitimacy, w = 22, ticks = 200, seed = 1, record = "globals") {
   rebel <- abm_setup(
     agents = list(
       patches = abm_agents(z = 0),
@@ -47,16 +47,18 @@ run_one <- function(legitimacy, w = 22, ticks = 200, seed = 1) {
     abm_global(n_active ~ sum(active, na.rm = TRUE),
                n_jail   ~ sum(jail > 0, na.rm = TRUE)))
 
-  g <- abm_globals(abm_run(rebel, go, ticks = ticks, seed = seed,
-                           record = "globals", progress = FALSE))
-  g[-1, ]
+  abm_run(rebel, go, ticks = ticks, seed = seed, record = record, progress = FALSE)
 }
+series <- function(r) abm_globals(r)[-1, ]
 
 cat("22x22 torus, 339 people, 19 cops, 200 ticks\n")
 cat("(kept small: the vision-radius `within` is an O(n^2) pair scan)\n\n")
 traces <- list()
 for (leg in c(0.88, 0.82, 0.70)) {
-  g <- run_one(leg)
+  # the middle regime keeps every frame, for the lattice figure and the viewer
+  r <- run_one(leg, record = if (leg == 0.82) "all" else "globals")
+  if (leg == 0.82) r82 <- r
+  g <- series(r)
   traces[[length(traces) + 1]] <- data.frame(
     legitimacy = sprintf("legitimacy %.2f", leg),
     tick = g$tick, active = g$n_active)
@@ -77,16 +79,18 @@ cat("  then filters, so a vision-radius count is quadratic in the population.\n"
 cat("  An equality against an own_ column (the co-location join) is recognised\n")
 cat("  and hash-joined instead; a range condition like this one cannot be.\n")
 
-# --- figure ---------------------------------------------------------------
+# --- figures --------------------------------------------------------------
 # Time series: rebels active per tick at three levels of legitimacy. The
 # punctuated equilibrium is the point -- long quiet stretches, short bursts.
+# Then one burst on the lattice: the tick before it, the peak, and the
+# arrests that follow. And the whole middle run as a viewer.
 library(ggplot2)
 
-fig_file <- function(name) {
+fig_file <- function(name, dir = "figures") {
   a <- grep("^--file=", commandArgs(), value = TRUE)
   d <- if (length(a)) dirname(sub("^--file=", "", a[1])) else "."
-  dir.create(file.path(d, "..", "figures"), showWarnings = FALSE)
-  file.path(d, "..", "figures", name)
+  dir.create(file.path(d, "..", dir), showWarnings = FALSE)
+  file.path(d, "..", dir, name)
 }
 
 # Okabe-Ito, colour-blind safe; the same series colours in every script
@@ -109,3 +113,36 @@ p <- ggplot(d, aes(tick, active)) +
 print(p)
 ggsave(fig_file("13-rebellion.png"), p, width = 7, height = 5, dpi = 150,
        bg = "white")
+
+# Who is doing what, on the grid: a cop, a quiet citizen, one actively
+# rebelling, or one in jail. The patches carry nothing, so they stay grey.
+status_colours <- c(quiet = "#009E73", active = "#D55E00", jailed = "grey45",
+                    cop = pal[1])
+g82 <- series(r82)
+settled <- g82[g82$tick > 10, ]                # past the opening flare
+peak <- settled$tick[which.max(settled$n_active)]
+burst_ticks <- c(peak - 1, peak, peak + 1, peak + 5, peak + 20)
+p2 <- abm_plot_lattice(r82, tick = burst_ticks, agents = TRUE, size = 1.3,
+                       colour = case_when(.group == "cops" ~ "cop",
+                                          active ~ "active",
+                                          jail > 0 ~ "jailed",
+                                          TRUE ~ "quiet"),
+                       colours = status_colours) +
+  theme(legend.position = "bottom") +
+  labs(title = sprintf("Legitimacy 0.82: a burst at tick %d, and the arrests after it", peak),
+       subtitle = "22x22 torus; the lattice carries nothing, so the patches stay grey",
+       colour = NULL)
+print(p2)
+ggsave(fig_file("13-rebellion-lattice.png"), p2, width = 11, height = 3.2, dpi = 150,
+       bg = "white")
+
+# --- viewer ---------------------------------------------------------------
+# The first 150 ticks: a burst is a one-tick event, so every tick is kept and
+# the run is shortened instead.
+abm_view_lattice(
+  r82, agents = TRUE, hover = "jail", tick = 0:150,
+  colour = case_when(.group == "cops" ~ "cop", active ~ "active",
+                     jail > 0 ~ "jailed", TRUE ~ "quiet"),
+  file = fig_file("13-rebellion.html", dir = "viewers"),
+  title = "Rebellion", subtitle = "22x22 torus, legitimacy 0.82, 339 people and 19 cops, the first 150 ticks",
+  labels = c(colour = "status"), agent_colours = status_colours)

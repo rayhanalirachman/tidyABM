@@ -53,15 +53,16 @@ cat("  asked for -- which is the whole Schelling point.\n")
 # --- figures --------------------------------------------------------------
 # Parameter sweep: the same-type neighbour share before and after, against the
 # tolerance asked for. The gap between them is the Schelling point. Then the
-# lattice at tolerance 0.30, before and after: `record = 100` keeps tick 0 and
-# tick 100, which is exactly the two frames the picture wants.
+# lattice at tolerance 0.30 as it sorts itself: tick 0, 2, 5, 20 and 100, most
+# of the sorting happening in the first handful of ticks. The same run is
+# written out as a viewer.
 library(ggplot2)
 
-fig_file <- function(name) {
+fig_file <- function(name, dir = "figures") {
   a <- grep("^--file=", commandArgs(), value = TRUE)
   d <- if (length(a)) dirname(sub("^--file=", "", a[1])) else "."
-  dir.create(file.path(d, "..", "figures"), showWarnings = FALSE)
-  file.path(d, "..", "figures", name)
+  dir.create(file.path(d, "..", dir), showWarnings = FALSE)
+  file.path(d, "..", dir, name)
 }
 # Okabe-Ito, colour-blind safe; the same series colours in every script
 pal <- c("#0072B2", "#E69F00", "#009E73")
@@ -90,14 +91,21 @@ print(p)
 ggsave(fig_file("04-schelling.png"), p, width = 7, height = 4.5, dpi = 150,
        bg = "white")
 
-frames <- abm_run(schelling(0.30), go, ticks = 100, seed = 6, record = 100,
-                  progress = FALSE)
-p2 <- abm_plot_lattice(frames, fill = type, tick = c(0, 100)) +
+frames <- abm_run(schelling(0.30), go, ticks = 100, seed = 6, progress = FALSE)
+p2 <- abm_plot_lattice(frames, fill = type, tick = c(0, 2, 5, 20, 100)) +
   scale_fill_manual(values = c(A = pal[1], B = pal[2]), name = NULL,
                     na.translate = FALSE) +
-  labs(title = "Tolerance 0.30: who lives next to whom, before and after",
+  theme(legend.position = "bottom") +
+  labs(title = "Tolerance 0.30: who lives next to whom, as the town sorts itself",
        subtitle = sprintf("same-type share %.2f at tick 0, %.2f at tick 100; white cells are vacant",
                           tab$start[tab$tolerance == 0.3], tab$end[tab$tolerance == 0.3]))
 print(p2)
-ggsave(fig_file("04-schelling-lattice.png"), p2, width = 8, height = 4.4, dpi = 150,
+ggsave(fig_file("04-schelling-lattice.png"), p2, width = 11, height = 3.2, dpi = 150,
        bg = "white")
+
+# --- viewer ---------------------------------------------------------------
+abm_view_lattice(
+  frames, fill = type, hover = "same",
+  file = fig_file("04-schelling.html", dir = "viewers"),
+  title = "Schelling segregation", subtitle = "51x51 torus, tolerance 0.30, 10% vacant, 30% minority",
+  fill_colours = c(A = pal[1], B = pal[2]))

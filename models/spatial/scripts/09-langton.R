@@ -78,10 +78,11 @@ fig_file <- function(name) {
 N <- 11500
 r_fig <- abm_run(langton, go, ticks = N, seed = 1, record = "final",
                  progress = FALSE)
-p <- abm_plot_lattice(r_fig, fill = white, agents = TRUE) +
+p <- abm_plot_lattice(r_fig, fill = white, agents = TRUE,
+                      colours = c(ant = "#D55E00")) +
   scale_fill_manual(values = c(`TRUE` = "white", `FALSE` = "grey15"),
                     guide = "none") +
-  scale_colour_manual(values = c(ant = "#D55E00"), guide = "none") +
+  guides(colour = "none") +
   theme(panel.border = element_rect(fill = NA, colour = "grey70")) +
   labs(title = sprintf("Langton's Ant after %s steps", format(N, big.mark = ",")),
        subtitle = sprintf("121x121 torus, %d black cells; the ant (orange) is on the highway",

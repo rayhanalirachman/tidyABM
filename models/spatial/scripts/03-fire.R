@@ -67,14 +67,15 @@ cat("  the transition drops to about 0.41 instead.\n")
 # --- figures --------------------------------------------------------------
 # Parameter sweep: the percolation transition, with the square-lattice site
 # threshold drawn on. Then two burnt forests, one either side of it: at 0.55
-# the fire dies a few columns in, at 0.65 it crosses the grid.
+# the fire dies a few columns in, at 0.65 it crosses the grid. Then the fire
+# itself, tick by tick: a strip of the front crossing the grid, and a viewer.
 library(ggplot2)
 
-fig_file <- function(name) {
+fig_file <- function(name, dir = "figures") {
   a <- grep("^--file=", commandArgs(), value = TRUE)
   d <- if (length(a)) dirname(sub("^--file=", "", a[1])) else "."
-  dir.create(file.path(d, "..", "figures"), showWarnings = FALSE)
-  file.path(d, "..", "figures", name)
+  dir.create(file.path(d, "..", dir), showWarnings = FALSE)
+  file.path(d, "..", dir, name)
 }
 # Okabe-Ito, colour-blind safe; the same series colours in every script
 pal <- c("#0072B2", "#E69F00", "#009E73")
@@ -103,12 +104,65 @@ ggsave(fig_file("03-fire.png"), p, width = 7, height = 4.5, dpi = 150, bg = "whi
 frames <- rbind(
   cbind(burn_once(0.55), density = "density 0.55: the fire dies out"),
   cbind(burn_once(0.65), density = "density 0.65: the fire crosses the grid"))
+fire_colours <- c(tree = "#009E73", burning = "#D55E00", burnt = "grey25",
+                  empty = "grey96")
 p2 <- abm_plot_lattice(frames, fill = state) +
   facet_wrap(~density) +
-  scale_fill_manual(values = c(tree = "#009E73", burnt = "grey25", empty = "grey96"),
-                    breaks = c("tree", "burnt", "empty"), name = NULL) +
+  scale_fill_manual(values = fire_colours, breaks = c("tree", "burnt", "empty"),
+                    name = NULL) +
   labs(title = "Either side of the threshold, seed 1",
        subtitle = "lit along the left edge; a burnt cell is one the front reached")
 print(p2)
 ggsave(fig_file("03-fire-lattice.png"), p2, width = 8, height = 4.4, dpi = 150,
        bg = "white")
+
+# --- the spread, tick by tick --------------------------------------------
+# The density study wraps a whole fire in one tick. To watch one spread, the
+# same two steps are the tick and the ignition moves into the setup; the
+# forest is the same draw as before (one runif(n) against the density).
+lit_forest <- function(density, w = 100, seed = 1) {
+  abm_setup(
+    agents  = abm_agents(state = ~case_when(runif(n) >= density ~ "empty",
+                                            .x == 1 ~ "burning",
+                                            TRUE ~ "tree")),
+    network = abm_network(type = "grid", dims = c(w, w),
+                          diagonals = FALSE, torus = FALSE),
+    seed = seed)
+}
+spread_go <- abm_go(
+  abm_neighbours(hot ~ any(state == "burning")),
+  abm_rules(state ~ case_when(state == "burning"    ~ "burnt",
+                              state == "tree" & hot ~ "burning",
+                              TRUE                  ~ state)),
+  abm_global(burning ~ sum(state == "burning")))
+out_tick <- function(r) {                     # the first tick with no front
+  g <- abm_globals(r)
+  out <- g$tick[which(g$tick > 0 & g$burning == 0)[1]]
+  if (is.na(out)) max(g$tick) else out
+}
+
+spread <- abm_run(lit_forest(0.65), spread_go, ticks = 400, seed = 1,
+                  record = 10, progress = FALSE)
+done <- out_tick(spread)
+strip_ticks <- unique(round(seq(done / 5, done, length.out = 5) / 10) * 10)
+p3 <- abm_plot_lattice(spread, fill = state, tick = strip_ticks) +
+  scale_fill_manual(values = fire_colours,
+                    breaks = c("tree", "burning", "burnt", "empty"), name = NULL) +
+  theme(legend.position = "bottom") +
+  labs(title = "Density 0.65: the front crosses the grid",
+       subtitle = sprintf("100x100, lit along the left edge at tick 0; the fire is out by tick %d",
+                          done))
+print(p3)
+ggsave(fig_file("03-fire-strip.png"), p3, width = 11, height = 3.2, dpi = 150,
+       bg = "white")
+
+# --- viewer ---------------------------------------------------------------
+# A smaller forest near the threshold, every other tick until the fire is out.
+small <- abm_run(lit_forest(0.63, w = 60, seed = 3), spread_go, ticks = 400,
+                 seed = 3, record = 2, progress = FALSE)
+done_small <- out_tick(small)
+abm_view_lattice(
+  small, fill = state, tick = sort(unique(small$tick[small$tick <= done_small])),
+  file = fig_file("03-fire.html", dir = "viewers"),
+  title = "Forest Fire", subtitle = sprintf("60x60 bounded grid, density 0.63, seed 3; out by tick %d", done_small),
+  labels = c(fill = "state"), fill_colours = fire_colours)

@@ -54,9 +54,15 @@ is the whole Schelling point.
 
 ![4. Schelling segregation, with geography](figures/04-schelling.png)
 
-![4. Tolerance 0.30, before and after](figures/04-schelling-lattice.png)
+![4. Tolerance 0.30, as the town sorts itself](figures/04-schelling-lattice.png)
 
-**Reproduce:** [`04-schelling.R`](scripts/04-schelling.R)
+Most of the sorting happens in the first handful of ticks: the patches that
+form by tick 5 only consolidate afterwards.
+
+**Reproduce:** [`04-schelling.R`](scripts/04-schelling.R) · **Watch:**
+[`viewers/04-schelling.html`](viewers/04-schelling.html), the same run tick by
+tick, with each cell's same-type share in the readout (download and open; see
+[the viewers](viewers/README.md))
 
 ---
 

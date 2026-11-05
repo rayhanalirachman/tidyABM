@@ -20,23 +20,26 @@ The `testthat` cases in
 run the same checks at reduced scale so the suite stays quick; these are the
 full runs.
 
-| script | model | tier | runtime | figures |
-|---|---|---|---|---|
-| `01-life.R` | [1. Conway's Game of Life](../01-life.md) | L0 | 30 s | `01-life.png`, `01-life-lattice.png` |
-| `02-ca1d.R` | [2. Elementary 1-D CA, rules 90 and 30](../02-ca1d.md) | L0 + L1 | 2 s | `02-ca1d.png` |
-| `03-fire.R` | [3. Forest Fire, density sweep](../03-fire.md) | L0 | 35 s | `03-fire.png`, `03-fire-lattice.png` |
-| `04-schelling.R` | [4. Schelling with geography, tolerance sweep](../04-schelling.md) | L0 | 6 s | `04-schelling.png`, `04-schelling-lattice.png` |
-| `05-wolf-sheep.R` | [5. Wolf–Sheep–Grass, three regimes](../05-wolf-sheep.md) | L2 | 20 s | `05-wolf-sheep.png`, `05-wolf-sheep-lattice.png` |
-| `06-ants.R` | [6. Ants, pheromone foraging](../06-ants.md) | L2 | 16 s | `06-ants.png`, `06-ants-lattice.png` |
-| `08-sugarscape.R` | [8. Sugarscape, carrying capacity](../08-sugarscape.md) | L2+ | 13 s | `08-sugarscape.png`, `08-sugarscape-lattice.png` |
-| `09-langton.R` | [9. Langton's Ant, against a reference](../09-langton.md) | L2+ | 75 s | `09-langton.png` |
-| `10-ising.R` | [10. Ising, temperature sweep](../10-ising.md) | L0 | 12 s | `10-ising.png`, `10-ising-lattice.png` |
-| `11-daisyworld.R` | [11. Daisyworld, luminosity sweep](../11-daisyworld.md) | L0 | 110 s | `11-daisyworld.png` |
-| `13-rebellion.R` | [13. Rebellion, legitimacy sweep](../13-rebellion.md) | L2+ | 50 s | `13-rebellion.png` |
+| script | model | tier | runtime | figures | viewer |
+|---|---|---|---|---|---|
+| `01-life.R` | [1. Conway's Game of Life](../01-life.md) | L0 | 40 s | `01-life.png`, `01-life-lattice.png`, `01-life-strip.png` | `01-life.html` |
+| `02-ca1d.R` | [2. Elementary 1-D CA, rules 90 and 30](../02-ca1d.md) | L0 + L1 | 2 s | `02-ca1d.png` | |
+| `03-fire.R` | [3. Forest Fire, density sweep](../03-fire.md) | L0 | 50 s | `03-fire.png`, `03-fire-lattice.png`, `03-fire-strip.png` | `03-fire.html` |
+| `04-schelling.R` | [4. Schelling with geography, tolerance sweep](../04-schelling.md) | L0 | 7 s | `04-schelling.png`, `04-schelling-lattice.png` | `04-schelling.html` |
+| `05-wolf-sheep.R` | [5. Wolf–Sheep–Grass, three regimes](../05-wolf-sheep.md) | L2 | 26 s | `05-wolf-sheep.png`, `05-wolf-sheep-lattice.png`, `05-wolf-sheep-strip.png` | `05-wolf-sheep.html` |
+| `06-ants.R` | [6. Ants, pheromone foraging](../06-ants.md) | L2 | 21 s | `06-ants.png`, `06-ants-lattice.png`, `06-ants-strip.png` | `06-ants.html` |
+| `08-sugarscape.R` | [8. Sugarscape, carrying capacity](../08-sugarscape.md) | L2+ | 17 s | `08-sugarscape.png`, `08-sugarscape-lattice.png`, `08-sugarscape-strip.png` | `08-sugarscape.html` |
+| `09-langton.R` | [9. Langton's Ant, against a reference](../09-langton.md) | L2+ | 75 s | `09-langton.png` | |
+| `10-ising.R` | [10. Ising, temperature sweep](../10-ising.md) | L0 | 12 s | `10-ising.png`, `10-ising-lattice.png` | |
+| `11-daisyworld.R` | [11. Daisyworld, luminosity sweep](../11-daisyworld.md) | L0 | 110 s | `11-daisyworld.png` | |
+| `13-rebellion.R` | [13. Rebellion, legitimacy sweep](../13-rebellion.md) | L2+ | 55 s | `13-rebellion.png`, `13-rebellion-lattice.png` | `13-rebellion.html` |
 
 Runtimes are wall-clock on a two-core container and include the figures, which
 in a few cases means one extra run at the headline parameters (Langton's Ant
-runs on to 11,500 steps for its picture).
+runs on to 11,500 steps for its picture). A `-lattice` figure is one frame of
+the world drawn with `abm_plot_lattice()`, a `-strip` figure several ticks of
+it side by side, and a viewer is the recorded run written to
+[`../viewers/`](../viewers/README.md) with `abm_view_lattice()`.
 
 ## A note on cost
 

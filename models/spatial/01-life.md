@@ -42,7 +42,11 @@ the known velocity. A 100×100 random soup started at density 0.10 relaxes to
 
 ![1. The ash at tick 1500](figures/01-life-lattice.png)
 
-**Reproduce:** [`01-life.R`](scripts/01-life.R)
+![1. From soup to ash, five ticks](figures/01-life-strip.png)
+
+**Reproduce:** [`01-life.R`](scripts/01-life.R) · **Watch:**
+[`viewers/01-life.html`](viewers/01-life.html), a 60×60 soup at density 0.30
+played tick by tick (download and open; see [the viewers](viewers/README.md))
 
 ---
 

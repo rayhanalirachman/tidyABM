@@ -57,8 +57,26 @@ Rscript models/spatial/scripts/01-life.R
 Each script is self-contained — its own `library(tidyABM)` — prints its table
 and writes its page's figures into `figures/`. It needs `tidyABM` and `ggplot2`
 installed. See [`scripts/README.md`](scripts/README.md) for runtimes. A frame
-of the lattice is drawn with `abm_plot_lattice()`, which is the one piece of
-plotting the package offers; everything else on the figures is plain ggplot2.
+of the lattice is drawn with `abm_plot_lattice()` — the patches shaded by a
+value, the mobile agents as points on top, several ticks as a strip — and
+everything else on the figures is plain ggplot2.
+
+## Watching them
+
+A static frame shows a tick; `abm_view_lattice()` shows the run. It writes a
+recorded run to one self-contained HTML file — canvas, play / pause, a tick
+slider, a speed control, a legend with the counts at the current tick, and a
+readout of whatever cell or agent the pointer is over — that opens from disk
+with no server and no network, on a laptop or a phone, in light or dark mode.
+Seven of the models have one under [`viewers/`](viewers/README.md); the
+scripts write them alongside the figures.
+
+```r
+r <- abm_run(world, go, ticks = 400, seed = 1, record = 2)
+abm_view_lattice(r, fill = if_else(grass, 30L, 30L - countdown), agents = TRUE,
+                 hover = "energy", labels = c(fill = "grass height"),
+                 file = "wolf-sheep.html")
+```
 
 The `testthat` cases in
 [`../../tests/testthat/test-spatial.R`](../../tests/testthat/test-spatial.R) run

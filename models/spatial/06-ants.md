@@ -87,7 +87,17 @@ decays as the piles are spent and the deposits stop.
 
 ![6. The trail at tick 150](figures/06-ants-lattice.png)
 
-**Reproduce:** [`06-ants.R`](scripts/06-ants.R)
+The ants are coloured by whether they are carrying food: a red ant is heading
+home up `nest_scent`, a black one is out foraging up the trail. The trail to
+whichever pile is being worked is the strong one, and a trail nobody is
+walking evaporates within a few dozen ticks.
+
+![6. The trail through the run](figures/06-ants-strip.png)
+
+**Reproduce:** [`06-ants.R`](scripts/06-ants.R) · **Watch:**
+[`viewers/06-ants.html`](viewers/06-ants.html), the field every other tick with
+the nest and food marked (download and open; see
+[the viewers](viewers/README.md))
 
 ---
 

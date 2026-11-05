@@ -1,0 +1,119 @@
+---
+title: "The grammar on one page"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{The grammar on one page}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>", eval = FALSE)
+```
+
+A cheat sheet. Every name the grammar uses, what it means, and the five
+things that trip people up. `vignette("tidyABM")` is the walkthrough.
+
+## Three statements
+
+```{r}
+world  <- abm_setup(agents = abm_agents(n = 100, money = 100),   # 1. who
+                    network = abm_network(type = "random", degree = 4),
+                    globals = list(price = 1), seed = 1)
+go     <- abm_go(abm_match(...), abm_rules(...), ...)            # 2. what happens each tick
+result <- abm_run(world, go, ticks = 100, seed = 1)              # 3. run it
+```
+
+`abm_setup()` builds the world, `abm_go()` lists the tick's steps in order,
+`abm_run()` replays them. Nothing else is called at top level: `abm_agents()`,
+`abm_network()`, `abm_grid()` and `abm_relation()` are *specifications* handed
+to `abm_setup()`, and every other `abm_*()` function is a *step* handed to
+`abm_go()`.
+
+## Declaring the world
+
+| write | meaning |
+|---|---|
+| `abm_agents(n = 100, money = 100)` | 100 agents; a plain value is recycled |
+| `abm_agents(n = 100, x = ~runif(n))` | a one-sided formula, evaluated once, sees `n` (a number here) and earlier columns |
+| `list(buyers = abm_agents(...), sellers = abm_agents(...))` | several kinds; each row carries its kind in `.group` |
+| `abm_network(type = "random", degree = 4)` | a fixed edge list; also `"poisson"`, `"scale_free"`, `"ring"`, `"complete"`, `"manual"`, `"empty"` |
+| `abm_network(type = "grid", dims = c(40, 40), on = "patches")` | a lattice *is* a network; the wired group gets `.x`, `.y` and omits `n` |
+| `abm_grid(dims = c(40, 40), alive = ~runif(n) < 0.3)` | patches plus their grid, in one call |
+| `globals = list(price = 1)` | values every rule can read; `abm_global()` writes them |
+| `relations = list(owes = abm_relation(edges, amount = 0))` | a directed, valued table of agent pairs |
+
+## The steps, in the order a tick uses them
+
+| step | one line | key arguments |
+|---|---|---|
+| `abm_match(pair =)` | who meets whom this tick | `"random"`, `"one_of"`, `"opposite_group"`, `"nearest"`, `"network"`; `size`, `by`, `role`, `eligible`, `among`, `weight`, `cost`, `.by` |
+| `abm_rules(col ~ expr)` | update agent columns, all at once | `.scope = "population"`, `.by = firm` |
+| `abm_sequential(col ~ expr)` | update agents one at a time; later agents see earlier writes | `.order = place` |
+| `abm_neighbours(col ~ aggregate)` | summarise the agents around each agent | `within = <condition>`, `.where = "north"` |
+| `abm_tell(col ~ expr, to =)` | write into *another* agent's row | `to = .partner`, `to = "neighbours"`, `when`, `.resolve`, `.order` |
+| `abm_global(name ~ aggregate)` | update a shared value | `.by = task` for a table of them |
+| `abm_move(along =, to =)` | move an agent to another cell | `"random_neighbour"`, `uphill(expr)`, `who`, `direction` |
+| `abm_link()` / `abm_unlink()` | add or remove edges between matched agents | `when`; `via = "R"` for a relation |
+| `abm_draw(name ~ expr)` | attach a fresh value to every edge | `.each = "endpoint"` |
+| `abm_pairs(via = "R", v ~ expr)` | update every pair of a relation | `.when` |
+| `abm_birth(when =)` | clone agents | `times`, `cost`, `inherit`, `attach_via`, `links`; or `n =` for strangers |
+| `abm_death(when =)` | remove agents | `prune_edges` |
+| `abm_repeat(..., until =, max =)` | replay a block inside the tick | |
+
+A match stands until the next match or the end of the tick. Two matches in a
+row, or a tick ending on one, is an error at `abm_go()` time.
+
+## Names a rule can use
+
+| name | where | meaning |
+|---|---|---|
+| `money`, `state`, ... | everywhere | the agent's own columns |
+| `price` | everywhere | a global, by its name |
+| `n()` | everywhere | how many agents the rule is evaluated over: the pair, the group, the partition, or everybody. (In a setup formula it is the number `n`.) |
+| `.id`, `.group` | everywhere | who the agent is and which kind; read-only |
+| `partner_<col>` | after a match of pairs | the partner's column |
+| `.partner` | after a match | the partner's `.id`; `NA` when the agent was left out |
+| `.role` | after a match with `role =` | which role the agent was given |
+| `own_<col>` | `within =`, `cost =`, `among =`, `weight =`, `uphill()` | the *focal* agent's column, while the candidate's columns keep their names |
+| `.cell`, `.x`, `.y` | on a lattice | where the agent stands; a rule may write `.cell`, never `.x` / `.y` |
+| `.key` | `abm_global(.by =)` | the key being written |
+| `<edge value>` | `abm_neighbours()` after `abm_draw()` | the value drawn on the edge; `<name>_back` from the other end |
+| `.R`, `R_v`, `R_v_back` | wherever a pair is in view | whether the pair exists in relation `R`, and its value `v` each way |
+| `from_<col>`, `to_<col>` | `abm_pairs()` | the two agents of the pair |
+
+Package-managed columns are dot-prefixed; yours never are.
+
+## Five things that trip people up
+
+1. **Conditions and expressions are unquoted.** `eligible = money > 0`, not
+   `"money > 0"`. Only a mode or a name is a string: `pair = "random"`,
+   `to = "neighbours"`, `via = "owes"`.
+2. **`abm_rules()` is simultaneous.** Every rule in one call reads the state
+   at the start of the step, so `abm_rules(a ~ b, b ~ a)` swaps. To let a rule
+   see another's result, use two calls, or `abm_sequential()`.
+3. **A match decides who is written.** After a match, a rule runs only for
+   the agents that were paired; the rest keep their values. For a rule meant
+   for everyone, say `.scope = "population"`. But if the match paired
+   *nobody*, an `abm_rules()` step writes every agent, with `NA` partner
+   columns, so write `fed ~ !is.na(.partner)` rather than `fed ~ TRUE`.
+4. **Two seeds.** `abm_setup(seed =)` fixes who the agents are (any
+   `~runif(n)` column); `abm_run(seed =)` fixes what happens to them. A model
+   with random starting columns needs both to reproduce.
+5. **A parameter is a global.** `abm_run(params = list(price = c(1, 2)))`
+   sweeps a global; `n`, `degree` and `dims` are fixed when the world is
+   built, so sweeping one of those means one world per value.
+
+## Reading the result
+
+```{r}
+result                      # one row per agent per tick; tick 0 is the start
+abm_globals(result)         # one row per tick
+abm_measures(result)        # the `measures =` summaries, one row per tick
+abm_edges(result)           # the network at the end
+abm_relations(result)       # the relations at the end
+abm_odd(world, go, ticks)   # an ODD protocol skeleton read off the model
+```
+
+Under `params =` or `reps =`, every table carries `.run`, `.rep` and one
+column per parameter in front.

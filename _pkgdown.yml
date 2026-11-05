@@ -27,6 +27,8 @@ navbar:
     articles:
       text: Articles
       menu:
+      - text: The grammar on one page
+        href: articles/grammar.html
       - text: Model gallery
         href: articles/models.html
       - text: Corrections

@@ -69,13 +69,13 @@ Several ticks are drawn as one facet each, in a single row when there are
 six or fewer: a strip showing how the world evolved.
 }
 \examples{
-\dontrun{
+\dontshow{if (rlang::is_installed("ggplot2")) (if (getRversion() >= "3.4") withAutoprint else force)(\{ # examplesIf}
 life <- abm_setup(agents = abm_grid(dims = c(30, 30), alive = ~runif(n) < 0.3))
 go <- abm_go(abm_neighbours(k ~ sum(alive)),
              abm_rules(alive ~ k == 3 | (alive & k == 2)))
 r <- abm_run(life, go, ticks = 20, seed = 1, record = 10)
 abm_plot_lattice(r, fill = alive, tick = c(0, 10, 20))
-}
+\dontshow{\}) # examplesIf}
 }
 \seealso{
 \code{\link[=abm_view_lattice]{abm_view_lattice()}} for the same frames as an interactive

@@ -47,14 +47,12 @@
 #'   playback; [abm_network()] for the lattice itself; [abm_move()] for the
 #'   agents standing on it.
 #' @export
-#' @examples
-#' \dontrun{
+#' @examplesIf rlang::is_installed("ggplot2")
 #' life <- abm_setup(agents = abm_grid(dims = c(30, 30), alive = ~runif(n) < 0.3))
 #' go <- abm_go(abm_neighbours(k ~ sum(alive)),
 #'              abm_rules(alive ~ k == 3 | (alive & k == 2)))
 #' r <- abm_run(life, go, ticks = 20, seed = 1, record = 10)
 #' abm_plot_lattice(r, fill = alive, tick = c(0, 10, 20))
-#' }
 abm_plot_lattice <- function(result, fill = NULL, tick = NULL, agents = FALSE,
                              colour = NULL, shape = NULL, size = 1.2,
                              colours = NULL) {

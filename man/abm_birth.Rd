@@ -21,7 +21,7 @@ abm_birth(
 
 \item{times}{How many offspring each reproducing agent has. An expression
 evaluated in the parent's row, so it can be a column, a draw
-(\code{rpois(dplyr::n(), 2)}) or a number. \code{0} means that parent has none this
+(\code{rpois(n(), 2)}) or a number. \code{0} means that parent has none this
 tick and \code{NA} is treated as \code{0}. Only used with \code{when}, since \code{n} is already
 a count. Each offspring gets its own evaluation of \code{inherit}, so a mutation
 drawn there differs from sibling to sibling.}
@@ -79,12 +79,12 @@ differs between siblings.
 abm_birth(when = resource > 20, cost = resource ~ resource / 2)
 
 # a clutch rather than a single offspring
-abm_birth(when = mature, times = rpois(dplyr::n(), 2), inherit = age ~ 0)
+abm_birth(when = mature, times = rpois(n(), 2), inherit = age ~ 0)
 abm_birth(n = 1, attach_via = abm_match(pair = "network", from = "random_edge"))
 
 # the offspring takes a place beside its parent, with a neighbourhood of its
 # own rather than a single edge back to the parent
-abm_birth(when = runif(dplyr::n()) < ptr, links = 4,
+abm_birth(when = runif(n()) < ptr, links = 4,
           attach_via = abm_match(pair = "network", from = "parent"))
 
 # a child of two parents, with its own age and a mutated trait

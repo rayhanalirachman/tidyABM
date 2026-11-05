@@ -107,10 +107,18 @@ it then use.
 After a match, every rule can see:
 \itemize{
 \item \verb{partner_<col>} for each of the partner's columns, when \code{size = 2};
+\item \code{.partner}, the partner's \code{.id}, \code{NA} for an agent the match left out,
+so \code{!is.na(.partner)} is "I met someone this tick";
 \item grouped-mutate semantics when \code{size > 2}, so \code{sum(contribution)} inside a
-rule means "sum across this agent's group";
-\item \code{.role}, when \code{role} is supplied.
+rule means "sum across this agent's group" and \code{n()} is its size;
+\item \code{.role}, when \code{role} is supplied (\code{NA} otherwise).
 }
+
+Who an \code{\link[=abm_rules]{abm_rules()}} step that follows is \emph{written for} is decided by the
+match too: an agent it left out keeps its values, unless the match paired
+nobody at all, in which case every agent is written with \code{NA} partner
+columns (\code{\link[=abm_sequential]{abm_sequential()}} then writes nobody). See \code{\link[=abm_rules]{abm_rules()}} for the
+two cases and how to write a rule that is right in both.
 
 Each \code{pair} mode uses a fixed set of the other arguments, and passing one
 that the chosen mode does not use is an error rather than being ignored:\tabular{ll}{

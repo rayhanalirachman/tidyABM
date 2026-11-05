@@ -86,14 +86,13 @@ lattice over 200 frames is well under a megabyte. Thin a long run with
 \code{record =} or \code{tick =} rather than recording every tick of it.
 }
 \examples{
-\dontrun{
 life <- abm_setup(agents = abm_grid(dims = c(30, 30), alive = ~runif(n) < 0.3))
 go <- abm_go(abm_neighbours(k ~ sum(alive)),
              abm_rules(alive ~ k == 3 | (alive & k == 2)))
-r <- abm_run(life, go, ticks = 100, seed = 1)
-f <- abm_view_lattice(r, fill = alive, title = "Game of Life")
-browseURL(f)
-}
+r <- abm_run(life, go, ticks = 30, seed = 1)
+f <- abm_view_lattice(r, fill = alive, title = "Game of Life",
+                      file = tempfile(fileext = ".html"))
+# browseURL(f)   # open it in the browser
 }
 \seealso{
 \code{\link[=abm_plot_lattice]{abm_plot_lattice()}} for a static frame of the same result.

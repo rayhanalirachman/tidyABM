@@ -65,6 +65,21 @@ is partial or directional -- \code{"one_of"}, \code{"network"}, \code{"nearest"}
 mode under an \code{eligible} -- say \code{.scope = "population"} on such a rule
 rather than relying on position.
 
+One case is different, and worth knowing before a population can go
+extinct or a tick can pass with nobody eligible. A match that ran and
+paired \emph{nobody} does not narrow the step: every agent is written, and
+every \verb{partner_<col>} and \code{.partner} is \code{NA}. So \code{fed ~ TRUE} after a
+match that found no prey feeds everyone, and \code{x ~ partner_x} sets every
+\code{x} to \code{NA}. Write such a rule so that it is correct with a missing
+partner -- \code{fed ~ !is.na(.partner)}, or a \code{case_when()} whose last branch
+keeps the old value -- and it is correct on every tick. (\code{\link[=abm_sequential]{abm_sequential()}}
+differs here: after a match that paired nobody it writes nobody.)
+
+Inside a rule, \code{n()} is the number of agents the rule is being evaluated
+over: the pair, the group, the \code{.by} partition or the whole population. It
+is a function here, where in an \code{\link[=abm_agents]{abm_agents()}} setup formula \code{n} is a
+number. The bare \code{n()} and \code{dplyr::n()} mean the same thing.
+
 Under a pairing of two, a rule also sees the pair's \code{\link[=abm_relation]{abm_relation()}} values,
 \verb{R_<col>} for \code{(me -> .partner)} and \verb{R_<col>_back} for the reverse row, and
 a rule whose \emph{target} is one of those writes the pair rather than an agent

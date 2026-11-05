@@ -58,7 +58,9 @@ never turns up in a rendered page. \code{TRUE} forces it on from the first tick,
 }
 \value{
 An \code{abm_result}: a tibble of one row per agent per tick, carrying
-the run's globals, measures and final network as attributes.
+the run's globals, measures and final network as attributes. With several
+agent groups the tibble holds the union of their columns, so a column one
+group does not have is \code{NA} on the other group's rows.
 }
 \description{
 \code{abm_run()} is the last of the three functions a model is made of --
@@ -69,9 +71,9 @@ and records the whole population after every tick.
 \details{
 The result is one long tibble, \code{tick}, \code{.id}, \code{.group}, then every agent
 column, which is what you want for plotting and summarising. Tick 0 is the
-state produced by [abm_setup()], before any step has run, so a run of \code{n}
+state produced by \code{\link[=abm_setup]{abm_setup()}}, before any step has run, so a run of \code{n}
 ticks returns \code{n + 1} snapshots. Global values are recorded alongside and
-are available with [abm_globals()].
+are available with \code{\link[=abm_globals]{abm_globals()}}.
 
 Agent-based models are stochastic, so \code{seed} is a first-class argument
 rather than something to arrange yourself: it makes the run reproducible
@@ -83,15 +85,12 @@ thousand agents has been keeping every one of them, every tick, since the
 start. \code{record} says how much to keep.
 
 It fixes the run, though, not the model. If the agents' starting columns
-were drawn at random, they were drawn when [abm_setup()] was called, and
+were drawn at random, they were drawn when \code{\link[=abm_setup]{abm_setup()}} was called, and
 this seed comes too late to affect them. Seed both for an experiment that
 reproduces end to end:
 
-\if{html}{\out{<div class="sourceCode m <- abm_setup(agents = abm_agents(n = 100, x = ~runif(n)), seed = 1) r">}}\preformatted{<- abm_run(m, go, ticks = 100, seed = 1) ```
-
-[abm_setup()]: R:abm_setup()
-[abm_globals()]: R:abm_globals()
-[abm_setup()]: R:abm_setup()
+\if{html}{\out{<div class="sourceCode r">}}\preformatted{m <- abm_setup(agents = abm_agents(n = 100, x = ~runif(n)), seed = 1)
+r <- abm_run(m, go, ticks = 100, seed = 1)
 }\if{html}{\out{</div>}}
 }
 \section{Many runs}{
@@ -102,32 +101,26 @@ whose entries override the model's \code{globals} before each run; an entry hold
 more than one value is swept, one run per value, and several entries give
 every combination of them. \code{reps} repeats each of those combinations.
 
-\if{html}{\out{<div class="sourceCode abm_run(m, go, ticks = 500, params = list(d = c(0.1, 0.2, 0.3)), reps =">}}\preformatted{20, seed = 1) ```
+\if{html}{\out{<div class="sourceCode r">}}\preformatted{abm_run(m, go, ticks = 500, params = list(d = c(0.1, 0.2, 0.3)), reps = 20,
+        seed = 1)
+}\if{html}{\out{</div>}}
 
-is sixty runs. Their results come back stacked into one `abm_result`, with
-`.run`, `.rep` and one column per parameter in front of the ordinary columns,
-and [abm_globals()], [abm_measures()] and [abm_edges()] carry the same
-identifying columns. A single run is left exactly as it was: no `.run`, no
-`.rep`, and the same columns the function has always returned.
+is sixty runs. Their results come back stacked into one \code{abm_result}, with
+\code{.run}, \code{.rep} and one column per parameter in front of the ordinary columns,
+and \code{\link[=abm_globals]{abm_globals()}}, \code{\link[=abm_measures]{abm_measures()}} and \code{\link[=abm_edges]{abm_edges()}} carry the same
+identifying columns. A single run is left exactly as it was: no \code{.run}, no
+\code{.rep}, and the same columns the function has always returned.
 
-A parameter is a global, and only a global. `n`, [abm_network()]'s `degree`
-and a lattice's `dims` are fixed when [abm_setup()] builds the world, so
+A parameter is a global, and only a global. \code{n}, \code{\link[=abm_network]{abm_network()}}'s \code{degree}
+and a lattice's \code{dims} are fixed when \code{\link[=abm_setup]{abm_setup()}} builds the world, so
 sweeping one of those still means one world per value.
 
-`reps` replicates the *run*, not the population. `abm_run()` is handed a world
-that has already been built, so a starting column drawn with `~runif(n)` was
+\code{reps} replicates the \emph{run}, not the population. \code{abm_run()} is handed a world
+that has already been built, so a starting column drawn with \code{~runif(n)} was
 drawn once, before this function saw it, and every replicate begins from that
 same population. What varies across replicates is everything the run itself
 draws -- who is matched with whom, which agent acts first, what a rule
 samples. To vary the starting population too, build a world per replicate.
-
-
-[abm_globals()]: R:abm_globals()
-[abm_measures()]: R:abm_measures()
-[abm_edges()]: R:abm_edges()
-[abm_network()]: R:abm_network()
-[abm_setup()]: R:abm_setup()
-}\if{html}{\out{</div>}}
 }
 
 \section{Measures}{
@@ -135,24 +128,20 @@ samples. To vary the starting population too, build a world per replicate.
 
 \code{measures} records a summary of the population once per tick, without keeping
 the population. Each entry is a one-sided formula evaluated the way an
-[abm_global()] right-hand side is -- the globals are in scope, \code{n()} is the
+\code{\link[=abm_global]{abm_global()}} right-hand side is -- the globals are in scope, \code{n()} is the
 population size -- and must collapse to one value.
 
-\if{html}{\out{<div class="sourceCode abm_run(m, go, ticks = 500, record = "globals", measures = list(gini =">}}\preformatted{~gini(money), broke = ~mean(money == 0))) ```
+\if{html}{\out{<div class="sourceCode r">}}\preformatted{abm_run(m, go, ticks = 500, record = "globals",
+        measures = list(gini = ~gini(money), broke = ~mean(money == 0)))
+}\if{html}{\out{</div>}}
 
 A measure is an observation, not model state, and the difference is not
-cosmetic: writing the same summary with [abm_global()] would put it where
+cosmetic: writing the same summary with \code{\link[=abm_global]{abm_global()}} would put it where
 every rule in the model can read it. A measure is written to the table
-[abm_measures()] returns and to nowhere else, so nothing in the model can see
-it. Together with `record = "globals"` this is what makes a sweep affordable:
+\code{\link[=abm_measures]{abm_measures()}} returns and to nowhere else, so nothing in the model can see
+it. Together with \code{record = "globals"} this is what makes a sweep affordable:
 the whole trajectory of every run, at a few thousand rows rather than a few
 million.
-
-
-[abm_global()]: R:abm_global()
-[abm_global()]: R:abm_global()
-[abm_measures()]: R:abm_measures()
-}\if{html}{\out{</div>}}
 }
 
 \examples{

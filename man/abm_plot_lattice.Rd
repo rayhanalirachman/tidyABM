@@ -13,7 +13,9 @@ saying which run each came from, to facet on).}
 
 \item{fill}{What colours a cell: a column or an expression over the cell's
 columns, as in \code{ggplot2::aes()}. Leave it out to draw the cells in a
-single neutral grey, for example under points.}
+single neutral grey, for example under points. A cell whose value is \code{NA}
+(an empty cell) is drawn in the scale's \code{na.value}; give the scale
+\code{na.translate = FALSE} to leave it blank instead, which emits no warning.}
 
 \item{tick}{Which tick(s) to draw. The last recorded tick by default; several
 ticks are drawn as one facet each.}

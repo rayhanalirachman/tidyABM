@@ -93,8 +93,8 @@ ggsave(fig_file("04-schelling.png"), p, width = 7, height = 4.5, dpi = 150,
 frames <- abm_run(schelling(0.30), go, ticks = 100, seed = 6, record = 100,
                   progress = FALSE)
 p2 <- abm_plot_lattice(frames, fill = type, tick = c(0, 100)) +
-  scale_fill_manual(values = c(A = pal[1], B = pal[2]), na.value = "grey96",
-                    name = NULL, na.translate = FALSE) +
+  scale_fill_manual(values = c(A = pal[1], B = pal[2]), name = NULL,
+                    na.translate = FALSE) +
   labs(title = "Tolerance 0.30: who lives next to whom, before and after",
        subtitle = sprintf("same-type share %.2f at tick 0, %.2f at tick 100; white cells are vacant",
                           tab$start[tab$tolerance == 0.3], tab$end[tab$tolerance == 0.3]))

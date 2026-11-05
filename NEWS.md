@@ -25,7 +25,9 @@
 * New `abm_plot_lattice(result, fill, tick, agents)` draws a frame of a
   lattice model as a ggplot (`geom_raster()`, fixed aspect, no axes, the mobile
   agents as points on top). It is the start every spatial figure shared, and
-  needs the ggplot2 package, which stays in Suggests.
+  needs the ggplot2 package, which stays in Suggests. An empty cell (`NA`
+  fill) under a scale with `na.translate = FALSE` is left blank without the
+  "Removed n rows containing missing values" warning.
 * Sugarscape (model 8) has a page and a script of its own in
   `models/spatial/`, which also shows the idiom for per-agent vision: `range`
   is the model's maximum reach and the agent's own `vision` masks the

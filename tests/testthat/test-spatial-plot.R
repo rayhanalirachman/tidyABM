@@ -29,6 +29,26 @@ test_that("abm_plot_lattice() draws the cells of a tick, with the agents on top"
                   "ggplot")
 })
 
+test_that("abm_plot_lattice() leaves empty (NA) cells blank without a warning", {
+  skip_if_not_installed("ggplot2")
+  # a Schelling-style frame: vacant cells carry NA in the fill column
+  d <- data.frame(.x = rep(1:4, 4), .y = rep(1:4, each = 4),
+                  type = rep(c("A", "B", NA, "A"), 4))
+  p <- abm_plot_lattice(d, fill = type)
+  # the warning, when there is one, comes from the draw stage, not the build
+  draw <- function(p) ggplot2::ggplot_gtable(ggplot2::ggplot_build(p))
+
+  # a scale that declines to colour NA drops those cells: silently
+  blank <- p + ggplot2::scale_fill_manual(values = c(A = "red", B = "blue"),
+                                          na.translate = FALSE)
+  expect_no_warning(draw(blank))
+  expect_equal(sum(is.na(ggplot2::ggplot_build(blank)$data[[1]]$fill)), 4L)
+
+  # the default scale still draws them in its na.value
+  expect_no_warning(draw(p))
+  expect_false(anyNA(ggplot2::ggplot_build(p)$data[[1]]$fill))
+})
+
 test_that("abm_plot_lattice() refuses what it cannot draw", {
   skip_if_not_installed("ggplot2")
   m <- abm_setup(agents = abm_agents(n = 3, z = 0))

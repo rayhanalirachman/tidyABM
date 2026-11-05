@@ -18,7 +18,9 @@
 #'   saying which run each came from, to facet on).
 #' @param fill What colours a cell: a column or an expression over the cell's
 #'   columns, as in `ggplot2::aes()`. Leave it out to draw the cells in a
-#'   single neutral grey, for example under points.
+#'   single neutral grey, for example under points. A cell whose value is `NA`
+#'   (an empty cell) is drawn in the scale's `na.value`; give the scale
+#'   `na.translate = FALSE` to leave it blank instead, which emits no warning.
 #' @param tick Which tick(s) to draw. The last recorded tick by default; several
 #'   ticks are drawn as one facet each.
 #' @param agents Whether to draw the mobile agents over the cells.
@@ -70,7 +72,10 @@ abm_plot_lattice <- function(result, fill = NULL, tick = NULL, agents = FALSE) {
   if (rlang::quo_is_null(fill)) {
     p <- p + ggplot2::geom_raster(fill = "grey88")
   } else {
-    p <- p + ggplot2::geom_raster(ggplot2::aes(fill = !!fill))
+    # A cell whose fill the scale maps to NA (an empty cell under
+    # `na.translate = FALSE`) is left blank, quietly: it is not a missing value
+    # but a cell with nothing on it.
+    p <- p + ggplot2::geom_raster(ggplot2::aes(fill = !!fill), na.rm = TRUE)
   }
   if (agents && nrow(movers)) {
     p <- p + ggplot2::geom_point(data = movers,

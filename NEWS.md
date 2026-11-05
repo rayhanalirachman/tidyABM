@@ -1,5 +1,48 @@
 # tidyABM (development version)
 
+## The grammar, read by a newcomer
+
+A syntax audit (`dev/syntax-audit.md`) of what a first-time modeller is told
+when a model is written wrongly. No function or argument changed name, and
+every model script in `models/` prints the same numbers as before.
+
+* **A failing rule says where it failed.** An error inside a step used to
+  surface as R's bare `object 'monney' not found`, with no call. It is now a
+  `tidyABM_step_error` naming the step's position and kind, the tick, the
+  rule that read the name, the agent columns and globals in scope, and a
+  "did you mean" for a near miss. `partner_<col>` with no match standing or
+  under a group match, `own_<col>` in a plain rule, `role` for `.role` and
+  `n` for `n()` get their own hint. A failing `abm_agents()` formula says
+  which column, what was declared before it, and that `n` is a number
+  there. The package's own errors pass through untouched.
+* **A qualifier without its dot is named.** `abm_rules(x ~ 1, scope =
+  "population")` and `by = firm` now say "did you mean `.scope`/`.by`?";
+  `when = money > 0` inside `abm_rules()` says how to write a conditional
+  update; `abm_rules(money = money - 1)` says to use `~`.
+* **Silent traps closed.** A rule can no longer target `.id`, `.group`,
+  `.group_id`, `.partner` or `.role` (`tidyABM_reserved_column`):
+  `.id ~ 99` gave every agent the same id. A quoted condition (`eligible =
+  "money > 0"`) is refused with the unquoted form (`tidyABM_bad_condition`).
+  `pair = "nearest"` refuses a character or factor `by` and points at
+  `cost`. `abm_agents(N = 10)` is told that `N` became a column.
+* **`pair = "opposite_group"` counts its two values among the agents taking
+  part**, so `by = side, eligible = side != "none"` works instead of
+  failing on the `"none"` agents.
+* `print(abm_go)` lists what each step writes (`rules money, payoff`, `death
+  when energy < 0`) rather than a rule count, and `print(abm_result)` says
+  "distinct agents" rather than "agents seen". `abm_go()`'s refusal of a
+  non-step says what the thing is.
+* New `vignette("grammar")`: the grammar on one page. `.partner` is
+  documented in `?abm_match`, and the README says that `abm_run(seed =)`
+  does not seed the world.
+* **Documented, not changed:** a match that pairs *nobody* does not narrow
+  the following `abm_rules()` step: every agent is written, with `NA`
+  partner columns (`abm_sequential()` writes nobody). `?abm_rules`,
+  `?abm_match` and the vignette say so and give the safe form.
+* The `abm_plot_lattice()` and `abm_view_lattice()` examples run, and four
+  help pages whose code blocks rendered as one garbled line (`abm_go`,
+  `abm_global`, `abm_neighbours`, `abm_run`) are fixed.
+
 ## Seeing a spatial model
 
 * New `abm_view_lattice(result, fill, file, agents, colour, mark, hover, ...)`

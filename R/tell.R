@@ -91,6 +91,7 @@ abm_tell <- function(..., to, when = NULL,
                      .resolve = c("last", "first", "sum", "mean", "max", "min",
                                   "collect", "error"),
                      .order = NULL) {
+  check_rule_dots(rlang::enexprs(...), "abm_tell")
   .resolve <- rlang::arg_match(.resolve)
   rules <- collect_rules(rlang::list2(...), "abm_tell")
 

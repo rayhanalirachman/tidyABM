@@ -30,9 +30,17 @@ new_abm_match <- function(pair, size, by, role, eligible, from, among, cost,
 #' After a match, every rule can see:
 #'
 #' * `partner_<col>` for each of the partner's columns, when `size = 2`;
+#' * `.partner`, the partner's `.id`, `NA` for an agent the match left out,
+#'   so `!is.na(.partner)` is "I met someone this tick";
 #' * grouped-mutate semantics when `size > 2`, so `sum(contribution)` inside a
-#'   rule means "sum across this agent's group";
-#' * `.role`, when `role` is supplied.
+#'   rule means "sum across this agent's group" and `n()` is its size;
+#' * `.role`, when `role` is supplied (`NA` otherwise).
+#'
+#' Who an [abm_rules()] step that follows is *written for* is decided by the
+#' match too: an agent it left out keeps its values, unless the match paired
+#' nobody at all, in which case every agent is written with `NA` partner
+#' columns ([abm_sequential()] then writes nobody). See [abm_rules()] for the
+#' two cases and how to write a rule that is right in both.
 #'
 #' Each `pair` mode uses a fixed set of the other arguments, and passing one
 #' that the chosen mode does not use is an error rather than being ignored:
@@ -259,7 +267,7 @@ print.abm_match <- function(x, ...) {
     if (!is.null(x$by)) "by = {.code {deparse1(rlang::quo_get_expr(x$by))}}",
     if (!is.null(x$dot_by)) ".by = {.code {deparse1(rlang::quo_get_expr(x$dot_by))}}",
     if (!is.null(x$cost)) "cost = {.code {deparse1(rlang::quo_get_expr(x$cost))}}",
-    if (!is.null(x$role)) "roles = {.val {names(as.list(rlang::quo_get_expr(x$role))[-1])}}",
+    if (!is.null(x$role)) "role = {.val {names(as.list(rlang::quo_get_expr(x$role))[-1])}}",
     if (!is.null(x$eligible)) "eligible = {.code {deparse1(rlang::quo_get_expr(x$eligible))}}",
     if (!is.null(x$among)) "among = {.code {deparse1(rlang::quo_get_expr(x$among))}}",
     if (!is.null(x$weight)) "weight = {.code {deparse1(rlang::quo_get_expr(x$weight))}}",

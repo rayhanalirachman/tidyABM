@@ -129,7 +129,12 @@ materialise_agents <- function(spec, group_name, id_offset = 0L,
     val <- spec$cols[[nm]]
     if (is_formula1(val)) {
       quo <- rlang::as_quosure(val)
-      value <- rlang::eval_tidy(quo, data = c(as.list(out), mask_extra))
+      value <- withCallingHandlers(
+        rlang::eval_tidy(quo, data = c(as.list(out), mask_extra)),
+        error = function(e) {
+          if (inherits(e, "tidyABM_error")) return()
+          rethrow_column_error(e, nm, group_name, spec, names(out), call)
+        })
     } else {
       value <- val
     }
@@ -147,6 +152,40 @@ materialise_agents <- function(spec, group_name, id_offset = 0L,
   }
   out$.group <- group_name
   dplyr::relocate(out, ".id", ".group")
+}
+
+#' Say which setup formula failed, and what it could have read
+#'
+#' A column formula is evaluated with `n` and the columns declared before it
+#' in scope. The bare "object 'x' not found" does not say that, nor that a
+#' column declared *after* this one is not yet visible.
+#' @noRd
+rethrow_column_error <- function(e, nm, group_name, spec, before, call) {
+  before <- setdiff(before, ".id")
+  after <- names(spec$cols)[seq_along(spec$cols) > match(nm, names(spec$cols))]
+  bullets <- c("Column {.field {nm}} of group {.field {group_name}} could not be computed.",
+               "x" = cli_escape(conditionMessage(e)))
+  miss <- missing_object_name(e)
+  class <- "tidyABM_setup_error"
+  # `~runif(n())` finds dplyr's `n()` through the attached package and dies
+  # with its "data-masking verbs" message
+  if (grepl("data-masking", conditionMessage(e), fixed = TRUE) ||
+      (!is.null(miss) && miss$fn && miss$name == "n")) {
+    bullets <- c(bullets, "i" = "In a setup formula {.code n} is the number of agents, not a function: write {.code n}, not {.code n()}.")
+  } else if (!is.null(miss)) {
+    name <- miss$name
+    class <- c("tidyABM_missing_column", class)
+    if (name %in% after) {
+      bullets <- c(bullets, "i" = "{.field {name}} is declared after {.field {nm}}. Formulas run in order, so move it up.")
+    } else if (!miss$fn) {
+      near <- near_names(name, c(before, "n", if (!is.null(spec$lattice_cols)) spec$lattice_cols))
+      if (length(near)) bullets <- c(bullets, "i" = "Did you mean {.field {near}}?")
+    }
+  }
+  bullets <- c(bullets,
+               "i" = if (length(before)) "A setup formula sees {.code n} and the columns declared before it: {.field {before}}."
+                     else "A setup formula sees {.code n}; no column is declared before this one.")
+  abm_abort(bullets, class = class, call = call, .envir = environment())
 }
 
 #' @export

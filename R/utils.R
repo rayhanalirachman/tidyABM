@@ -40,7 +40,132 @@ f_lhs_name <- function(x, arg = "rule", call = rlang::caller_env()) {
       class = "tidyABM_reserved_column", call = call
     )
   }
+  # the engine owns these: `.id` and `.group` say who an agent is, and the
+  # other three are rewritten by every match. A rule that targets one used to
+  # write it silently and have the write ignored or, for `.group`, mislabel
+  # the output without moving the agent.
+  if (name %in% c(".id", ".group", ".group_id", ".partner", ".role")) {
+    abm_abort(
+      c("{.code {name}} is managed by tidyABM and cannot be written by a {arg}.",
+        "i" = "{.code .id} and {.code .group} identify an agent; {.code .role}, {.code .partner} and {.code .group_id} are set by {.fn abm_match}.",
+        "i" = "To move an agent between kinds, keep the kind in an ordinary column (e.g. {.code state ~ \"infected\"})."),
+      class = "tidyABM_reserved_column", call = call
+    )
+  }
   name
+}
+
+#' Catch a named non-rule argument in a step's `...` before it is evaluated
+#'
+#' `exprs` are the unevaluated dots (`rlang::enexprs(...)`). The rule steps
+#' take `...` first, so a qualifier written without its dot (`scope =
+#' "population"`, `by = firm`) lands in `...` and used to be evaluated as if it
+#' were a rule: "object 'firm' not found", or "argument 2 is <character>",
+#' neither of which names the mistake. Nothing is evaluated here, so a
+#' condition such as `when = money > 0` is reported as a misplaced `when`
+#' rather than as a missing object.
+#'
+#' Only entries that cannot be a rule are refused: a qualifier missing its dot,
+#' a condition-like name, a constant, or `col = <expression of col>` (a rule
+#' written with `=`). A named call that might build a formula (`r1 =
+#' make_rule()`) is left to be evaluated, as it always was.
+#' @noRd
+check_rule_dots <- function(exprs, fn, call = rlang::caller_env()) {
+  nms <- names(exprs)
+  if (is.null(nms)) return(invisible(NULL))
+  # found through the namespace this helper lives in
+  formals_fn <- names(formals(get(fn, mode = "function")))
+  conditionish <- c("when", "if", "where", "cond", "condition")
+  for (i in which(nzchar(nms))) {
+    e <- exprs[[i]]
+    if (rlang::is_formula(e) || rlang::is_call(e, "~")) next
+    nm <- nms[[i]]
+    dotted <- paste0(".", nm)
+    if (dotted %in% formals_fn) {
+      abm_abort(
+        c("{.arg {nm}} is not an argument of {.fn {fn}}.",
+          "i" = "Did you mean {.arg {dotted}}? The qualifiers of a rule step are dot-prefixed, so they cannot collide with a column name.",
+          "x" = "Got {.code {nm} = {deparse1(e)}}, which was read as a rule."),
+        class = "tidyABM_bad_arg", call = call
+      )
+    }
+    # a name bound to a formula (`r1 = f`) passes, and so does a call that
+    # may return one
+    is_cond <- nm %in% conditionish
+    self_ref <- rlang::is_call(e) && nm %in% all.vars(e)
+    if (rlang::is_symbol(e) && !is_cond) next
+    if (rlang::is_call(e) && !is_cond && !self_ref) next
+    hint <- if (is_cond) {
+      c("i" = "A rule has no {.arg {nm}}: put the condition inside it, {.code col ~ if_else(<condition>, <new value>, col)}, or use {.code abm_birth(when =)} / {.code abm_death(when =)} / {.code abm_tell(when =)}.")
+    } else if (self_ref) {
+      c("i" = "A rule is written with {.code ~}, not {.code =}: {.code {nm} ~ {deparse1(e)}}.")
+    } else {
+      character()
+    }
+    named <- setdiff(formals_fn, "...")
+    abm_abort(
+      c("{.arg {nm}} is not an argument of {.fn {fn}}.",
+        "x" = "Got {.code {nm} = {deparse1(e)}}. Everything in {.code ...} must be a {.code column ~ expression} rule.",
+        hint,
+        if (length(named)) c("i" = "{.fn {fn}}'s named arguments are {.arg {named}}.")),
+      class = "tidyABM_bad_arg", call = call
+    )
+  }
+  invisible(NULL)
+}
+
+#' The candidates in `pool` that look like a typo of `name`
+#'
+#' Edit distance at most 1 for short names and at most 2 otherwise, with a
+#' case-insensitive match always counted. Used by the "did you mean" hints.
+#' @noRd
+near_names <- function(name, pool) {
+  pool <- setdiff(unique(pool[!is.na(pool)]), name)
+  if (!length(pool) || !nzchar(name)) return(character())
+  d <- utils::adist(name, pool, ignore.case = TRUE)[1, ]
+  limit <- if (nchar(name) <= 4L) 1L else 2L
+  out <- pool[d <= limit]
+  out[order(d[d <= limit])]
+}
+
+#' Another error's message, safe to hand to cli as a bullet
+#'
+#' cli interpolates `{}`; a message quoting user code may contain them.
+#' @noRd
+cli_escape <- function(x) {
+  x <- cli::ansi_strip(x)
+  gsub("}", "}}", gsub("{", "{{", x, fixed = TRUE), fixed = TRUE)
+}
+
+#' Another error's message as cli bullets: the first line marked `x`, the rest
+#' indented, with rlang's own `i`/`!` markers taken off
+#' @noRd
+error_lines <- function(e) {
+  lines <- unlist(strsplit(cli_escape(conditionMessage(e)), "\n", fixed = TRUE))
+  lines <- sub("^[!ix*] ", "", trimws(lines))
+  lines <- lines[nzchar(lines)]
+  if (!length(lines)) return(character())
+  stats::setNames(lines, c("x", rep(" ", length(lines) - 1L)))
+}
+
+#' The name a "not found" error complains about, or `NULL`
+#' @noRd
+missing_object_name <- function(cnd) {
+  msgs <- character()
+  c0 <- cnd
+  while (!is.null(c0)) {
+    msgs <- c(msgs, conditionMessage(c0))
+    c0 <- c0$parent
+  }
+  m <- regmatches(msgs, regexec("object '([^']+)' not found", msgs))
+  hit <- Filter(length, m)
+  if (!length(hit)) {
+    m <- regmatches(msgs, regexec("could not find function \"([^\"]+)\"", msgs))
+    hit <- Filter(length, m)
+    if (!length(hit)) return(NULL)
+    return(list(name = hit[[1]][[2]], fn = TRUE))
+  }
+  list(name = hit[[1]][[2]], fn = FALSE)
 }
 
 #' Variables referenced on the right-hand side of a formula

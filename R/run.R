@@ -27,8 +27,10 @@
 #' this seed comes too late to affect them. Seed both for an experiment that
 #' reproduces end to end:
 #'
-#' ``` m <- abm_setup(agents = abm_agents(n = 100, x = ~runif(n)), seed = 1) r
-#' <- abm_run(m, go, ticks = 100, seed = 1) ```
+#' ```r
+#' m <- abm_setup(agents = abm_agents(n = 100, x = ~runif(n)), seed = 1)
+#' r <- abm_run(m, go, ticks = 100, seed = 1)
+#' ```
 #'
 #' @section Many runs:
 #'
@@ -37,8 +39,10 @@
 #' more than one value is swept, one run per value, and several entries give
 #' every combination of them. `reps` repeats each of those combinations.
 #'
-#' ``` abm_run(m, go, ticks = 500, params = list(d = c(0.1, 0.2, 0.3)), reps =
-#' 20, seed = 1) ```
+#' ```r
+#' abm_run(m, go, ticks = 500, params = list(d = c(0.1, 0.2, 0.3)), reps = 20,
+#'         seed = 1)
+#' ```
 #'
 #' is sixty runs. Their results come back stacked into one `abm_result`, with
 #' `.run`, `.rep` and one column per parameter in front of the ordinary columns,
@@ -64,8 +68,10 @@
 #' [abm_global()] right-hand side is -- the globals are in scope, `n()` is the
 #' population size -- and must collapse to one value.
 #'
-#' ``` abm_run(m, go, ticks = 500, record = "globals", measures = list(gini =
-#' ~gini(money), broke = ~mean(money == 0))) ```
+#' ```r
+#' abm_run(m, go, ticks = 500, record = "globals",
+#'         measures = list(gini = ~gini(money), broke = ~mean(money == 0)))
+#' ```
 #'
 #' A measure is an observation, not model state, and the difference is not
 #' cosmetic: writing the same summary with [abm_global()] would put it where
@@ -107,7 +113,9 @@
 #'   `FALSE` off. The bar counts ticks for a single run and runs for many.
 #'
 #' @return An `abm_result`: a tibble of one row per agent per tick, carrying
-#'   the run's globals, measures and final network as attributes.
+#'   the run's globals, measures and final network as attributes. With several
+#'   agent groups the tibble holds the union of their columns, so a column one
+#'   group does not have is `NA` on the other group's rows.
 #' @export
 #' @examples
 #' economy <- abm_setup(agents = abm_agents(n = 50, money = 100))
@@ -270,8 +278,9 @@ run_once <- function(model, go, ticks, seed, keep, measures, bar = NULL) {
 
   for (t in seq_len(ticks)) {
     state$match <- NULL
-    for (step in go$steps) {
-      state <- run_step(step, state)
+    state$tick <- t
+    for (i in seq_along(go$steps)) {
+      state <- run_step_reporting(go$steps[[i]], state, at = i)
     }
     # a population that is not recorded is not kept, which is the whole point:
     # the run then slows down rather than filling memory
@@ -320,6 +329,100 @@ recorded_ticks <- function(record, ticks) {
   # every record-th tick, and the two ends, so a thinned run still has a before
   # and an after
   t %% record == 0L | t == ticks
+}
+
+#' Run one step, and say which step it was if it fails
+#'
+#' An error raised inside a rule used to surface as R's bare message -- "object
+#' 'monney' not found" -- with no step, no tick and no column list to check it
+#' against. Every error the package raises itself passes through untouched;
+#' anything else is rethrown with the step, the tick, the rule that read the
+#' missing name and the names that were in scope. `run_step()` itself stays
+#' the bare dispatch, the switch `describe_step()` mirrors.
+#' @noRd
+run_step_reporting <- function(step, state, at = NULL) {
+  withCallingHandlers(
+    run_step(step, state),
+    error = function(e) {
+      if (inherits(e, "tidyABM_error")) return()
+      rethrow_step_error(e, step, state, at)
+    }
+  )
+}
+
+#' @noRd
+rethrow_step_error <- function(e, step, state, at, call = rlang::caller_env()) {
+  fn <- class(step)[[1]]
+  tick <- state$tick %||% 0L
+  head <- if (is.null(at)) "A step inside {.fn abm_repeat}, {.fn {fn}}, failed at tick {tick}."
+          else "Step {at} of the go block, {.fn {fn}}, failed at tick {tick}."
+  bullets <- c(head, error_lines(e))
+  miss <- missing_object_name(e)
+  class <- "tidyABM_step_error"
+  if (is.null(miss) && grepl("must be size", conditionMessage(e), fixed = TRUE)) {
+    bullets <- c(bullets, "i" = "A rule returns one value per agent it is evaluated over, or a single value to recycle. Under a match that is per pair or per group; {.code .scope = \"population\"} makes it the whole population.")
+  }
+  # `runif(n)` inside a step: `n` is bound to a function there, so the error
+  # is "invalid arguments" rather than a missing object
+  reads_n <- !is.null(step$rules) &&
+    any(vapply(step$rules, function(r) "n" %in% all.vars(rlang::quo_get_expr(r$quo)), logical(1)))
+  if (is.null(miss) && reads_n) {
+    bullets <- c(bullets, "i" = "A rule reads {.code n} without brackets. Inside a step the number of agents is {.code n()}; {.code n} is the plain number only in an {.fn abm_agents} setup formula.")
+  }
+
+  if (!is.null(miss)) {
+    name <- miss$name
+    class <- c("tidyABM_missing_column", class)
+    # the rule(s) that read the name, so a step of ten rules points at one
+    if (!is.null(step$rules)) {
+      reads <- Filter(function(r) name %in% c(r$vars, all.vars(rlang::quo_get_expr(r$quo))),
+                      step$rules)
+      if (length(reads)) {
+        bullets <- c(bullets, "i" = "In rule{?s} {.code {rule_labels(list(rules = reads))}}.")
+      }
+    }
+    cols <- setdiff(model_columns(state$groups), c(".id", ".group"))
+    globals <- names(state$globals)
+    pairing <- !is.null(state$match)
+    pair <- pairing && state$match$size == 2L
+    scope <- c(cols, globals, if (pair) paste0("partner_", cols))
+
+    if (miss$fn && name == "n") {
+      bullets <- c(bullets, "i" = "Inside a step {.code n()} is a function; in an {.fn abm_agents} setup formula {.code n} is a number.")
+    } else if (!miss$fn && name == "n") {
+      bullets <- c(bullets, "i" = "Inside a step the number of agents is {.code n()}, with brackets; {.code n} is the plain number only in an {.fn abm_agents} setup formula.")
+    } else if (miss$fn) {
+      # a missing function is the user's own problem; nothing to add
+    } else if (startsWith(name, "partner_")) {
+      base <- sub("^partner_", "", name)
+      if (!pairing) {
+        bullets <- c(bullets, "i" = "No {.fn abm_match} stands before this step, so there are no {.code partner_<col>} columns. Put the match earlier in the tick.")
+      } else if (!pair) {
+        bullets <- c(bullets, "i" = "The standing match groups {state$match$size} agents, and {.code partner_<col>} exists only for pairs ({.code size = 2}). In a group, aggregate instead: {.code sum({base})}.")
+      } else if (!base %in% cols) {
+        bullets <- c(bullets, "i" = "No agent has a column {.field {base}}, so there is no {.code partner_{base}}. Agent columns: {.field {cols}}.")
+      }
+    } else if (startsWith(name, "own_")) {
+      base <- sub("^own_", "", name)
+      if (!fn %in% c("abm_neighbours", "abm_match", "abm_move")) {
+        bullets <- c(bullets, "i" = "{.code own_<col>} exists only where a focal agent looks at candidates: {.code abm_neighbours(within =)}, {.code abm_match(cost =, among =, weight =)} and {.code abm_move(to = uphill())}. In a rule, an agent's own column is just {.field {base}}.")
+      } else if (!base %in% c(cols, ".id", ".group", ".cell", ".x", ".y")) {
+        bullets <- c(bullets, "i" = "No agent has a column {.field {base}}. Agent columns: {.field {cols}}.")
+      }
+    } else if (name %in% c("role", "partner", "id", "group", "cell", "key", "group_id")) {
+      bullets <- c(bullets, "i" = "The columns tidyABM manages are dot-prefixed: did you mean {.code .{name}}?")
+    } else {
+      near <- near_names(name, c(scope, ".role", ".partner", ".id", ".group"))
+      if (length(near)) {
+        bullets <- c(bullets, "i" = "Did you mean {.field {near}}?")
+      }
+      bullets <- c(bullets,
+                   "i" = if (length(cols)) "Agent columns: {.field {cols}}." else "The population has no columns.",
+                   if (length(globals)) c("i" = "Globals: {.field {globals}}."),
+                   if (pair) c("i" = "The standing match adds {.code partner_<col>} for each of those, plus {.code .partner} and {.code .role}."))
+    }
+  }
+  abm_abort(bullets, class = class, call = quote(abm_run()), .envir = environment())
 }
 
 run_step <- function(step, state) {
@@ -442,8 +545,10 @@ print.abm_result <- function(x, ...) {
   runs <- attr(x, "runs") %||% 1L
   runs_txt <- if (runs > 1L) cli::format_inline("{runs} runs, ") else ""
   seen <- n_agents(x)
-  seen_txt <- if (is.na(seen)) "" else
-    cli::format_inline("{seen} agent{?s} seen, ")
+  # distinct `.id`s over the whole run, which is more than the final count
+  # once agents have been born
+  seen_txt <- if (is.na(seen) || nrow(x) == 0L) "" else
+    cli::format_inline("{seen} distinct agent{?s}, ")
   cli::cli_text(
     "{.cls abm_result} {runs_txt}{attr(x, 'ticks')} tick{?s}, {seen_txt}{nrow(x)} row{?s}{note}"
   )

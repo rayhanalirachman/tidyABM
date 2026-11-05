@@ -90,6 +90,7 @@ check_link_args <- function(via, to, n_rules, fn, call) {
 #' # a new loan from my partner, starting at the amount just borrowed
 #' abm_link(via = "loans", balance ~ take)
 abm_link <- function(..., when = NULL, via = NULL, to = NULL) {
+  check_rule_dots(rlang::enexprs(...), "abm_link")
   dots <- rlang::list2(...)
   to <- enquo_or_null(rlang::enquo(to))
   check_link_args(via, to, length(dots), "abm_link", rlang::caller_env())
@@ -333,8 +334,10 @@ run_unlink <- function(step, state) {
 #' and the focal agent's under `own_<col>`, which is the same view
 #' `abm_match(cost =)` minimises over.
 #'
-#' ``` abm_neighbours(opinion ~ mean(opinion), within = abs(opinion -
-#' own_opinion) <= eps) ```
+#' ```r
+#' abm_neighbours(opinion ~ mean(opinion),
+#'                within = abs(opinion - own_opinion) <= eps)
+#' ```
 #'
 #' is Hegselmann–Krause's confidence set, and it is a step rather than a
 #' hand-rolled `vapply()` over the population.
@@ -352,9 +355,6 @@ run_unlink <- function(step, state) {
 #' `vapply()` it replaces, with a tibble's constant factor on top, and it is
 #' worth knowing before reaching for it on a very large population.
 #'
-#' @param ... One or more `column ~ aggregate_expression` rules. The expression
-#'   sees the neighbours' agent columns, the focal agent's own columns as
-#'   `own_<col>`, any column [abm_draw()] attached to the edge, and any global.
 #' # One named lattice neighbour
 #'
 #' On a grid or line [abm_network()] the two neighbours either side of a cell
@@ -371,6 +371,9 @@ run_unlink <- function(step, state) {
 #' abm_rules(s ~ rule[[4 * s_w + 2 * s + s_e + 1]])
 #' ```
 #'
+#' @param ... One or more `column ~ aggregate_expression` rules. The expression
+#'   sees the neighbours' agent columns, the focal agent's own columns as
+#'   `own_<col>`, any column [abm_draw()] attached to the edge, and any global.
 #' @param within Optional condition defining a neighbourhood in attribute space
 #'   rather than in the network. Evaluated once per (focal, candidate) pair, with
 #'   the candidate's columns under their own names and the focal agent's under
@@ -412,6 +415,7 @@ run_unlink <- function(step, state) {
 #' abm_neighbours(grass_here ~ any(grass),
 #'                within = .group == "patches" & .id == own_.cell)
 abm_neighbours <- function(..., within = NULL, .where = NULL) {
+  check_rule_dots(rlang::enexprs(...), "abm_neighbours")
   step <- new_rule_step(collect_rules(rlang::list2(...), "abm_neighbours"),
                         "abm_neighbours")
   step$within <- enquo_or_null(rlang::enquo(within))

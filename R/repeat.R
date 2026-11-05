@@ -78,7 +78,7 @@ run_repeat <- function(step, state) {
   # already discards the one it ends on
   outer_match <- state$match
   for (i in seq_len(step$max)) {
-    for (s in step$steps) state <- run_step(s, state)
+    for (s in step$steps) state <- run_step_reporting(s, state)
     if (is.null(step$until)) next
     # a phase inside a tick usually runs on a standing match, and its stopping
     # condition is about the pairing ("until nobody's bid is still under their

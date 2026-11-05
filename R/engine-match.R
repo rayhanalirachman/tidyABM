@@ -32,6 +32,17 @@ eval_condition <- function(quo, agents, globals) {
   # `if_else()` and friends mean the same thing in `when =` as in `abm_rules()`.
   out <- eval_rule(list(quo = quo), aug = agents, globals = globals,
                    grouped = FALSE)
+  # a quoted condition -- `eligible = "money > 0"` -- used to die inside `&`
+  # with "operations are possible only for numeric, logical or complex types"
+  if (is.character(out) || is.list(out) || is.factor(out)) {
+    abm_abort(
+      c("A condition must be {.code TRUE} or {.code FALSE} per agent.",
+        "x" = "{.code {deparse1(rlang::quo_get_expr(quo))}} returned {.cls {class(out)[[1]]}}.",
+        "i" = if (is.character(out)) "Write the condition unquoted, {.code eligible = money > 0}, not {.code eligible = \"money > 0\"}."
+              else "Write a comparison, such as {.code money > 0} or {.code state == \"infected\"}."),
+      class = "tidyABM_bad_condition"
+    )
+  }
   if (length(out) == 1L) out <- rep(out, nrow(agents))
   out & !is.na(out)
 }
@@ -362,22 +373,22 @@ match_opposite <- function(spec, agents, globals, pool, call) {
                 "i" = "For a multi-group model use {.code by = .group}."),
               class = "tidyABM_missing_column", call = call)
   }
-  # the split is checked against the whole population, so that a mis-named
-  # column is an error while a population that happens to be all one kind this
-  # tick is simply a step where nobody pairs up
-  all_vals <- sort(unique(agents[[by]]))
-  if (length(all_vals) > 2L) {
+  # the split is checked among the agents taking part: `eligible` says who
+  # does, so a third value held only by agents sitting the step out is not a
+  # specification error. A population that is all one kind this tick (every
+  # male dead, say) is a step where nobody pairs up, not an error either.
+  sub <- agents[agents$.id %in% pool, , drop = FALSE]
+  vals <- sort(unique(sub[[by]][!is.na(sub[[by]])]))
+  if (length(vals) > 2L) {
+    all_vals <- sort(unique(agents[[by]][!is.na(agents[[by]])]))
     abm_abort(
       c("{.field {by}} must take at most two values for opposite-group matching.",
-        "x" = "Across all agents it takes {length(all_vals)} values: {.val {all_vals}}."),
+        "x" = "Among the agents taking part it takes {length(vals)} values: {.val {vals}}.",
+        "i" = "{.arg by} names the two sides; {.arg eligible} says who takes part, and an agent whose value is {.val NA} sits out."),
       class = "tidyABM_bad_by", call = call
     )
   }
-  # a population that is all one kind this tick (every male dead, say) is a
-  # step where nobody pairs up, not an error
-  sub <- agents[agents$.id %in% pool, , drop = FALSE]
-  vals <- all_vals
-  if (length(all_vals) < 2L || length(unique(sub[[by]][!is.na(sub[[by]])])) < 2L) {
+  if (length(vals) < 2L) {
     return(empty_match())
   }
   # `which()` rather than logical indexing: an agent whose `by` value is `NA`
@@ -412,6 +423,18 @@ match_nearest <- function(spec, agents, globals, pool, ch, call, relations = NUL
   if (length(missing)) {
     abm_abort("Column{?s} {.field {missing}} not found.",
               class = "tidyABM_missing_column", call = call)
+  }
+  # logical coordinates measured as 0/1 before this check existed, so they
+  # still do; a character or factor column never measured anything
+  not_num <- by[!vapply(by, function(b) is.numeric(agents[[b]]) || is.logical(agents[[b]]),
+                        logical(1))]
+  if (length(not_num)) {
+    abm_abort(
+      c('{.code pair = "nearest"} measures distance, so {.arg by} must name numeric columns.',
+        "x" = "{.field {not_num}} {?is/are} {.cls {class(agents[[not_num[[1]]]])[[1]]}}.",
+        "i" = "For a nearness that is not a distance, write it as {.arg cost}: {.code cost = <number the chooser minimises>}."),
+      class = "tidyABM_bad_by", call = call
+    )
   }
   sub <- agents[agents$.id %in% pool, , drop = FALSE]
   cand <- agents[agents$.id %in% candidates, , drop = FALSE]

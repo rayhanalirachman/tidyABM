@@ -68,6 +68,21 @@ collect_rules <- function(dots, fn, call = rlang::caller_env()) {
 #' mode under an `eligible` -- say `.scope = "population"` on such a rule
 #' rather than relying on position.
 #'
+#' One case is different, and worth knowing before a population can go
+#' extinct or a tick can pass with nobody eligible. A match that ran and
+#' paired *nobody* does not narrow the step: every agent is written, and
+#' every `partner_<col>` and `.partner` is `NA`. So `fed ~ TRUE` after a
+#' match that found no prey feeds everyone, and `x ~ partner_x` sets every
+#' `x` to `NA`. Write such a rule so that it is correct with a missing
+#' partner -- `fed ~ !is.na(.partner)`, or a `case_when()` whose last branch
+#' keeps the old value -- and it is correct on every tick. ([abm_sequential()]
+#' differs here: after a match that paired nobody it writes nobody.)
+#'
+#' Inside a rule, `n()` is the number of agents the rule is being evaluated
+#' over: the pair, the group, the `.by` partition or the whole population. It
+#' is a function here, where in an [abm_agents()] setup formula `n` is a
+#' number. The bare `n()` and `dplyr::n()` mean the same thing.
+#'
 #' Under a pairing of two, a rule also sees the pair's [abm_relation()] values,
 #' `R_<col>` for `(me -> .partner)` and `R_<col>_back` for the reverse row, and
 #' a rule whose *target* is one of those writes the pair rather than an agent
@@ -109,6 +124,7 @@ collect_rules <- function(dots, fn, call = rlang::caller_env()) {
 #' # every member of a firm is paid an equal share of what the firm produces
 #' abm_rules(pay ~ output(sum(effort)) / n(), .by = firm)
 abm_rules <- function(..., .scope = c("match", "population"), .by = NULL) {
+  check_rule_dots(rlang::enexprs(...), "abm_rules")
   .scope_given <- !missing(.scope)
   .scope <- rlang::arg_match(.scope)
   by <- enquo_or_null(rlang::enquo(.by))
@@ -181,6 +197,7 @@ abm_rules <- function(..., .scope = c("match", "population"), .by = NULL) {
 #'   partner_stock ~ partner_stock - got
 #' )
 abm_sequential <- function(..., .order = NULL) {
+  check_rule_dots(rlang::enexprs(...), "abm_sequential")
   new_rule_step(collect_rules(rlang::list2(...), "abm_sequential"),
                 "abm_sequential", order = enquo_or_null(rlang::enquo(.order)))
 }
@@ -210,8 +227,10 @@ abm_sequential <- function(..., .order = NULL) {
 #' value, not to the whole vector, so an update reads exactly as the scalar
 #' version does:
 #'
-#' ``` abm_global(stimulus ~ stimulus + delta - alpha * sum(task == .key) /
-#' n(), .by = 1:2) ```
+#' ```r
+#' abm_global(stimulus ~ stimulus + delta - alpha * sum(task == .key) / n(),
+#'            .by = 1:2)
+#' ```
 #'
 #' Each key still sees the **whole population**, `n()` is everybody, not
 #' everybody on this task, because that is what a colony-level stimulus balance
@@ -248,6 +267,7 @@ abm_sequential <- function(..., .order = NULL) {
 #' abm_global(stimulus ~ pmax(0, stimulus + 1 - 3 * sum(task == .key) / n()),
 #'            .by = 1:2)
 abm_global <- function(..., .by = NULL) {
+  check_rule_dots(rlang::enexprs(...), "abm_global")
   new_rule_step(collect_rules(rlang::list2(...), "abm_global"), "abm_global",
                 by = enquo_or_null(rlang::enquo(.by)))
 }
@@ -279,7 +299,7 @@ new_abm_birth <- function(when, n, times, cost, inherit, attach_via, links) {
 #' @param n A count of new agents to add unconditionally.
 #' @param times How many offspring each reproducing agent has. An expression
 #'   evaluated in the parent's row, so it can be a column, a draw
-#'   (`rpois(dplyr::n(), 2)`) or a number. `0` means that parent has none this
+#'   (`rpois(n(), 2)`) or a number. `0` means that parent has none this
 #'   tick and `NA` is treated as `0`. Only used with `when`, since `n` is already
 #'   a count. Each offspring gets its own evaluation of `inherit`, so a mutation
 #'   drawn there differs from sibling to sibling.
@@ -319,12 +339,12 @@ new_abm_birth <- function(when, n, times, cost, inherit, attach_via, links) {
 #' abm_birth(when = resource > 20, cost = resource ~ resource / 2)
 #'
 #' # a clutch rather than a single offspring
-#' abm_birth(when = mature, times = rpois(dplyr::n(), 2), inherit = age ~ 0)
+#' abm_birth(when = mature, times = rpois(n(), 2), inherit = age ~ 0)
 #' abm_birth(n = 1, attach_via = abm_match(pair = "network", from = "random_edge"))
 #'
 #' # the offspring takes a place beside its parent, with a neighbourhood of its
 #' # own rather than a single edge back to the parent
-#' abm_birth(when = runif(dplyr::n()) < ptr, links = 4,
+#' abm_birth(when = runif(n()) < ptr, links = 4,
 #'           attach_via = abm_match(pair = "network", from = "parent"))
 #'
 #' # a child of two parents, with its own age and a mutated trait

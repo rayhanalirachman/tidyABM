@@ -57,6 +57,7 @@ new_abm_draw <- function(rules, each) {
 #' # whether I saw you, and whether you saw me, are two different coins
 #' abm_draw(noticed ~ runif(n()), .each = "endpoint")
 abm_draw <- function(..., .each = c("edge", "endpoint")) {
+  check_rule_dots(rlang::enexprs(...), "abm_draw")
   .each <- rlang::arg_match(.each)
   new_abm_draw(collect_rules(rlang::list2(...), "abm_draw"), .each)
 }

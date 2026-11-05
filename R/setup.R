@@ -102,6 +102,8 @@ abm_setup <- function(agents, network = NULL, relations = NULL,
     if (is.null(specs[[nm]]$n)) {
       abm_abort(
         c("Group {.field {nm}} needs an {.arg n}.",
+          if ("N" %in% names(specs[[nm]]$cols))
+            c("x" = "It has a column called {.field N}: R is case-sensitive, so {.code N = } became a column rather than the count. Write {.code n = }."),
           "i" = 'Only the group a {.code type = "grid"} or {.code "line"} network is wired to inherits its count.'),
         class = "tidyABM_bad_n"
       )

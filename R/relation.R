@@ -406,6 +406,7 @@ relation_or_abort <- function(state, via, fn, call = rlang::caller_env()) {
 #' abm_pairs(via = "sellers", unmet ~ 0)
 #' abm_pairs(via = "loans", balance ~ 0, .when = to_bankrupt)
 abm_pairs <- function(via, ..., .when = NULL) {
+  check_rule_dots(rlang::enexprs(...), "abm_pairs")
   if (!rlang::is_string(via)) {
     abm_abort("{.arg via} must be the name of one relation, as a string.",
               class = "tidyABM_no_relation")

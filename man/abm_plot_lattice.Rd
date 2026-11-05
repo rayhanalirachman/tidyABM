@@ -4,7 +4,16 @@
 \alias{abm_plot_lattice}
 \title{Draw the state of a lattice}
 \usage{
-abm_plot_lattice(result, fill = NULL, tick = NULL, agents = FALSE)
+abm_plot_lattice(
+  result,
+  fill = NULL,
+  tick = NULL,
+  agents = FALSE,
+  colour = NULL,
+  shape = NULL,
+  size = 1.2,
+  colours = NULL
+)
 }
 \arguments{
 \item{result}{An \code{\link[=abm_run]{abm_run()}} result, or any data frame carrying \code{.x} and
@@ -21,6 +30,20 @@ single neutral grey, for example under points. A cell whose value is \code{NA}
 ticks are drawn as one facet each.}
 
 \item{agents}{Whether to draw the mobile agents over the cells.}
+
+\item{colour}{What colours a mobile agent: a column or an expression over
+the agent's columns. \code{.group} by default. A discrete value gets one
+colour per level; a numeric one gets a gradient.}
+
+\item{shape}{What shapes a mobile agent: a column or an expression over the
+agent's columns, or \code{NULL} for a filled circle.}
+
+\item{size}{The point size of a mobile agent, in ggplot2's units.}
+
+\item{colours}{The agents' colours: for a discrete \code{colour}, a vector of
+colours named by level (an unnamed one is taken in level order); for a
+numeric \code{colour}, the two ends of the gradient. \code{NULL} picks Okabe-Ito
+colours, or a light-to-dark blue gradient.}
 }
 \value{
 A ggplot object. Needs the ggplot2 package.
@@ -36,7 +59,14 @@ facets are added to it as usual.
 \details{
 The wired group's rows are the cells; a row with a \code{.cell} is an agent
 standing on one. With \code{agents = TRUE} those are drawn over the cells as
-points coloured by \code{.group}.
+points, coloured by \code{.group} unless \code{colour} says otherwise, in the
+Okabe-Ito palette (colour-blind safe) unless \code{colours} says otherwise.
+The point layer comes with its colour scale, so to change the agents'
+colours pass \code{colours} rather than adding a second \verb{scale_colour_*()},
+which would replace it with a message.
+
+Several ticks are drawn as one facet each, in a single row when there are
+six or fewer: a strip showing how the world evolved.
 }
 \examples{
 \dontrun{
@@ -48,6 +78,7 @@ abm_plot_lattice(r, fill = alive, tick = c(0, 10, 20))
 }
 }
 \seealso{
-\code{\link[=abm_network]{abm_network()}} for the lattice itself; \code{\link[=abm_move]{abm_move()}} for the
+\code{\link[=abm_view_lattice]{abm_view_lattice()}} for the same frames as an interactive
+playback; \code{\link[=abm_network]{abm_network()}} for the lattice itself; \code{\link[=abm_move]{abm_move()}} for the
 agents standing on it.
 }

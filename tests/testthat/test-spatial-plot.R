@@ -29,6 +29,51 @@ test_that("abm_plot_lattice() draws the cells of a tick, with the agents on top"
                   "ggplot")
 })
 
+test_that("abm_plot_lattice() colours, shapes and sizes the agents as asked", {
+  skip_if_not_installed("ggplot2")
+  m <- abm_setup(
+    agents = list(patches = abm_agents(z = 0),
+                  bugs = abm_agents(n = 4, energy = ~c(1, 2, 3, 4),
+                                    kind = ~c("a", "b", "a", "b"), at = ~1:4)),
+    network = abm_network(type = "grid", dims = c(4, 4), on = "patches"))
+  r <- abm_run(m, abm_go(abm_rules(z ~ z + 1)), ticks = 1, seed = 1)
+  built <- function(p) ggplot2::ggplot_build(p)$data[[2]]
+
+  # the default: one Okabe-Ito colour per group, no second scale needed
+  d <- built(abm_plot_lattice(r, agents = TRUE))
+  expect_true(all(d$colour == "#0072B2"))
+  expect_equal(unique(d$size), 1.2)
+
+  # a discrete colour of the agent's own, with the user's colours by name
+  p <- abm_plot_lattice(r, agents = TRUE, colour = kind, size = 3,
+                        colours = c(b = "#000000", a = "#FFFFFF"))
+  d <- built(p)
+  expect_equal(d$colour[order(d$x)], c("#FFFFFF", "#000000", "#FFFFFF", "#000000"))
+  expect_equal(unique(d$size), 3)
+  # ... and unnamed colours in level order; unnamed levels fall back to the palette
+  d <- built(abm_plot_lattice(r, agents = TRUE, colour = kind, colours = c("red", "blue")))
+  expect_equal(d$colour[order(d$x)], c("red", "blue", "red", "blue"))
+  d <- built(abm_plot_lattice(r, agents = TRUE, colour = kind, colours = c(b = "red")))
+  expect_equal(d$colour[order(d$x)], c("#0072B2", "red", "#0072B2", "red"))
+
+  # a numeric colour gets a gradient; a shape mapping gets a shape per level
+  d <- built(abm_plot_lattice(r, agents = TRUE, colour = energy, shape = kind))
+  expect_length(unique(d$colour), 4L)
+  expect_length(unique(d$shape), 2L)
+  d <- built(abm_plot_lattice(r, agents = TRUE, colour = energy,
+                              colours = c("#000000", "#FFFFFF")))
+  expect_equal(d$colour[order(d$x)][c(1, 4)], c("#000000", "#FFFFFF"))
+
+  # several ticks: a strip, one row
+  rr <- abm_run(m, abm_go(abm_rules(z ~ z + 1)), ticks = 4, seed = 1)
+  p <- abm_plot_lattice(rr, fill = z, tick = 0:4)
+  expect_equal(p$facet$params$nrow, 1L)
+  expect_null(abm_plot_lattice(rr, fill = z, tick = 0:4)$facet$params$ncol)
+
+  expect_error(abm_plot_lattice(r, agents = TRUE, size = -1), class = "tidyABM_bad_arg")
+  expect_error(abm_plot_lattice(r, agents = TRUE, colours = 1:2), class = "tidyABM_bad_arg")
+})
+
 test_that("abm_plot_lattice() leaves empty (NA) cells blank without a warning", {
   skip_if_not_installed("ggplot2")
   # a Schelling-style frame: vacant cells carry NA in the fill column

@@ -145,10 +145,25 @@ After a match, every rule can see:
 
 - `partner_<col>` for each of the partner's columns, when `size = 2`;
 
-- grouped-mutate semantics when `size > 2`, so `sum(contribution)`
-  inside a rule means "sum across this agent's group";
+- `.partner`, the partner's `.id`, `NA` for an agent the match left out,
+  so `!is.na(.partner)` is "I met someone this tick";
 
-- `.role`, when `role` is supplied.
+- grouped-mutate semantics when `size > 2`, so `sum(contribution)`
+  inside a rule means "sum across this agent's group" and
+  [`n()`](https://dplyr.tidyverse.org/reference/context.html) is its
+  size;
+
+- `.role`, when `role` is supplied (`NA` otherwise).
+
+Who an
+[`abm_rules()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_rules.md)
+step that follows is *written for* is decided by the match too: an agent
+it left out keeps its values, unless the match paired nobody at all, in
+which case every agent is written with `NA` partner columns
+([`abm_sequential()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_sequential.md)
+then writes nobody). See
+[`abm_rules()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_rules.md)
+for the two cases and how to write a rule that is right in both.
 
 Each `pair` mode uses a fixed set of the other arguments, and passing
 one that the chosen mode does not use is an error rather than being
@@ -220,7 +235,7 @@ abm_match(pair = "nearest", cost = price + abs(x - own_x),
 #> • among = `.group == "shops"`
 abm_match(pair = "random", role = list(giver = money > 0, receiver = TRUE))
 #> <abm_match> pair = "random"
-#> • roles = "giver" and "receiver"
+#> • role = "giver" and "receiver"
 
 # one prey per predator, per cell
 abm_match(pair = "opposite_group", by = .group, .by = .cell,

@@ -79,6 +79,29 @@ When the pairing is partial or directional – `"one_of"`, `"network"`,
 `"nearest"`, or any mode under an `eligible` – say
 `.scope = "population"` on such a rule rather than relying on position.
 
+One case is different, and worth knowing before a population can go
+extinct or a tick can pass with nobody eligible. A match that ran and
+paired *nobody* does not narrow the step: every agent is written, and
+every `partner_<col>` and `.partner` is `NA`. So `fed ~ TRUE` after a
+match that found no prey feeds everyone, and `x ~ partner_x` sets every
+`x` to `NA`. Write such a rule so that it is correct with a missing
+partner – `fed ~ !is.na(.partner)`, or a
+[`case_when()`](https://dplyr.tidyverse.org/reference/case-and-replace-when.html)
+whose last branch keeps the old value – and it is correct on every tick.
+([`abm_sequential()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_sequential.md)
+differs here: after a match that paired nobody it writes nobody.)
+
+Inside a rule,
+[`n()`](https://dplyr.tidyverse.org/reference/context.html) is the
+number of agents the rule is being evaluated over: the pair, the group,
+the `.by` partition or the whole population. It is a function here,
+where in an
+[`abm_agents()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_agents.md)
+setup formula `n` is a number. The bare
+[`n()`](https://dplyr.tidyverse.org/reference/context.html) and
+[`dplyr::n()`](https://dplyr.tidyverse.org/reference/context.html) mean
+the same thing.
+
 Under a pairing of two, a rule also sees the pair's
 [`abm_relation()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_relation.md)
 values, `R_<col>` for `(me -> .partner)` and `R_<col>_back` for the

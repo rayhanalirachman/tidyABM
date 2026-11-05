@@ -25,7 +25,8 @@ inside dplyr::mutate()."><meta property="og:image" content="https://rayhanalirac
 <li class="active nav-item"><a class="nav-link" href="../reference/index.html">Reference</a></li>
 <li class="nav-item dropdown">
   <button class="nav-link dropdown-toggle" type="button" id="dropdown-articles" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">Articles</button>
-  <ul class="dropdown-menu" aria-labelledby="dropdown-articles"><li><a class="dropdown-item" href="../articles/models.html">Model gallery</a></li>
+  <ul class="dropdown-menu" aria-labelledby="dropdown-articles"><li><a class="dropdown-item" href="../articles/grammar.html">The grammar on one page</a></li>
+    <li><a class="dropdown-item" href="../articles/models.html">Model gallery</a></li>
     <li><a class="dropdown-item" href="../articles/corrections.html">Corrections</a></li>
   </ul></li>
 <li class="nav-item"><a class="nav-link" href="../news/index.html">Changelog</a></li>
@@ -116,6 +117,19 @@ happens to sit after a match and is meant for everybody. When the pairing
 is partial or directional – <code>"one_of"</code>, <code>"network"</code>, <code>"nearest"</code>, or any
 mode under an <code>eligible</code> – say <code>.scope = "population"</code> on such a rule
 rather than relying on position.</p>
+<p>One case is different, and worth knowing before a population can go
+extinct or a tick can pass with nobody eligible. A match that ran and
+paired <em>nobody</em> does not narrow the step: every agent is written, and
+every <code>partner_&lt;col&gt;</code> and <code>.partner</code> is <code>NA</code>. So <code>fed ~ TRUE</code> after a
+match that found no prey feeds everyone, and <code>x ~ partner_x</code> sets every
+<code>x</code> to <code>NA</code>. Write such a rule so that it is correct with a missing
+partner – <code>fed ~ !is.na(.partner)</code>, or a <code><a href="https://dplyr.tidyverse.org/reference/case-and-replace-when.html" class="external-link">case_when()</a></code> whose last branch
+keeps the old value – and it is correct on every tick. (<code><a href="abm_sequential.html">abm_sequential()</a></code>
+differs here: after a match that paired nobody it writes nobody.)</p>
+<p>Inside a rule, <code><a href="https://dplyr.tidyverse.org/reference/context.html" class="external-link">n()</a></code> is the number of agents the rule is being evaluated
+over: the pair, the group, the <code>.by</code> partition or the whole population. It
+is a function here, where in an <code><a href="abm_agents.html">abm_agents()</a></code> setup formula <code>n</code> is a
+number. The bare <code><a href="https://dplyr.tidyverse.org/reference/context.html" class="external-link">n()</a></code> and <code><a href="https://dplyr.tidyverse.org/reference/context.html" class="external-link">dplyr::n()</a></code> mean the same thing.</p>
 <p>Under a pairing of two, a rule also sees the pair's <code><a href="abm_relation.html">abm_relation()</a></code> values,
 <code>R_&lt;col&gt;</code> for <code>(me -&gt; .partner)</code> and <code>R_&lt;col&gt;_back</code> for the reverse row, and
 a rule whose <em>target</em> is one of those writes the pair rather than an agent

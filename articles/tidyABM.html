@@ -34,7 +34,8 @@
 <li class="nav-item dropdown">
   <button class="nav-link dropdown-toggle" type="button" id="dropdown-articles" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">Articles</button>
   <ul class="dropdown-menu" aria-labelledby="dropdown-articles">
-<li><a class="dropdown-item" href="../articles/models.html">Model gallery</a></li>
+<li><a class="dropdown-item" href="../articles/grammar.html">The grammar on one page</a></li>
+    <li><a class="dropdown-item" href="../articles/models.html">Model gallery</a></li>
     <li><a class="dropdown-item" href="../articles/corrections.html">Corrections</a></li>
   </ul>
 </li>
@@ -134,7 +135,7 @@ agent.</p>
 <span><span class="va">go</span></span>
 <span><span class="co">#&gt; <span style="color: #0000BB;">&lt;abm_go&gt;</span> 2 steps, 1 match phase</span></span>
 <span><span class="co">#&gt; <span style="font-style: italic;">1.</span> match random</span></span>
-<span><span class="co">#&gt; <span style="font-style: italic;">2.</span> rules 1 rule(s)</span></span></code></pre></div>
+<span><span class="co">#&gt; <span style="font-style: italic;">2.</span> rules money</span></span></code></pre></div>
 <p>Two steps. <code><a href="../reference/abm_match.html">abm_match()</a></code> shuffles the population into
 pairs and works out who in each pair is the giver. The <code>role</code>
 list says the giver must satisfy <code>money &gt; 0</code> and the
@@ -145,7 +146,7 @@ dollar.</p>
 <code class="sourceCode R"><span><span class="co"># 3. the run</span></span>
 <span><span class="va">result</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/abm_run.html">abm_run</a></span><span class="op">(</span><span class="va">economy</span>, <span class="va">go</span>, ticks <span class="op">=</span> <span class="fl">500</span>, seed <span class="op">=</span> <span class="fl">1</span><span class="op">)</span></span>
 <span><span class="va">result</span></span>
-<span><span class="co">#&gt; <span style="color: #0000BB;">&lt;abm_result&gt;</span> 500 ticks, 500 agents seen, 250500 rows</span></span>
+<span><span class="co">#&gt; <span style="color: #0000BB;">&lt;abm_result&gt;</span> 500 ticks, 500 distinct agents, 250500 rows</span></span>
 <span><span class="co">#&gt; <span style="color: #949494;"># A tibble: 250,500 × 4</span></span></span>
 <span><span class="co">#&gt;     tick   .id .group money</span></span>
 <span><span class="co">#&gt;    <span style="color: #949494; font-style: italic;">&lt;int&gt;</span> <span style="color: #949494; font-style: italic;">&lt;int&gt;</span> <span style="color: #949494; font-style: italic;">&lt;chr&gt;</span>  <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span></span></span>
@@ -262,9 +263,9 @@ tick is written flat:</p>
 <span><span class="va">pd_go</span></span>
 <span><span class="co">#&gt; <span style="color: #0000BB;">&lt;abm_go&gt;</span> 4 steps, 2 match phases</span></span>
 <span><span class="co">#&gt; <span style="font-style: italic;">1.</span> match random</span></span>
-<span><span class="co">#&gt; <span style="font-style: italic;">2.</span> rules 1 rule(s)</span></span>
+<span><span class="co">#&gt; <span style="font-style: italic;">2.</span> rules payoff</span></span>
 <span><span class="co">#&gt; <span style="font-style: italic;">3.</span> match random</span></span>
-<span><span class="co">#&gt; <span style="font-style: italic;">4.</span> rules 1 rule(s)</span></span></code></pre></div>
+<span><span class="co">#&gt; <span style="font-style: italic;">4.</span> rules strategy</span></span></code></pre></div>
 <p>The sequence is checked when you build it. Two matches in a row, or a
 sequence ending on a match, means a pairing nobody uses, and that is an
 error rather than a silent waste:</p>
@@ -357,7 +358,7 @@ deliberately differs from <code><a href="https://dplyr.tidyverse.org/reference/m
 <span><span class="va">swap_go</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/abm_go.html">abm_go</a></span><span class="op">(</span><span class="fu"><a href="../reference/abm_rules.html">abm_rules</a></span><span class="op">(</span><span class="va">a</span> <span class="op">~</span> <span class="va">b</span>, <span class="va">b</span> <span class="op">~</span> <span class="va">a</span><span class="op">)</span><span class="op">)</span></span>
 <span></span>
 <span><span class="fu"><a href="../reference/abm_run.html">abm_run</a></span><span class="op">(</span><span class="va">swap</span>, <span class="va">swap_go</span>, ticks <span class="op">=</span> <span class="fl">1</span><span class="op">)</span></span>
-<span><span class="co">#&gt; <span style="color: #0000BB;">&lt;abm_result&gt;</span> 1 tick, 3 agents seen, 6 rows</span></span>
+<span><span class="co">#&gt; <span style="color: #0000BB;">&lt;abm_result&gt;</span> 1 tick, 3 distinct agents, 6 rows</span></span>
 <span><span class="co">#&gt; <span style="color: #949494;"># A tibble: 6 × 5</span></span></span>
 <span><span class="co">#&gt;    tick   .id .group     a     b</span></span>
 <span><span class="co">#&gt;   <span style="color: #949494; font-style: italic;">&lt;int&gt;</span> <span style="color: #949494; font-style: italic;">&lt;int&gt;</span> <span style="color: #949494; font-style: italic;">&lt;chr&gt;</span>  <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span> <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span></span></span>
@@ -637,7 +638,7 @@ writing that column, which is what <code><a href="../reference/abm_move.html">ab
 <span></span>
 <span><span class="va">grazed</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/abm_run.html">abm_run</a></span><span class="op">(</span><span class="va">world</span>, <span class="va">graze_go</span>, ticks <span class="op">=</span> <span class="fl">10</span>, seed <span class="op">=</span> <span class="fl">1</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/subset.html" class="external-link">subset</a></span><span class="op">(</span><span class="va">grazed</span>, <span class="va">tick</span> <span class="op">==</span> <span class="fl">10</span> <span class="op">&amp;</span> <span class="va">.group</span> <span class="op">==</span> <span class="st">"sheep"</span>, select <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="va">.id</span>, <span class="va">.cell</span>, <span class="va">energy</span><span class="op">)</span><span class="op">)</span><span class="op">[</span><span class="fl">1</span><span class="op">:</span><span class="fl">5</span>, <span class="op">]</span></span>
-<span><span class="co">#&gt; <span style="color: #0000BB;">&lt;abm_result&gt;</span> 10 ticks, 5 agents seen, 5 rows</span></span>
+<span><span class="co">#&gt; <span style="color: #0000BB;">&lt;abm_result&gt;</span> 10 ticks, 5 distinct agents, 5 rows</span></span>
 <span><span class="co">#&gt; <span style="color: #949494;"># A tibble: 5 × 3</span></span></span>
 <span><span class="co">#&gt;     .id .cell energy</span></span>
 <span><span class="co">#&gt;   <span style="color: #949494; font-style: italic;">&lt;int&gt;</span> <span style="color: #949494; font-style: italic;">&lt;int&gt;</span>  <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span></span></span>
@@ -762,7 +763,8 @@ of the transfer a global and it becomes something to sweep:</p>
 <span><span class="va">many</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/abm_run.html">abm_run</a></span><span class="op">(</span><span class="va">economy2</span>, <span class="va">go2</span>, ticks <span class="op">=</span> <span class="fl">200</span>, seed <span class="op">=</span> <span class="fl">1</span>, record <span class="op">=</span> <span class="st">"final"</span>,</span>
 <span>                params <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>step <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">1</span>, <span class="fl">5</span>, <span class="fl">10</span><span class="op">)</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="va">many</span></span>
-<span><span class="co">#&gt; <span style="color: #0000BB;">&lt;abm_result&gt;</span> 3 runs, 200 ticks, 200 agents seen, 600 rows, recording <span style="color: #0000BB;">"final"</span></span></span>
+<span><span class="co">#&gt; <span style="color: #0000BB;">&lt;abm_result&gt;</span> 3 runs, 200 ticks, 200 distinct agents, 600 rows, recording</span></span>
+<span><span class="co">#&gt; <span style="color: #0000BB;">"final"</span></span></span>
 <span><span class="co">#&gt; <span style="color: #949494;"># A tibble: 600 × 7</span></span></span>
 <span><span class="co">#&gt;     .run  .rep  step  tick   .id .group money</span></span>
 <span><span class="co">#&gt;    <span style="color: #949494; font-style: italic;">&lt;int&gt;</span> <span style="color: #949494; font-style: italic;">&lt;int&gt;</span> <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span> <span style="color: #949494; font-style: italic;">&lt;int&gt;</span> <span style="color: #949494; font-style: italic;">&lt;int&gt;</span> <span style="color: #949494; font-style: italic;">&lt;chr&gt;</span>  <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span></span></span>

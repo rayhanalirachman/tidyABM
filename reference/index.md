@@ -56,6 +56,10 @@ patch id in `.cell`, and moving is writing that column.
 
 - [`abm_move()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_move.md)
   : Move agents across a lattice
+- [`abm_plot_lattice()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_plot_lattice.md)
+  : Draw the state of a lattice
+- [`abm_view_lattice()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_view_lattice.md)
+  : Play a recorded lattice run back in the browser
 
 ## Steps: network topology
 

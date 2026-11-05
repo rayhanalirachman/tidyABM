@@ -27,7 +27,8 @@ agents that are removed."><meta property="og:image" content="https://rayhanalira
 <li class="active nav-item"><a class="nav-link" href="../reference/index.html">Reference</a></li>
 <li class="nav-item dropdown">
   <button class="nav-link dropdown-toggle" type="button" id="dropdown-articles" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">Articles</button>
-  <ul class="dropdown-menu" aria-labelledby="dropdown-articles"><li><a class="dropdown-item" href="../articles/models.html">Model gallery</a></li>
+  <ul class="dropdown-menu" aria-labelledby="dropdown-articles"><li><a class="dropdown-item" href="../articles/grammar.html">The grammar on one page</a></li>
+    <li><a class="dropdown-item" href="../articles/models.html">Model gallery</a></li>
     <li><a class="dropdown-item" href="../articles/corrections.html">Corrections</a></li>
   </ul></li>
 <li class="nav-item"><a class="nav-link" href="../news/index.html">Changelog</a></li>
@@ -157,7 +158,8 @@ rule syntax.</p>
 and <code>.y</code> increasing upward. Every <em>other</em> group gains <code>.cell</code>, an integer
 holding the wired group's <code>.id</code> for the cell that agent is standing on, plus
 <code>.x</code> / <code>.y</code> mirroring it. All three are reserved: a model reads them, it does
-not declare them.</p>
+not declare them. A rule may write <code>.cell</code> (that is a move, and <code>.x</code> / <code>.y</code>
+follow); <code>.x</code> and <code>.y</code> themselves are read-only.</p>
 <p>The wired group also <strong>inherits its count</strong>, so it omits <code>n</code> in
 <code><a href="abm_agents.html">abm_agents()</a></code> and gets <code>prod(dims)</code>. <code>n</code> is still usable inside that group's
 formulas, and a matching <code>n</code> is allowed; a mismatch is an error. The lattice

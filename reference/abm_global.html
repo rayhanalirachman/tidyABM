@@ -25,7 +25,8 @@ tibble, so it normally collapses to a single value."><meta property="og:image" c
 <li class="active nav-item"><a class="nav-link" href="../reference/index.html">Reference</a></li>
 <li class="nav-item dropdown">
   <button class="nav-link dropdown-toggle" type="button" id="dropdown-articles" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">Articles</button>
-  <ul class="dropdown-menu" aria-labelledby="dropdown-articles"><li><a class="dropdown-item" href="../articles/models.html">Model gallery</a></li>
+  <ul class="dropdown-menu" aria-labelledby="dropdown-articles"><li><a class="dropdown-item" href="../articles/grammar.html">The grammar on one page</a></li>
+    <li><a class="dropdown-item" href="../articles/models.html">Model gallery</a></li>
     <li><a class="dropdown-item" href="../articles/corrections.html">Corrections</a></li>
   </ul></li>
 <li class="nav-item"><a class="nav-link" href="../news/index.html">Changelog</a></li>
@@ -83,7 +84,7 @@ value.</p></dd>
     <div class="section level2">
     <h2 id="details">Details<a class="anchor" aria-label="anchor" href="#details"></a></h2>
     <p>Unlike the other update steps, <code>abm_global()</code> does not need a preceding
-[abm_match()]: a population-level summary does not depend on who was paired
+<code><a href="abm_match.html">abm_match()</a></code>: a population-level summary does not depend on who was paired
 with whom.</p>
     </div>
     <div class="section level2">
@@ -98,7 +99,18 @@ the key being written, so <code>sum(task == .key)</code> is "how many agents are
 <em>this</em> task". And the global's own name is bound to <strong>this key's</strong> current
 value, not to the whole vector, so an update reads exactly as the scalar
 version does:</p>
-<p></p><div class="sourceCode abm_global(stimulus ~ stimulus + delta - alpha * sum(task == .key) /"><pre><code></code></pre><p></p></div>
+<p></p><div class="sourceCode r"><pre><code><span><span class="fu"><a href="../reference/abm_global.html">abm_global</a></span><span class="op">(</span><span class="va">stimulus</span> <span class="op">~</span> <span class="va">stimulus</span> <span class="op">+</span> <span class="va">delta</span> <span class="op">-</span> <span class="va">alpha</span> <span class="op">*</span> <span class="fu"><a href="https://rdrr.io/r/base/sum.html" class="external-link">sum</a></span><span class="op">(</span><span class="va">task</span> <span class="op">==</span> <span class="va">.key</span><span class="op">)</span> <span class="op">/</span> <span class="fu"><a href="https://dplyr.tidyverse.org/reference/context.html" class="external-link">n</a></span><span class="op">(</span><span class="op">)</span>,</span>
+<span>           .by <span class="op">=</span> <span class="fl">1</span><span class="op">:</span><span class="fl">2</span><span class="op">)</span></span></code></pre><p></p></div>
+<p>Each key still sees the <strong>whole population</strong>, <code><a href="https://dplyr.tidyverse.org/reference/context.html" class="external-link">n()</a></code> is everybody, not
+everybody on this task, because that is what a colony-level stimulus balance
+means.</p>
+<p><code>.by</code> names the index either way round. Give it a vector and the index is
+declared by the model, which is right when the categories are fixed and a
+key with nobody in it still has to be updated. Give it an agent column and
+the index is whatever values the agents currently hold, which is right when
+the categories come and go. A key the global already has stays in the index
+and is still updated even when no agent holds it this tick, so a task nobody
+is working on has its stimulus rise rather than dropping out of the table.</p>
     </div>
     <div class="section level2">
     <h2 id="see-also">See also<a class="anchor" aria-label="anchor" href="#see-also"></a></h2>

@@ -93,15 +93,19 @@ abm_run(
 ## Value
 
 An `abm_result`: a tibble of one row per agent per tick, carrying the
-run's globals, measures and final network as attributes.
+run's globals, measures and final network as attributes. With several
+agent groups the tibble holds the union of their columns, so a column
+one group does not have is `NA` on the other group's rows.
 
 ## Details
 
 The result is one long tibble, `tick`, `.id`, `.group`, then every agent
 column, which is what you want for plotting and summarising. Tick 0 is
-the state produced by \[abm_setup()\], before any step has run, so a run
-of `n` ticks returns `n + 1` snapshots. Global values are recorded
-alongside and are available with \[abm_globals()\].
+the state produced by
+[`abm_setup()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_setup.md),
+before any step has run, so a run of `n` ticks returns `n + 1`
+snapshots. Global values are recorded alongside and are available with
+[`abm_globals()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_globals.md).
 
 Agent-based models are stochastic, so `seed` is a first-class argument
 rather than something to arrange yourself: it makes the run reproducible
@@ -113,15 +117,13 @@ fifty thousand agents has been keeping every one of them, every tick,
 since the start. `record` says how much to keep.
 
 It fixes the run, though, not the model. If the agents' starting columns
-were drawn at random, they were drawn when \[abm_setup()\] was called,
-and this seed comes too late to affect them. Seed both for an experiment
-that reproduces end to end:
+were drawn at random, they were drawn when
+[`abm_setup()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_setup.md)
+was called, and this seed comes too late to affect them. Seed both for
+an experiment that reproduces end to end:
 
-    <- abm_run(m, go, ticks = 100, seed = 1) ```
-
-    [abm_setup()]: R:abm_setup()
-    [abm_globals()]: R:abm_globals()
-    [abm_setup()]: R:abm_setup()
+    m <- abm_setup(agents = abm_agents(n = 100, x = ~runif(n)), seed = 1)
+    r <- abm_run(m, go, ticks = 100, seed = 1)
 
 ## Many runs
 
@@ -131,13 +133,58 @@ entry holding more than one value is swept, one run per value, and
 several entries give every combination of them. `reps` repeats each of
 those combinations.
 
+    abm_run(m, go, ticks = 500, params = list(d = c(0.1, 0.2, 0.3)), reps = 20,
+            seed = 1)
+
+is sixty runs. Their results come back stacked into one `abm_result`,
+with `.run`, `.rep` and one column per parameter in front of the
+ordinary columns, and
+[`abm_globals()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_globals.md),
+[`abm_measures()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_measures.md)
+and
+[`abm_edges()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_edges.md)
+carry the same identifying columns. A single run is left exactly as it
+was: no `.run`, no `.rep`, and the same columns the function has always
+returned.
+
+A parameter is a global, and only a global. `n`,
+[`abm_network()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_network.md)'s
+`degree` and a lattice's `dims` are fixed when
+[`abm_setup()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_setup.md)
+builds the world, so sweeping one of those still means one world per
+value.
+
+`reps` replicates the *run*, not the population. `abm_run()` is handed a
+world that has already been built, so a starting column drawn with
+`~runif(n)` was drawn once, before this function saw it, and every
+replicate begins from that same population. What varies across
+replicates is everything the run itself draws – who is matched with
+whom, which agent acts first, what a rule samples. To vary the starting
+population too, build a world per replicate.
+
 ## Measures
 
 `measures` records a summary of the population once per tick, without
 keeping the population. Each entry is a one-sided formula evaluated the
-way an \[abm_global()\] right-hand side is – the globals are in scope,
+way an
+[`abm_global()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_global.md)
+right-hand side is – the globals are in scope,
 [`n()`](https://dplyr.tidyverse.org/reference/context.html) is the
 population size – and must collapse to one value.
+
+    abm_run(m, go, ticks = 500, record = "globals",
+            measures = list(gini = ~gini(money), broke = ~mean(money == 0)))
+
+A measure is an observation, not model state, and the difference is not
+cosmetic: writing the same summary with
+[`abm_global()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_global.md)
+would put it where every rule in the model can read it. A measure is
+written to the table
+[`abm_measures()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_measures.md)
+returns and to nowhere else, so nothing in the model can see it.
+Together with `record = "globals"` this is what makes a sweep
+affordable: the whole trajectory of every run, at a few thousand rows
+rather than a few million.
 
 ## Examples
 
@@ -149,7 +196,7 @@ go <- abm_go(
 )
 result <- abm_run(economy, go, ticks = 10, seed = 1)
 result
-#> <abm_result> 10 ticks, 50 agents seen, 550 rows
+#> <abm_result> 10 ticks, 50 distinct agents, 550 rows
 #> # A tibble: 550 × 4
 #>     tick   .id .group money
 #>    <int> <int> <chr>  <dbl>

@@ -4,6 +4,7 @@
 <url><loc>https://rayhanalirachman.github.io/tidyABM/LICENSE.html</loc></url>
 <url><loc>https://rayhanalirachman.github.io/tidyABM/MODELS.html</loc></url>
 <url><loc>https://rayhanalirachman.github.io/tidyABM/articles/corrections.html</loc></url>
+<url><loc>https://rayhanalirachman.github.io/tidyABM/articles/grammar.html</loc></url>
 <url><loc>https://rayhanalirachman.github.io/tidyABM/articles/index.html</loc></url>
 <url><loc>https://rayhanalirachman.github.io/tidyABM/articles/models.html</loc></url>
 <url><loc>https://rayhanalirachman.github.io/tidyABM/articles/tidyABM.html</loc></url>
@@ -27,6 +28,7 @@
 <url><loc>https://rayhanalirachman.github.io/tidyABM/reference/abm_network.html</loc></url>
 <url><loc>https://rayhanalirachman.github.io/tidyABM/reference/abm_odd.html</loc></url>
 <url><loc>https://rayhanalirachman.github.io/tidyABM/reference/abm_pairs.html</loc></url>
+<url><loc>https://rayhanalirachman.github.io/tidyABM/reference/abm_plot_lattice.html</loc></url>
 <url><loc>https://rayhanalirachman.github.io/tidyABM/reference/abm_relation.html</loc></url>
 <url><loc>https://rayhanalirachman.github.io/tidyABM/reference/abm_relations.html</loc></url>
 <url><loc>https://rayhanalirachman.github.io/tidyABM/reference/abm_repeat.html</loc></url>
@@ -36,6 +38,7 @@
 <url><loc>https://rayhanalirachman.github.io/tidyABM/reference/abm_setup.html</loc></url>
 <url><loc>https://rayhanalirachman.github.io/tidyABM/reference/abm_tell.html</loc></url>
 <url><loc>https://rayhanalirachman.github.io/tidyABM/reference/abm_unlink.html</loc></url>
+<url><loc>https://rayhanalirachman.github.io/tidyABM/reference/abm_view_lattice.html</loc></url>
 <url><loc>https://rayhanalirachman.github.io/tidyABM/reference/index.html</loc></url>
 <url><loc>https://rayhanalirachman.github.io/tidyABM/reference/n_agents.html</loc></url>
 <url><loc>https://rayhanalirachman.github.io/tidyABM/reference/reexports.html</loc></url>

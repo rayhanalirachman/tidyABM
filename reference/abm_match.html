@@ -23,7 +23,8 @@ it then use."><meta property="og:image" content="https://rayhanalirachman.github
 <li class="active nav-item"><a class="nav-link" href="../reference/index.html">Reference</a></li>
 <li class="nav-item dropdown">
   <button class="nav-link dropdown-toggle" type="button" id="dropdown-articles" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">Articles</button>
-  <ul class="dropdown-menu" aria-labelledby="dropdown-articles"><li><a class="dropdown-item" href="../articles/models.html">Model gallery</a></li>
+  <ul class="dropdown-menu" aria-labelledby="dropdown-articles"><li><a class="dropdown-item" href="../articles/grammar.html">The grammar on one page</a></li>
+    <li><a class="dropdown-item" href="../articles/models.html">Model gallery</a></li>
     <li><a class="dropdown-item" href="../articles/corrections.html">Corrections</a></li>
   </ul></li>
 <li class="nav-item"><a class="nav-link" href="../news/index.html">Changelog</a></li>
@@ -169,10 +170,17 @@ never pairs one sheep with two wolves. <code>NA</code> sits an agent out.</p></d
     <div class="section level2">
     <h2 id="details">Details<a class="anchor" aria-label="anchor" href="#details"></a></h2>
     <p>After a match, every rule can see:</p><ul><li><p><code>partner_&lt;col&gt;</code> for each of the partner's columns, when <code>size = 2</code>;</p></li>
+<li><p><code>.partner</code>, the partner's <code>.id</code>, <code>NA</code> for an agent the match left out,
+so <code>!is.na(.partner)</code> is "I met someone this tick";</p></li>
 <li><p>grouped-mutate semantics when <code>size &gt; 2</code>, so <code>sum(contribution)</code> inside a
-rule means "sum across this agent's group";</p></li>
-<li><p><code>.role</code>, when <code>role</code> is supplied.</p></li>
-</ul><p>Each <code>pair</code> mode uses a fixed set of the other arguments, and passing one
+rule means "sum across this agent's group" and <code><a href="https://dplyr.tidyverse.org/reference/context.html" class="external-link">n()</a></code> is its size;</p></li>
+<li><p><code>.role</code>, when <code>role</code> is supplied (<code>NA</code> otherwise).</p></li>
+</ul><p>Who an <code><a href="abm_rules.html">abm_rules()</a></code> step that follows is <em>written for</em> is decided by the
+match too: an agent it left out keeps its values, unless the match paired
+nobody at all, in which case every agent is written with <code>NA</code> partner
+columns (<code><a href="abm_sequential.html">abm_sequential()</a></code> then writes nobody). See <code><a href="abm_rules.html">abm_rules()</a></code> for the
+two cases and how to write a rule that is right in both.</p>
+<p>Each <code>pair</code> mode uses a fixed set of the other arguments, and passing one
 that the chosen mode does not use is an error rather than being ignored:</p><table class="table table"><tr><td>mode</td><td>uses</td></tr><tr><td><code>"random"</code></td><td><code>size</code>, <code>role</code>, <code>eligible</code></td></tr><tr><td><code>"one_of"</code></td><td><code>role</code>, <code>eligible</code>, <code>among</code>, <code>weight</code></td></tr><tr><td><code>"opposite_group"</code></td><td><code>by</code>, <code>role</code>, <code>eligible</code></td></tr><tr><td><code>"nearest"</code></td><td><code>by</code> <em>or</em> <code>cost</code>, <code>size</code>, <code>eligible</code>, <code>among</code></td></tr><tr><td><code>"network"</code></td><td><code>from</code>, <code>eligible</code></td></tr></table><p><code>eligible</code> and <code>among</code> ask different questions, and the difference only has
 teeth in the directional modes. <code>eligible</code> says who <em>takes part</em>; <code>among</code>
 says who may be <em>picked</em>. A consumer choosing the nearest shop wants <code>among = .group == "shops"</code>, or it will find that the nearest agent to it is
@@ -222,7 +230,7 @@ a match leaves standing.</p></div>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">•</span> among = `.group == "shops"`</span>
 <span class="r-in"><span><span class="fu">abm_match</span><span class="op">(</span>pair <span class="op">=</span> <span class="st">"random"</span>, role <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>giver <span class="op">=</span> <span class="va">money</span> <span class="op">&gt;</span> <span class="fl">0</span>, receiver <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span><span class="op">)</span></span></span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #0000BB;">&lt;abm_match&gt;</span> pair = <span style="color: #0000BB;">"random"</span></span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">•</span> roles = <span style="color: #0000BB;">"giver"</span> and <span style="color: #0000BB;">"receiver"</span></span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">•</span> role = <span style="color: #0000BB;">"giver"</span> and <span style="color: #0000BB;">"receiver"</span></span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co"># one prey per predator, per cell</span></span></span>
 <span class="r-in"><span><span class="fu">abm_match</span><span class="op">(</span>pair <span class="op">=</span> <span class="st">"opposite_group"</span>, by <span class="op">=</span> <span class="va">.group</span>, .by <span class="op">=</span> <span class="va">.cell</span>,</span></span>

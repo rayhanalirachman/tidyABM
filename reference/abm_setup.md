@@ -106,7 +106,7 @@ go <- abm_go(
 )
 
 abm_run(economy, go, ticks = 10, seed = 1)
-#> <abm_result> 10 ticks, 500 agents seen, 5500 rows
+#> <abm_result> 10 ticks, 500 distinct agents, 5500 rows
 #> # A tibble: 5,500 × 4
 #>     tick   .id .group money
 #>    <int> <int> <chr>  <dbl>

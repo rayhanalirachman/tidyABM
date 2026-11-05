@@ -37,8 +37,9 @@ abm_grid(dims, diagonals = TRUE, torus = TRUE, ...)
 
   Patch column specifications, exactly as
   [`abm_agents()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_agents.md)
-  takes them (`n` is available inside a formula and equals
-  `prod(dims)`).
+  takes them (`n` is available inside a formula and equals `prod(dims)`,
+  but cannot be passed; neither can `at`, which places the groups
+  standing *on* the grid).
 
 ## Value
 

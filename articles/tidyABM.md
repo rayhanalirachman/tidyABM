@@ -86,7 +86,7 @@ go <- abm_go(
 go
 #> <abm_go> 2 steps, 1 match phase
 #> 1. match random
-#> 2. rules 1 rule(s)
+#> 2. rules money
 ```
 
 Two steps.
@@ -103,7 +103,7 @@ moves the dollar.
 # 3. the run
 result <- abm_run(economy, go, ticks = 500, seed = 1)
 result
-#> <abm_result> 500 ticks, 500 agents seen, 250500 rows
+#> <abm_result> 500 ticks, 500 distinct agents, 250500 rows
 #> # A tibble: 250,500 × 4
 #>     tick   .id .group money
 #>    <int> <int> <chr>  <dbl>
@@ -250,9 +250,9 @@ pd_go <- abm_go(
 pd_go
 #> <abm_go> 4 steps, 2 match phases
 #> 1. match random
-#> 2. rules 1 rule(s)
+#> 2. rules payoff
 #> 3. match random
-#> 4. rules 1 rule(s)
+#> 4. rules strategy
 ```
 
 The sequence is checked when you build it. Two matches in a row, or a
@@ -366,7 +366,7 @@ swap <- abm_setup(agents = abm_agents(n = 3, a = 1, b = 2))
 swap_go <- abm_go(abm_rules(a ~ b, b ~ a))
 
 abm_run(swap, swap_go, ticks = 1)
-#> <abm_result> 1 tick, 3 agents seen, 6 rows
+#> <abm_result> 1 tick, 3 distinct agents, 6 rows
 #> # A tibble: 6 × 5
 #>    tick   .id .group     a     b
 #>   <int> <int> <chr>  <dbl> <dbl>
@@ -699,7 +699,7 @@ graze_go <- abm_go(
 
 grazed <- abm_run(world, graze_go, ticks = 10, seed = 1)
 subset(grazed, tick == 10 & .group == "sheep", select = c(.id, .cell, energy))[1:5, ]
-#> <abm_result> 10 ticks, 5 agents seen, 5 rows
+#> <abm_result> 10 ticks, 5 distinct agents, 5 rows
 #> # A tibble: 5 × 3
 #>     .id .cell energy
 #>   <int> <int>  <dbl>
@@ -845,7 +845,8 @@ go2 <- abm_go(
 many <- abm_run(economy2, go2, ticks = 200, seed = 1, record = "final",
                 params = list(step = c(1, 5, 10)))
 many
-#> <abm_result> 3 runs, 200 ticks, 200 agents seen, 600 rows, recording "final"
+#> <abm_result> 3 runs, 200 ticks, 200 distinct agents, 600 rows, recording
+#> "final"
 #> # A tibble: 600 × 7
 #>     .run  .rep  step  tick   .id .group money
 #>    <int> <int> <dbl> <int> <int> <chr>  <dbl>

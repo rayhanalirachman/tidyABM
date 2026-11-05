@@ -21,7 +21,8 @@ population. It has two modes, and exactly one of them must be used:"><meta prope
 <li class="active nav-item"><a class="nav-link" href="../reference/index.html">Reference</a></li>
 <li class="nav-item dropdown">
   <button class="nav-link dropdown-toggle" type="button" id="dropdown-articles" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">Articles</button>
-  <ul class="dropdown-menu" aria-labelledby="dropdown-articles"><li><a class="dropdown-item" href="../articles/models.html">Model gallery</a></li>
+  <ul class="dropdown-menu" aria-labelledby="dropdown-articles"><li><a class="dropdown-item" href="../articles/grammar.html">The grammar on one page</a></li>
+    <li><a class="dropdown-item" href="../articles/models.html">Model gallery</a></li>
     <li><a class="dropdown-item" href="../articles/corrections.html">Corrections</a></li>
   </ul></li>
 <li class="nav-item"><a class="nav-link" href="../news/index.html">Changelog</a></li>
@@ -73,7 +74,7 @@ population. It has two modes, and exactly one of them must be used:</p>
 <dt id="arg-times">times<a class="anchor" aria-label="anchor" href="#arg-times"></a></dt>
 <dd><p>How many offspring each reproducing agent has. An expression
 evaluated in the parent's row, so it can be a column, a draw
-(<code>rpois(dplyr::n(), 2)</code>) or a number. <code>0</code> means that parent has none this
+(<code>rpois(n(), 2)</code>) or a number. <code>0</code> means that parent has none this
 tick and <code>NA</code> is treated as <code>0</code>. Only used with <code>when</code>, since <code>n</code> is already
 a count. Each offspring gets its own evaluation of <code>inherit</code>, so a mutation
 drawn there differs from sibling to sibling.</p></dd>
@@ -148,10 +149,10 @@ in.</p>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">•</span> cost = `resource ~ resource/2`</span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co"># a clutch rather than a single offspring</span></span></span>
-<span class="r-in"><span><span class="fu">abm_birth</span><span class="op">(</span>when <span class="op">=</span> <span class="va">mature</span>, times <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/stats/Poisson.html" class="external-link">rpois</a></span><span class="op">(</span><span class="fu">dplyr</span><span class="fu">::</span><span class="fu"><a href="https://dplyr.tidyverse.org/reference/context.html" class="external-link">n</a></span><span class="op">(</span><span class="op">)</span>, <span class="fl">2</span><span class="op">)</span>, inherit <span class="op">=</span> <span class="va">age</span> <span class="op">~</span> <span class="fl">0</span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="fu">abm_birth</span><span class="op">(</span>when <span class="op">=</span> <span class="va">mature</span>, times <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/stats/Poisson.html" class="external-link">rpois</a></span><span class="op">(</span><span class="fu"><a href="https://dplyr.tidyverse.org/reference/context.html" class="external-link">n</a></span><span class="op">(</span><span class="op">)</span>, <span class="fl">2</span><span class="op">)</span>, inherit <span class="op">=</span> <span class="va">age</span> <span class="op">~</span> <span class="fl">0</span><span class="op">)</span></span></span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #0000BB;">&lt;abm_birth&gt;</span></span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">•</span> when = `mature`</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">•</span> times = `rpois(dplyr::n(), 2)`</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">•</span> times = `rpois(n(), 2)`</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">•</span> inherit = `age ~ 0`</span>
 <span class="r-in"><span><span class="fu">abm_birth</span><span class="op">(</span>n <span class="op">=</span> <span class="fl">1</span>, attach_via <span class="op">=</span> <span class="fu"><a href="abm_match.html">abm_match</a></span><span class="op">(</span>pair <span class="op">=</span> <span class="st">"network"</span>, from <span class="op">=</span> <span class="st">"random_edge"</span><span class="op">)</span><span class="op">)</span></span></span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #0000BB;">&lt;abm_birth&gt;</span></span>
@@ -160,10 +161,10 @@ in.</p>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co"># the offspring takes a place beside its parent, with a neighbourhood of its</span></span></span>
 <span class="r-in"><span><span class="co"># own rather than a single edge back to the parent</span></span></span>
-<span class="r-in"><span><span class="fu">abm_birth</span><span class="op">(</span>when <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/stats/Uniform.html" class="external-link">runif</a></span><span class="op">(</span><span class="fu">dplyr</span><span class="fu">::</span><span class="fu"><a href="https://dplyr.tidyverse.org/reference/context.html" class="external-link">n</a></span><span class="op">(</span><span class="op">)</span><span class="op">)</span> <span class="op">&lt;</span> <span class="va">ptr</span>, links <span class="op">=</span> <span class="fl">4</span>,</span></span>
+<span class="r-in"><span><span class="fu">abm_birth</span><span class="op">(</span>when <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/stats/Uniform.html" class="external-link">runif</a></span><span class="op">(</span><span class="fu"><a href="https://dplyr.tidyverse.org/reference/context.html" class="external-link">n</a></span><span class="op">(</span><span class="op">)</span><span class="op">)</span> <span class="op">&lt;</span> <span class="va">ptr</span>, links <span class="op">=</span> <span class="fl">4</span>,</span></span>
 <span class="r-in"><span>          attach_via <span class="op">=</span> <span class="fu"><a href="abm_match.html">abm_match</a></span><span class="op">(</span>pair <span class="op">=</span> <span class="st">"network"</span>, from <span class="op">=</span> <span class="st">"parent"</span><span class="op">)</span><span class="op">)</span></span></span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #0000BB;">&lt;abm_birth&gt;</span></span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">•</span> when = `runif(dplyr::n()) &lt; ptr`</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">•</span> when = `runif(n()) &lt; ptr`</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">•</span> attach_via = network (<span style="color: #0000BB;">"parent"</span>)</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">•</span> links = 4</span>
 <span class="r-in"><span></span></span>

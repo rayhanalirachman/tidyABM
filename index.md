@@ -88,6 +88,9 @@ ggplot2.
 The rest of this page is the map.
 [`vignette("tidyABM")`](https://rayhanalirachman.github.io/tidyABM/articles/tidyABM.html)
 is the walkthrough, and works the same example line by line.
+[`vignette("grammar")`](https://rayhanalirachman.github.io/tidyABM/articles/grammar.html)
+is the cheat sheet: every step, every special name a rule can use, and
+the five things that trip people up, on one page.
 
 ## The grammar
 
@@ -180,11 +183,12 @@ is called, not on every tick. Once, and then never again.
 ## What the matching modes give you
 
 After `abm_match(pair = ..., size = 2)` every rule can see
-`partner_<col>` for each of the partner’s columns. With `size > 2` rules
-are grouped instead, so `sum(contribution)` inside a rule means “sum
-across this agent’s group”. A rule can also be grouped by an ordinary
-agent column with `.by =`, which is how a firm, a household or a team
-becomes a thing the model can add up.
+`partner_<col>` for each of the partner’s columns, and `.partner`, the
+partner’s `.id` (`NA` for an agent the match left out). With `size > 2`
+rules are grouped instead, so `sum(contribution)` inside a rule means
+“sum across this agent’s group”. A rule can also be grouped by an
+ordinary agent column with `.by =`, which is how a firm, a household or
+a team becomes a thing the model can add up.
 
 | mode | partner is… |  |
 |----|----|----|
@@ -207,7 +211,11 @@ than a rule, the mode *is* the model.
 
 `abm_run(..., seed =)` sets the seed for the whole run and restores your
 session’s random state afterwards, so a model is reproducible without
-you having to arrange it.
+you having to arrange it. It seeds the *run*, not the world: a starting
+column drawn at random (`x = ~runif(n)`) was drawn when
+[`abm_setup()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_setup.md)
+was called, so such a model also wants `abm_setup(..., seed =)`. One
+seed fixes who the agents are, the other what happens to them.
 
 `abm_run(..., record =)` controls how much of that to keep: every tick,
 every *n*th tick, only the last one, or none of the populations at all.
@@ -318,6 +326,8 @@ still surprises me.
 See
 [`vignette("tidyABM")`](https://rayhanalirachman.github.io/tidyABM/articles/tidyABM.html)
 to get started,
+[`vignette("grammar")`](https://rayhanalirachman.github.io/tidyABM/articles/grammar.html)
+for the one-page cheat sheet,
 [`vignette("models")`](https://rayhanalirachman.github.io/tidyABM/articles/models.html)
 for a tour of the grammar, and
 [`vignette("corrections")`](https://rayhanalirachman.github.io/tidyABM/articles/corrections.html)

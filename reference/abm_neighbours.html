@@ -27,7 +27,8 @@ the agents around it."><meta property="og:image" content="https://rayhanalirachm
 <li class="active nav-item"><a class="nav-link" href="../reference/index.html">Reference</a></li>
 <li class="nav-item dropdown">
   <button class="nav-link dropdown-toggle" type="button" id="dropdown-articles" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">Articles</button>
-  <ul class="dropdown-menu" aria-labelledby="dropdown-articles"><li><a class="dropdown-item" href="../articles/models.html">Model gallery</a></li>
+  <ul class="dropdown-menu" aria-labelledby="dropdown-articles"><li><a class="dropdown-item" href="../articles/grammar.html">The grammar on one page</a></li>
+    <li><a class="dropdown-item" href="../articles/models.html">Model gallery</a></li>
     <li><a class="dropdown-item" href="../articles/corrections.html">Corrections</a></li>
   </ul></li>
 <li class="nav-item"><a class="nav-link" href="../news/index.html">Changelog</a></li>
@@ -66,18 +67,7 @@ the agents around it.</p>
 <dl><dt id="arg--">...<a class="anchor" aria-label="anchor" href="#arg--"></a></dt>
 <dd><p>One or more <code>column ~ aggregate_expression</code> rules. The expression
 sees the neighbours' agent columns, the focal agent's own columns as
-<code>own_&lt;col&gt;</code>, any column <code><a href="abm_draw.html">abm_draw()</a></code> attached to the edge, and any global.One named lattice neighbour</p>
-<p>On a grid or line <code><a href="abm_network.html">abm_network()</a></code> the two neighbours either side of a cell
-are not always interchangeable: a 1-D cellular automaton reads an <em>ordered</em>
-triple, and "the cell to my north" is a different question from "my
-neighbourhood". <code>.where</code> restricts the aggregate to the single neighbour in
-a named lattice direction, so the aggregate runs over a one-row set and both
-<code>col ~ s</code> and <code>col ~ sum(s)</code> yield that neighbour's value. A missing
-neighbour, at a bounded edge, yields <code>NA</code>.</p>
-<p></p><div class="sourceCode r"><pre><code>abm_neighbours(s_w ~ sum(s), .where = "west"),
-abm_neighbours(s_e ~ sum(s), .where = "east"),
-abm_rules(s ~ rule[[4 * s_w + 2 * s + s_e + 1]])
-</code></pre><p></p></div></dd>
+<code>own_&lt;col&gt;</code>, any column <code><a href="abm_draw.html">abm_draw()</a></code> attached to the edge, and any global.</p></dd>
 
 
 <dt id="arg-within">within<a class="anchor" aria-label="anchor" href="#arg-within"></a></dt>
@@ -130,14 +120,41 @@ neighbours alone can express.</p>
     </div>
     <div class="section level2">
     <h2 id="two-kinds-of-neighbourhood">Two kinds of neighbourhood<a class="anchor" aria-label="anchor" href="#two-kinds-of-neighbourhood"></a></h2>
-    <p>By default the neighbourhood is the model's [abm_network()]: the agents this
+    <p>By default the neighbourhood is the model's <code><a href="abm_network.html">abm_network()</a></code>: the agents this
 one shares an edge with. <code>within =</code> replaces it with a neighbourhood in
 <strong>attribute space</strong>, everybody whose columns satisfy a condition, whether or
 not the model has a network at all. The condition is evaluated once per
 (focal, candidate) pair, with the candidate's columns under their own names
 and the focal agent's under <code>own_&lt;col&gt;</code>, which is the same view
 <code>abm_match(cost =)</code> minimises over.</p>
-<p></p><div class="sourceCode abm_neighbours(opinion ~ mean(opinion), within = abs(opinion -"><pre><code></code></pre><p></p></div>
+<p></p><div class="sourceCode r"><pre><code><span><span class="fu"><a href="../reference/abm_neighbours.html">abm_neighbours</a></span><span class="op">(</span><span class="va">opinion</span> <span class="op">~</span> <span class="fu"><a href="https://rdrr.io/r/base/mean.html" class="external-link">mean</a></span><span class="op">(</span><span class="va">opinion</span><span class="op">)</span>,</span>
+<span>               within <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/MathFun.html" class="external-link">abs</a></span><span class="op">(</span><span class="va">opinion</span> <span class="op">-</span> <span class="va">own_opinion</span><span class="op">)</span> <span class="op">&lt;=</span> <span class="va">eps</span><span class="op">)</span></span></code></pre><p></p></div>
+<p>is Hegselmann–Krause's confidence set, and it is a step rather than a
+hand-rolled <code><a href="https://rdrr.io/r/base/lapply.html" class="external-link">vapply()</a></code> over the population.</p>
+<p>The two differ in one respect beyond how the neighbourhood is found: an
+agent is <strong>part of its own</strong> attribute neighbourhood whenever the condition
+holds of it, because "the mean opinion of everyone I take seriously"
+includes the agent's own. It is never part of its network neighbourhood,
+because an agent is not joined to itself. Write <code>within = ... &amp; .id != own_.id</code> to exclude it.</p>
+<p>They also differ in cost. The network form does work proportional to the
+number of edges; <code>within =</code> builds every (focal, candidate) pair and then
+filters, so it is quadratic in the population. That is the same order as the
+<code><a href="https://rdrr.io/r/base/lapply.html" class="external-link">vapply()</a></code> it replaces, with a tibble's constant factor on top, and it is
+worth knowing before reaching for it on a very large population.</p>
+    </div>
+    <div class="section level2">
+    <h2 id="one-named-lattice-neighbour">One named lattice neighbour<a class="anchor" aria-label="anchor" href="#one-named-lattice-neighbour"></a></h2>
+    <p>On a grid or line <code><a href="abm_network.html">abm_network()</a></code> the two neighbours either side of a cell
+are not always interchangeable: a 1-D cellular automaton reads an <em>ordered</em>
+triple, and "the cell to my north" is a different question from "my
+neighbourhood". <code>.where</code> restricts the aggregate to the single neighbour in
+a named lattice direction, so the aggregate runs over a one-row set and both
+<code>col ~ s</code> and <code>col ~ sum(s)</code> yield that neighbour's value. A missing
+neighbour, at a bounded edge, yields <code>NA</code>.</p>
+<p></p><div class="sourceCode r"><pre><code>abm_neighbours(s_w ~ sum(s), .where = "west"),
+abm_neighbours(s_e ~ sum(s), .where = "east"),
+abm_rules(s ~ rule[[4 * s_w + 2 * s + s_e + 1]])
+</code></pre><p></p></div>
     </div>
     <div class="section level2">
     <h2 id="see-also">See also<a class="anchor" aria-label="anchor" href="#see-also"></a></h2>

@@ -2,6 +2,156 @@
 
 ## tidyABM (development version)
 
+### The grammar, read by a newcomer
+
+A syntax audit (`dev/syntax-audit.md`) of what a first-time modeller is
+told when a model is written wrongly. No function or argument changed
+name, and every model script in `models/` prints the same numbers as
+before.
+
+- **A failing rule says where it failed.** An error inside a step used
+  to surface as R’s bare `object 'monney' not found`, with no call. It
+  is now a `tidyABM_step_error` naming the step’s position and kind, the
+  tick, the rule that read the name, the agent columns and globals in
+  scope, and a “did you mean” for a near miss. `partner_<col>` with no
+  match standing or under a group match, `own_<col>` in a plain rule,
+  `role` for `.role` and `n` for
+  [`n()`](https://dplyr.tidyverse.org/reference/context.html) get their
+  own hint. A failing
+  [`abm_agents()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_agents.md)
+  formula says which column, what was declared before it, and that `n`
+  is a number there. The package’s own errors pass through untouched.
+- **A qualifier without its dot is named.**
+  `abm_rules(x ~ 1, scope = "population")` and `by = firm` now say “did
+  you mean `.scope`/`.by`?”; `when = money > 0` inside
+  [`abm_rules()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_rules.md)
+  says how to write a conditional update; `abm_rules(money = money - 1)`
+  says to use `~`.
+- **Silent traps closed.** A rule can no longer target `.id`, `.group`,
+  `.group_id`, `.partner` or `.role` (`tidyABM_reserved_column`):
+  `.id ~ 99` gave every agent the same id. A quoted condition
+  (`eligible = "money > 0"`) is refused with the unquoted form
+  (`tidyABM_bad_condition`). `pair = "nearest"` refuses a character or
+  factor `by` and points at `cost`. `abm_agents(N = 10)` is told that
+  `N` became a column.
+- **`pair = "opposite_group"` counts its two values among the agents
+  taking part**, so `by = side, eligible = side != "none"` works instead
+  of failing on the `"none"` agents.
+- `print(abm_go)` lists what each step writes (`rules money, payoff`,
+  `death when energy < 0`) rather than a rule count, and
+  `print(abm_result)` says “distinct agents” rather than “agents seen”.
+  [`abm_go()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_go.md)’s
+  refusal of a non-step says what the thing is.
+- New
+  [`vignette("grammar")`](https://rayhanalirachman.github.io/tidyABM/articles/grammar.md):
+  the grammar on one page. `.partner` is documented in
+  [`?abm_match`](https://rayhanalirachman.github.io/tidyABM/reference/abm_match.md),
+  and the README says that `abm_run(seed =)` does not seed the world.
+- **Documented, not changed:** a match that pairs *nobody* does not
+  narrow the following
+  [`abm_rules()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_rules.md)
+  step: every agent is written, with `NA` partner columns
+  ([`abm_sequential()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_sequential.md)
+  writes nobody).
+  [`?abm_rules`](https://rayhanalirachman.github.io/tidyABM/reference/abm_rules.md),
+  [`?abm_match`](https://rayhanalirachman.github.io/tidyABM/reference/abm_match.md)
+  and the vignette say so and give the safe form.
+- The
+  [`abm_plot_lattice()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_plot_lattice.md)
+  and
+  [`abm_view_lattice()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_view_lattice.md)
+  examples run, and four help pages whose code blocks rendered as one
+  garbled line (`abm_go`, `abm_global`, `abm_neighbours`, `abm_run`) are
+  fixed.
+
+### Seeing a spatial model
+
+- New
+  `abm_view_lattice(result, fill, file, agents, colour, mark, hover, ...)`
+  writes a recorded run (`abm_run(record = "all")` or a number) to a
+  single self-contained HTML file that plays it back in the browser: a
+  canvas of the lattice with the mobile agents on it, play / pause, a
+  tick slider, a speed control, keyboard stepping, a legend with the
+  counts at the current tick, and a readout of the cell or agent under
+  the pointer. Nothing is fetched, so the file opens from disk, travels
+  as an attachment and works on a phone, in light or dark mode. Cell
+  values are quantised to at most 64 levels and run-length encoded, so a
+  50 x 50 lattice over 200 frames is a few hundred kilobytes. No new
+  dependency: the JSON is written by hand.
+- [`abm_plot_lattice()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_plot_lattice.md)
+  gains `colour`, `shape`, `size` and `colours` for the agent layer, so
+  one frame can show the whole world: the patches shaded by a value and
+  the agents on top coloured by their own (Ants carrying food or not,
+  Rebellion’s quiet / active / jailed / cop). The agents’ default
+  palette is now Okabe-Ito rather than ggplot2’s hue scale, and several
+  ticks are laid out as a single-row strip when there are six or fewer.
+  Existing calls draw the same frame; only the default point colours
+  changed.
+- The spatial corpus shows it: Wolf-Sheep’s grass is shaded by how far
+  it has regrown, Sugarscape’s by the sugar standing on each cell,
+  Rebellion has a lattice figure, and Life, Fire, Schelling, Wolf-Sheep,
+  Ants and Sugarscape have strips of the world through the run. Each of
+  those seven has a viewer under `models/spatial/viewers/`.
+
+### The spatial grammar, audited
+
+- **A torus one or two cells wide double-counted its neighbours.** With
+  `dims = c(2, 2)` a cell’s east and west neighbours are the same cell,
+  and the lattice listed it twice (and, one cell wide, listed the cell
+  as its own neighbour):
+  [`abm_neighbours()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_neighbours.md)
+  summed a neighbour twice and a random walk landed on it twice as
+  often. A neighbourhood is a set of other cells, so each is listed
+  once; the directional lookups `.where = "north"` and
+  `abm_move(direction =)` are unchanged, since “the cell to the north”
+  on a one-high torus genuinely is the cell itself.
+- **A rule may write `.cell`, and `.x` / `.y` now follow.** Writing the
+  location column from
+  [`abm_rules()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_rules.md),
+  [`abm_sequential()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_sequential.md),
+  [`abm_tell()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_tell.md)
+  or `abm_birth(inherit =)` moved the agent but left its coordinates
+  where they were. They are re-derived after any of those steps, a value
+  that is not a cell id is an error (`tidyABM_bad_cell`), and writing
+  `.x` or `.y` themselves is refused (`tidyABM_reserved_column`): they
+  are derived.
+- `abm_agents(at =)` refuses a logical mask or a fractional value
+  instead of truncating it to a cell id;
+  [`abm_grid()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_grid.md)
+  refuses `n` and `at` in `...` instead of making them patch columns;
+  `abm_move(direction =)` refuses a heading name the lattice has no side
+  for (`tidyABM_bad_heading`) instead of leaving the agent where it is;
+  and
+  [`abm_move()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_move.md)
+  in a model where nothing stands on a lattice says so instead of doing
+  nothing.
+- New `abm_plot_lattice(result, fill, tick, agents)` draws a frame of a
+  lattice model as a ggplot
+  ([`geom_raster()`](https://ggplot2.tidyverse.org/reference/geom_tile.html),
+  fixed aspect, no axes, the mobile agents as points on top). It is the
+  start every spatial figure shared, and needs the ggplot2 package,
+  which stays in Suggests. An empty cell (`NA` fill) under a scale with
+  `na.translate = FALSE` is left blank without the “Removed n rows
+  containing missing values” warning.
+- Sugarscape (model 8) has a page and a script of its own in
+  `models/spatial/`, which also shows the idiom for per-agent vision:
+  `range` is the model’s maximum reach and the agent’s own `vision`
+  masks the candidates inside `uphill()`.
+
+### Faster lattices, same answers
+
+`abm_move(to = uphill())` with an elementwise expression is evaluated
+once over every mover’s candidate cells rather than once per mover
+(Sugarscape 5.7x faster); the co-location join
+`within = .id == own_.cell` is a
+[`match()`](https://rdrr.io/r/base/match.html) when the key is unique
+rather than a sort of the whole lattice, and the rest of the condition
+is evaluated without a dplyr mask (Langton 1.6x); an attribute-space
+`within =` copies only the columns its rules read (Rebellion 1.7x); and
+the network view skips the id lookup when the ids are the row numbers,
+which is every patch-only model (Life 1.5x, Ising 1.4x). Every model in
+the corpus returns bit-identical results under the same seed.
+
 ### Faster ticks, same answers
 
 The per-tick bookkeeping around a step was costing more than the step.

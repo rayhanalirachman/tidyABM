@@ -27,7 +27,8 @@ several phases is written flat and in order:"><meta property="og:image" content=
 <li class="active nav-item"><a class="nav-link" href="../reference/index.html">Reference</a></li>
 <li class="nav-item dropdown">
   <button class="nav-link dropdown-toggle" type="button" id="dropdown-articles" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">Articles</button>
-  <ul class="dropdown-menu" aria-labelledby="dropdown-articles"><li><a class="dropdown-item" href="../articles/models.html">Model gallery</a></li>
+  <ul class="dropdown-menu" aria-labelledby="dropdown-articles"><li><a class="dropdown-item" href="../articles/grammar.html">The grammar on one page</a></li>
+    <li><a class="dropdown-item" href="../articles/models.html">Model gallery</a></li>
     <li><a class="dropdown-item" href="../articles/corrections.html">Corrections</a></li>
   </ul></li>
 <li class="nav-item"><a class="nav-link" href="../news/index.html">Changelog</a></li>
@@ -65,8 +66,10 @@ several phases is written flat and in order:</p>
 
 <dl><dt id="arg--">...<a class="anchor" aria-label="anchor" href="#arg--"></a></dt>
 <dd><p>Step objects: <code><a href="abm_match.html">abm_match()</a></code>, <code><a href="abm_rules.html">abm_rules()</a></code>, <code><a href="abm_sequential.html">abm_sequential()</a></code>,
-<code><a href="abm_global.html">abm_global()</a></code>, <code><a href="abm_neighbours.html">abm_neighbours()</a></code>, <code><a href="abm_tell.html">abm_tell()</a></code>, <code><a href="abm_birth.html">abm_birth()</a></code>,
-<code><a href="abm_death.html">abm_death()</a></code>, <code><a href="abm_link.html">abm_link()</a></code>, <code><a href="abm_unlink.html">abm_unlink()</a></code>, <code><a href="abm_draw.html">abm_draw()</a></code>, <code><a href="abm_repeat.html">abm_repeat()</a></code>.</p></dd>
+<code><a href="abm_neighbours.html">abm_neighbours()</a></code>, <code><a href="abm_tell.html">abm_tell()</a></code>, <code><a href="abm_global.html">abm_global()</a></code>, <code><a href="abm_move.html">abm_move()</a></code>,
+<code><a href="abm_link.html">abm_link()</a></code>, <code><a href="abm_unlink.html">abm_unlink()</a></code>, <code><a href="abm_draw.html">abm_draw()</a></code>, <code><a href="abm_pairs.html">abm_pairs()</a></code>, <code><a href="abm_birth.html">abm_birth()</a></code>,
+<code><a href="abm_death.html">abm_death()</a></code> and <code><a href="abm_repeat.html">abm_repeat()</a></code>. Every <code>abm_*()</code> function that is not
+<code><a href="abm_setup.html">abm_setup()</a></code>, one of its specifications, or <code><a href="abm_run.html">abm_run()</a></code> is a step.</p></dd>
 
 </dl></div>
     <div class="section level2">
@@ -75,7 +78,19 @@ several phases is written flat and in order:</p>
     </div>
     <div class="section level2">
     <h2 id="details">Details<a class="anchor" aria-label="anchor" href="#details"></a></h2>
-    <p></p><div class="sourceCode abm_go( abm_match(pair = " random abm_rules ... phase><pre><code></code></pre><p></p></div>
+    <p></p><div class="sourceCode r"><pre><code><span><span class="fu"><a href="../reference/abm_go.html">abm_go</a></span><span class="op">(</span></span>
+<span>  <span class="fu"><a href="../reference/abm_match.html">abm_match</a></span><span class="op">(</span>pair <span class="op">=</span> <span class="st">"random"</span><span class="op">)</span>, <span class="fu"><a href="../reference/abm_rules.html">abm_rules</a></span><span class="op">(</span><span class="va">payoff</span> <span class="op">~</span> <span class="va">...</span><span class="op">)</span>,    <span class="co"># phase 1: play</span></span>
+<span>  <span class="fu"><a href="../reference/abm_match.html">abm_match</a></span><span class="op">(</span>pair <span class="op">=</span> <span class="st">"random"</span><span class="op">)</span>, <span class="fu"><a href="../reference/abm_rules.html">abm_rules</a></span><span class="op">(</span><span class="va">strategy</span> <span class="op">~</span> <span class="va">...</span><span class="op">)</span>   <span class="co"># phase 2: imitate</span></span>
+<span><span class="op">)</span></span></code></pre><p></p></div>
+<p>The sequence is validated once, here, rather than on every tick. Three rules
+apply:</p><ul><li><p>it cannot be empty;</p></li>
+<li><p>no two <code><a href="abm_match.html">abm_match()</a></code> steps may sit next to each other, since the first
+would be discarded unused;</p></li>
+<li><p>it cannot end on an <code><a href="abm_match.html">abm_match()</a></code>, for the same reason.</p></li>
+</ul><p>Everything else is allowed. In particular a model may use no matching at all
+(El Farol, or a pure redistribution model), and several update steps may
+follow a single match, the market model pairs once and then applies separate
+rules to buyers and to sellers.</p>
     </div>
 
     <div class="section level2">
@@ -90,7 +105,7 @@ several phases is written flat and in order:</p>
 <span class="r-in"><span><span class="op">)</span></span></span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="fu"><a href="abm_run.html">abm_run</a></span><span class="op">(</span><span class="va">rumour</span>, <span class="va">go</span>, ticks <span class="op">=</span> <span class="fl">10</span>, seed <span class="op">=</span> <span class="fl">1</span><span class="op">)</span></span></span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #0000BB;">&lt;abm_result&gt;</span> 10 ticks, 200 agents seen, 2200 rows</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #0000BB;">&lt;abm_result&gt;</span> 10 ticks, 200 distinct agents, 2200 rows</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #949494;"># A tibble: 2,200 × 4</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>     tick   .id .group state   </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>    <span style="color: #949494; font-style: italic;">&lt;int&gt;</span> <span style="color: #949494; font-style: italic;">&lt;int&gt;</span> <span style="color: #949494; font-style: italic;">&lt;chr&gt;</span>  <span style="color: #949494; font-style: italic;">&lt;chr&gt;</span>   </span>

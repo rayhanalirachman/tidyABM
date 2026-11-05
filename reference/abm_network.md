@@ -127,7 +127,9 @@ gains `.x` only), integer cell coordinates, 1-based, with
 `.id = .x + (.y - 1) * w` and `.y` increasing upward. Every *other*
 group gains `.cell`, an integer holding the wired group's `.id` for the
 cell that agent is standing on, plus `.x` / `.y` mirroring it. All three
-are reserved: a model reads them, it does not declare them.
+are reserved: a model reads them, it does not declare them. A rule may
+write `.cell` (that is a move, and `.x` / `.y` follow); `.x` and `.y`
+themselves are read-only.
 
 The wired group also **inherits its count**, so it omits `n` in
 [`abm_agents()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_agents.md)

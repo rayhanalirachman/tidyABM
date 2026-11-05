@@ -27,7 +27,8 @@ network sits alongside it.'><meta property="og:image" content="https://rayhanali
 <li class="active nav-item"><a class="nav-link" href="../reference/index.html">Reference</a></li>
 <li class="nav-item dropdown">
   <button class="nav-link dropdown-toggle" type="button" id="dropdown-articles" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">Articles</button>
-  <ul class="dropdown-menu" aria-labelledby="dropdown-articles"><li><a class="dropdown-item" href="../articles/models.html">Model gallery</a></li>
+  <ul class="dropdown-menu" aria-labelledby="dropdown-articles"><li><a class="dropdown-item" href="../articles/grammar.html">The grammar on one page</a></li>
+    <li><a class="dropdown-item" href="../articles/models.html">Model gallery</a></li>
     <li><a class="dropdown-item" href="../articles/corrections.html">Corrections</a></li>
   </ul></li>
 <li class="nav-item"><a class="nav-link" href="../news/index.html">Changelog</a></li>
@@ -80,7 +81,8 @@ grid whose border cells have fewer neighbours.</p></dd>
 
 <dt id="arg--">...<a class="anchor" aria-label="anchor" href="#arg--"></a></dt>
 <dd><p>Patch column specifications, exactly as <code><a href="abm_agents.html">abm_agents()</a></code> takes them
-(<code>n</code> is available inside a formula and equals <code>prod(dims)</code>).</p></dd>
+(<code>n</code> is available inside a formula and equals <code>prod(dims)</code>, but cannot be
+passed; neither can <code>at</code>, which places the groups standing <em>on</em> the grid).</p></dd>
 
 </dl></div>
     <div class="section level2">

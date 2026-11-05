@@ -23,21 +23,53 @@ abm_go(...)
   [`abm_match()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_match.md),
   [`abm_rules()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_rules.md),
   [`abm_sequential()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_sequential.md),
-  [`abm_global()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_global.md),
   [`abm_neighbours()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_neighbours.md),
   [`abm_tell()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_tell.md),
-  [`abm_birth()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_birth.md),
-  [`abm_death()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_death.md),
+  [`abm_global()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_global.md),
+  [`abm_move()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_move.md),
   [`abm_link()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_link.md),
   [`abm_unlink()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_unlink.md),
   [`abm_draw()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_draw.md),
+  [`abm_pairs()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_pairs.md),
+  [`abm_birth()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_birth.md),
+  [`abm_death()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_death.md)
+  and
   [`abm_repeat()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_repeat.md).
+  Every `abm_*()` function that is not
+  [`abm_setup()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_setup.md),
+  one of its specifications, or
+  [`abm_run()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_run.md)
+  is a step.
 
 ## Value
 
 An `abm_go` object.
 
 ## Details
+
+    abm_go(
+      abm_match(pair = "random"), abm_rules(payoff ~ ...),    # phase 1: play
+      abm_match(pair = "random"), abm_rules(strategy ~ ...)   # phase 2: imitate
+    )
+
+The sequence is validated once, here, rather than on every tick. Three
+rules apply:
+
+- it cannot be empty;
+
+- no two
+  [`abm_match()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_match.md)
+  steps may sit next to each other, since the first would be discarded
+  unused;
+
+- it cannot end on an
+  [`abm_match()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_match.md),
+  for the same reason.
+
+Everything else is allowed. In particular a model may use no matching at
+all (El Farol, or a pure redistribution model), and several update steps
+may follow a single match, the market model pairs once and then applies
+separate rules to buyers and to sellers.
 
 ## Examples
 
@@ -52,7 +84,7 @@ go <- abm_go(
 )
 
 abm_run(rumour, go, ticks = 10, seed = 1)
-#> <abm_result> 10 ticks, 200 agents seen, 2200 rows
+#> <abm_result> 10 ticks, 200 distinct agents, 2200 rows
 #> # A tibble: 2,200 × 4
 #>     tick   .id .group state   
 #>    <int> <int> <chr>  <chr>   

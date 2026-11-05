@@ -20,22 +20,7 @@ abm_neighbours(..., within = NULL, .where = NULL)
   the neighbours' agent columns, the focal agent's own columns as
   `own_<col>`, any column
   [`abm_draw()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_draw.md)
-  attached to the edge, and any global.One named lattice neighbour
-
-  On a grid or line
-  [`abm_network()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_network.md)
-  the two neighbours either side of a cell are not always
-  interchangeable: a 1-D cellular automaton reads an *ordered* triple,
-  and "the cell to my north" is a different question from "my
-  neighbourhood". `.where` restricts the aggregate to the single
-  neighbour in a named lattice direction, so the aggregate runs over a
-  one-row set and both `col ~ s` and `col ~ sum(s)` yield that
-  neighbour's value. A missing neighbour, at a bounded edge, yields
-  `NA`.
-
-      abm_neighbours(s_w ~ sum(s), .where = "west"),
-      abm_neighbours(s_e ~ sum(s), .where = "east"),
-      abm_rules(s ~ rule[[4 * s_w + 2 * s + s_e + 1]])
+  attached to the edge, and any global.
 
 - within:
 
@@ -96,13 +81,51 @@ me", which no aggregate over the neighbours alone can express.
 
 ## Two kinds of neighbourhood
 
-By default the neighbourhood is the model's \[abm_network()\]: the
-agents this one shares an edge with. `within =` replaces it with a
+By default the neighbourhood is the model's
+[`abm_network()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_network.md):
+the agents this one shares an edge with. `within =` replaces it with a
 neighbourhood in **attribute space**, everybody whose columns satisfy a
 condition, whether or not the model has a network at all. The condition
 is evaluated once per (focal, candidate) pair, with the candidate's
 columns under their own names and the focal agent's under `own_<col>`,
 which is the same view `abm_match(cost =)` minimises over.
+
+    abm_neighbours(opinion ~ mean(opinion),
+                   within = abs(opinion - own_opinion) <= eps)
+
+is Hegselmann–Krause's confidence set, and it is a step rather than a
+hand-rolled [`vapply()`](https://rdrr.io/r/base/lapply.html) over the
+population.
+
+The two differ in one respect beyond how the neighbourhood is found: an
+agent is **part of its own** attribute neighbourhood whenever the
+condition holds of it, because "the mean opinion of everyone I take
+seriously" includes the agent's own. It is never part of its network
+neighbourhood, because an agent is not joined to itself. Write
+`within = ... & .id != own_.id` to exclude it.
+
+They also differ in cost. The network form does work proportional to the
+number of edges; `within =` builds every (focal, candidate) pair and
+then filters, so it is quadratic in the population. That is the same
+order as the [`vapply()`](https://rdrr.io/r/base/lapply.html) it
+replaces, with a tibble's constant factor on top, and it is worth
+knowing before reaching for it on a very large population.
+
+## One named lattice neighbour
+
+On a grid or line
+[`abm_network()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_network.md)
+the two neighbours either side of a cell are not always interchangeable:
+a 1-D cellular automaton reads an *ordered* triple, and "the cell to my
+north" is a different question from "my neighbourhood". `.where`
+restricts the aggregate to the single neighbour in a named lattice
+direction, so the aggregate runs over a one-row set and both `col ~ s`
+and `col ~ sum(s)` yield that neighbour's value. A missing neighbour, at
+a bounded edge, yields `NA`.
+
+    abm_neighbours(s_w ~ sum(s), .where = "west"),
+    abm_neighbours(s_e ~ sum(s), .where = "east"),
+    abm_rules(s ~ rule[[4 * s_w + 2 * s + s_e + 1]])
 
 ## See also
 

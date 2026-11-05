@@ -83,7 +83,7 @@ abm_go(
 )
 #> <abm_go> 2 steps, 0 match phases
 #> 1. draw 1 value(s) per edge
-#> 2. nbrs 1 rule(s)
+#> 2. nbrs partners
 
 # whether I saw you, and whether you saw me, are two different coins
 abm_draw(noticed ~ runif(n()), .each = "endpoint")

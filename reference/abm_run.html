@@ -25,7 +25,8 @@ and records the whole population after every tick."><meta property="og:image" co
 <li class="active nav-item"><a class="nav-link" href="../reference/index.html">Reference</a></li>
 <li class="nav-item dropdown">
   <button class="nav-link dropdown-toggle" type="button" id="dropdown-articles" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">Articles</button>
-  <ul class="dropdown-menu" aria-labelledby="dropdown-articles"><li><a class="dropdown-item" href="../articles/models.html">Model gallery</a></li>
+  <ul class="dropdown-menu" aria-labelledby="dropdown-articles"><li><a class="dropdown-item" href="../articles/grammar.html">The grammar on one page</a></li>
+    <li><a class="dropdown-item" href="../articles/models.html">Model gallery</a></li>
     <li><a class="dropdown-item" href="../articles/corrections.html">Corrections</a></li>
   </ul></li>
 <li class="nav-item"><a class="nav-link" href="../news/index.html">Changelog</a></li>
@@ -130,15 +131,17 @@ never turns up in a rendered page. <code>TRUE</code> forces it on from the first
     <div class="section level2">
     <h2 id="value">Value<a class="anchor" aria-label="anchor" href="#value"></a></h2>
     <p>An <code>abm_result</code>: a tibble of one row per agent per tick, carrying
-the run's globals, measures and final network as attributes.</p>
+the run's globals, measures and final network as attributes. With several
+agent groups the tibble holds the union of their columns, so a column one
+group does not have is <code>NA</code> on the other group's rows.</p>
     </div>
     <div class="section level2">
     <h2 id="details">Details<a class="anchor" aria-label="anchor" href="#details"></a></h2>
     <p>The result is one long tibble, <code>tick</code>, <code>.id</code>, <code>.group</code>, then every agent
 column, which is what you want for plotting and summarising. Tick 0 is the
-state produced by [abm_setup()], before any step has run, so a run of <code>n</code>
+state produced by <code><a href="abm_setup.html">abm_setup()</a></code>, before any step has run, so a run of <code>n</code>
 ticks returns <code>n + 1</code> snapshots. Global values are recorded alongside and
-are available with [abm_globals()].</p>
+are available with <code><a href="abm_globals.html">abm_globals()</a></code>.</p>
 <p>Agent-based models are stochastic, so <code>seed</code> is a first-class argument
 rather than something to arrange yourself: it makes the run reproducible
 without touching the global random state.</p>
@@ -147,15 +150,11 @@ fixed population and wrong for a growing one – a run that ends with fifty
 thousand agents has been keeping every one of them, every tick, since the
 start. <code>record</code> says how much to keep.</p>
 <p>It fixes the run, though, not the model. If the agents' starting columns
-were drawn at random, they were drawn when [abm_setup()] was called, and
+were drawn at random, they were drawn when <code><a href="abm_setup.html">abm_setup()</a></code> was called, and
 this seed comes too late to affect them. Seed both for an experiment that
 reproduces end to end:</p>
-<p></p><div class="sourceCode m &lt;- abm_setup(agents = abm_agents(n = 100, x = ~runif(n)), seed = 1) r"><pre><code>&lt;- abm_run(m, go, ticks = 100, seed = 1) ```
-
-[abm_setup()]: R:abm_setup()
-[abm_globals()]: R:abm_globals()
-[abm_setup()]: R:abm_setup()
-</code></pre><p></p></div>
+<p></p><div class="sourceCode r"><pre><code><span><span class="va">m</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/abm_setup.html">abm_setup</a></span><span class="op">(</span>agents <span class="op">=</span> <span class="fu"><a href="../reference/abm_agents.html">abm_agents</a></span><span class="op">(</span>n <span class="op">=</span> <span class="fl">100</span>, x <span class="op">=</span> <span class="op">~</span><span class="fu"><a href="https://rdrr.io/r/stats/Uniform.html" class="external-link">runif</a></span><span class="op">(</span><span class="va">n</span><span class="op">)</span><span class="op">)</span>, seed <span class="op">=</span> <span class="fl">1</span><span class="op">)</span></span>
+<span><span class="va">r</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/abm_run.html">abm_run</a></span><span class="op">(</span><span class="va">m</span>, <span class="va">go</span>, ticks <span class="op">=</span> <span class="fl">100</span>, seed <span class="op">=</span> <span class="fl">1</span><span class="op">)</span></span></code></pre><p></p></div>
     </div>
     <div class="section level2">
     <h2 id="many-runs">Many runs<a class="anchor" aria-label="anchor" href="#many-runs"></a></h2>
@@ -166,7 +165,22 @@ reproduces end to end:</p>
 whose entries override the model's <code>globals</code> before each run; an entry holding
 more than one value is swept, one run per value, and several entries give
 every combination of them. <code>reps</code> repeats each of those combinations.</p>
-<p></p><div class="sourceCode abm_run(m, go, ticks = 500, params = list(d = c(0.1, 0.2, 0.3)), reps ="><pre><code></code></pre><p></p></div>
+<p></p><div class="sourceCode r"><pre><code><span><span class="fu"><a href="../reference/abm_run.html">abm_run</a></span><span class="op">(</span><span class="va">m</span>, <span class="va">go</span>, ticks <span class="op">=</span> <span class="fl">500</span>, params <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>d <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">0.1</span>, <span class="fl">0.2</span>, <span class="fl">0.3</span><span class="op">)</span><span class="op">)</span>, reps <span class="op">=</span> <span class="fl">20</span>,</span>
+<span>        seed <span class="op">=</span> <span class="fl">1</span><span class="op">)</span></span></code></pre><p></p></div>
+<p>is sixty runs. Their results come back stacked into one <code>abm_result</code>, with
+<code>.run</code>, <code>.rep</code> and one column per parameter in front of the ordinary columns,
+and <code><a href="abm_globals.html">abm_globals()</a></code>, <code><a href="abm_measures.html">abm_measures()</a></code> and <code><a href="abm_edges.html">abm_edges()</a></code> carry the same
+identifying columns. A single run is left exactly as it was: no <code>.run</code>, no
+<code>.rep</code>, and the same columns the function has always returned.</p>
+<p>A parameter is a global, and only a global. <code>n</code>, <code><a href="abm_network.html">abm_network()</a></code>'s <code>degree</code>
+and a lattice's <code>dims</code> are fixed when <code><a href="abm_setup.html">abm_setup()</a></code> builds the world, so
+sweeping one of those still means one world per value.</p>
+<p><code>reps</code> replicates the <em>run</em>, not the population. <code>abm_run()</code> is handed a world
+that has already been built, so a starting column drawn with <code>~runif(n)</code> was
+drawn once, before this function saw it, and every replicate begins from that
+same population. What varies across replicates is everything the run itself
+draws – who is matched with whom, which agent acts first, what a rule
+samples. To vary the starting population too, build a world per replicate.</p>
     </div>
     <div class="section level2">
     <h2 id="measures">Measures<a class="anchor" aria-label="anchor" href="#measures"></a></h2>
@@ -175,9 +189,17 @@ every combination of them. <code>reps</code> repeats each of those combinations.
 
 <p><code>measures</code> records a summary of the population once per tick, without keeping
 the population. Each entry is a one-sided formula evaluated the way an
-[abm_global()] right-hand side is – the globals are in scope, <code><a href="https://dplyr.tidyverse.org/reference/context.html" class="external-link">n()</a></code> is the
+<code><a href="abm_global.html">abm_global()</a></code> right-hand side is – the globals are in scope, <code><a href="https://dplyr.tidyverse.org/reference/context.html" class="external-link">n()</a></code> is the
 population size – and must collapse to one value.</p>
-<p></p><div class="sourceCode abm_run(m, go, ticks = 500, record = " globals measures="list(gini"><pre><code></code></pre><p></p></div>
+<p></p><div class="sourceCode r"><pre><code><span><span class="fu"><a href="../reference/abm_run.html">abm_run</a></span><span class="op">(</span><span class="va">m</span>, <span class="va">go</span>, ticks <span class="op">=</span> <span class="fl">500</span>, record <span class="op">=</span> <span class="st">"globals"</span>,</span>
+<span>        measures <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>gini <span class="op">=</span> <span class="op">~</span><span class="fu">gini</span><span class="op">(</span><span class="va">money</span><span class="op">)</span>, broke <span class="op">=</span> <span class="op">~</span><span class="fu"><a href="https://rdrr.io/r/base/mean.html" class="external-link">mean</a></span><span class="op">(</span><span class="va">money</span> <span class="op">==</span> <span class="fl">0</span><span class="op">)</span><span class="op">)</span><span class="op">)</span></span></code></pre><p></p></div>
+<p>A measure is an observation, not model state, and the difference is not
+cosmetic: writing the same summary with <code><a href="abm_global.html">abm_global()</a></code> would put it where
+every rule in the model can read it. A measure is written to the table
+<code><a href="abm_measures.html">abm_measures()</a></code> returns and to nowhere else, so nothing in the model can see
+it. Together with <code>record = "globals"</code> this is what makes a sweep affordable:
+the whole trajectory of every run, at a few thousand rows rather than a few
+million.</p>
     </div>
 
     <div class="section level2">
@@ -189,7 +211,7 @@ population size – and must collapse to one value.</p>
 <span class="r-in"><span><span class="op">)</span></span></span>
 <span class="r-in"><span><span class="va">result</span> <span class="op">&lt;-</span> <span class="fu">abm_run</span><span class="op">(</span><span class="va">economy</span>, <span class="va">go</span>, ticks <span class="op">=</span> <span class="fl">10</span>, seed <span class="op">=</span> <span class="fl">1</span><span class="op">)</span></span></span>
 <span class="r-in"><span><span class="va">result</span></span></span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #0000BB;">&lt;abm_result&gt;</span> 10 ticks, 50 agents seen, 550 rows</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #0000BB;">&lt;abm_result&gt;</span> 10 ticks, 50 distinct agents, 550 rows</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #949494;"># A tibble: 550 × 4</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>     tick   .id .group money</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>    <span style="color: #949494; font-style: italic;">&lt;int&gt;</span> <span style="color: #949494; font-style: italic;">&lt;int&gt;</span> <span style="color: #949494; font-style: italic;">&lt;chr&gt;</span>  <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span></span>

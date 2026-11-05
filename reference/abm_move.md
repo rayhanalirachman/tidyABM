@@ -3,7 +3,10 @@
 A mobile agent's location is a patch `.id` held in a reserved `.cell`
 column, and moving is writing that column. `abm_move()` is the step that
 writes it: each mover's `.cell` is reassigned to a cell reachable from
-the one it is standing on, and `.x` / `.y` follow automatically.
+the one it is standing on, and `.x` / `.y` follow automatically. A rule
+may also write `.cell` directly (`abm_rules(.cell ~ which(nest)[1])`
+sends everyone home); `.x` / `.y` follow that too, and are themselves
+read-only.
 
 ## Usage
 
@@ -54,8 +57,9 @@ abm_move(
 - axes_only:
 
   Whether to scan only along the four axes (north, south, east, west)
-  rather than over the whole neighbourhood. Only meaningful with
-  `range > 1`.
+  rather than over the whole neighbourhood. With `range = 1` on a Moore
+  lattice that is the four orthogonal neighbours; with a larger `range`
+  it is the four lines of sight a Sugarscape agent looks along.
 
 - avoid_occupied:
 

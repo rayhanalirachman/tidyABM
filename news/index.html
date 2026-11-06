@@ -41,6 +41,10 @@
     <div class="section level2">
 <h2 class="pkg-version" data-toc-text="development version" id="tidyabm-development-version">tidyABM (development version)<a class="anchor" aria-label="anchor" href="#tidyabm-development-version"></a></h2>
 <div class="section level3">
+<h3 id="checks-an-accounting-identity-that-stops-the-run-development-version">Checks: an accounting identity that stops the run<a class="anchor" aria-label="anchor" href="#checks-an-accounting-identity-that-stops-the-run-development-version"></a></h3>
+<p><code>abm_run(checks = list(bank = ~abs(bL - bDEP - bNW) &lt; 1e-9 * max(1, bL)))</code> evaluates each one-sided formula the way a measure is, at tick 0 and after every tick, and stops the run with a <code>tidyABM_check_failed</code> error (carrying <code>tick</code> and <code>check</code>) the first time one is not <code>TRUE</code>. <code>NA</code> fails. A check is never recorded and no step can read it, so a checked run returns what the unchecked one does. In a sweep the error names the run, its parameters and its seed. A stock-flow consistent model used to log its residual as a global and leave it to be read after the run; now a leak stops the run at the tick it happens. <code>models/grammar.md</code> gains a section on writing stock-flow consistent models in the grammar, and corrects its claim that globals are <code>NA</code> on the tick-0 row: they hold the values <code><a href="../reference/abm_setup.html">abm_setup()</a></code> declared.</p>
+</div>
+<div class="section level3">
 <h3 id="the-grammar-read-by-a-newcomer-development-version">The grammar, read by a newcomer<a class="anchor" aria-label="anchor" href="#the-grammar-read-by-a-newcomer-development-version"></a></h3>
 <p>A syntax audit (<code>dev/syntax-audit.md</code>) of what a first-time modeller is told when a model is written wrongly. No function or argument changed name, and every model script in <code>models/</code> prints the same numbers as before.</p>
 <ul><li>

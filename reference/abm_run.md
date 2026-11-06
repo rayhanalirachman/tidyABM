@@ -18,6 +18,7 @@ abm_run(
   params = NULL,
   reps = 1,
   measures = NULL,
+  checks = NULL,
   seed = NULL,
   record = "all",
   progress = NULL
@@ -58,6 +59,12 @@ abm_run(
   whole population once per tick and recorded with
   [`abm_measures()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_measures.md).
   A measure cannot be read by any step. See *Measures* below.
+
+- checks:
+
+  Optional named list of one-sided formulas, evaluated like `measures`
+  at tick 0 and after every tick, each of which must return a single
+  `TRUE`. The first that does not stops the run. See *Checks* below.
 
 - seed:
 
@@ -185,6 +192,28 @@ returns and to nowhere else, so nothing in the model can see it.
 Together with `record = "globals"` this is what makes a sweep
 affordable: the whole trajectory of every run, at a few thousand rows
 rather than a few million.
+
+## Checks
+
+`checks` is the same shape as `measures`, one-sided formulas over the
+whole population with the globals in scope, but each must return a
+single `TRUE`. They are evaluated at tick 0 and after every tick, and
+the first one that returns `FALSE` or `NA` stops the run with an error
+of class `tidyABM_check_failed` naming the check and the tick (the
+condition carries them as `check` and `tick`). That is what an
+accounting identity wants: a stock-flow consistent model that leaks
+money should stop where it leaks, not finish and leave the leak to be
+found in a plot.
+
+    abm_run(m, go, ticks = 500, seed = 1,
+            checks = list(money = ~abs(sum(m) - total) < 1e-9 * total))
+
+The tolerance is part of the formula, because what counts as zero
+depends on the scale of the ledger. A check is never recorded and no
+step can read it, so a run with checks returns exactly what the same run
+without them does. In a sweep the error also names the run, with its
+parameters and the seed it ran on: a single run with that seed and those
+`params` reproduces it.
 
 ## Examples
 

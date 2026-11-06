@@ -61,6 +61,7 @@ and records the whole population after every tick.</p>
 <span>  params <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  reps <span class="op">=</span> <span class="fl">1</span>,</span>
 <span>  measures <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  checks <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  seed <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  record <span class="op">=</span> <span class="st">"all"</span>,</span>
 <span>  progress <span class="op">=</span> <span class="cn">NULL</span></span>
@@ -99,6 +100,12 @@ differ in what the run draws, not in the population they start from.</p></dd>
 <dd><p>Optional named list of one-sided formulas, each evaluated over
 the whole population once per tick and recorded with <code><a href="abm_measures.html">abm_measures()</a></code>. A
 measure cannot be read by any step. See <em>Measures</em> below.</p></dd>
+
+
+<dt id="arg-checks">checks<a class="anchor" aria-label="anchor" href="#arg-checks"></a></dt>
+<dd><p>Optional named list of one-sided formulas, evaluated like
+<code>measures</code> at tick 0 and after every tick, each of which must return a
+single <code>TRUE</code>. The first that does not stops the run. See <em>Checks</em> below.</p></dd>
 
 
 <dt id="arg-seed">seed<a class="anchor" aria-label="anchor" href="#arg-seed"></a></dt>
@@ -200,6 +207,27 @@ every rule in the model can read it. A measure is written to the table
 it. Together with <code>record = "globals"</code> this is what makes a sweep affordable:
 the whole trajectory of every run, at a few thousand rows rather than a few
 million.</p>
+    </div>
+    <div class="section level2">
+    <h2 id="checks">Checks<a class="anchor" aria-label="anchor" href="#checks"></a></h2>
+
+
+
+<p><code>checks</code> is the same shape as <code>measures</code>, one-sided formulas over the whole
+population with the globals in scope, but each must return a single <code>TRUE</code>.
+They are evaluated at tick 0 and after every tick, and the first one that
+returns <code>FALSE</code> or <code>NA</code> stops the run with an error of class
+<code>tidyABM_check_failed</code> naming the check and the tick (the condition carries
+them as <code>check</code> and <code>tick</code>). That is what an accounting identity wants: a
+stock-flow consistent model that leaks money should stop where it leaks,
+not finish and leave the leak to be found in a plot.</p>
+<p></p><div class="sourceCode"><pre><code><span id="cb1-1"><a href="#cb1-1" tabindex="-1"></a><span class="fu">abm_run</span>(m, go, <span class="at">ticks =</span> <span class="dv">500</span>, <span class="at">seed =</span> <span class="dv">1</span>,</span>
+<span id="cb1-2"><a href="#cb1-2" tabindex="-1"></a>        <span class="at">checks =</span> <span class="fu">list</span>(<span class="at">money =</span> <span class="sc">~</span><span class="fu">abs</span>(<span class="fu">sum</span>(m) <span class="sc">-</span> total) <span class="sc">&lt;</span> <span class="fl">1e-9</span> <span class="sc">*</span> total))</span></code></pre><p></p></div>
+<p>The tolerance is part of the formula, because what counts as zero depends
+on the scale of the ledger. A check is never recorded and no step can read
+it, so a run with checks returns exactly what the same run without them
+does. In a sweep the error also names the run, with its parameters and the
+seed it ran on: a single run with that seed and those <code>params</code> reproduces it.</p>
     </div>
 
     <div class="section level2">

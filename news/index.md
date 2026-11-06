@@ -2,6 +2,23 @@
 
 ## tidyABM (development version)
 
+### Checks: an accounting identity that stops the run
+
+`abm_run(checks = list(bank = ~abs(bL - bDEP - bNW) < 1e-9 * max(1, bL)))`
+evaluates each one-sided formula the way a measure is, at tick 0 and
+after every tick, and stops the run with a `tidyABM_check_failed` error
+(carrying `tick` and `check`) the first time one is not `TRUE`. `NA`
+fails. A check is never recorded and no step can read it, so a checked
+run returns what the unchecked one does. In a sweep the error names the
+run, its parameters and its seed. A stock-flow consistent model used to
+log its residual as a global and leave it to be read after the run; now
+a leak stops the run at the tick it happens. `models/grammar.md` gains a
+section on writing stock-flow consistent models in the grammar, and
+corrects its claim that globals are `NA` on the tick-0 row: they hold
+the values
+[`abm_setup()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_setup.md)
+declared.
+
 ### The grammar, read by a newcomer
 
 A syntax audit (`dev/syntax-audit.md`) of what a first-time modeller is

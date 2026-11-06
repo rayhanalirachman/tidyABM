@@ -138,6 +138,62 @@ test_that("measures carry the run columns when there is more than one run", {
   expect_equal(nrow(meas), 4 * 4)
 })
 
+test_that("a check that holds lets the run finish and changes nothing", {
+  withr::local_seed(2017)
+  plain <- abm_run(econ(), give, ticks = 6, seed = 3)
+  checked <- abm_run(econ(), give, ticks = 6, seed = 3,
+                     checks = list(money = ~sum(m) == 3000))
+  expect_equal(as.data.frame(checked), as.data.frame(plain))
+  expect_equal(abm_globals(checked), abm_globals(plain))
+  expect_null(abm_measures(checked))
+})
+
+test_that("a check that fails stops the run at the tick it fails", {
+  withr::local_seed(2018)
+  leak <- abm_go(abm_global(t ~ t + 1), abm_rules(m ~ m - (t == 3)))
+  m <- abm_setup(agents = abm_agents(n = 5, m = 10), globals = list(t = 0))
+  err <- expect_error(abm_run(m, leak, ticks = 6, checks = list(money = ~sum(m) == 50)),
+                      class = "tidyABM_check_failed")
+  expect_equal(err$tick, 3L)
+  expect_equal(err$check, "money")
+  expect_match(conditionMessage(err), "ticks = 3")
+  # inconsistent starting stocks fail before any step has run
+  err0 <- expect_error(abm_run(m, leak, ticks = 6, checks = list(money = ~sum(m) == 49)),
+                       class = "tidyABM_check_failed")
+  expect_equal(err0$tick, 0L)
+})
+
+test_that("NA fails a check", {
+  m <- abm_setup(agents = abm_agents(n = 3, m = NA_real_))
+  err <- expect_error(abm_run(m, give, ticks = 1, checks = list(ok = ~sum(m) > 0)),
+                      class = "tidyABM_check_failed")
+  expect_equal(err$tick, 0L)
+})
+
+test_that("a check must be a named one-sided formula returning one logical", {
+  withr::local_seed(2019)
+  expect_error(abm_run(econ(), give, ticks = 1, checks = list(total = ~sum(m))),
+               class = "tidyABM_bad_checks")
+  expect_error(abm_run(econ(), give, ticks = 1, checks = list(two = ~c(TRUE, TRUE))),
+               class = "tidyABM_bad_checks")
+  expect_error(abm_run(econ(), give, ticks = 1, checks = list(~sum(m) == 3000)),
+               class = "tidyABM_bad_checks")
+  expect_error(abm_run(econ(), give, ticks = 1, checks = list(a = m ~ TRUE)),
+               class = "tidyABM_bad_checks")
+})
+
+test_that("in a sweep the failed check names the run", {
+  withr::local_seed(2020)
+  m <- abm_setup(agents = abm_agents(n = 4, m = 10), globals = list(leak = 0))
+  go <- abm_go(abm_rules(m ~ m - leak / n()))
+  err <- expect_error(abm_run(m, go, ticks = 2, seed = 1, params = list(leak = c(0, 2)),
+                              checks = list(money = ~abs(sum(m) - 40) < 1e-9)),
+                      class = "tidyABM_check_failed")
+  expect_equal(err$run, 2L)
+  expect_equal(err$tick, 1L)
+  expect_match(conditionMessage(err), "leak = 2")
+})
+
 test_that("a parameter is not repeated in the globals it came from", {
   withr::local_seed(2013)
   g <- abm_globals(abm_run(econ(), give, ticks = 2, seed = 1,

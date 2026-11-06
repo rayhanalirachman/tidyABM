@@ -111,53 +111,67 @@ run_seeds <- function(seed, n) {
   as.list(s)
 }
 
-#' Check `measures` and return the quosures to evaluate
+#' Check `measures` (or `checks`) and return the quosures to evaluate
+#'
+#' The two arguments are the same shape -- a named list of one-sided formulas
+#' over the population -- so they are checked by the same code, each under its
+#' own name and error class.
 #' @noRd
-check_measures <- function(measures, call = rlang::caller_env()) {
+check_measures <- function(measures, arg = "measures",
+                           class = "tidyABM_bad_measures",
+                           call = rlang::caller_env()) {
   if (is.null(measures)) return(NULL)
+  example <- if (arg == "checks") "list(money = ~sum(m) == 3000)" else "list(mean_x = ~mean(x))"
   if (!is.list(measures) || !length(measures) || !rlang::is_named(measures)) {
     abm_abort(
-      c("{.arg measures} must be a named list of one-sided formulas.",
-        "i" = "For example {.code measures = list(mean_x = ~mean(x))}."),
-      class = "tidyABM_bad_measures", call = call
+      c("{.arg {arg}} must be a named list of one-sided formulas.",
+        "i" = "For example {.code {arg} = {example}}."),
+      class = class, call = call
     )
   }
   bad <- names(measures)[!vapply(measures, is_formula1, logical(1))]
   if (length(bad)) {
     abm_abort(
-      c("Every entry of {.arg measures} must be a one-sided formula.",
+      c("Every entry of {.arg {arg}} must be a one-sided formula.",
         "x" = "{.field {bad}} {?is/are} not.",
-        "i" = "A measure has no left-hand side: it is named by the list, as in
-               {.code list(gini = ~gini(money))}."),
-      class = "tidyABM_bad_measures", call = call
+        "i" = "An entry has no left-hand side: it is named by the list, as in
+               {.code {example}}."),
+      class = class, call = call
     )
   }
-  taken <- intersect(names(measures), c("tick", ".run", ".rep"))
+  # a check is never written to a table, so only a measure can collide
+  taken <- if (arg == "measures") intersect(names(measures), c("tick", ".run", ".rep"))
   if (length(taken)) {
     abm_abort(
       c("A measure cannot be named {.field {taken}}.",
         "i" = "Those name the run itself in the table {.fn abm_measures} returns."),
-      class = "tidyABM_bad_measures", call = call
+      class = class, call = call
     )
   }
   lapply(measures, rlang::as_quosure)
 }
 
-#' One tick's measures, as a single row
+#' One formula evaluated over the whole population, globals in scope
 #'
 #' Evaluated through the same mask an [abm_global()] right-hand side is, so
-#' `n()` means the population size and the globals are in scope. The result is
-#' written to the log and nowhere else: no step can read a measure back, which
-#' is the whole reason it is not an `abm_global()`.
+#' `n()` means the population size. Shared by measures and checks.
+#' @noRd
+eval_over_population <- function(quo, combined, globals) {
+  quo <- rlang::quo_set_env(
+    quo, rlang::new_environment(globals, parent = rlang::quo_get_env(quo))
+  )
+  dplyr::pull(dplyr::reframe(combined, .abm_value = !!quo), ".abm_value")
+}
+
+#' One tick's measures, as a single row
+#'
+#' The result is written to the log and nowhere else: no step can read a
+#' measure back, which is the whole reason it is not an `abm_global()`.
 #' @noRd
 measure_row <- function(quos, state, t) {
   combined <- bind_groups(state$groups)
   vals <- lapply(names(quos), function(nm) {
-    quo <- rlang::quo_set_env(
-      quos[[nm]],
-      rlang::new_environment(state$globals, parent = rlang::quo_get_env(quos[[nm]]))
-    )
-    val <- dplyr::pull(dplyr::reframe(combined, .abm_value = !!quo), ".abm_value")
+    val <- eval_over_population(quos[[nm]], combined, state$globals)
     if (length(val) != 1L) {
       abm_abort(
         c("A measure must collapse to a single value.",
@@ -170,6 +184,39 @@ measure_row <- function(quos, state, t) {
   })
   names(vals) <- names(quos)
   dplyr::bind_cols(tibble::tibble(tick = t), tibble::as_tibble(vals))
+}
+
+#' Stop the run if any check is not `TRUE` at tick `t`
+#'
+#' A check is a measure that must hold. It is evaluated the way a measure is and
+#' recorded nowhere: it either passes silently or ends the run, with the tick
+#' and the check's name on the condition so a caller can pick them up.
+#' `NA` fails, because a ledger that has gone `NA` is not consistent.
+#' @noRd
+check_row <- function(quos, state, t) {
+  combined <- bind_groups(state$groups)
+  for (nm in names(quos)) {
+    ok <- eval_over_population(quos[[nm]], combined, state$globals)
+    expr <- deparse1(rlang::quo_get_expr(quos[[nm]]))
+    if (!is.logical(ok) || length(ok) != 1L) {
+      abm_abort(
+        c("A check must return a single {.code TRUE} or {.code FALSE}.",
+          "x" = "{.code {nm} = ~{expr}} returned {.cls {class(ok)}} of length {length(ok)} at tick {t}.",
+          "i" = "Write the tolerance into the formula, as in
+                 {.code ~abs(sum(m) - total) < 1e-9}."),
+        class = "tidyABM_bad_checks", call = NULL
+      )
+    }
+    if (!isTRUE(ok)) {
+      abm_abort(
+        c("Check {.field {nm}} failed at tick {t}.",
+          "x" = "{.code ~{expr}} is {ok}.",
+          "i" = "Rerun with {.code ticks = {t}, record = \"final\"} to inspect that state."),
+        class = "tidyABM_check_failed", tick = t, check = nm, call = NULL
+      )
+    }
+  }
+  invisible(NULL)
 }
 
 #' Prefix a run's identifying columns onto one of its tables

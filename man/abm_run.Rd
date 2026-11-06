@@ -11,6 +11,7 @@ abm_run(
   params = NULL,
   reps = 1,
   measures = NULL,
+  checks = NULL,
   seed = NULL,
   record = "all",
   progress = NULL
@@ -34,6 +35,10 @@ differ in what the run draws, not in the population they start from.}
 \item{measures}{Optional named list of one-sided formulas, each evaluated over
 the whole population once per tick and recorded with \code{\link[=abm_measures]{abm_measures()}}. A
 measure cannot be read by any step. See \emph{Measures} below.}
+
+\item{checks}{Optional named list of one-sided formulas, evaluated like
+\code{measures} at tick 0 and after every tick, each of which must return a
+single \code{TRUE}. The first that does not stops the run. See \emph{Checks} below.}
 
 \item{seed}{Optional integer seed. Set locally, so the caller's random state
 is left untouched. With more than one run this seeds the experiment and a
@@ -142,6 +147,29 @@ every rule in the model can read it. A measure is written to the table
 it. Together with \code{record = "globals"} this is what makes a sweep affordable:
 the whole trajectory of every run, at a few thousand rows rather than a few
 million.
+}
+
+\section{Checks}{
+
+
+\code{checks} is the same shape as \code{measures}, one-sided formulas over the whole
+population with the globals in scope, but each must return a single \code{TRUE}.
+They are evaluated at tick 0 and after every tick, and the first one that
+returns \code{FALSE} or \code{NA} stops the run with an error of class
+\code{tidyABM_check_failed} naming the check and the tick (the condition carries
+them as \code{check} and \code{tick}). That is what an accounting identity wants: a
+stock-flow consistent model that leaks money should stop where it leaks,
+not finish and leave the leak to be found in a plot.
+
+\if{html}{\out{<div class="sourceCode">}}\preformatted{abm_run(m, go, ticks = 500, seed = 1,
+        checks = list(money = ~abs(sum(m) - total) < 1e-9 * total))
+}\if{html}{\out{</div>}}
+
+The tolerance is part of the formula, because what counts as zero depends
+on the scale of the ledger. A check is never recorded and no step can read
+it, so a run with checks returns exactly what the same run without them
+does. In a sweep the error also names the run, with its parameters and the
+seed it ran on: a single run with that seed and those \code{params} reproduces it.
 }
 
 \examples{

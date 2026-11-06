@@ -81,6 +81,28 @@
 #' the whole trajectory of every run, at a few thousand rows rather than a few
 #' million.
 #'
+#' @section Checks:
+#'
+#' `checks` is the same shape as `measures`, one-sided formulas over the whole
+#' population with the globals in scope, but each must return a single `TRUE`.
+#' They are evaluated at tick 0 and after every tick, and the first one that
+#' returns `FALSE` or `NA` stops the run with an error of class
+#' `tidyABM_check_failed` naming the check and the tick (the condition carries
+#' them as `check` and `tick`). That is what an accounting identity wants: a
+#' stock-flow consistent model that leaks money should stop where it leaks,
+#' not finish and leave the leak to be found in a plot.
+#'
+#' ```
+#' abm_run(m, go, ticks = 500, seed = 1,
+#'         checks = list(money = ~abs(sum(m) - total) < 1e-9 * total))
+#' ```
+#'
+#' The tolerance is part of the formula, because what counts as zero depends
+#' on the scale of the ledger. A check is never recorded and no step can read
+#' it, so a run with checks returns exactly what the same run without them
+#' does. In a sweep the error also names the run, with its parameters and the
+#' seed it ran on: a single run with that seed and those `params` reproduces it.
+#'
 #' @param model An `abm_model` from [abm_setup()].
 #' @param go An `abm_go` sequence.
 #' @param ticks Number of ticks to run.
@@ -93,6 +115,9 @@
 #' @param measures Optional named list of one-sided formulas, each evaluated over
 #'   the whole population once per tick and recorded with [abm_measures()]. A
 #'   measure cannot be read by any step. See *Measures* below.
+#' @param checks Optional named list of one-sided formulas, evaluated like
+#'   `measures` at tick 0 and after every tick, each of which must return a
+#'   single `TRUE`. The first that does not stops the run. See *Checks* below.
 #' @param seed Optional integer seed. Set locally, so the caller's random state
 #'   is left untouched. With more than one run this seeds the experiment and a
 #'   seed per run is derived from it, so the whole thing reproduces at once. See
@@ -132,7 +157,7 @@
 #'                 measures = list(richest = ~max(money)))
 #' abm_measures(many)
 abm_run <- function(model, go, ticks, params = NULL, reps = 1, measures = NULL,
-                    seed = NULL, record = "all", progress = NULL) {
+                    checks = NULL, seed = NULL, record = "all", progress = NULL) {
   if (!inherits(model, "abm_model")) {
     abm_abort("{.arg model} must come from {.fn abm_setup}.",
               class = "tidyABM_bad_model")
@@ -165,6 +190,7 @@ abm_run <- function(model, go, ticks, params = NULL, reps = 1, measures = NULL,
   reps <- as.integer(reps)
   params <- check_params(params, model)
   measures <- check_measures(measures)
+  checks <- check_measures(checks, "checks", "tidyABM_bad_checks")
 
   if (!is.null(progress) && !rlang::is_bool(progress)) {
     abm_abort("{.arg progress} must be {.code TRUE}, {.code FALSE} or {.code NULL}.",
@@ -197,9 +223,22 @@ abm_run <- function(model, go, ticks, params = NULL, reps = 1, measures = NULL,
 
   out <- vector("list", n_runs)
   for (i in seq_len(n_runs)) {
-    out[[i]] <- run_once(apply_params(model, runs[[i]]$values), go, ticks,
-                         seeds[[i]], keep, measures,
-                         bar = if (by_run) NULL else bar)
+    out[[i]] <- withCallingHandlers(
+      run_once(apply_params(model, runs[[i]]$values), go, ticks,
+               seeds[[i]], keep, measures, checks,
+               bar = if (by_run) NULL else bar),
+      # one run of many failing says which one, and with what it would rerun
+      tidyABM_check_failed = function(e) {
+        if (!by_run) return()
+        v <- runs[[i]]$values
+        which_run <- c(if (length(v)) paste(names(v), "=", vapply(v, deparse1, "")),
+                       paste(".rep =", runs[[i]]$.rep),
+                       if (!is.null(seeds[[i]])) paste("seed =", seeds[[i]]))
+        abm_abort("Run {i} of {n_runs} failed a check: {which_run}.",
+                  class = "tidyABM_check_failed", parent = e,
+                  tick = e$tick, check = e$check, run = i)
+      }
+    )
     if (by_run && !is.null(bar)) cli::cli_progress_update(id = bar)
   }
   if (!is.null(bar)) cli::cli_progress_done(id = bar)
@@ -254,7 +293,8 @@ new_abm_result <- function(population, globals, measures, network, relations,
 #' which run it was -- `abm_run()` adds those, and only when there is more than
 #' one run to tell apart.
 #' @noRd
-run_once <- function(model, go, ticks, seed, keep, measures, bar = NULL) {
+run_once <- function(model, go, ticks, seed, keep, measures, checks = NULL,
+                     bar = NULL) {
   if (!is.null(seed)) local_seed(seed)
 
   state <- list(
@@ -275,6 +315,7 @@ run_once <- function(model, go, ticks, seed, keep, measures, bar = NULL) {
   if (keep[[1]]) snapshots[[1]] <- first
   global_log[[1]] <- global_row(state, 0L)
   if (!is.null(measure_log)) measure_log[[1]] <- measure_row(measures, state, 0L)
+  if (length(checks)) check_row(checks, state, 0L)
 
   for (t in seq_len(ticks)) {
     state$match <- NULL
@@ -287,6 +328,7 @@ run_once <- function(model, go, ticks, seed, keep, measures, bar = NULL) {
     if (keep[[t + 1L]]) snapshots[[t + 1L]] <- snapshot(state, t)
     global_log[[t + 1L]] <- global_row(state, t)
     if (!is.null(measure_log)) measure_log[[t + 1L]] <- measure_row(measures, state, t)
+    if (length(checks)) check_row(checks, state, t)
     if (!is.null(bar)) cli::cli_progress_update(id = bar)
   }
 

@@ -333,11 +333,12 @@ state.
 
 ## 3. `abm_run()`: the run
 
-`abm_run(model, go, ticks, params, reps, measures, seed, record)` returns one
-long tibble of `tick`, `.id`, `.group` and then the agent columns, with globals,
-measures and the final network attached, read with `abm_globals()`,
-`abm_measures()` and `abm_edges()`. Tick 0 is the state `abm_setup()` produced,
-so globals are `NA` on that row.
+`abm_run(model, go, ticks, params, reps, measures, checks, seed, record)`
+returns one long tibble of `tick`, `.id`, `.group` and then the agent columns,
+with globals, measures and the final network attached, read with
+`abm_globals()`, `abm_measures()` and `abm_edges()`. Tick 0 is the state
+`abm_setup()` produced, so the globals on that row are the values it declared,
+with any `params` already written in.
 
 `record` says how much of that to keep: `"all"` (the default), a whole number for
 every *n*th tick plus the two ends, `"final"` for the last tick only, or
@@ -370,6 +371,16 @@ see: a global is state, readable by every rule; a measure is an observation,
 written to the log and invisible to every step. `measures` with
 `record = "globals"` is how a sweep returns numbers instead of populations.
 
+`checks` is the same shape as `measures`, but each formula must return a single
+`TRUE`. It is evaluated at tick 0 and after every tick, and the first `FALSE`
+or `NA` stops the run with an error of class `tidyABM_check_failed` that names
+the check and the tick (and, in a sweep, the run, its parameters and its seed).
+The tolerance goes in the formula, `~abs(bL - bDEP - bNW) < 1e-9 * max(1, bL)`,
+because what counts as zero depends on the ledger. A check is recorded nowhere
+and no step can read it, so a checked run returns what the unchecked one does.
+It fails hard rather than logging, because an identity that has stopped holding
+makes every later tick of that run wrong. See *Stock-flow consistency* below.
+
 **Package-managed columns** are dot-prefixed: `.id`, `.group`, `.role`,
 `.partner`, `.group_id`. Everything else is yours.
 
@@ -377,3 +388,72 @@ written to the log and invisible to every step. `measures` with
 `do.call(abm_go, steps)` assembles a block whose length depends on a parameter,
 and `rlang::new_formula()` builds a rule whose target is computed. Models 30, 35,
 44, 45 and 47 are all the same trick.
+
+## Stock-flow consistency
+
+A stock-flow consistent model is one where every flow leaves one ledger and
+arrives in another, so the balance sheets add up at every tick. The grammar has
+no SFC object and needs none. It needs flows written so they cannot disagree,
+and `abm_run(checks =)` to stop the run when they do anyway.
+
+**One flow, one column.** Compute the amount once, as a column, and let both
+sides read it:
+
+```r
+abm_match(pair = "one_of", eligible = .group == "hh", among = .group == "firm"),
+abm_rules(spend ~ if_else(is.na(.partner), 0, sf * dep), .scope = "population"),
+abm_tell(sales ~ spend, to = .partner, .resolve = "sum"),
+abm_rules(dep ~ dep - spend, .scope = "population")
+```
+
+Written as `sales ~ sf * dep` on one side and `dep ~ (1 - sf) * dep` on the
+other, the two halves of the transaction are two formulas that happen to agree,
+and an edit to one is a leak. Written as above there is one number. The flow
+columns are also the transaction-flow matrix: they are in the tidy output, one
+per flow, by agent and tick.
+
+**Flow columns are per period.** A rule after a match reaches only the matched
+agents, and an unmatched one keeps what the column held (*What a match gives a
+rule*, above). For a stock that is right. For a flow it means last tick's
+payment is still sitting in the column, and the next rule that reads it counts
+it twice. Set every flow with `.scope = "population"`, zero where nothing
+happened, as `spend` is set above.
+
+**Where a bank lives.** One bank is a set of globals: its balance sheet is a few
+numbers, updated by `abm_global()` from sums over the agents. Several banks are
+agents, a group of their own. A stock between two particular agents, a loan
+from *this* bank to *that* firm, is a relation (*State that belongs to a pair*).
+Measures and checks see the population and the globals, not relations, so sum a
+relation into agent columns with `abm_neighbours(within = .R)` before a check
+reads it.
+
+**Entry and exit carry balance sheets.** `abm_birth(when =)` clones the parent,
+every column, so a newborn firm starts with a copy of its parent's cash and
+loans. Money has been created unless `cost =` splits it, `cost = cash ~ cash / 2`
+leaving half with each (with `times` above one every newborn gets that value
+too, so divide by the number of pieces). `abm_birth(n =)` copies a randomly
+chosen agent, so its stocks belong in `inherit =`, usually as zeros.
+`abm_death()` removes the agent and with it whatever it held, along with its
+relation rows on either side. Move a dying agent's stocks somewhere with
+explicit flows first, a write-off to the bank's equity or a transfer to an
+heir, and kill it after.
+
+**A check is only as strong as its ledgers.** `bL == sum(loan)` next to
+`bDEP == sum(cash) + sum(dep)` and `bNW == bL - bDEP` is true by construction:
+every side is derived from the others, and the check passes whatever the model
+does. At least one side of an identity has to be accumulated independently,
+from the flows, the way `bNW ~ bNW + sum(intpaid) - ln - div` is. Then
+`bL == bDEP + bNW` says something. The same holds per agent: a firm's net worth
+accumulated from its sales, wages and interest, checked against `cash - loan`.
+
+**Matrices are a reshape, not a feature.** Name measures `<sector>_<instrument>`,
+`hh_dep`, `firm_cash`, `firm_loan`, `bank_loan`, and the balance-sheet matrix
+is `tidyr::pivot_longer(abm_measures(r), -tick, names_sep = "_", names_to =
+c("sector", "instrument"))` with a pivot back out. The transaction-flow matrix
+is the same reshape over the flow columns.
+
+**Simultaneity.** Step order is the causal order: a flow computed in step 3
+reads the stocks as steps 1 and 2 left them. That is the period structure of
+the model, written down. Where the paper solves a block simultaneously, a price
+that clears a market the households then spend in, `abm_repeat(until =, max =)`
+iterates the block to a fixed point inside the tick.

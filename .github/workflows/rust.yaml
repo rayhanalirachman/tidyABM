@@ -1,0 +1,57 @@
+# Rust checks for the crates in src/rust (Rust migration, PLAN.md section 8):
+# formatting, clippy, cargo tests, the minimum supported Rust version, and the
+# licence / advisory / source audit (cargo-deny, configured in src/rust/deny.toml;
+# its advisories check reads the RustSec database that cargo-audit uses).
+on:
+  push:
+    branches: [rust]
+  pull_request:
+    paths: ['src/rust/**', '.github/workflows/rust.yaml']
+  workflow_dispatch:
+
+name: rust
+
+permissions: read-all
+
+defaults:
+  run:
+    working-directory: src/rust
+
+jobs:
+  lint-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src/rust -> target
+      - run: cargo --version && rustc --version
+      - name: cargo fmt --check
+        run: cargo fmt --all --check
+      - name: cargo clippy -D warnings
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      # tidyabm-core has no R dependency; the savvy crate needs an R session to link
+      # its tests, and its entry points are tested from R (tests/testthat).
+      - name: cargo test
+        run: cargo test -p tidyabm-core --locked
+
+  msrv:
+    # rust-version = "1.81" in both Cargo.toml files (savvy 0.11's MSRV)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.81.0
+      - run: cargo +1.81.0 build --release --locked
+      - run: cargo +1.81.0 test -p tidyabm-core --locked
+
+  deny:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          manifest-path: src/rust/Cargo.toml
+          command: check licenses advisories bans sources

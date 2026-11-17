@@ -1,0 +1,60 @@
+# R CMD check --as-cran of the `rust` branch (Rust migration, PLAN.md section 8).
+# main keeps R-CMD-check.yaml; this one runs only on pushes to `rust` or by hand, so
+# it never triggers the pkgdown or coverage workflows.
+# The build is the CRAN one: offline from src/rust/vendor.tar.xz with `cargo -j 2`.
+# On failure the check folder (00install.out with the cargo log, 00check.log,
+# testthat.Rout) is uploaded as an artifact named after the job.
+on:
+  push:
+    branches: [rust]
+  workflow_dispatch:
+
+name: R-CMD-check-rust
+
+permissions: read-all
+
+jobs:
+  R-CMD-check:
+    runs-on: ${{ matrix.config.os }}
+    name: ${{ matrix.config.os }} (R ${{ matrix.config.r }})
+    continue-on-error: ${{ matrix.config.allow-failure }}
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - {os: ubuntu-latest,  r: 'release', allow-failure: false}
+          - {os: ubuntu-latest,  r: 'devel',   allow-failure: false, http-user-agent: 'release'}
+          - {os: macos-latest,   r: 'release', allow-failure: false}   # arm64
+          - {os: macos-15-intel, r: 'release', allow-failure: false}   # x86_64
+          - {os: windows-latest, r: 'release', allow-failure: false}   # x86_64
+          - {os: windows-11-arm, r: 'release', allow-failure: true}    # allowed to fail (spike S5)
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+      R_KEEP_PKG_SOURCE: yes
+      NOT_CRAN: true
+      MAKEFLAGS: -j2
+      _R_CHECK_CRAN_INCOMING_REMOTE_: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: r-lib/actions/setup-pandoc@v2
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: ${{ matrix.config.r }}
+          http-user-agent: ${{ matrix.config.http-user-agent }}
+          use-public-rspm: true
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Toolchain and platform
+        shell: bash
+        run: |
+          cargo --version; rustc --version --verbose
+          Rscript -e 'cat(R.version.string, R.version$platform, "\n"); print(RNGkind())'
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          extra-packages: any::rcmdcheck
+          needs: check
+      - uses: r-lib/actions/check-r-package@v2
+        with:
+          args: 'c("--as-cran", "--no-manual")'
+          error-on: '"warning"'
+          upload-snapshots: true
+          upload-results: true

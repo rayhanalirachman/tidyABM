@@ -58,3 +58,21 @@ jobs:
           error-on: '"warning"'
           upload-snapshots: true
           upload-results: true
+      # The Rust differential tests (test-rust-rng.R, test-rust-reduce.R) name the
+      # platform, long double size and first mismatch in their failure messages; this
+      # prints them, and the library's platform facts, whether the check passed or not.
+      - name: Rust platform facts and testthat output
+        if: always()
+        shell: Rscript {0}
+        run: |
+          rcheck <- Sys.glob("check/*.Rcheck")[1]
+          if (is.na(rcheck)) quit()
+          for (f in Sys.glob(file.path(rcheck, "tests", "testthat.Rout*"))) {
+            cat("==== ", f, "\n"); writeLines(tail(readLines(f), 300))
+          }
+          ns <- tryCatch(loadNamespace("tidyABM", lib.loc = rcheck), error = function(e) NULL)
+          if (is.null(ns)) quit()
+          print(ns$rust_info())
+          cat(R.version.string, R.version$platform, "\n")
+          print(RNGkind())
+          cat("sizeof(long double) in R:", .Machine$sizeof.longdouble, "\n")

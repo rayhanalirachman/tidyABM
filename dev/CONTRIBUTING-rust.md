@@ -11,7 +11,12 @@ pure R.
 |---|---|
 | `src/rust/Cargo.toml` | the savvy bridge crate `tidyabm` (R entry points) and the workspace |
 | `src/rust/src/lib.rs` | the `#[savvy]` entry points; each body runs under `run()` (panic guard) |
-| `src/rust/tidyabm-core/` | engine code with no R dependency; `cargo test` runs here |
+| `src/rust/src/rapi.rs` | hand-written declarations of R's public C API (RNG, Rmath) and of `src/reduce.c`; `protect()` |
+| `src/rust/src/rng.rs` | `with_rng()` / `RRng`: R's own generator from Rust, main thread only |
+| `src/rust/src/reduce.rs` | safe wrappers over the long-double C helper |
+| `src/reduce.c` | long-double sums, means, cumsums, group sums (Rust has no long double) |
+| `src/rust/tidyabm-core/` | engine code with no R dependency; `cargo test` runs here (`sample.rs`, `reduce.rs`) |
+| `R/rust-blocks.R` | `rust_rng_ok()` (verified `RNGkind()`s) and the R-side wrappers with their R fallbacks |
 | `src/rust/Cargo.lock` | pinned crate versions (committed) |
 | `src/rust/vendor.tar.xz`, `vendor-config.toml` | all crates for the offline build (committed) |
 | `src/rust/deny.toml` | licence / advisory policy for cargo-deny (CI) |
@@ -45,8 +50,11 @@ cargo test -p tidyabm-core
 ```
 
 `load_all()` decides whether to recompile from the C files in `src/` only, so after
-editing `.rs` files run `pkgbuild::clean_dll()` (or touch `src/init.c`) before the
-next `load_all()`; otherwise it keeps the old library.
+editing `.rs` files run `touch src/init.c` before the next `load_all()`; otherwise it
+keeps the old library. Avoid `pkgbuild::clean_dll()`: it also deletes the `.a` files
+that cargo's build scripts left under `src/rust/target` (savvy's
+`libunwind_protect.a`), and the next build fails with "could not find native static
+library `unwind_protect`" until `src/rust/target` is removed.
 
 The savvy crate's own tests do not link without an R session; test entry points
 from R (`tests/testthat/test-rust-*.R`) and keep logic in `tidyabm-core`.
@@ -62,9 +70,26 @@ Rules the code follows (PLAN.md section 1):
 * Rust never formats what the user reads. It returns an error message with a prefix
   (`ERROR_PREFIX` / `PANIC_PREFIX` in `tidyabm-core`); `rust_call()` in R raises it
   with `abm_abort()` and a class.
-* Every `unsafe` block has a `// SAFETY:` comment. (Phase 1 has none.)
-* No code copied or ported from R's sources (GPL) until the licensing question for
-  the RNG/math port is settled (see PLAN.md).
+* Every `unsafe` block has a `// SAFETY:` comment.
+* **No code copied or ported from R's sources** (GPL; decision D13, the package is
+  MIT). R's generator and math are reached only through R's public C API
+  (`GetRNGstate`/`PutRNGstate`, `unif_rand`, `norm_rand`, `exp_rand`,
+  `R_unif_index`, the Rmath `Rf_r*` functions, `R_pow`), declared by hand in
+  `rapi.rs`. Behaviour that is not in the API (the long-double sums, mean's second
+  pass, `sample.int()`'s algorithms) is written from R's documentation and pinned
+  down by differential tests against R, never by reading R's C sources. Where
+  neither works (weighted `sample()`, R >= 4.5's `exp`/`log` wrappers), the R path
+  is used.
+* R's RNG only inside `rng::with_rng()`: it loads the state with `GetRNGstate()`,
+  hands out the `!Send` token `RRng`, and writes the state back with
+  `PutRNGstate()` on every exit (return, error, panic). Never draw on a worker.
+* Any call that may raise an R error or warning (`GetRNGstate`, `PutRNGstate`,
+  Rmath functions, `R_pow`, which warns for huge exponents) goes through
+  `rapi::protect()`: a warning turns into a longjmp under `options(warn = 2)` or an
+  exiting `tryCatch(warning = )`, and a longjmp must never cross Rust frames.
+* The Rust path draws only under the `RNGkind()`s the tests verified
+  (`rust_rng_ok()`); every other kind, and every parameter for which R would warn,
+  takes R's own function.
 
 ## Vendoring (offline builds)
 

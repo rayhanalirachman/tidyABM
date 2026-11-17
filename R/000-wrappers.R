@@ -37,11 +37,36 @@ NULL
   stop(class, " cannot be modified", call. = FALSE)
 }
 
+#' `runif(n) < p` from R's generator; `p` has length 1 or `n`.
+#' @noRd
+`rs_bernoulli` <- function(`n`, `p`) {
+  .Call(savvy_rs_bernoulli__impl, `n`, `p`)
+}
+
 #' Copy a double vector through Rust; the bits come back unchanged (NA and NaN
 #' payloads included).
 #' @noRd
 `rs_copy_doubles` <- function(`x`) {
   .Call(savvy_rs_copy_doubles__impl, `x`)
+}
+
+#' `n` draws from R's generator, through R's C API.
+#'
+#' `kind`: `"unif"`, `"norm"`, `"exp"` (`unif_rand`, `norm_rand`, `exp_rand`: what
+#' `runif(n)`, `rnorm(n)`, `rexp(n)` draw); `"index"` (`R_unif_index(a)`, values in
+#' `0..a`); `"runif"` (min `a`, max `b`), `"rnorm"`, `"rlnorm"` (mean / sd `a`, `b`),
+#' `"rexp"` (rate `a`), `"rpois"` (lambda `a`), `"rbinom"` (size `a`, prob `b`), each
+#' R's own Rmath function. Returns `NULL` (decline) for parameters outside the
+#' finite, valid range, where R would warn or return `NaN`: the caller then uses R.
+#' @noRd
+`rs_draw` <- function(`kind`, `n`, `a`, `b`) {
+  .Call(savvy_rs_draw__impl, `kind`, `n`, `a`, `b`)
+}
+
+#' Per-group sums, group `k` summed like `sum(x[g == k], na.rm = na_rm)`.
+#' @noRd
+`rs_group_sum` <- function(`x`, `g`, `ngroups`, `na_rm`) {
+  .Call(savvy_rs_group_sum__impl, `x`, `g`, `ngroups`, `na_rm`)
 }
 
 #' Facts about the compiled Rust engine.
@@ -56,6 +81,30 @@ NULL
   invisible(.Call(savvy_rs_noop__impl))
 }
 
+#' R's exported `R_pow(x, y)` element by element (what R's `^` computes, also for
+#' integer exponents; `R_pow_di()` is not, so it is not used); `y` has length 1 or
+#' `length(x)`. R's own warnings (huge exponents) are raised as R raises them.
+#' @noRd
+`rs_pow` <- function(`x`, `y`) {
+  .Call(savvy_rs_pow__impl, `x`, `y`)
+}
+
+#' A reduction with R's order, accumulator and NA rules: `op` is one of `"sum"`,
+#' `"mean"`, `"cumsum"`, `"max"`, `"min"`, `"any"`, `"all"`, `x` a double, integer
+#' or logical vector without attributes. Returns `NULL` (decline) where R would
+#' warn or the type is not covered (integer overflow, extremes of an empty
+#' vector, `any()` of a non-logical vector, ...): the caller then uses R.
+#' @noRd
+`rs_reduce` <- function(`op`, `x`, `na_rm`) {
+  .Call(savvy_rs_reduce__impl, `op`, `x`, `na_rm`)
+}
+
+#' `sample.int(n, size, replace)` from R's generator (`R_unif_index`).
+#' @noRd
+`rs_sample_int` <- function(`n`, `size`, `replace`) {
+  .Call(savvy_rs_sample_int__impl, `n`, `size`, `replace`)
+}
+
 #' Return a typed Rust error (test helper for the error path).
 #' @noRd
 `rs_test_error` <- function(`msg`) {
@@ -66,6 +115,13 @@ NULL
 #' @noRd
 `rs_test_panic` <- function(`msg`, `worker`) {
   invisible(.Call(savvy_rs_test_panic__impl, `msg`, `worker`))
+}
+
+#' Draw `n` uniforms from R's generator, then fail with a typed error (`how =
+#' "error"`) or a panic (`"panic"`): tests that `.Random.seed` is written back.
+#' @noRd
+`rs_test_rng_fail` <- function(`n`, `how`) {
+  invisible(.Call(savvy_rs_test_rng_fail__impl, `n`, `how`))
 }
 
 

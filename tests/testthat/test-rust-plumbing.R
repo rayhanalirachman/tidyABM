@@ -35,7 +35,8 @@ test_that("abm_run() checks the engine option and runs the R engine", {
 test_that("the Rust library is loaded and answers", {
   info <- rust_info()
   expect_type(info, "character")
-  expect_named(info, c("version", "target_arch", "target_os", "panic"))
+  expect_named(info, c("version", "target_arch", "target_os", "panic", "long_double_bytes"))
+  expect_match(info[["long_double_bytes"]], "^(8|10|12|16)$")
   expect_match(info[["version"]], "^[0-9]+\\.[0-9]+\\.[0-9]+$")
   expect_identical(info[["panic"]], "unwind")
   expect_null(rs_noop())

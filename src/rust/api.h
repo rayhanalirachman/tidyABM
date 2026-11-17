@@ -1,5 +1,12 @@
+SEXP savvy_rs_bernoulli__ffi(SEXP c_arg__n, SEXP c_arg__p);
 SEXP savvy_rs_copy_doubles__ffi(SEXP c_arg__x);
+SEXP savvy_rs_draw__ffi(SEXP c_arg__kind, SEXP c_arg__n, SEXP c_arg__a, SEXP c_arg__b);
+SEXP savvy_rs_group_sum__ffi(SEXP c_arg__x, SEXP c_arg__g, SEXP c_arg__ngroups, SEXP c_arg__na_rm);
 SEXP savvy_rs_info__ffi(void);
 SEXP savvy_rs_noop__ffi(void);
+SEXP savvy_rs_pow__ffi(SEXP c_arg__x, SEXP c_arg__y);
+SEXP savvy_rs_reduce__ffi(SEXP c_arg__op, SEXP c_arg__x, SEXP c_arg__na_rm);
+SEXP savvy_rs_sample_int__ffi(SEXP c_arg__n, SEXP c_arg__size, SEXP c_arg__replace);
 SEXP savvy_rs_test_error__ffi(SEXP c_arg__msg);
 SEXP savvy_rs_test_panic__ffi(SEXP c_arg__msg, SEXP c_arg__worker);
+SEXP savvy_rs_test_rng_fail__ffi(SEXP c_arg__n, SEXP c_arg__how);

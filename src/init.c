@@ -39,8 +39,23 @@ SEXP handle_result(SEXP res_) {
     return (SEXP)res;
 }
 
+SEXP savvy_rs_bernoulli__impl(SEXP c_arg__n, SEXP c_arg__p) {
+    SEXP res = savvy_rs_bernoulli__ffi(c_arg__n, c_arg__p);
+    return handle_result(res);
+}
+
 SEXP savvy_rs_copy_doubles__impl(SEXP c_arg__x) {
     SEXP res = savvy_rs_copy_doubles__ffi(c_arg__x);
+    return handle_result(res);
+}
+
+SEXP savvy_rs_draw__impl(SEXP c_arg__kind, SEXP c_arg__n, SEXP c_arg__a, SEXP c_arg__b) {
+    SEXP res = savvy_rs_draw__ffi(c_arg__kind, c_arg__n, c_arg__a, c_arg__b);
+    return handle_result(res);
+}
+
+SEXP savvy_rs_group_sum__impl(SEXP c_arg__x, SEXP c_arg__g, SEXP c_arg__ngroups, SEXP c_arg__na_rm) {
+    SEXP res = savvy_rs_group_sum__ffi(c_arg__x, c_arg__g, c_arg__ngroups, c_arg__na_rm);
     return handle_result(res);
 }
 
@@ -54,6 +69,21 @@ SEXP savvy_rs_noop__impl(void) {
     return handle_result(res);
 }
 
+SEXP savvy_rs_pow__impl(SEXP c_arg__x, SEXP c_arg__y) {
+    SEXP res = savvy_rs_pow__ffi(c_arg__x, c_arg__y);
+    return handle_result(res);
+}
+
+SEXP savvy_rs_reduce__impl(SEXP c_arg__op, SEXP c_arg__x, SEXP c_arg__na_rm) {
+    SEXP res = savvy_rs_reduce__ffi(c_arg__op, c_arg__x, c_arg__na_rm);
+    return handle_result(res);
+}
+
+SEXP savvy_rs_sample_int__impl(SEXP c_arg__n, SEXP c_arg__size, SEXP c_arg__replace) {
+    SEXP res = savvy_rs_sample_int__ffi(c_arg__n, c_arg__size, c_arg__replace);
+    return handle_result(res);
+}
+
 SEXP savvy_rs_test_error__impl(SEXP c_arg__msg) {
     SEXP res = savvy_rs_test_error__ffi(c_arg__msg);
     return handle_result(res);
@@ -64,13 +94,25 @@ SEXP savvy_rs_test_panic__impl(SEXP c_arg__msg, SEXP c_arg__worker) {
     return handle_result(res);
 }
 
+SEXP savvy_rs_test_rng_fail__impl(SEXP c_arg__n, SEXP c_arg__how) {
+    SEXP res = savvy_rs_test_rng_fail__ffi(c_arg__n, c_arg__how);
+    return handle_result(res);
+}
+
 
 static const R_CallMethodDef CallEntries[] = {
+    {"savvy_rs_bernoulli__impl", (DL_FUNC) &savvy_rs_bernoulli__impl, 2},
     {"savvy_rs_copy_doubles__impl", (DL_FUNC) &savvy_rs_copy_doubles__impl, 1},
+    {"savvy_rs_draw__impl", (DL_FUNC) &savvy_rs_draw__impl, 4},
+    {"savvy_rs_group_sum__impl", (DL_FUNC) &savvy_rs_group_sum__impl, 4},
     {"savvy_rs_info__impl", (DL_FUNC) &savvy_rs_info__impl, 0},
     {"savvy_rs_noop__impl", (DL_FUNC) &savvy_rs_noop__impl, 0},
+    {"savvy_rs_pow__impl", (DL_FUNC) &savvy_rs_pow__impl, 2},
+    {"savvy_rs_reduce__impl", (DL_FUNC) &savvy_rs_reduce__impl, 3},
+    {"savvy_rs_sample_int__impl", (DL_FUNC) &savvy_rs_sample_int__impl, 3},
     {"savvy_rs_test_error__impl", (DL_FUNC) &savvy_rs_test_error__impl, 1},
     {"savvy_rs_test_panic__impl", (DL_FUNC) &savvy_rs_test_panic__impl, 2},
+    {"savvy_rs_test_rng_fail__impl", (DL_FUNC) &savvy_rs_test_rng_fail__impl, 2},
     {NULL, NULL, 0}
 };
 

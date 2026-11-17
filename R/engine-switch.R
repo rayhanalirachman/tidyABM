@@ -57,7 +57,8 @@ rust_call <- function(expr, call = rlang::caller_env()) {
 #' Facts about the compiled Rust library
 #'
 #' @return A named character vector: `version` (the Rust engine's crate version),
-#'   `target_arch`, `target_os` and `panic` (the panic strategy, `"unwind"` in
-#'   every build).
+#'   `target_arch`, `target_os`, `panic` (the panic strategy, `"unwind"` in
+#'   every build) and `long_double_bytes` (`sizeof(long double)` of the C compiler,
+#'   8 where R's sums accumulate in a plain double).
 #' @noRd
 rust_info <- function() rust_call(rs_info())

@@ -124,3 +124,31 @@ test_that("rowsum aggregates honour a literal na.rm = TRUE", {
   expect_false(r$a1[5])
   expect_true(r$l1[5])
 })
+
+test_that("binding only the columns a step names changes no answer", {
+  m <- abm_setup(agents = list(a = abm_agents(n = 3, x = c(1, 2, 3), y = 0L, z = 0L),
+                               b = abm_agents(n = 4, x = c(4, 5, 6, 7), w = 0)),
+                 globals = list(g1 = 0, g2 = 0), seed = 1)
+  full <- bind_groups(m$groups)
+  expect_identical(bind_groups(m$groups, "x"), full[c(".id", ".group", "x")])
+  # a formula that can reach a column without naming it binds everything
+  expect_null(read_vars(list(rlang::quo(.data[["x"]]))))
+  expect_null(read_vars(list(rlang::quo(get("x")))))
+  expect_setequal(read_vars(list(NULL, rlang::quo(partner_x + own_y))),
+                  c("+", "partner_x", "own_y", "x", "y"))
+
+  go <- abm_go(
+    abm_global(g1 ~ sum(x[.group == "b"]), g2 ~ sum(.data[["x"]][.group == "b"])),
+    abm_match(pair = "one_of", eligible = .group == "a", among = .group == "b"),
+    # population scope: one reads the pairing by name, one by string, one not at all
+    abm_rules(y ~ .partner, .scope = "population"),
+    abm_rules(z ~ .data[[".partner"]], .scope = "population"),
+    abm_rules(w ~ x + g1, .scope = "population"))
+  r <- abm_run(m, go, ticks = 1)
+  r <- r[r$tick == 1, ]
+  expect_identical(attr(r, "globals")$g1, attr(r, "globals")$g2)
+  expect_equal(attr(r, "globals")$g1[2], 22)
+  expect_identical(r$y, r$z)
+  expect_true(all(r$y[r$.group == "a"] %in% r$.id[r$.group == "b"]))
+  expect_equal(r$w[r$.group == "b"], 4:7 + 22)
+})

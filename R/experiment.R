@@ -21,6 +21,20 @@ check_params <- function(params, model, call = rlang::caller_env()) {
       class = "tidyABM_bad_params", call = call
     )
   }
+  if (is.function(model)) {
+    # a world-building function takes its parameters as arguments, so any
+    # argument is a parameter -- `n`, `degree` and `dims` included
+    args <- names(formals(model))
+    unknown <- if ("..." %in% args) character() else setdiff(names(params), args)
+    if (length(unknown)) {
+      abm_abort(
+        c("{.arg params} names must be arguments of the function {.arg model}.",
+          "x" = "{.field {unknown}} {?is/are} not."),
+        class = "tidyABM_bad_params", call = call
+      )
+    }
+    return(params)
+  }
   unknown <- setdiff(names(params), names(model$globals))
   if (length(unknown)) {
     abm_abort(
@@ -39,7 +53,7 @@ check_params <- function(params, model, call = rlang::caller_env()) {
 #'
 #' A bare vector sweeps, one run per element. A global that is itself a vector --
 #' a payoff matrix, a table of prices -- is held fixed by wrapping it in a
-#' `list()`, which is the same rule `global_row()` uses when it writes a
+#' `list()`, which is the same rule `global_cells()` uses when it writes a
 #' non-scalar global into the log.
 #' @noRd
 param_values <- function(x) if (is.list(x)) x else as.list(x)
@@ -77,14 +91,49 @@ apply_params <- function(model, values) {
   model
 }
 
+#' The world one run starts from, and the seed the run itself uses
+#'
+#' A world is handed over as it is, with the run's parameters written into its
+#' globals. A function is called with them instead, under the run's seed, so the
+#' world it builds is drawn fresh for that run. The run then gets a seed taken
+#' from the same stream *after* the world, not the same seed again: restarting
+#' the stream would make a rule's first `runif(n())` repeat the setup's, and a
+#' column drawn at setup would correlate with a draw made in the run.
+#' @noRd
+build_run <- function(model, values, seed) {
+  if (!is.function(model)) {
+    return(list(model = apply_params(model, values), seed = seed))
+  }
+  if (!is.null(seed)) local_seed(seed)
+  built <- do.call(model, values)
+  if (!inherits(built, "abm_model")) {
+    abm_abort(
+      c("{.arg model} is a function, so it must return an {.cls abm_model}.",
+        "i" = "Build it with {.fn abm_setup}."),
+      class = "tidyABM_bad_model"
+    )
+  }
+  list(model = built,
+       seed = if (!is.null(seed)) sample.int(.Machine$integer.max, 1L))
+}
+
 #' One row identifying a run: `.run`, `.rep` and the parameters it used
 #' @noRd
 run_meta <- function(spec) {
-  # a parameter may be a vector -- the same reason `global_row()` list-wraps a
+  # a parameter may be a vector -- the same reason `global_cells()` list-wraps a
   # non-scalar global, and the same treatment
   vals <- lapply(spec$values, function(v) {
     if (is.null(dim(v)) && length(v) == 1L) v else list(v)
   })
+  # bare cells under ordinary names are a one-row tibble as they stand; the
+  # rest goes through tibble()'s checks and bind_cols()' name repair
+  nms <- names(vals)
+  if (all(vapply(vals, function(v) is.list(v) || (is.atomic(v) && !is.null(v) &&
+                                                  is.null(attributes(v))), NA)) &&
+      all(nzchar(nms)) && !anyDuplicated(nms) && !any(nms %in% c(".run", ".rep"))) {
+    return(tibble::new_tibble(c(list(.run = spec$.run, .rep = spec$.rep), vals),
+                              nrow = 1L))
+  }
   meta <- tibble::tibble(.run = spec$.run, .rep = spec$.rep)
   if (length(vals)) meta <- dplyr::bind_cols(meta, tibble::as_tibble(vals))
   meta
@@ -98,8 +147,10 @@ run_meta <- function(spec) {
 #' needing its own bookkeeping.
 #' @noRd
 run_seeds <- function(seed, n) {
-  if (is.null(seed)) return(vector("list", n))
   if (n == 1L) return(list(seed))
+  # no seed: each run still gets its own, drawn from the caller's stream, so
+  # parallel workers never share one stream and `cores` cannot change results
+  if (is.null(seed)) return(as.list(sample.int(.Machine$integer.max, n)))
   old <- if (exists(".Random.seed", .GlobalEnv)) get(".Random.seed", .GlobalEnv) else NULL
   set.seed(seed)
   s <- sample.int(.Machine$integer.max, n)
@@ -162,8 +213,8 @@ eval_over_population <- function(quo, combined, globals) {
   val <- NULL
   if (!needs_mask(rlang::quo_get_expr(quo))) {
     val <- rlang::eval_tidy(
-      rlang::quo_set_env(quo, abm_eval_env(quo, globals, n = nrow(combined))),
-      data = combined)
+      rlang::quo_get_expr(quo),
+      data = combined, env = abm_eval_env(quo, globals, n = nrow(combined)))
   }
   if (length(val) != 1L) {
     quo <- rlang::quo_set_env(
@@ -173,15 +224,58 @@ eval_over_population <- function(quo, combined, globals) {
   val
 }
 
+#' A function of a formula's name giving its value over the population, as
+#' [eval_over_population()] gives it
+#'
+#' With a `plan` (an environment, kept for the run) and several groups, a
+#' formula's group aggregates are evaluated over their group alone (see
+#' [narrow_plan()]); the stack of everything the formulas read is built only
+#' if some formula still needs it.
+#' @noRd
+population_evaluator <- function(quos, state, reads, plan = NULL) {
+  groups <- state$groups
+  np <- NULL
+  if (!is.null(plan) && length(groups) > 1L &&
+      (plan$narrowable %||% (plan$narrowable <- narrowable(quos)))) {
+    key <- schema_key(state)
+    if (!identical(plan$key, key)) {
+      plan$key <- key
+      plan$val <- narrow_plan(quos, groups)
+    }
+    np <- plan$val
+  }
+  full <- NULL
+  stack <- function() {
+    if (is.null(full)) full <<- bind_groups(groups, reads, ids = FALSE)
+    full
+  }
+  if (is.null(np)) {
+    stack()
+    return(function(nm) eval_over_population(quos[[nm]], full, state$globals))
+  }
+  n <- sum(vapply(groups, vctrs::vec_size, 0L))
+  rest <- if (length(np$rest)) bind_groups(groups, np$rest, ids = FALSE)
+  names(np$rules) <- names(quos)
+  function(nm) {
+    p <- np$rules[[nm]]
+    val <- NULL
+    if (!is.null(p)) {
+      q <- quos[[nm]]
+      val <- narrow_eval(p, q, groups, rest, abm_eval_env(q, state$globals, n = n), n)
+    }
+    if (length(val) == 1L) val else eval_over_population(quos[[nm]], stack(), state$globals)
+  }
+}
+
 #' One tick's measures, as a single row
 #'
 #' The result is written to the log and nowhere else: no step can read a
 #' measure back, which is the whole reason it is not an `abm_global()`.
 #' @noRd
-measure_row <- function(quos, state, t) {
-  combined <- bind_groups(state$groups)
+measure_row <- function(quos, state, t, reads = read_vars(quos), plan = NULL) {
+  pop <- population_evaluator(quos, state, reads, plan)
   vals <- lapply(names(quos), function(nm) {
-    val <- eval_over_population(quos[[nm]], combined, state$globals)
+    val <- pop(nm)
     if (length(val) != 1L) {
       abm_abort(
         c("A measure must collapse to a single value.",
@@ -203,11 +297,12 @@ measure_row <- function(quos, state, t) {
 #' and the check's name on the condition so a caller can pick them up.
 #' `NA` fails, because a ledger that has gone `NA` is not consistent.
 #' @noRd
-check_row <- function(quos, state, t) {
-  combined <- bind_groups(state$groups)
+check_row <- function(quos, state, t, reads = read_vars(quos), plan = NULL) {
+  pop <- population_evaluator(quos, state, reads, plan)
   for (nm in names(quos)) {
-    ok <- eval_over_population(quos[[nm]], combined, state$globals)
-    expr <- deparse1(rlang::quo_get_expr(quos[[nm]]))
+    ok <- pop(nm)
+    # only a failing check is deparsed
+    delayedAssign("expr", deparse1(rlang::quo_get_expr(quos[[nm]])))
     if (!is.logical(ok) || length(ok) != 1L) {
       abm_abort(
         c("A check must return a single {.code TRUE} or {.code FALSE}.",

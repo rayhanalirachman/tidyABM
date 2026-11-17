@@ -153,7 +153,10 @@ check_stale_draws <- function(step, state, call = rlang::caller_env()) {
 #' @noRd
 drawn_names <- function(edges) {
   if (is.null(edges)) return(character())
-  sub("^\\.draw_", "", grep("^\\.draw_", names(edges), value = TRUE))
+  nms <- names(edges)
+  # asked on every tick, and nearly always answered by this
+  if (!any(startsWith(nms, ".draw_"))) return(character())
+  sub("^\\.draw_", "", grep("^\\.draw_", nms, value = TRUE))
 }
 
 #' Hand each side of an edge the values attached to it

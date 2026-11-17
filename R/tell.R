@@ -121,15 +121,15 @@ abm_tell <- function(..., to, when = NULL,
 
 #' Collapse several messages to the same recipient into one value
 #' @noRd
-resolve_messages <- function(value, to, resolve, target,
+resolve_messages <- function(value, to, resolve, target, first, grp,
                              call = rlang::caller_env()) {
+  # `first` is where each recipient is first mentioned, in that order (`NULL`
+  # when nobody gets two messages); `grp()` gives `vctrs::vec_group_loc(to)`,
+  # each recipient's messages, worked out on the first ask
   if (resolve == "collect") {
-    keys <- unique(to)
-    idx <- split(seq_along(to), factor(to, levels = keys))
-    return(list(to = keys,
-                value = I(unname(lapply(idx, function(i) unname(value[i]))))))
+    return(I(unname(lapply(grp()$loc, function(i) unname(value[i])))))
   }
-  if (!anyDuplicated(to)) return(list(to = to, value = value))
+  if (is.null(first)) return(value)
   if (resolve == "error") {
     dup <- to[duplicated(to)][[1]]
     abm_abort(
@@ -139,30 +139,44 @@ resolve_messages <- function(value, to, resolve, target,
       class = "tidyABM_tell_collision", call = call
     )
   }
-  keys <- unique(to)
-  idx <- split(seq_along(to), factor(to, levels = keys))
+  if (resolve == "first") return(unname(value[first]))
+  if (resolve == "last") {
+    at <- which(!duplicated(to, fromLast = TRUE))
+    return(unname(value[at[match(to[first], to[at])]]))
+  }
+  if (resolve == "sum" && sum_is_rowsum(value)) {
+    return(as.vector(rowsum(value, to, reorder = FALSE)))
+  }
+  idx <- grp()$loc
   out <- switch(
     resolve,
-    first = value[vapply(idx, function(i) i[[1]], integer(1))],
-    last  = value[vapply(idx, function(i) i[[length(i)]], integer(1))],
     sum   = vapply(idx, function(i) sum(value[i]), numeric(1)),
     mean  = vapply(idx, function(i) mean(value[i]), numeric(1)),
     max   = vapply(idx, function(i) max(value[i]), numeric(1)),
     min   = vapply(idx, function(i) min(value[i]), numeric(1))
   )
-  list(to = keys, value = unname(out))
+  unname(out)
 }
 
 #' @noRd
 run_tell <- function(step, state) {
-  combined <- bind_groups(state$groups)
+  quos <- planned(step, "quos", c(list(step$when, step$to_quo, step$order),
+                                  lapply(step$rules, `[[`, "quo")))
+  combined <- bind_groups(state$groups, planned(step, "reads", read_vars(quos)))
   if (nrow(combined) == 0L) return(state)
-  aug <- augment_group(combined, state$match, combined, state$relations,
-                       partner = partner_vars(c(list(step$when, step$to_quo, step$order),
-                                                lapply(step$rules, `[[`, "quo"))))
+  reads <- planned(step, "reads", read_vars(quos))
+  # only the match columns the step reads, when it is known what it reads
+  mcols <- if (!is.null(reads) && !length(state$relations)) {
+    planned(step, "mcols", intersect(c(".group_id", ".role", ".partner"), reads))
+  }
+  # with no match standing and none of its columns read, there is nothing to add
+  aug <- if (is.null(state$match) && !is.null(mcols) && !length(mcols)) combined else
+    augment_group(combined, state$match, combined, state$relations,
+                  partner = planned(step, "pvars", partner_vars(quos)),
+                  match_cols = mcols)
 
   speaks <- eval_condition(step$when, aug, state$globals)
-  speaks[is.na(speaks)] <- FALSE
+  if (anyNA(speaks)) speaks[is.na(speaks)] <- FALSE
   if (!any(speaks)) return(state)
 
   # who each sender is addressing: one row per (sender, recipient)
@@ -179,6 +193,7 @@ run_tell <- function(step, state) {
              drop = FALSE]
     sender_row <- match(nb$.id, aug$.id)
     recipient  <- nb$.neighbour
+    recipient_row <- match(recipient, combined$.id)
   } else {
     tgt <- eval_rule(list(quo = step$to_quo), aug, state$globals,
                      grouped = FALSE)
@@ -198,7 +213,23 @@ run_tell <- function(step, state) {
       sender_row <- which(keep)
       recipient  <- as.integer(tgt[keep])
     }
-    unknown <- setdiff(recipient, combined$.id)
+    ids <- combined$.id
+    n_ids <- length(ids)
+    # ids 1..N: a recipient exists exactly when it is in range
+    dense <- n_ids > 0L && is.integer(ids) && is.integer(recipient) &&
+      isTRUE(ids[[1]] == 1L) && isTRUE(ids[[n_ids]] == n_ids) &&
+      isFALSE(is.unsorted(ids, strictly = TRUE))
+    # each recipient's row on the stack, which also says who is not there
+    recipient_row <- if (dense) recipient else match(recipient, ids)
+    unknown <- if (dense) {
+      # one pass for the usual answer, nobody unknown
+      if (anyNA(recipient) || (length(recipient) &&
+          (min(recipient) < 1L || max(recipient) > n_ids))) {
+        recipient[is.na(recipient) | recipient < 1L | recipient > n_ids]
+      }
+    } else {
+      recipient[is.na(recipient_row)]
+    }
     if (length(unknown)) {
       abm_abort(
         c("{.fn abm_tell} was told to write to an agent that does not exist.",
@@ -221,18 +252,33 @@ run_tell <- function(step, state) {
     ord <- order(key[keep])
     sender_row <- sender_row[keep][ord]
     recipient  <- recipient[keep][ord]
+    recipient_row <- recipient_row[keep][ord]
+  }
+  # the stack is the groups in order: where each one's rows end on it
+  ends <- cumsum(vapply(state$groups, vctrs::vec_size, 0L))
+  # the recipients in order of first mention, worked out once for every rule,
+  # and each one's row on the stack
+  first <- if (anyDuplicated(recipient) || step$resolve == "collect") {
+    which(!duplicated(recipient))
+  }
+  at <- if (is.null(first)) recipient_row else recipient_row[first]
+  grouped <- NULL
+  grp <- function() {
+    if (is.null(grouped)) grouped <<- vctrs::vec_group_loc(recipient)
+    grouped
   }
 
   for (r in step$rules) {
     value <- eval_rule(r, aug, state$globals, grouped = FALSE)
     if (length(value) == 1L) value <- rep(value, nrow(aug))
     msg <- resolve_messages(value[sender_row], recipient, step$resolve,
-                            r$target)
-    for (nm in names(state$groups)) {
+                            r$target, first, grp)
+    for (j in seq_along(state$groups)) {
+      nm <- names(state$groups)[[j]]
+      start <- if (j == 1L) 0L else ends[[j - 1L]]
+      sel <- at > start & at <= ends[[j]]
+      if (!any(sel)) next
       g <- state$groups[[nm]]
-      if (nrow(g) == 0L) next
-      hit <- match(g$.id, msg$to)
-      if (all(is.na(hit))) next
       if (!r$target %in% names(g)) {
         abm_abort(
           c("{.fn abm_tell} can only write to a column the recipient already has.",
@@ -241,10 +287,9 @@ run_tell <- function(step, state) {
           class = "tidyABM_tell_new_column"
         )
       }
-      rows <- !is.na(hit)
       g <- assign_rule(g, r$target,
-                       replace_at(g[[r$target]], rows, msg$value[hit[rows]]),
-                       rep(TRUE, nrow(g)))
+                       replace_at(g[[r$target]], at[sel] - start, msg[sel]),
+                       TRUE)
       state$groups[[nm]] <- g
     }
   }

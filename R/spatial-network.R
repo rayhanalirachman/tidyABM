@@ -349,15 +349,15 @@ sync_cell_coords <- function(state) {
     }
     if (!is.integer(cell)) {
       cell <- as.integer(cell)
-      g$.cell <- cell
+      g <- set_col(g, ".cell", cell)
     }
     # this runs after every step that can write a column, so it writes only
     # when something has actually moved
     x <- lat$x[cell]
-    if (!identical(x, g$.x)) g$.x <- x
+    if (!identical(x, g$.x)) g <- set_col(g, ".x", x)
     if (!is.null(lat$y)) {
       y <- lat$y[cell]
-      if (!identical(y, g$.y)) g$.y <- y
+      if (!identical(y, g$.y)) g <- set_col(g, ".y", y)
     }
     state$groups[[nm]] <- g
   }
@@ -591,7 +591,7 @@ equijoin_key <- function(within_expr) {
 #' @noRd
 equijoin_view <- function(step, combined, globals, relations = NULL,
                           vars = NULL) {
-  key <- equijoin_key(rlang::quo_get_expr(step$within))
+  key <- planned(step, "equijoin", equijoin_key(rlang::quo_get_expr(step$within)))
   if (is.null(key)) return(NULL)
   if (!key$focal %in% names(combined) || !key$cand %in% names(combined)) {
     return(NULL)

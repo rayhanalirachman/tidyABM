@@ -178,7 +178,7 @@ linked_pairs <- function(step, state) {
 #' A `from`/`to` edge tibble, built without `tibble()`'s per-call overhead
 #' @noRd
 edge_tbl <- function(from, to) {
-  tibble::new_tibble(list(from = from, to = to), nrow = length(from))
+  new_tbl(list(from = from, to = to), length(from))
 }
 
 #' The directed `(me -> target)` pairs a `via =` link step acts on
@@ -449,17 +449,21 @@ pair_view <- function(combined, focal_idx, cand_idx, relations = NULL,
   # are copied into the view, which for a lattice is tens of thousands of
   # rows wide. `NULL` copies every column.
   cols <- names(combined)
-  cand_cols <- if (is.null(vars)) cols else intersect(cols, c(".id", vars))
+  # `%in%` rather than `intersect()`: column names are already distinct, and
+  # since R 4.5 the set operations check their arguments' classes first
+  cand_cols <- if (is.null(vars)) cols else cols[cols %in% c(".id", vars)]
   own_cols <- if (is.null(vars)) cols else
-    intersect(cols, sub("^own_", "", grep("^own_", vars, value = TRUE)))
+    cols[cols %in% sub("^own_", "", vars[startsWith(vars, "own_")])]
+  # sliced a bare column at a time: `[.tbl_df` re-checks the tibble per tick
+  cols <- unclass(combined)
   view <- c(
-    as.list(vctrs::vec_slice(combined[cand_cols], cand_idx)),
-    stats::setNames(as.list(vctrs::vec_slice(combined[own_cols], focal_idx)),
+    lapply(cols[cand_cols], vctrs::vec_slice, cand_idx),
+    stats::setNames(lapply(cols[own_cols], vctrs::vec_slice, focal_idx),
                     sprintf("own_%s", own_cols)),
     list(.of = combined$.id[focal_idx])
   )
   view <- attach_relation_columns(view, relations, view$.of, view$.id)
-  tibble::new_tibble(view, nrow = length(cand_idx))
+  new_tbl(view, length(cand_idx))
 }
 
 #' Evaluate one quosure against a pair view, with the globals in scope
@@ -471,7 +475,7 @@ eval_over_view <- function(quo, view, globals) {
   n <- nrow(view)
   if (!needs_mask(rlang::quo_get_expr(quo))) {
     val <- rlang::eval_tidy(
-      rlang::quo_set_env(quo, abm_eval_env(quo, globals, n = n)), data = view)
+      rlang::quo_get_expr(quo), data = view, env = abm_eval_env(quo, globals, n = n))
     if (length(val) == 1L || length(val) == n) return(val)
   }
   quo <- rlang::quo_set_env(quo, abm_eval_env(quo, globals))
@@ -542,18 +546,23 @@ attribute_view <- function(step, combined, globals, relations = NULL,
 
 #' @noRd
 run_neighbours <- function(step, state) {
-  combined <- bind_groups(state$groups)
+  # only what the rules and `within` read, unless `where` looks along the lattice
+  combined <- bind_groups(state$groups, if (is.null(step$where))
+    planned(step, "reads", read_vars(c(lapply(step$rules, `[[`, "quo"), list(step$within)))))
   if (nrow(combined) == 0L) return(state)
-  vars <- unique(c(unlist(lapply(step$rules, `[[`, "vars"), use.names = FALSE),
-                   if (!is.null(step$within)) all.vars(rlang::quo_get_expr(step$within))))
+  vars <- planned(step, "vars", unique(c(
+    unlist(lapply(step$rules, `[[`, "vars"), use.names = FALSE),
+    if (!is.null(step$within)) all.vars(rlang::quo_get_expr(step$within)))))
 
+  one <- NULL
   if (!is.null(step$where)) {
     # L1: the single lattice neighbour in a named direction
     view <- directional_view(step, combined, state)
   } else if (!is.null(step$within)) {
+    one <- nb_one(step, combined, state)
     # `within = .R` walks the relation's rows; a `<col> == own_<col>` condition
     # is a join; anything else is the cross product
-    view <- relation_view(step, combined, state$relations) %||%
+    if (is.null(one)) view <- relation_view(step, combined, state$relations) %||%
       equijoin_view(step, combined, state$globals, state$relations, vars) %||%
       attribute_view(step, combined, state$globals, state$relations, vars)
   } else {
@@ -570,10 +579,14 @@ run_neighbours <- function(step, state) {
     if (!identical(state$nb_cache$edges, state$edges)) {
       state$nb_cache <- list(edges = state$edges, nb = neighbour_table(state$edges))
     }
+    fast <- neighbour_fast(step, combined, state)
+    if (!is.null(fast)) return(fast)
     view <- network_view(combined, state, vars)
   }
 
-  for (r in step$rules) {
+  counts <- planned(step, "counts", vapply(step$rules, function(r) is_bare_count(r$quo), NA))
+  for (i in seq_along(step$rules)) {
+    r <- step$rules[[i]]
     hit <- resolve_relation_name(r$target, state$relations)
     if (!is.null(hit)) {
       abm_abort(
@@ -582,28 +595,356 @@ run_neighbours <- function(step, state) {
         class = "tidyABM_bad_target"
       )
     }
-    quo <- rlang::quo_set_env(r$quo, abm_eval_env(r$quo, state$globals))
-    agg <- neighbour_aggregate(quo, view) %||%
-      dplyr::summarise(dplyr::group_by(view, .data$.of),
-                       .abm_value = !!quo, .groups = "drop")
+    agg <- if (!is.null(one)) list(.of = one$of, .abm_value = one$values[[i]]) else {
+      quo <- rlang::quo_set_env(r$quo, abm_eval_env(r$quo, state$globals))
+      neighbour_aggregate(quo, view) %||%
+        dplyr::summarise(dplyr::group_by(view, .data$.of),
+                         .abm_value = !!quo, .groups = "drop")
+    }
     # An agent with no neighbours contributes no row, so the aggregate has no
     # value for it and the agent gets `NA`. That is right for `mean()`, whose
     # value over nobody is genuinely unknown, and for a `sum()` used as a
     # lookup, where `NA` is how a model asks whether the neighbour exists at
     # all. It is wrong for `n()` alone: the size of a neighbourhood is never
     # unknown, and the count of nobody is nought.
-    count_rule <- is_bare_count(r$quo) && is.null(step$where)
+    count_rule <- counts[[i]] && is.null(step$where)
+    start <- 0L
     for (nm in names(state$groups)) {
       g <- state$groups[[nm]]
-      if (nrow(g) == 0L) next
-      idx <- match(g$.id, agg$.of)
+      ng <- vctrs::vec_size(g)
+      start <- start + ng
+      if (ng == 0L) next
+      idx <- if (is.null(one)) match(g$.id, agg$.of) else {
+        # the stack is the groups in order, so a focal agent's row says
+        # where it is in its group: no lookup by id
+        at <- one$rows - (start - ng)
+        sel <- at >= 1L & at <= ng
+        out <- rep(NA_integer_, ng)
+        out[at[sel]] <- which(sel)
+        out
+      }
       value <- agg$.abm_value[idx]
       if (count_rule && anyNA(idx)) value[is.na(idx)] <- 0L
-      g[[r$target]] <- value
-      state$groups[[nm]] <- g
+      state$groups[[nm]] <- assign_rule(g, r$target, value, TRUE)
     }
   }
   state
+}
+
+#' `abm_neighbours()` over a join in which nobody meets more than one candidate
+#'
+#' `within = .id == own_.cell & <condition>` -- a mover reading the cell it
+#' stands on -- joins on a column whose values are distinct, so each focal
+#' agent's neighbourhood is one candidate or none. When the rest of `within`
+#' and every rule's argument are comparisons and logic over the candidates'
+#' own bare columns (they can neither warn nor draw), they are evaluated once
+#' over the population and read off at each focal agent's candidate, and an
+#' `any()`, `all()` or `sum()` of one value is that value (`0 + x` for a
+#' double, as `rowsum()` makes it); `n()` is one. Returns `list(of, values)`,
+#' or `NULL` for anything else -- including a neighbourhood that comes out
+#' empty, or any error -- which then takes the general path.
+#' @noRd
+nb_one <- function(step, combined, state) {
+  if (length(state$relations)) return(NULL)
+  key <- planned(step, "equijoin", equijoin_key(rlang::quo_get_expr(step$within)))
+  if (is.null(key)) return(NULL)
+  shape <- planned(step, "nb_one", nb_one_shape(step, key))
+  if (is.null(shape)) return(NULL)
+  cols <- names(combined)
+  if (!key$focal %in% cols || !key$cand %in% cols || !all(shape$vars %in% cols)) {
+    return(NULL)
+  }
+  for (v in shape$vars) {
+    x <- combined[[v]]
+    if (!is.atomic(x) || !is.null(attributes(x))) return(NULL)
+  }
+  cand_key <- combined[[key$cand]]
+  if (key$cand != ".id" && anyDuplicated(cand_key[!is.na(cand_key)])) return(NULL)
+  cand_idx <- match(combined[[key$focal]], cand_key)
+  focal_idx <- which(!is.na(cand_idx))
+  if (!length(focal_idx)) return(NULL)
+  cand_idx <- cand_idx[focal_idx]
+  n <- nrow(combined)
+  env <- abm_eval_env(step$within, state$globals, n = n)
+  if (!standard_fns_in(shape$heads, env)) return(NULL)
+  ev <- function(e) {
+    x <- tryCatch(eval(e, combined, env), error = function(err) NULL)
+    if (length(x) == 1L) x <- rep(x, n)
+    if (length(x) != n || is.object(x)) NULL else x
+  }
+  if (!is.null(shape$rest)) {
+    keep <- ev(shape$rest)
+    if (!is.logical(keep)) return(NULL)
+    keep <- keep[cand_idx]
+    keep[is.na(keep)] <- FALSE
+    focal_idx <- focal_idx[keep]
+    cand_idx <- cand_idx[keep]
+    if (!length(focal_idx)) return(NULL)
+  }
+  values <- vector("list", length(shape$rules))
+  for (i in seq_along(shape$rules)) {
+    r <- shape$rules[[i]]
+    if (r$fn == "n") {
+      values[[i]] <- rep(1L, length(cand_idx))
+      next
+    }
+    x <- ev(r$arg)
+    if (r$fn %in% c("any", "all")) {
+      if (!is.logical(x)) return(NULL)
+      values[[i]] <- x[cand_idx]
+    } else {
+      if (!(is.double(x) || is.integer(x) || is.logical(x))) return(NULL)
+      x <- x[cand_idx]
+      values[[i]] <- if (is.double(x)) 0 + x else as.integer(x)
+    }
+  }
+  list(of = combined$.id[focal_idx], rows = focal_idx, values = values)
+}
+
+#' What [nb_one()] reads off a step's text: the rest of `within` and each
+#' rule as `any()` / `all()` / `sum()` of an argument, or `n()`; `NULL` when
+#' anything is not that shape
+#' @noRd
+nb_one_shape <- function(step, key) {
+  quiet <- function(e) is_elementwise(e, narrow_quiet_fns) &&
+    !any(startsWith(all.vars(e), "own_")) && !".of" %in% all.vars(e)
+  rest <- if (length(key$rest)) Reduce(function(a, b) rlang::call2("&", a, b), key$rest)
+  if (!is.null(rest) && !quiet(rest)) return(NULL)
+  rules <- lapply(step$rules, function(r) {
+    e <- rlang::quo_get_expr(r$quo)
+    if (!rlang::is_call(e) || !rlang::is_symbol(e[[1]]) || !is.null(names(e))) return(NULL)
+    fn <- rlang::as_string(e[[1]])
+    if (fn == "n" && length(e) == 1L) return(list(fn = fn))
+    if (!fn %in% c("any", "all", "sum") || length(e) != 2L || !quiet(e[[2]])) return(NULL)
+    list(fn = fn, arg = e[[2]])
+  })
+  if (!length(rules) || any(vapply(rules, is.null, NA))) return(NULL)
+  exprs <- c(list(rest), lapply(rules, `[[`, "arg"))
+  exprs <- Filter(Negate(is.null), exprs)
+  # every formula written where `within` was, so one scope serves them all
+  env <- rlang::quo_get_env(step$within)
+  if (!all(vapply(step$rules, function(r) identical(rlang::quo_get_env(r$quo), env), NA))) {
+    return(NULL)
+  }
+  heads <- unique(unlist(lapply(exprs, call_heads), use.names = FALSE))
+  if (anyNA(heads)) return(NULL)
+  list(rest = rest, rules = rules,
+       vars = unique(unlist(lapply(exprs, all.vars), use.names = FALSE)),
+       heads = as.character(heads))
+}
+
+#' A network neighbourhood's `sum()` / `mean()` without the pair view
+#'
+#' The common case -- `mean(x)` over a lattice, every rule `sum(<elementwise>)`
+#' or `mean(<elementwise>)` of a double, the ids the row numbers, no relation,
+#' nothing read from the focal agent or the edge -- evaluates the argument once
+#' over the agents and folds it through a padded neighbour index, kept with
+#' the neighbour table, column by column. That is the addition order
+#' `rowsum()` uses in [neighbour_aggregate()] (view rows in order within each
+#' focal agent, starting from `0`), so the answer is the same bit for bit.
+#' Returns the new `state`, or `NULL` for anything else, which then takes the
+#' general path. Rules in the step all read the population as it was.
+#' @noRd
+neighbour_fast <- function(step, combined, state) {
+  if (length(state$relations)) return(NULL)
+  ids <- combined$.id
+  n <- length(ids)
+  if (!identical(ids, seq_len(n))) return(NULL)
+  shapes <- planned(step, "shapes", lapply(step$rules, function(r) nb_fast_shape(r$quo)))
+  if (any(vapply(shapes, is.null, NA))) return(NULL)
+  drawn <- drawn_names(state$edges)
+  if (length(drawn)) {
+    bad <- c(drawn, paste0(drawn, "_back"))
+    if (any(vapply(shapes, function(s) any(s$vars %in% bad), NA))) return(NULL)
+  }
+  # every argument is evaluated and type-checked before the index is built, so
+  # a rule the fast path cannot take costs no index
+  xs <- vector("list", length(shapes))
+  for (i in seq_along(shapes)) {
+    env <- abm_eval_env(step$rules[[i]]$quo, state$globals)
+    if (!nb_fast_scalars(shapes[[i]], names(combined), env)) return(NULL)
+    x <- nb_fast_eval(shapes[[i]]$arg, env, combined)
+    if (length(x) == 1L) x <- rep(x, n)
+    if (is.object(x) || length(x) != n ||
+        !(is.double(x) || is.integer(x) || is.logical(x))) return(NULL)
+    xs[[i]] <- x
+  }
+  ix <- state$nb_cache$ix
+  if (is.null(ix) || ix$n != n) {
+    ix <- nb_index(state$nb_cache$nb, n)
+    state$nb_cache$ix <- ix
+  }
+  if (!ix$ok) return(NULL)
+  vals <- vector("list", length(shapes))
+  for (i in seq_along(shapes)) {
+    x <- xs[[i]]
+    vals[[i]] <- if (is.double(x)) nb_fold(shapes[[i]]$fn, x, ix)
+                 else nb_fold_int(shapes[[i]]$fn, as.integer(x), ix)
+  }
+  for (i in seq_along(shapes)) {
+    for (nm in names(state$groups)) {
+      g <- state$groups[[nm]]
+      if (nrow(g) == 0L) next
+      state$groups[[nm]] <- assign_rule(g, step$rules[[i]]$target, vals[[i]][g$.id], TRUE)
+    }
+  }
+  state
+}
+
+#' `list(fn, arg, vars)` for a rule `sum(<arg>)` / `mean(<arg>)` the fast path
+#' takes, or `NULL`
+#' @noRd
+nb_fast_shape <- function(quo) {
+  expr <- rlang::quo_get_expr(quo)
+  if (!rlang::is_call(expr) || !rlang::is_symbol(expr[[1]]) ||
+      length(expr) != 2L || !is.null(names(expr))) return(NULL)
+  fn <- rlang::as_string(expr[[1]])
+  if (!fn %in% c("sum", "mean")) return(NULL)
+  arg <- expr[[2]]
+  if (!is_elementwise(arg, nb_fast_fns)) return(NULL)
+  vars <- all.vars(arg)
+  if (any(startsWith(vars, "own_")) || ".of" %in% vars) return(NULL)
+  fns <- call_heads(arg)
+  if (anyNA(fns)) return(NULL)
+  list(fn = fn, arg = arg, vars = vars, fns = unique(fns))
+}
+
+#' The function names an expression calls (`base::f` and `dplyr::f` as `f`);
+#' `NA` for a call qualified with any other package or with no name
+#' @noRd
+call_heads <- function(expr) {
+  if (!is.call(expr)) return(character())
+  head <- expr[[1]]
+  own <- if (rlang::is_call(head, "::")) {
+    if (rlang::as_string(head[[2]]) %in% c("base", "dplyr")) rlang::as_string(head[[3]])
+    else NA_character_
+  } else if (!rlang::is_symbol(head)) {
+    NA_character_
+  } else {
+    rlang::as_string(head)
+  }
+  c(own, unlist(lapply(as.list(expr)[-1], call_heads), use.names = FALSE))
+}
+
+#' The argument over the agents; `NULL` on an error or a warning, so the
+#' general path raises it as it always has
+#' @noRd
+nb_fast_eval <- function(arg, env, data) {
+  # a bare column is the column, as the mask would find it first
+  if (is.symbol(arg) && !is.null(x <- .subset2(data, as.character(arg)))) return(x)
+  warned <- FALSE
+  x <- tryCatch(
+    withCallingHandlers(
+      rlang::eval_tidy(rlang::new_quosure(arg, env), data = data),
+      warning = function(w) {
+        warned <<- TRUE
+        invokeRestart("muffleWarning")
+      }),
+    error = function(e) NULL)
+  if (warned) NULL else x
+}
+
+#' Each agent's neighbours as columns of row indices, in view-row order, padded
+#' with `n + 1`. `ok` is `FALSE` when an edge names an agent beyond the `n`
+#' rows or there are no edges.
+#' @noRd
+nb_index <- function(nb, n) {
+  if (!nrow(nb) || max(nb$.id) > n) return(list(n = n, ok = FALSE))
+  o <- order(nb$.id, method = "radix")        # stable: view order within a focal
+  id <- nb$.id[o]
+  cnt <- tabulate(id, n)
+  pos <- sequence(cnt[cnt > 0L])
+  maxd <- max(cnt)
+  k <- matrix(n + 1L, n, maxd)
+  k[cbind(id, pos)] <- nb$.neighbour[o]
+  cols <- lapply(seq_len(maxd), function(j) k[, j])
+  list(n = n, ok = TRUE, cols = cols, pad = lapply(cols, function(j) j > n),
+       cnt = cnt, none = cnt == 0L)
+}
+
+#' Is every name the argument reads a column, or else a single value?
+#'
+#' The general path evaluates the argument over the pair view, so a name that
+#' is neither (a vector global as long as the population, say) means something
+#' else there; and every function it calls must be the one the allowlist means,
+#' not a user's function of the same name.
+#' @noRd
+nb_fast_scalars <- function(shape, cols, env) {
+  for (v in shape$vars[!shape$vars %in% cols]) {
+    val <- get0(v, envir = env, inherits = TRUE)
+    if (is.null(val) || is.function(val) || length(val) != 1L) return(FALSE)
+  }
+  for (f in shape$fns) {
+    fun <- get0(f, envir = env, mode = "function")
+    ok <- identical(fun, get0(f, envir = baseenv(), mode = "function")) ||
+      (f == "==" && identical(fun, group_is)) ||
+      (f %in% c("if_else", "case_when", "coalesce", "between") &&
+         identical(fun, getExportedValue("dplyr", f)))
+    if (!ok) return(FALSE)
+  }
+  TRUE
+}
+
+#' `rowsum()`'s integer `sum()` / `mean()` of `x` over each agent's neighbours
+#'
+#' `rowsum()` adds integers in view-row order and turns a group whose running
+#' sum ever leaves the integer range into `NA` (silently) and keeps it there.
+#' Doubles hold every such partial sum exactly, so they are added as doubles
+#' and checked against the range as they go.
+#' @noRd
+nb_fold_int <- function(fn, x, ix) {
+  xe <- c(as.double(x), 0)
+  big <- .Machine$integer.max
+  m <- suppressWarnings(max(abs(as.double(x)), na.rm = TRUE))
+  track <- is.finite(m) && m * length(ix$cols) > big
+  s <- 0
+  out_of_range <- FALSE
+  for (k in ix$cols) {
+    s <- s + xe[k]
+    if (track) out_of_range <- out_of_range | (!is.na(s) & abs(s) > big)
+  }
+  if (track) s[out_of_range] <- NA
+  s <- as.integer(s)
+  if (fn == "sum") {
+    s[ix$none] <- NA
+    return(s)
+  }
+  out <- s / ix$cnt
+  out[ix$none] <- NA
+  out
+}
+
+#' `rowsum()`'s `sum()` / `mean()` of `x` over each agent's neighbours
+#' @noRd
+nb_fold <- function(fn, x, ix) {
+  xe <- c(x, 0)
+  s <- 0
+  for (k in ix$cols) s <- s + xe[k]
+  # which of `NA` and `NaN` a sum that met both comes out as is down to the
+  # order `rowsum()`'s C loop adds in, not R's `+`: those few are summed by it
+  bad <- which(is.na(s) & !ix$none)
+  if (length(bad)) {
+    idx <- t(do.call(cbind, lapply(ix$cols, `[`, bad)))
+    grp <- rep(bad, each = nrow(idx))
+    keep <- idx <= ix$n
+    s[bad] <- as.vector(rowsum(x[idx[keep]], grp[keep]))
+  }
+  if (fn == "sum") {
+    s[ix$none] <- NA
+    return(s)
+  }
+  out <- s / ix$cnt
+  # base's second pass: the mean of the residuals, where the first was finite
+  r <- 0
+  for (j in seq_along(ix$cols)) {
+    d <- xe[ix$cols[[j]]] - out
+    d[ix$pad[[j]]] <- 0
+    r <- r + d
+  }
+  fin <- is.finite(out)
+  out[fin] <- (out + r / ix$cnt)[fin]
+  out[ix$none] <- NA
+  out
 }
 
 #' `sum()`, `mean()`, `any()`, `all()` and `n()` over every neighbourhood at once
@@ -611,10 +952,12 @@ run_neighbours <- function(step, state) {
 #' The argument is elementwise, so it is evaluated once over the whole view and
 #' folded per focal agent with `rowsum()`, instead of `summarise()` evaluating
 #' the aggregate once per group. Exact for integer and logical input, which is
-#' what a count or a share of neighbours is; a double `sum()` or `mean()` keeps
-#' the `summarise()` path, whose long-double accumulation this does not
-#' reproduce bit for bit. A literal `na.rm = TRUE` is honoured, as base does:
-#' the missing rows are left out of the sum and the count. Returns `NULL` for
+#' what a count or a share of neighbours is. A double `sum()` or `mean()` is
+#' the same arithmetic base does, in the same order, but in double precision:
+#' bit for bit base's answer where `long double` is a double (arm64), and
+#' within a unit in the last place of it where base accumulates in 80 bits
+#' (x86). A literal `na.rm = TRUE` is honoured, as base does: the missing rows
+#' are left out of the sum and the count. Returns `NULL` for
 #' any other shape.
 #' ponytail: five aggregate shapes, extend when a model's hot rule has another
 #' @noRd
@@ -624,8 +967,8 @@ neighbour_aggregate <- function(quo, view) {
   fn <- rlang::as_string(expr[[1]])
   g <- view$.of
   if (fn == "n" && length(expr) == 1L) {
-    s <- rowsum(rep(1L, length(g)), g)
-    return(list(.of = as.integer(rownames(s)), .abm_value = as.vector(s)))
+    s <- group_sum(rep(1L, length(g)), g)
+    return(list(.of = s$keys, .abm_value = s$sums))
   }
   if (!fn %in% c("sum", "mean", "any", "all")) return(NULL)
   args <- as.list(expr)[-1]
@@ -643,24 +986,50 @@ neighbour_aggregate <- function(quo, view) {
   if (length(v) == 1L) v <- rep(v, nrow(view))
   if (length(v) != nrow(view)) return(NULL)
   if (fn %in% c("sum", "mean")) {
-    if (!is.integer(v) && !is.logical(v)) return(NULL)
-    s <- rowsum(as.integer(v), g, na.rm = na_rm)
-    out <- as.vector(s)
+    if (is.object(v) || !(is.numeric(v) || is.logical(v))) return(NULL)
+    s <- group_sum(if (is.double(v)) v else as.integer(v), g, na_rm)
+    out <- s$sums
     if (fn == "mean") {
       # `mean(x, na.rm = TRUE)` divides by the number of values that were not
       # missing, so a neighbourhood of nothing but `NA` comes out `NaN`
-      counted <- if (na_rm) as.integer(!is.na(v)) else rep(1L, length(g))
-      out <- out / as.vector(rowsum(counted, g))
+      # a count needs no `rowsum()`: each row's place in the result, tabulated
+      at <- match(g, s$keys)
+      n <- tabulate(if (na_rm) at[!is.na(v)] else at, length(s$keys))
+      out <- out / n
+      if (is.double(v)) {
+        # base's `mean()` of doubles then adds the mean of the residuals,
+        # wherever the first pass came out finite
+        resid <- group_sum(v - out[at], g, na_rm)$sums
+        fin <- is.finite(out)
+        out[fin] <- (out + resid / n)[fin]
+      }
     }
   } else {
     if (!is.logical(v)) return(NULL)
-    na <- as.vector(rowsum(as.integer(is.na(v)), g)) > 0
-    s <- rowsum(as.integer(v %in% (fn == "any")), g)
-    hit <- as.vector(s) > 0
+    na <- if (anyNA(v)) group_sum(as.integer(is.na(v)), g)$sums > 0 else FALSE
+    s <- group_sum(as.integer(v %in% (fn == "any")), g)
+    hit <- s$sums > 0
     out <- if (fn == "any") hit else !hit
     if (!na_rm) out[!hit & na] <- NA
   }
-  list(.of = as.integer(rownames(s)), .abm_value = out)
+  list(.of = s$keys, .abm_value = out)
+}
+
+#' `rowsum(x, g)` as `list(keys, sums)`, the keys sorted
+#'
+#' Where every key is distinct -- a mover reading the one cell it stands on --
+#' each sum is of one value, which `rowsum()` makes as `0 + x`, so that is
+#' done here without its sort and its character row names.
+#' @noRd
+group_sum <- function(x, g, na_rm = FALSE) {
+  if (!anyDuplicated(g)) {
+    o <- order(g)
+    x <- x[o]
+    if (na_rm) x[is.na(x)] <- 0L
+    return(list(keys = as.integer(g[o]), sums = if (is.double(x)) 0 + x else x))
+  }
+  s <- rowsum(x, g, na.rm = na_rm)
+  list(keys = as.integer(rownames(s)), sums = as.vector(s))
 }
 
 #' Is this rule exactly `n()` -- the size of the neighbourhood and nothing else?

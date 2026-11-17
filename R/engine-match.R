@@ -17,10 +17,10 @@ empty_match <- function() .empty_match
 #' @noRd
 new_match <- function(id, partner, role, group_id) {
   n <- length(id)
-  tibble::new_tibble(
+  new_tbl(
     list(.id = id, .partner = rep_len(partner, n), .role = rep_len(role, n),
          .group_id = group_id),
-    nrow = n
+    n
   )
 }
 
@@ -44,6 +44,8 @@ eval_condition <- function(quo, agents, globals) {
     )
   }
   if (length(out) == 1L) out <- rep(out, nrow(agents))
+  # nearly always a plain logical with nothing missing, which is its own answer
+  if (is.logical(out) && is.null(attributes(out)) && !anyNA(out)) return(out)
   out & !is.na(out)
 }
 
@@ -132,8 +134,21 @@ run_match_by <- function(spec, agents, edges, globals, call, relations = NULL) {
   inner$dot_by <- NULL
 
   key <- agents[[by]]
-  parts <- split(seq_len(nrow(agents)), key)          # `split()` drops NA keys
   eligible <- eval_condition(spec$eligible, agents, globals)
+  plain_key <- is.numeric(key) && !is.object(key)
+  if (plain_key && spec$pair == "opposite_group" && is.null(spec$role)) {
+    m <- match_by_opposite(spec, agents, key, eligible)
+    if (!is.null(m)) return(m)
+  }
+  # rows by key, in key order, `NA` keys left out: what `split()` gives, which
+  # for a plain number (a cell) needs no factor made of the key first
+  parts <- if (plain_key) {
+    grp <- vctrs::vec_group_loc(key)
+    at <- vctrs::vec_order(grp$key)
+    grp$loc[at[!is.na(grp$key[at])]]
+  } else {
+    split(seq_len(nrow(agents)), key)
+  }
   # a partition with nobody eligible pairs nobody, and a mutual mode needs two;
   # on a lattice most cells are one of those, so they are skipped before any
   # tibble is built for them
@@ -151,9 +166,55 @@ run_match_by <- function(spec, agents, edges, globals, call, relations = NULL) {
     offset <- max(m$.group_id)
     out[[i]] <- m
   }
-  out <- Filter(Negate(is.null), out)
+  out <- out[lengths(out) > 0L]
   if (!length(out)) return(empty_match())
   dplyr::bind_rows(out)
+}
+
+#' [run_match_by()] for `pair = "opposite_group"` with no roles
+#'
+#' Only a partition holding both sides draws anything, and on a lattice those
+#' are a few cells among thousands, so only they are visited, in key order,
+#' making the same two `shuffle()`s [match_opposite()] would. `NULL` when the
+#' general loop has to run instead: `by` not a plain column, or a partition
+#' with a third value, which it reports.
+#' @noRd
+match_by_opposite <- function(spec, agents, key, eligible) {
+  by <- rlang::quo_get_expr(spec$by)
+  if (!rlang::is_symbol(by)) return(NULL)
+  side <- agents[[rlang::as_string(by)]]
+  if (is.null(side)) return(NULL)
+  rows <- which(eligible & !is.na(key) & !is.na(side))
+  ids <- agents$.id[rows]
+  side <- side[rows]
+  grp <- vctrs::vec_group_loc(key[rows])
+  # distinct sides per partition
+  pid <- vctrs::vec_group_id(vctrs::new_data_frame(list(k = key[rows], s = side)))
+  kid <- vctrs::vec_group_id(key[rows])
+  nv <- tabulate(kid[!duplicated(pid)], nbins = nrow(grp))
+  if (any(nv > 2L)) return(NULL)
+  mixed <- which(nv == 2L)
+  mixed <- mixed[vctrs::vec_order(grp$key[mixed])]
+  if (!length(mixed)) return(empty_match())
+  out_id <- out_partner <- out_gid <- vector("list", length(mixed))
+  offset <- 0L
+  for (j in seq_along(mixed)) {
+    loc <- grp$loc[[mixed[[j]]]]
+    s <- side[loc]
+    id <- ids[loc]
+    vals <- sort(unique(s))
+    g1 <- shuffle(id[s == vals[[1]]])
+    g2 <- shuffle(id[s == vals[[2]]])
+    k <- min(length(g1), length(g2))
+    a <- g1[seq_len(k)]; b <- g2[seq_len(k)]
+    out_id[[j]] <- c(a, b)
+    out_partner[[j]] <- c(b, a)
+    out_gid[[j]] <- rep(seq_len(k), 2) + offset
+    offset <- offset + k
+  }
+  id <- unlist(out_id, use.names = FALSE)
+  new_match(id, unlist(out_partner, use.names = FALSE), NA_character_,
+            unlist(out_gid, use.names = FALSE))
 }
 
 #' Does a condition ask about the pair rather than about the candidate?
@@ -331,8 +392,8 @@ match_one_of <- function(spec, agents, globals, pool, ch = NULL) {
     # the candidate pool, itself excluded. Directional, so A may pick B while B
     # picks someone else entirely.
     # An agent that is its own only candidate has nobody to pick and sits out.
-    usable <- pool[!(pool %in% candidates) | length(candidates) > 1L]
-    pool <- usable
+    # with two candidates or more nobody is left without one: no lookup needed
+    if (length(candidates) <= 1L) pool <- pool[!(pool %in% candidates)]
     if (length(pool) == 0L) return(empty_match())
     draw <- draw_from(candidates, length(pool))
     clash <- draw == pool
@@ -348,18 +409,12 @@ match_one_of <- function(spec, agents, globals, pool, ch = NULL) {
     pool <- pool[got]; draw <- draw[got]
     if (length(pool) == 0L) return(empty_match())
   }
-  idx <- match(pool, agents$.id)
-
-  if (is.null(spec$role)) {
-    role_a <- rep(NA_character_, length(pool))
-    role_b <- role_a
-    keep <- rep(TRUE, length(pool))
-  } else {
-    r <- assign_roles(spec$role, agents, globals, idx, match(draw, agents$.id))
-    role_a <- r$a; role_b <- r$b; keep <- r$ok
-  }
-
-  new_match(pool[keep], draw[keep], role_a[keep], seq_len(sum(keep)))
+  # with no roles everybody drawn is kept, with no role
+  if (is.null(spec$role)) return(new_match(pool, draw, NA_character_, seq_along(pool)))
+  r <- assign_roles(spec$role, agents, globals, match(pool, agents$.id),
+                    match(draw, agents$.id))
+  keep <- r$ok
+  new_match(pool[keep], draw[keep], r$a[keep], seq_len(sum(keep)))
 }
 
 match_opposite <- function(spec, agents, globals, pool, call) {
@@ -377,8 +432,13 @@ match_opposite <- function(spec, agents, globals, pool, call) {
   # does, so a third value held only by agents sitting the step out is not a
   # specification error. A population that is all one kind this tick (every
   # male dead, say) is a step where nobody pairs up, not an error either.
-  sub <- agents[agents$.id %in% pool, , drop = FALSE]
-  vals <- sort(unique(sub[[by]][!is.na(sub[[by]])]))
+  # two bare vectors, and no sort for a single kind: under `.by` this runs
+  # once per partition, and on a lattice most cells hold one kind
+  taking_part <- agents$.id %in% pool
+  ids <- agents$.id[taking_part]
+  side <- agents[[by]][taking_part]
+  vals <- unique(side[!is.na(side)])
+  if (length(vals) > 1L) vals <- sort(vals)
   if (length(vals) > 2L) {
     all_vals <- sort(unique(agents[[by]][!is.na(agents[[by]])]))
     abm_abort(
@@ -392,19 +452,19 @@ match_opposite <- function(spec, agents, globals, pool, call) {
     return(empty_match())
   }
   # `which()` rather than logical indexing: an agent whose `by` value is `NA`
-  # is in neither side, and `sub$.id[NA]` would have put a phantom `NA` agent
+  # is in neither side, and `ids[NA]` would have put a phantom `NA` agent
   # into one of them, to be paired with a real one
-  g1 <- shuffle(sub$.id[which(sub[[by]] == vals[[1]])])
-  g2 <- shuffle(sub$.id[which(sub[[by]] == vals[[2]])])
+  g1 <- shuffle(ids[which(side == vals[[1]])])
+  g2 <- shuffle(ids[which(side == vals[[2]])])
   k <- min(length(g1), length(g2))
   if (k == 0L) return(empty_match())
   a <- g1[seq_len(k)]; b <- g2[seq_len(k)]
-  a_idx <- match(a, agents$.id); b_idx <- match(b, agents$.id)
 
   if (is.null(spec$role)) {
     role_a <- rep(NA_character_, k); role_b <- role_a; keep <- rep(TRUE, k)
   } else {
-    r <- assign_roles(spec$role, agents, globals, a_idx, b_idx)
+    r <- assign_roles(spec$role, agents, globals, match(a, agents$.id),
+                      match(b, agents$.id))
     role_a <- r$a; role_b <- r$b; keep <- r$ok
   }
 

@@ -330,12 +330,12 @@ eval_gradient <- function(ctx, view, np) {
   val <- NULL
   if (!ctx$mask) {
     env <- rlang::new_environment(list(n = function() np), parent = ctx$env)
-    val <- rlang::eval_tidy(rlang::quo_set_env(ctx$quo, env), data = view)
+    val <- rlang::eval_tidy(rlang::quo_get_expr(ctx$quo), data = view, env = env)
     if (length(val) != 1L && length(val) != np) val <- NULL
   }
   if (is.null(val)) {
     val <- dplyr::pull(
-      dplyr::mutate(tibble::new_tibble(view, nrow = np),
+      dplyr::mutate(new_tbl(view, np),
                     .abm_value = !!rlang::quo_set_env(ctx$quo, ctx$env)),
       ".abm_value")
   }
@@ -370,7 +370,7 @@ run_move <- function(step, state) {
     vapply(state$groups, function(g) ".cell" %in% names(g), logical(1))
   ]
   if (!is.null(step$who)) {
-    unknown <- setdiff(step$who, names(state$groups))
+    unknown <- step$who[!step$who %in% names(state$groups)]
     if (length(unknown)) {
       abm_abort(
         c("{.arg who} names {length(unknown)} group{?s} that {?is/are} not in the model.",
@@ -379,7 +379,7 @@ run_move <- function(step, state) {
         class = "tidyABM_bad_arg"
       )
     }
-    no_cell <- setdiff(step$who, which_groups)
+    no_cell <- step$who[!step$who %in% which_groups]
     if (length(no_cell)) {
       abm_abort(
         c("{.arg who} names {length(no_cell)} group{?s} with no {.code .cell}.",
@@ -426,22 +426,19 @@ run_move <- function(step, state) {
 
   # one flat table of movers, so the random order and the occupancy claims are
   # shared across groups rather than being per-group
-  order_rows <- do.call(rbind, lapply(which_groups, function(nm) {
-    g <- state$groups[[nm]]
-    if (!nrow(g)) return(NULL)
-    cbind(group = match(nm, which_groups), row = seq_len(nrow(g)))
-  }))
-  if (is.null(order_rows) || !nrow(order_rows)) return(state)
-  ord <- if (nrow(order_rows) > 1L) sample.int(nrow(order_rows)) else 1L
-  order_rows <- order_rows[ord, , drop = FALSE]
-  n_movers <- nrow(order_rows)
-  grp <- order_rows[, "group"]
-  row <- order_rows[, "row"]
+  # every mover as (group, row), the groups stacked, in a random order
+  sizes <- vapply(which_groups, function(nm) vctrs::vec_size(state$groups[[nm]]), 0L)
+  n_movers <- sum(sizes)
+  if (!n_movers) return(state)
+  ord <- if (n_movers > 1L) sample.int(n_movers) else 1L
+  grp <- rep.int(seq_along(which_groups), sizes)[ord]
+  row <- sequence(sizes)[ord]
 
   cells <- lapply(which_groups, function(nm) state$groups[[nm]]$.cell)
   # each mover's own row is sliced out of these bare columns rather than with
   # `[.tbl_df`, once per mover
-  gcols <- lapply(which_groups, function(nm) as.list(state$groups[[nm]]))
+  gcols <- if (step$mode %in% c("uphill", "downhill"))
+    lapply(which_groups, function(nm) as.list(state$groups[[nm]]))
   # Occupancy is a *count* per cell, not a set of cells: several movers can
   # start stacked on one cell, and the first of them leaving must not mark that
   # cell free while the rest are still standing on it.
@@ -488,7 +485,8 @@ run_move <- function(step, state) {
       cells[[gi]][[ri]] <- target
     }
     for (i in seq_along(which_groups)) {
-      state$groups[[which_groups[[i]]]]$.cell <- as.integer(cells[[i]])
+      state$groups[[which_groups[[i]]]] <-
+        set_col(state$groups[[which_groups[[i]]]], ".cell", as.integer(cells[[i]]))
     }
     return(sync_cell_coords(state))
   }
@@ -498,6 +496,29 @@ run_move <- function(step, state) {
   # adjacent cells, nothing more) skips the general scan
   simple <- step$range <= 1L && !step$axes_only
   n_nb <- length(nb)
+  if (simple && !gradient && !step$avoid_occupied) {
+    # Nobody's choice depends on anybody else's here, so when every mover has
+    # the same number of cells to choose among they all draw in one call: the
+    # same stream as one `sample.int()` per mover, without the loop.
+    off <- cumsum(c(0L, lengths(cells)))
+    at <- off[grp] + row
+    flat <- unlist(cells, use.names = FALSE)
+    here <- flat[at]
+    if (!anyNA(here) && all(here >= 1L & here <= n_nb)) {
+      cand <- nb[here]
+      k <- length(cand[[1L]])
+      to <- unlist(cand, use.names = FALSE)
+      if (k > 1L && all(lengths(cand) == k) && !anyNA(to)) {
+        flat[at] <- to[(seq_len(n_movers) - 1L) * k + sample.int(k, n_movers, replace = TRUE)]
+        for (i in seq_along(which_groups)) {
+          state$groups[[which_groups[[i]]]] <- set_col(
+            state$groups[[which_groups[[i]]]], ".cell",
+            as.integer(flat[off[[i]] + seq_len(off[[i + 1L]] - off[[i]])]))
+        }
+        return(sync_cell_coords(state))
+      }
+    }
+  }
   cands <- vector("list", n_movers)
   for (k in seq_len(n_movers)) {
     here <- cells[[grp[[k]]]][[row[[k]]]]
@@ -565,7 +586,8 @@ run_move <- function(step, state) {
   }
 
   for (i in seq_along(which_groups)) {
-    state$groups[[which_groups[[i]]]]$.cell <- as.integer(cells[[i]])
+    state$groups[[which_groups[[i]]]] <-
+      set_col(state$groups[[which_groups[[i]]]], ".cell", as.integer(cells[[i]]))
   }
   sync_cell_coords(state)
 }

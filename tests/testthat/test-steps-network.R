@@ -153,3 +153,17 @@ test_that("opposite_group tolerates a population that is briefly all one kind", 
                                   abm_rules(z ~ 1)), ticks = 1),
                class = "tidyABM_bad_by")
 })
+
+test_that("a double sum() or mean() over neighbourhoods is base's, per group", {
+  set.seed(1)
+  view <- tibble::tibble(.of = sample.int(40, 300, replace = TRUE),
+                         x = c(NA, Inf, rnorm(298) * 10^sample(-9:9, 298, TRUE)))
+  for (e in list(quote(mean(x)), quote(sum(x)), quote(mean(x, na.rm = TRUE)),
+                 quote(sum(x, na.rm = TRUE)))) {
+    fn <- eval(e[[1]])
+    want <- vapply(split(view$x, view$.of), fn, 0, na.rm = length(e) == 3L)
+    got <- neighbour_aggregate(rlang::new_quosure(e, globalenv()), view)
+    expect_equal(got$.abm_value, unname(want), tolerance = 1e-15)
+    expect_identical(got$.of, as.integer(names(want)))
+  }
+})

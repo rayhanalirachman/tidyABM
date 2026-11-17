@@ -480,7 +480,7 @@ pairs_view <- function(rel, combined) {
     view[[paste0("from_", nm)]] <- combined[[nm]][fi]
     view[[paste0("to_", nm)]]   <- combined[[nm]][ti]
   }
-  tibble::new_tibble(view, nrow = nrow(rel$edges))
+  new_tbl(view, nrow(rel$edges))
 }
 
 #' @export

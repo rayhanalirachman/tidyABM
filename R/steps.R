@@ -2,7 +2,9 @@
 
 new_rule_step <- function(rules, class, scope = "match", by = NULL,
                           order = NULL) {
-  structure(list(rules = rules, scope = scope, by = by, order = order),
+  # `uses_match` is worked out here, once, rather than on every tick
+  structure(list(rules = rules, scope = scope, by = by, order = order,
+                 uses_match = reads_match(lapply(rules, `[[`, "quo"))),
             class = c(class, "abm_step"))
 }
 
@@ -27,7 +29,10 @@ collect_rules <- function(dots, fn, call = rlang::caller_env()) {
       target = f_lhs_name(f, arg = "rule", call = call),
       quo    = rlang::new_quosure(rlang::f_rhs(f), rlang::f_env(f)),
       vars   = f_rhs_vars(f),
-      elementwise = is_elementwise(rlang::f_rhs(f))
+      elementwise = is_elementwise(rlang::f_rhs(f)),
+      # needs no dplyr mask and assigns nothing: see [shared_eval()]
+      plain = !needs_mask(rlang::f_rhs(f)) &&
+        !any(c("<-", "<<-", "=", "assign", "eval", "evalq") %in% all.names(rlang::f_rhs(f)))
     )
   })
 }

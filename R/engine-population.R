@@ -14,34 +14,40 @@ run_birth <- function(step, state) {
 birth_by_condition <- function(step, state) {
   newborns <- integer()
   parents_of <- integer()
-  combined <- bind_groups(state$groups)
-  all_cols <- setdiff(model_columns(state$groups), c(".id", ".group"))
+  # the other groups are only read through `partner_<col>`, under a match
+  quos <- planned(step, "quos", c(list(step$when, step$times),
+                                  lapply(c(step$cost, step$inherit), `[[`, "quo")))
+  pvars <- planned(step, "pvars", partner_vars(quos))
+  combined <- if (!is.null(state$match) && length(pvars)) bind_groups(state$groups, pvars)
+  # the match columns are looked up per agent, so only when they are read
+  bare <- !length(state$relations) && !planned(step, "uses_match", reads_match(quos))
+  applies <- condition_routes(step, state)
   for (nm in names(state$groups)) {
     g <- state$groups[[nm]]
     if (nrow(g) == 0L) next
-    if (!condition_applies(step$when, g, all_cols, state$globals)) next
-    aug <- augment_group(g, state$match, combined, state$relations,
-                         partner = partner_vars(c(list(step$when, step$times),
-                                                  lapply(c(step$cost, step$inherit), `[[`, "quo"))))
+    if (!applies[[nm]]) next
+    aug <- if (bare) g else
+      augment_group(g, state$match, combined, state$relations, partner = pvars,
+                    match_cols = planned(step, "mcols", match_cols_read(quos, state)))
     parents <- eval_condition(step$when, aug, state$globals)
     if (!any(parents)) next
 
-    pg <- aug[parents, , drop = FALSE]
+    pg <- vctrs::vec_slice(aug, parents)
     reps <- offspring_counts(step, pg, state$globals)
     if (!sum(reps)) next
     # one row per offspring, so a parent having three of them is three rows and
     # `inherit` is evaluated once for each -- siblings mutate separately
     kid_rows <- rep(which(parents), reps)
-    kids <- g[kid_rows, , drop = FALSE]
-    kids$.id <- state$next_id + seq_len(nrow(kids)) - 1L
+    kids <- vctrs::vec_slice(g, kid_rows)
+    kids <- set_col(kids, ".id", state$next_id + seq_len(nrow(kids)) - 1L)
     state$next_id <- state$next_id + nrow(kids)
 
     if (!is.null(step$cost)) {
       for (r in step$cost) {
         val <- eval_rule(r, pg, state$globals, grouped = FALSE)
         if (length(val) == 1L) val <- rep(val, nrow(pg))
-        g[[r$target]][parents] <- val
-        kids[[r$target]] <- rep(val, reps)
+        g <- set_col(g, r$target, replace(g[[r$target]], parents, val))
+        kids <- set_col(kids, r$target, rep(val, reps))
       }
     }
     if (!is.null(step$inherit)) {
@@ -49,14 +55,34 @@ birth_by_condition <- function(step, state) {
       for (r in step$inherit) {
         val <- eval_rule(r, kg, state$globals, grouped = FALSE)
         if (length(val) == 1L) val <- rep(val, nrow(kg))
-        kids[[r$target]] <- val
+        kids <- set_col(kids, r$target, val)
       }
     }
-    state$groups[[nm]] <- vctrs::vec_rbind(g, kids)
+    state$groups[[nm]] <- append_rows(g, kids)
     newborns <- c(newborns, kids$.id)
     parents_of <- c(parents_of, rep(g$.id[parents], reps))
   }
   attach_newborns(step, state, newborns, parents_of)
+}
+
+#' `vctrs::vec_rbind(g, kids)` for offspring sliced from their own group
+#'
+#' The two have the same columns; when every one is a bare atomic vector of
+#' the same type on both sides, stacking them is `c()` column by column.
+#' Anything else goes to `vec_rbind()`.
+#' @noRd
+append_rows <- function(g, kids) {
+  a <- unclass(g)
+  b <- unclass(kids)
+  if (identical(names(a), names(b)) &&
+      all(vapply(seq_along(a), function(j) {
+        x <- a[[j]]; y <- b[[j]]
+        is.atomic(x) && is.null(attributes(x)) && is.null(attributes(y)) &&
+          typeof(x) == typeof(y)
+      }, NA))) {
+    return(new_tbl(Map(c, a, b), length(a[[1]]) + length(b[[1]])))
+  }
+  vctrs::vec_rbind(g, kids)
 }
 
 #' How many offspring each reproducing parent has
@@ -165,27 +191,57 @@ attach_newborns <- function(step, state, newborns, parents = NULL) {
   state
 }
 
+#' Which groups a birth or death step's `when` is about, per
+#' [condition_applies()], kept in the plan while the column and global names
+#' stay the same
+#' @noRd
+condition_routes <- function(step, state) {
+  planned_for(step, "applies", schema_key(state), {
+    all_cols <- model_columns(state$groups)
+    vapply(state$groups, function(g) {
+      condition_applies(step$when, g, all_cols, state$globals)
+    }, NA)
+  })
+}
+
 #' Run one abm_death step
 #' @noRd
 run_death <- function(step, state) {
   removed <- integer()
-  combined <- bind_groups(state$groups)
-  all_cols <- setdiff(model_columns(state$groups), c(".id", ".group"))
+  # the other groups are only read through `partner_<col>`, under a match
+  pvars <- planned(step, "pvars", partner_vars(list(step$when)))
+  combined <- if (!is.null(state$match) && length(pvars)) bind_groups(state$groups, pvars)
+  # the match columns are looked up per agent, so only when they are read
+  bare <- !length(state$relations) &&
+    !planned(step, "uses_match", reads_match(list(step$when)))
+  # a condition about a column this group has not got is not about this group
+  applies <- condition_routes(step, state)
   for (nm in names(state$groups)) {
     g <- state$groups[[nm]]
     if (nrow(g) == 0L) next
-    # a condition about a column this group has not got is not about this group
-    if (!condition_applies(step$when, g, all_cols, state$globals)) next
-    aug <- augment_group(g, state$match, combined, state$relations,
-                         partner = partner_vars(list(step$when)))
+    if (!applies[[nm]]) next
+    aug <- if (bare) g else
+      augment_group(g, state$match, combined, state$relations, partner = pvars,
+                    match_cols = planned(step, "mcols", match_cols_read(list(step$when), state)))
     dead <- eval_condition(step$when, aug, state$globals)
     if (!any(dead)) next
     removed <- c(removed, g$.id[dead])
-    state$groups[[nm]] <- g[!dead, , drop = FALSE]
+    state$groups[[nm]] <- vctrs::vec_slice(g, !dead)
   }
-  if (length(removed) && step$prune_edges && !is.null(state$edges)) {
+  # ids only grow, so the dead of a lattice model (born after its cells were
+  # wired) are past every endpoint, and the edges need no scan
+  if (length(removed) && step$prune_edges && length(state$edges$from)) {
+    # the highest endpoint, kept with the edges it was taken over
+    if (!identical(state$edge_max$edges, state$edges)) {
+      state$edge_max <- list(edges = state$edges,
+                             max = max(state$edges$from, state$edges$to))
+    }
+  }
+  if (length(removed) && step$prune_edges && length(state$edges$from) &&
+      min(removed) <= state$edge_max$max) {
     keep <- !(state$edges$from %in% removed | state$edges$to %in% removed)
-    state$edges <- state$edges[keep, , drop = FALSE]
+    # on a lattice the dead are rarely an endpoint: the patches are
+    if (!all(keep)) state$edges <- state$edges[keep, , drop = FALSE]
   }
   # a dead agent holds no relation: its rows go, on either side
   state$relations <- prune_relations(state$relations, removed)

@@ -13,11 +13,12 @@ model_columns <- function(groups) {
 #' simply variables from the environment the rule was written in do not count.
 #' @noRd
 rule_applies <- function(rule, g, all_cols, globals) {
-  vars <- setdiff(rule$vars,
-                  c(".id", ".group", ".group_id", ".partner", ".role",
-                    names(globals)))
-  vars <- vars[!startsWith(vars, "partner_")]
-  vars <- intersect(vars, all_cols)
+  # plain `%in%` rather than `setdiff()` / `intersect()`: asked of every rule
+  # for every group on every tick
+  vars <- rule$vars
+  vars <- vars[vars %in% all_cols & !startsWith(vars, "partner_") &
+                 !vars %in% c(".id", ".group", ".group_id", ".partner", ".role",
+                              names(globals))]
   if (!all(vars %in% names(g))) return(FALSE)
   if (rule$target %in% all_cols && !(rule$target %in% names(g))) return(FALSE)
   TRUE
@@ -33,11 +34,12 @@ rule_applies <- function(rule, g, all_cols, globals) {
 #' @noRd
 condition_applies <- function(quo, g, all_cols, globals) {
   if (is.null(quo)) return(TRUE)
-  vars <- setdiff(all.vars(rlang::quo_get_expr(quo)),
-                  c(".id", ".group", ".group_id", ".partner", ".role",
-                    names(globals)))
-  vars <- vars[!startsWith(vars, "partner_")]
-  all(intersect(vars, all_cols) %in% names(g))
+  # plain `%in%`, as in [rule_applies()]: asked per group on every tick
+  vars <- all.vars(rlang::quo_get_expr(quo))
+  vars <- vars[vars %in% all_cols & !startsWith(vars, "partner_") &
+                 !vars %in% c(".id", ".group", ".group_id", ".partner", ".role",
+                              names(globals))]
+  all(vars %in% names(g))
 }
 
 #' Add match information and partner columns to a group tibble
@@ -48,23 +50,24 @@ condition_applies <- function(quo, g, all_cols, globals) {
 #' because they are about the same pair.
 #' @noRd
 augment_group <- function(g, match_state, combined, relations = NULL,
-                          partner = NULL) {
+                          partner = NULL, match_cols = NULL) {
   # `partner` names the columns the step reads as `partner_<col>`; the rest
   # are not built, since copying every column of every agent for every step
   # is most of what a step costs. `NULL` builds them all.
-  pcols <- setdiff(names(combined), c(".id", ".group"))
-  if (!is.null(partner)) pcols <- intersect(pcols, partner)
   # the columns are added to a bare list and the tibble rebuilt once at the
   # end: `$<-.tbl_df` re-checks the whole tibble on every assignment, several
   # times per group per step
-  n <- nrow(g)
+  n <- vctrs::vec_size(g)    # `nrow()` dispatches twice on a tibble
   cols <- as.list(g)
   if (is.null(match_state)) {
     cols$.group_id <- seq_len(n)
     cols$.role <- rep(NA_character_, n)
     cols$.partner <- rep(NA_integer_, n)
-    return(tibble::new_tibble(cols, nrow = n))
+    return(new_tbl(cols, n))
   }
+  pcols <- names(combined)
+  pcols <- pcols[!pcols %in% c(".id", ".group")]
+  if (!is.null(partner)) pcols <- pcols[pcols %in% partner]
   if (nrow(match_state$match) == 0L) {
     # a match step ran and paired nobody. The partner columns still have to
     # exist, all missing, so that a tick where nobody meets anyone does not
@@ -78,22 +81,52 @@ augment_group <- function(g, match_state, combined, relations = NULL,
       }
       cols <- attach_relation_columns(cols, relations, cols$.id, cols$.partner)
     }
-    return(tibble::new_tibble(cols, nrow = n))
+    return(new_tbl(cols, n))
   }
   m <- match_state$match
-  idx <- match(cols$.id, m$.id)
-  cols$.partner  <- m$.partner[idx]
-  cols$.role     <- m$.role[idx]
-  cols$.group_id <- m$.group_id[idx]
+  idx <- match_rows(cols$.id, m$.id)
+  # `match_cols` names the ones a caller's expressions read; `NULL` adds all
+  # the partner ids are taken from the match itself, never from `cols`: a
+  # caller may leave `.partner` out of `match_cols` and still read
+  # `partner_<col>` or relation columns, which are found through it
+  partner_ids <- m$.partner[idx]
+  if (is.null(match_cols) || ".partner" %in% match_cols) cols$.partner <- partner_ids
+  if (is.null(match_cols) || ".role" %in% match_cols) cols$.role <- m$.role[idx]
+  if (is.null(match_cols) || ".group_id" %in% match_cols) cols$.group_id <- m$.group_id[idx]
 
   if (match_state$size == 2L) {
-    pidx <- match(cols$.partner, combined$.id)
+    pidx <- if (length(pcols)) match(partner_ids, combined$.id)
     for (nm in pcols) {
       cols[[paste0("partner_", nm)]] <- combined[[nm]][pidx]
     }
-    cols <- attach_relation_columns(cols, relations, cols$.id, cols$.partner)
+    cols <- attach_relation_columns(cols, relations, cols$.id, partner_ids)
   }
-  tibble::new_tibble(cols, nrow = n)
+  new_tbl(cols, n)
+}
+
+#' `match(ids, mids)`, without hashing when `mids` is the tail of `ids`
+#'
+#' The usual standing match pairs the last group's agents in order, so its ids
+#' are the stacked ids' tail. `ids` strictly increasing makes them distinct,
+#' and every row before the tail then has no match.
+#' @noRd
+match_rows <- function(ids, mids) {
+  n <- length(ids)
+  k <- length(mids)
+  if (k > 0L && k <= n && is.integer(ids) && is.integer(mids) &&
+      identical(ids[[n]], mids[[k]]) &&
+      isFALSE(is.unsorted(ids, strictly = TRUE)) &&
+      identical(mids, ids[seq.int(n - k + 1L, n)])) {
+    return(c(rep(NA_integer_, n - k), seq_len(k)))
+  }
+  # a group none of whose ids is in the match -- the cells, when only the
+  # movers pair up -- needs no hashing either
+  if (n > 0L && k > 0L && is.integer(ids) && is.integer(mids) && !anyNA(mids) &&
+      !is.na(ids[[1L]]) && !is.na(ids[[n]]) && isFALSE(is.unsorted(ids, strictly = TRUE))) {
+    r <- range(mids)
+    if (r[[2L]] < ids[[1L]] || r[[1L]] > ids[[n]]) return(rep(NA_integer_, n))
+  }
+  match(ids, mids)
 }
 
 #' Route a relation-targeted rule's values into the relation, under a match
@@ -129,19 +162,78 @@ write_relation_rule <- function(state, hit, target, value, aug, rows, step,
   state
 }
 
+#' One data mask and one scope for every rule a step evaluates over `data`
+#'
+#' Building the mask and the scope ([abm_eval_env()]) is most of what a short
+#' rule costs, and a step's rules all read the same rows and the same globals.
+#' `eval(quo)` evaluates one rule; `set()` records a global a rule has just
+#' written, as [run_global()]'s rules see each other's results. Only for a
+#' rule marked `plain`: one that assigns nothing, so it leaves nothing behind
+#' in the mask for the next rule to trip over.
+#' @noRd
+shared_eval <- function(data, globals, n = nrow(data)) {
+  mask <- NULL     # built for the first rule that needs one
+  env <- NULL
+  of <- NULL       # the environment the rules were written in, which `env` sits on
+  env_for <- function(quo) {
+    if (!identical(rlang::quo_get_env(quo), of)) {
+      of <<- rlang::quo_get_env(quo)
+      env <<- abm_eval_env(quo, globals, n = n)
+    }
+    env
+  }
+  list(
+    eval = function(quo) {
+      # a formula [base_eval_ok()] passed needs no mask, as in [eval_rule()]
+      if (isTRUE(attr(quo, "abm_base", exact = TRUE))) {
+        return(eval(rlang::quo_get_expr(quo), data, env_for(quo)))
+      }
+      if (is.null(mask)) mask <<- rlang::as_data_mask(data)
+      rlang::eval_tidy(rlang::quo_get_expr(quo), data = mask, env = env_for(quo))
+    },
+    env = env_for,
+    set = function(name, value) {
+      # with no globals yet there is no scope of theirs to write into
+      if (!length(globals)) of <<- NULL
+      else if (!is.null(of)) assign(name, value, envir = parent.env(env))
+      globals[[name]] <<- value
+    }
+  )
+}
+
 #' Evaluate one rule against an augmented group tibble
 #' @noRd
-eval_rule <- function(rule, aug, globals, grouped, by = NULL) {
+eval_rule <- function(rule, aug, globals, grouped, by = NULL, cache = NULL) {
   quo <- rule$quo
   # ungrouped, the data mask gives an expression nothing `eval_tidy()` over the
   # same tibble does not, and `mutate()` costs a hundred times more. A result
   # of the wrong length goes back through `mutate()` so its error is the one
   # raised.
-  if (is.null(by) && !grouped && !needs_mask(rlang::quo_get_expr(quo))) {
-    out <- rlang::eval_tidy(
-      rlang::quo_set_env(quo, abm_eval_env(quo, globals, n = nrow(aug))),
-      data = aug)
-    if (length(out) == nrow(aug) || length(out) == 1L) return(out)
+  if (is.null(by) && !grouped) {
+    expr <- rlang::quo_get_expr(quo)
+    # nothing a mask or a fresh scope is needed for: base `eval()` over the
+    # columns, in a scope kept while the globals stay the same. A result of
+    # the wrong length goes to `mutate()`, as it does from `eval_tidy()`.
+    # decided once for a step's own formulas, see [mark_steps()]
+    base <- attr(quo, "abm_base", exact = TRUE) %||% base_eval_ok(expr)
+    if (base) {
+      n <- vctrs::vec_size(aug)
+      out <- eval(expr, aug, eval_env_cached(quo, globals, n))
+      if (length(out) == n || length(out) == 1L) return(out)
+    } else if (!needs_mask(expr)) {
+      n <- vctrs::vec_size(aug)
+      env <- if (isTRUE(attr(quo, "abm_scope", exact = TRUE))) {
+        eval_env_cached(quo, globals, n)
+      } else {
+        abm_eval_env(quo, globals, n = n)
+      }
+      out <- rlang::eval_tidy(expr, data = aug, env = env)
+      if (length(out) == n || length(out) == 1L) return(out)
+    }
+  }
+  if (!is.null(by) || grouped) {
+    out <- eval_by_key(quo, aug, globals, aug[[by %||% ".group_id"]], cache)
+    if (!is.null(out)) return(out)
   }
   quo <- rlang::quo_set_env(quo, abm_eval_env(quo, globals))
 
@@ -152,6 +244,214 @@ eval_rule <- function(rule, aug, globals, grouped, by = NULL) {
   dplyr::pull(dplyr::ungroup(out), ".abm_value")
 }
 
+#' Evaluate a rule once per value of `key`, as a grouped `mutate()` would
+#'
+#' The expression is evaluated with base `eval()` over each group's rows, in
+#' the order `group_by()` visits them, so a rule that draws sees the same
+#' stream. `mutate()` builds a mask and its bookkeeping per group; here a group
+#' costs a slice of the columns the rule reads.
+#'
+#' The usual grouped rule is elementwise around a few aggregates -- a share of
+#' the group's total, a distance from its mean. Only the aggregates need the
+#' groups, so they alone are evaluated per group and the rest of the rule once
+#' over every row, with each aggregate standing in as a column: 200 groups
+#' then cost 200 `sum()`s, not 200 `if_else()`s. Nothing in such a rule draws.
+#'
+#' Returns `NULL`, and the caller goes through `mutate()`, for anything not
+#' covered: a key that is not a plain number or logical (their order is
+#' locale-free), an expression that needs a dplyr mask or a pronoun, and any
+#' error or result of the wrong size, so the error raised is still `mutate()`'s.
+#' @noRd
+eval_by_key <- function(quo, aug, globals, key, cache = NULL) {
+  info <- tryCatch(by_key_info(quo, cache), error = function(e) list(ok = FALSE))
+  if (is.object(key) || !(is.numeric(key) || is.logical(key)) || !info$ok) {
+    return(NULL)
+  }
+  locate <- function() {
+    grp <- vctrs::vec_group_loc(key)
+    loc <- grp$loc[vctrs::vec_order(grp$key)]
+    of <- integer(length(key))
+    of[unlist(loc, use.names = FALSE)] <- rep(seq_along(loc), lengths(loc))
+    list(loc = loc, of = of)
+  }
+  # the groups' rows, kept in `cache` (a step's plan) while the key stands
+  if (is.null(cache)) {
+    hit <- locate()
+  } else {
+    hit <- cache$by_loc
+    if (is.null(hit) || !identical(hit$key, key, num.eq = FALSE)) {
+      hit <- c(list(key = key), locate())
+      assign("by_loc", hit, envir = cache)
+    }
+  }
+  loc <- hit$loc
+  reads <- info$reads
+  cols <- unclass(aug)[names(aug) %in% reads]
+  size <- 0L
+  env <- abm_eval_env(quo, globals)
+  env$n <- function() size
+  # every expression in `exprs`, once per group
+  per_group <- function(exprs, cols) {
+    chops <- lapply(cols, vctrs::vec_chop, indices = loc)
+    lapply(seq_along(loc), function(i) {
+      size <<- length(loc[[i]])
+      data <- lapply(chops, .subset2, i)
+      lapply(exprs, eval, data, env)
+    })
+  }
+  tryCatch({
+    parts <- info$parts
+    # a free name in the elementwise part must be one value, not a vector
+    # that would be recycled along each group
+    free <- info$outer_vars[!info$outer_vars %in% c(names(cols), info$agg_names)]
+    if (info$split && all(vapply(free, function(v) length(get0(v, env)) == 1L, NA))) {
+      of <- hit$of
+      vals <- aggregates_by_key(parts$aggs, cols, env, loc, of, info$specs) %||% {
+        per <- per_group(parts$aggs, cols[names(cols) %in% info$agg_cols])
+        lapply(seq_along(parts$aggs), function(k) {
+          val <- lapply(per, `[[`, k)
+          stopifnot(lengths(val) == 1L)
+          vctrs::list_unchop(val)
+        })
+      }
+      for (k in seq_along(parts$aggs)) {
+        stopifnot(length(vals[[k]]) == length(loc))
+        cols[[info$agg_names[[k]]]] <- vctrs::vec_slice(vals[[k]], of)
+      }
+      vctrs::vec_recycle(eval(parts$outer, cols, env), nrow(aug))
+    } else {
+      out <- Map(function(val, rows) vctrs::vec_recycle(val[[1]], length(rows)),
+                 per_group(list(rlang::quo_get_expr(quo)), cols), loc)
+      vctrs::list_unchop(out, indices = loc)
+    }
+  }, error = function(e) NULL)
+}
+
+#' What [eval_by_key()] works out from a formula's text alone, kept in the
+#' step's plan with the quosure it was worked out for
+#' @noRd
+by_key_info <- function(quo, cache = NULL) {
+  if (!is.null(cache)) {
+    for (k in cache$by_info) if (identical(k$quo, quo)) return(k$info)
+  }
+  expr <- rlang::quo_get_expr(quo)
+  reads <- read_vars(list(quo))
+  info <- list(ok = !(is.null(reads) || ".env" %in% reads || needs_mask(expr)),
+               reads = reads)
+  if (info$ok) {
+    parts <- split_aggregates(expr)
+    info$parts <- parts
+    info$agg_names <- paste0(".agg", seq_along(parts$aggs))
+    info$outer_vars <- all.vars(parts$outer)
+    # not `ifelse()`, `%in%` or `paste()`: with a one-value test, a table or
+    # `collapse =` their answer depends on which rows they are handed
+    info$split <- is_elementwise(parts$outer, nb_fast_fns) &&
+      all(vapply(parts$aggs, is_elementwise, NA,
+                 fns = c(elementwise_fns, aggregate_fns, "[")))
+    info$agg_cols <- unlist(lapply(parts$aggs, all.vars), use.names = FALSE)
+    info$specs <- aggregate_specs(parts$aggs)
+  }
+  if (!is.null(cache)) {
+    assign("by_info", c(cache$by_info, list(list(quo = quo, info = info))), envir = cache)
+  }
+  info
+}
+
+#' [eval_by_key()]'s aggregates `f(X)` / `f(X[cond])`, `X` and `cond`
+#' elementwise, without evaluating them once per group
+#'
+#' `X` and `cond` are evaluated once over every row, the rows `cond` keeps (or
+#' leaves `NA`, where `X[cond]` has an `NA`) are split by group, and each
+#' group's `f()` is taken of exactly the elements, in exactly the order, that
+#' `X[cond]` evaluated over that group's rows has. The groups are visited in the
+#' same order, each group's aggregates in turn. `NULL` for any other shape, a
+#' name that is neither a column nor one value, a non-standard function, a
+#' classed column or result, or any warning or error, which leaves it to the
+#' group-by-group evaluation.
+#' @noRd
+aggregates_by_key <- function(aggs, cols, env, loc, of, specs = aggregate_specs(aggs)) {
+  n <- length(of)
+  if (is.null(specs)) return(NULL)
+  tryCatch({
+    picked <- lapply(specs, function(s) {
+      if (!standard_fns_in(s$heads, env)) return(NULL)
+      for (v in s$vars) {
+        val <- if (v %in% names(cols)) cols[[v]] else get0(v, envir = env)
+        if (is.null(val) || !is.atomic(val) || !is.null(attributes(val)) ||
+            !(v %in% names(cols) || length(val) == 1L)) return(NULL)
+      }
+      x <- eval(s$x, cols, env)
+      if (length(x) != n || !is.atomic(x) || !is.null(attributes(x))) return(NULL)
+      rows <- seq_len(n)
+      if (!is.null(s$cond)) {
+        keep <- eval(s$cond, cols, env)
+        if (!is.logical(keep) || !is.null(attributes(keep)) ||
+            !length(keep) %in% c(1L, n)) return(NULL)
+        if (length(keep) == 1L) keep <- rep(keep, n)
+        miss <- is.na(keep)
+        x[miss] <- NA
+        rows <- which(keep | miss)
+      }
+      list(f = s$f, x = x, rows = rows, of = of[rows],
+           fun = get0(s$f, envir = env, mode = "function"))
+    })
+    if (any(vapply(picked, is.null, NA))) return(NULL)
+    # one value per group and aggregate
+    lapply(picked, function(p) {
+      sum_of_one(p, length(loc)) %||% {
+        by <- split(p$rows, factor(p$of, levels = seq_along(loc)))
+        vctrs::list_unchop(lapply(unname(by), function(r) p$fun(p$x[r])))
+      }
+    })
+  }, warning = function(w) NULL, error = function(e) NULL)
+}
+
+#' The shapes [aggregates_by_key()] takes, one per aggregate, from their text
+#' alone; `NULL` when any is not one
+#' @noRd
+aggregate_specs <- function(aggs) {
+  specs <- lapply(aggs, function(a) {
+    if (!rlang::is_call(a) || !rlang::is_symbol(a[[1]]) || length(a) != 2L ||
+        !is.null(names(a))) return(NULL)
+    f <- rlang::as_string(a[[1]])
+    if (!f %in% setdiff(aggregate_fns, "n")) return(NULL)
+    x <- a[[2]]
+    cond <- NULL
+    if (rlang::is_call(x, "[") && length(x) == 3L && is.null(names(x))) {
+      cond <- x[[3]]
+      x <- x[[2]]
+    }
+    parts <- c(list(x), if (!is.null(cond)) list(cond))
+    if (!all(vapply(parts, is_elementwise, NA, fns = nb_fast_fns))) return(NULL)
+    heads <- c(f, if (!is.null(cond)) "[", unlist(lapply(parts, call_heads)))
+    if (anyNA(heads)) return(NULL)
+    list(f = f, x = x, cond = cond, heads = unique(heads),
+         vars = unique(unlist(lapply(parts, all.vars), use.names = FALSE)))
+  })
+  if (any(vapply(specs, is.null, NA))) return(NULL)
+  specs
+}
+
+#' [aggregates_by_key()]'s `sum()` when no group has more than one element
+#'
+#' The sum of one number is `0 + x`, in any precision, and of none the sum of
+#' an empty vector, so the groups need not be visited one by one. A missing
+#' value is still summed by `sum()` itself. `NULL` for anything else.
+#' @noRd
+sum_of_one <- function(p, n_groups) {
+  if (p$f != "sum" || !identical(p$fun, base::sum)) return(NULL)
+  x <- p$x
+  if (!(is.double(x) || is.integer(x) || is.logical(x))) return(NULL)
+  # rows in no group (an `NA` key) are not summed
+  of <- p$of[p$of > 0L]
+  if (anyDuplicated(of)) return(NULL)
+  out <- rep(sum(x[0L]), n_groups)
+  v <- x[p$rows[p$of > 0L]]
+  out[of] <- if (is.double(v)) 0 + v else as.integer(v)
+  for (i in which(is.na(v))) out[[of[[i]]]] <- sum(v[[i]])
+  out
+}
+
 #' Write a computed vector into a group column, for participating rows only
 #' @noRd
 assign_rule <- function(g, target, value, rows) {
@@ -159,10 +459,13 @@ assign_rule <- function(g, target, value, rows) {
   # global's names; an agent column is not a lookup table, so they come off here
   # rather than travelling through the whole run and into the result.
   if (!is.list(value) && !is.null(names(value))) value <- unname(value)
-  if (length(value) == 1L) value <- rep(value, nrow(g))
-  if (!target %in% names(g)) {
-    g[[target]] <- vctrs::vec_init(value, nrow(g))
-  }
+  n <- vctrs::vec_size(g)
+  if (length(value) == 1L) value <- rep(value, n)
+  # written with the class off: `[[<-.tbl_df` re-checks the whole tibble, once
+  # per rule per group per tick, and a column of `n` values keeps it a tibble
+  cls <- oldClass(g)
+  g <- unclass(g)
+  if (is.null(g[[target]])) g[[target]] <- vctrs::vec_init(value, n)
   if (all(rows)) {
     g[[target]] <- value
   } else {
@@ -170,41 +473,68 @@ assign_rule <- function(g, target, value, rows) {
     value <- vctrs::vec_cast(value, g[[target]])
     g[[target]][rows] <- value[rows]
   }
+  oldClass(g) <- cls
   g
 }
 
 #' Run one abm_rules step across every group
 #' @noRd
 run_rules <- function(step, state) {
-  combined <- bind_groups(state$groups)
-  if (nrow(combined) == 0L) return(state)
-  if (!is.null(step$by)) return(run_rules_by(step, state, combined))
-  all_cols <- setdiff(model_columns(state$groups), c(".id", ".group"))
+  if (!is.null(step$by)) return(run_rules_by(step, state))
+  quos <- planned(step, "quos", lapply(step$rules, `[[`, "quo"))
+  uses_match <- step$uses_match %||% planned(step, "uses_match", reads_match(quos))
+  if (length(state$groups) == 1L && is.null(state$match) &&
+      !length(state$relations) && !uses_match) {
+    return(run_rules_plain(step, state))
+  }
+  # only asked for when there is more than one group to route the rules to
+  routes <- if (length(state$groups) > 1L) rule_routes(step, state)
   active <- !is.null(state$match) && nrow(state$match$match) > 0L
   # When a match is standing, rules are evaluated group-by-group: per pair for
   # size 2, per group for size > 2, per agent for the directional modes. That is
   # what makes `sample(x, 1)` inside a rule mean "once per pair" rather than
   # "once for the whole population".
   grouped <- active && (step$scope %||% "match") == "match"
+  # a population-scope step that reads nothing of the pairing is not handed
+  # it: looking every agent up in the match costs more than its rules do
+  match <- if (grouped || length(state$relations) || uses_match) state$match
+  # partner columns are only built under a standing match, and they are all a
+  # rule reads of another group
+  pvars <- if (!is.null(match)) planned(step, "pvars", partner_vars(quos))
+  combined <- if (length(pvars)) bind_groups(state$groups, pvars)
+  # with no match the three match columns are all `NA`: built only if read
+  bare <- is.null(match) && !uses_match
+  # of those, only what the rules read, and `.group_id`, which says who is paired
+  mcols <- planned(step, "mcols", {
+    m <- match_cols_read(quos, state)
+    if (!is.null(m)) union(".group_id", m)
+  })
 
   applied_anywhere <- FALSE
-  pvars <- partner_vars(lapply(step$rules, `[[`, "quo"))
   for (nm in names(state$groups)) {
     g <- state$groups[[nm]]
-    if (nrow(g) == 0L) next
-    aug <- augment_group(g, state$match, combined, state$relations,
-                         partner = pvars)
-    rows <- if (active && grouped) !is.na(aug$.group_id) else rep(TRUE, nrow(g))
-
-    todo <- Filter(function(r) rule_applies(r, g, all_cols, state$globals),
-                   step$rules)
+    if (vctrs::vec_size(g) == 0L) next
+    # a lone group has every column there is, so every rule applies to it
+    todo <- if (length(state$groups) == 1L) step$rules else routes[[nm]]
     if (!length(todo)) next
     applied_anywhere <- TRUE
+    aug <- if (bare) g else
+      augment_group(g, match, combined, state$relations, partner = pvars,
+                    match_cols = mcols)
+    rows <- if (active && grouped) !is.na(aug$.group_id) else TRUE
 
     # an elementwise rule gives the same answer per pair as over the whole
     # group, so it is evaluated once rather than once per pair
+    ev <- NULL
     values <- lapply(todo, function(r) {
-      eval_rule(r, aug, state$globals, grouped = grouped && !isTRUE(r$elementwise))
+      by_group <- grouped && !isTRUE(r$elementwise)
+      # a lone rule has nothing to share the mask with
+      if (isTRUE(r$plain) && !by_group && length(todo) > 1L) {
+        if (is.null(ev)) ev <<- shared_eval(aug, state$globals)
+        out <- ev$eval(r$quo)
+        if (length(out) == vctrs::vec_size(aug) || length(out) == 1L) return(out)
+      }
+      eval_rule(r, aug, state$globals, grouped = by_group)
     })
     for (i in seq_along(todo)) {
       # a target that names a value on a pair goes to the relation, not to an
@@ -220,14 +550,59 @@ run_rules <- function(step, state) {
     state$groups[[nm]] <- g
   }
 
-  if (!applied_anywhere) {
+  # an empty population is not an error: there was nobody to apply it to
+  if (!applied_anywhere && any(vapply(state$groups, nrow, 0L))) {
     abm_abort(
       c("An {.fn abm_rules} step applied to no agent group.",
         "x" = "Rule{?s} {.code {rule_labels(step)}} mention{?s/} columns that no group has.",
-        "i" = "Available columns: {.field {all_cols}}."),
+        "i" = "Available columns: {.field {setdiff(model_columns(state$groups), c('.id', '.group'))}}."),
       class = "tidyABM_unapplied_rule"
     )
   }
+  state
+}
+
+#' Which of a step's rules apply to each group, as [rule_applies()] decides
+#'
+#' Asked of every rule for every group on every tick, and the answer only
+#' changes with the groups' column names or the globals' names, so the plan
+#' keeps it for as long as those stay the same.
+#' @noRd
+rule_routes <- function(step, state) {
+  planned_for(step, "routes", schema_key(state), {
+    all_cols <- model_columns(state$groups)
+    lapply(state$groups, function(g) {
+      Filter(function(r) rule_applies(r, g, all_cols, state$globals), step$rules)
+    })
+  })
+}
+
+#' [run_rules()] for one group, no pairing and no relation
+#'
+#' The commonest step there is, and the same evaluation the general loop
+#' makes of it, without the routing, the match columns and the relation
+#' lookups that cannot apply.
+#' @noRd
+run_rules_plain <- function(step, state) {
+  g <- state$groups[[1]]
+  n <- vctrs::vec_size(g)
+  if (n == 0L) return(state)
+  rules <- step$rules
+  ev <- NULL
+  values <- vector("list", length(rules))
+  for (i in seq_along(rules)) {
+    r <- rules[[i]]
+    out <- NULL
+    # a lone rule has nothing to share the mask with
+    if (isTRUE(r$plain) && length(rules) > 1L) {
+      if (is.null(ev)) ev <- shared_eval(g, state$globals)
+      out <- ev$eval(r$quo)
+      if (!(length(out) == n || length(out) == 1L)) out <- NULL
+    }
+    values[i] <- list(if (is.null(out)) eval_rule(r, g, state$globals, grouped = FALSE) else out)
+  }
+  for (i in seq_along(rules)) g <- assign_rule(g, rules[[i]]$target, values[[i]], TRUE)
+  state$groups[[1]] <- g
   state
 }
 
@@ -239,8 +614,13 @@ run_rules <- function(step, state) {
 #' agent that writes a new value into the `.by` column has changed which group
 #' it is in, and the next step sees the new one.
 #' @noRd
-run_rules_by <- function(step, state, combined) {
+run_rules_by <- function(step, state) {
   by <- by_columns(step$by)
+  quos <- lapply(step$rules, `[[`, "quo")
+  cols <- read_vars(quos)
+  combined <- bind_groups(state$groups, if (!is.null(cols))
+    c(cols, by, vapply(step$rules, `[[`, "", "target")))
+  if (nrow(combined) == 0L) return(state)
   if (length(by) != 1L || !by %in% names(combined)) {
     abm_abort(
       c("{.arg .by} must name one existing agent column.",
@@ -248,7 +628,12 @@ run_rules_by <- function(step, state, combined) {
       class = "tidyABM_missing_column"
     )
   }
-  aug <- augment_group(combined, state$match, combined, state$relations)
+  # what a match adds is only built for rules that could read it
+  aug <- if (!length(state$relations) && !(step$uses_match %||% reads_match(quos))) {
+    combined
+  } else {
+    augment_group(combined, state$match, combined, state$relations)
+  }
   for (r in step$rules) {
     if (!is.null(resolve_relation_name(r$target, state$relations))) {
       abm_abort(
@@ -261,21 +646,38 @@ run_rules_by <- function(step, state, combined) {
   # `NA` is not a group. An agent with no value for the `.by` column sits the
   # step out and keeps what it had, the way `NA` does in `.order`.
   taking_part <- !is.na(combined[[by]])
-  for (r in step$rules) {
-    value <- eval_rule(r, aug, state$globals, grouped = FALSE, by = by)
+  n_rules <- length(step$rules)
+  for (k in seq_len(n_rules)) {
+    r <- step$rules[[k]]
+    value <- eval_rule(r, aug, state$globals, grouped = FALSE, by = by,
+                       cache = .subset2(step, "plan"))
     if (length(value) == nrow(combined) && !all(taking_part)) {
       value[!taking_part] <- if (r$target %in% names(combined))
         combined[[r$target]][!taking_part] else NA
     }
+    # `combined` is the groups stacked in order, so a group's rows are a run
+    at <- 0L
     for (nm in names(state$groups)) {
       g <- state$groups[[nm]]
+      idx <- at + seq_len(nrow(g))
+      at <- at + nrow(g)
       if (nrow(g) == 0L) next
-      idx <- match(g$.id, combined$.id)
       g <- assign_rule(g, r$target, value[idx], taking_part[idx])
       state$groups[[nm]] <- g
     }
-    combined[[r$target]] <- value
-    aug[[r$target]] <- value
+    # the next rule reads what this one wrote; a bare vector of the right
+    # length goes in with the class off, and after the last rule nothing does
+    if (is.atomic(value) && is.null(attributes(value)) &&
+        length(value) %in% c(1L, nrow(combined))) {
+      if (k < n_rules) {
+        value <- rep_len(value, nrow(combined))
+        combined <- set_col(combined, r$target, value)
+        aug <- set_col(aug, r$target, value)
+      }
+    } else {
+      combined[[r$target]] <- value
+      aug[[r$target]] <- value
+    }
   }
   state
 }
@@ -283,25 +685,44 @@ run_rules_by <- function(step, state, combined) {
 #' Run one abm_global step
 #' @noRd
 run_global <- function(step, state) {
-  combined <- bind_groups(state$groups)
-  if (!is.null(step$by)) return(run_global_by(step, state, combined))
-  for (r in step$rules) {
-    # Globals go through the same dplyr mask as rules, so `n()` means the
-    # population size here just as it does inside `abm_rules()`.
-    quo <- rlang::quo_set_env(
-      r$quo,
-      rlang::new_environment(state$globals, parent = rlang::quo_get_env(r$quo))
-    )
+  if (!is.null(step$by)) return(run_global_by(step, state, bind_groups(state$groups)))
+  if (length(state$groups) > 1L &&
+      planned(step, "narrowable", narrowable(lapply(step$rules, `[[`, "quo")))) {
+    np <- planned_for(step, "narrow", schema_key(state),
+                      narrow_plan(lapply(step$rules, `[[`, "quo"), state$groups))
+    if (!is.null(np)) return(run_global_narrow(step, state, np))
+  }
+  combined <- bind_groups(state$groups,
+                          planned(step, "reads", read_vars(lapply(step$rules, `[[`, "quo"))),
+                          ids = FALSE)
+  ev <- if (length(step$rules) > 1L) shared_eval(combined, state$globals)
+  masks <- planned(step, "masks", vapply(step$rules, function(r) {
+    needs_mask(rlang::quo_get_expr(r$quo))
+  }, NA))
+  for (i in seq_along(step$rules)) {
+    r <- step$rules[[i]]
     # `reframe()` costs a hundred times what `eval_tidy()` does, for the same
     # answer whenever the expression needs nothing only a mask supplies. A
     # result of the wrong length goes back through `reframe()`.
     val <- NULL
-    if (!needs_mask(rlang::quo_get_expr(r$quo))) {
+    if (!is.null(ev) && isTRUE(r$plain)) {
+      val <- ev$eval(r$quo)
+    } else if (isTRUE(attr(r$quo, "abm_base", exact = TRUE))) {
+      # see [eval_rule()]
+      val <- eval(rlang::quo_get_expr(r$quo), combined,
+                  eval_env_cached(r$quo, state$globals, nrow(combined)))
+    } else if (!masks[[i]]) {
       val <- rlang::eval_tidy(
-        rlang::quo_set_env(r$quo, abm_eval_env(r$quo, state$globals, n = nrow(combined))),
-        data = combined)
+        rlang::quo_get_expr(r$quo),
+        data = combined, env = abm_eval_env(r$quo, state$globals, n = nrow(combined)))
     }
     if (length(val) != 1L) {
+      # Globals go through the same dplyr mask as rules, so `n()` means the
+      # population size here just as it does inside `abm_rules()`.
+      quo <- rlang::quo_set_env(
+        r$quo,
+        rlang::new_environment(state$globals, parent = rlang::quo_get_env(r$quo))
+      )
       val <- dplyr::pull(dplyr::reframe(combined, .abm_value = !!quo),
                          ".abm_value")
     }
@@ -314,6 +735,72 @@ run_global <- function(step, state) {
       )
     }
     state$globals[[r$target]] <- val
+    if (!is.null(ev)) ev$set(r$target, val)
+  }
+  state
+}
+
+#' [run_global()] with the group aggregates of some rules evaluated over their
+#' group alone (see [narrow_plan()])
+#'
+#' Only the columns the rules still read are stacked. A rule that cannot be
+#' taken this way is evaluated as [run_global()] evaluates it, over a stack of
+#' everything the step reads, built when first needed.
+#' @noRd
+run_global_narrow <- function(step, state, np) {
+  groups <- state$groups
+  # the globals that are functions: with the formulas' environment, all that
+  # decides which function a name in them finds (see [standard_fns_in()])
+  gfun <- Filter(is.function, state$globals)
+  n <- sum(vapply(groups, vctrs::vec_size, 0L))
+  rest <- if (length(np$rest)) bind_groups(groups, np$rest, ids = FALSE)
+  full <- NULL
+  ev <- shared_eval(if (is.null(rest)) list() else rest, state$globals, n = n)
+  masks <- planned(step, "masks", vapply(step$rules, function(r) {
+    needs_mask(rlang::quo_get_expr(r$quo))
+  }, NA))
+  for (i in seq_along(step$rules)) {
+    r <- step$rules[[i]]
+    p <- np$rules[[i]]
+    val <- NULL
+    if (!is.null(p)) {
+      val <- narrow_eval(p, r$quo, groups, rest, ev$env(r$quo), n,
+                         sig = list(rlang::quo_get_env(r$quo), gfun))
+      if (length(val) != 1L) {
+        if (is.null(full)) {
+          full <- bind_groups(groups, planned(step, "reads",
+            read_vars(lapply(step$rules, `[[`, "quo"))), ids = FALSE)
+        }
+        val <- rlang::eval_tidy(rlang::quo_get_expr(r$quo), data = full, env = ev$env(r$quo))
+      }
+    } else if (isTRUE(r$plain)) {
+      val <- ev$eval(r$quo)
+    } else if (!masks[[i]]) {
+      val <- rlang::eval_tidy(
+        rlang::quo_set_env(r$quo, abm_eval_env(r$quo, state$globals, n = n)),
+        data = if (is.null(rest)) list() else rest)
+    }
+    if (length(val) != 1L) {
+      if (is.null(full)) {
+        full <- bind_groups(groups, planned(step, "reads",
+          read_vars(lapply(step$rules, `[[`, "quo"))), ids = FALSE)
+      }
+      quo <- rlang::quo_set_env(
+        r$quo,
+        rlang::new_environment(state$globals, parent = rlang::quo_get_env(r$quo))
+      )
+      val <- dplyr::pull(dplyr::reframe(full, .abm_value = !!quo), ".abm_value")
+    }
+    if (length(val) != 1L) {
+      abm_abort(
+        c("{.fn abm_global} rules must collapse to a single value.",
+          "x" = "{.code {r$target} ~ {deparse1(rlang::quo_get_expr(r$quo))}} returned {length(val)} values.",
+          "i" = "Wrap it in an aggregate such as {.fn sum} or {.fn mean}."),
+        class = "tidyABM_bad_global"
+      )
+    }
+    state$globals[[r$target]] <- val
+    ev$set(r$target, val)
   }
   state
 }
@@ -335,7 +822,7 @@ global_keys <- function(by_quo, combined, current, globals) {
     return(keys)
   }
   env <- abm_eval_env(by_quo, globals)
-  keys <- rlang::eval_tidy(rlang::quo_set_env(by_quo, env), data = combined)
+  keys <- rlang::eval_tidy(rlang::quo_get_expr(by_quo), data = combined, env = env)
   if (!length(keys)) {
     abm_abort("{.arg .by} named no keys.", class = "tidyABM_empty_by")
   }
@@ -628,7 +1115,7 @@ run_sequential <- function(step, state) {
   }
 
   for (nm in names(cols)) {
-    state$groups[[nm]] <- tibble::new_tibble(cols[[nm]], nrow = sizes[[nm]])
+    state$groups[[nm]] <- new_tbl(cols[[nm]], sizes[[nm]])
   }
   for (rn in names(rels)) {
     rel <- state$relations[[rn]]

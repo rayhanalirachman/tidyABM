@@ -14,11 +14,13 @@ abm_run(
   checks = NULL,
   seed = NULL,
   record = "all",
-  progress = NULL
+  progress = NULL,
+  cores = 1
 )
 }
 \arguments{
-\item{model}{An \code{abm_model} from \code{\link[=abm_setup]{abm_setup()}}.}
+\item{model}{An \code{abm_model} from \code{\link[=abm_setup]{abm_setup()}}, or a function that builds one
+from a run's \code{params} and is called once per run. See \emph{A world per run}.}
 
 \item{go}{An \code{abm_go} sequence.}
 
@@ -60,6 +62,12 @@ console once the run has been going long enough to be worth reporting, and
 nothing while knitr, pkgdown or \verb{R CMD check} is running the code, so it
 never turns up in a rendered page. \code{TRUE} forces it on from the first tick,
 \code{FALSE} off. The bar counts ticks for a single run and runs for many.}
+
+\item{cores}{How many CPU cores share the runs: a whole number, or \code{"max"}
+for all of them. Each run is forked into its own process with
+\code{\link[parallel:mclapply]{parallel::mclapply()}}, and the result is identical to \code{cores = 1} (the
+default). Windows cannot fork, so there it always runs on one core, and a
+parallel sweep shows no progress bar.}
 }
 \value{
 An \code{abm_result}: a tibble of one row per agent per tick, carrying
@@ -125,7 +133,31 @@ that has already been built, so a starting column drawn with \code{~runif(n)} wa
 drawn once, before this function saw it, and every replicate begins from that
 same population. What varies across replicates is everything the run itself
 draws -- who is matched with whom, which agent acts first, what a rule
-samples. To vary the starting population too, build a world per replicate.
+samples. That includes a random network: a \code{"poisson"}, \code{"random"} or
+\code{"scale_free"} graph is built once, by \code{\link[=abm_setup]{abm_setup()}}, and shared by every
+replicate.A world per run
+
+To vary the starting population and the network too, hand \code{abm_run()} a
+\emph{function} that builds the world instead of the world itself. It is called
+once per run, with that run's \code{params} as its arguments, under the run's
+seed, so \code{seed} reproduces the worlds as well as the runs. Because the
+parameters are arguments, \code{n}, \code{degree} and \code{dims} can be swept here, which
+they cannot when \code{model} is a built world.
+
+\if{html}{\out{<div class="sourceCode r">}}\preformatted{world <- function(net, qo) abm_setup(
+  agents  = abm_agents(n = 441, income = ~runif(n, 0, 100)),
+  network = abm_network(net, degree = 4),
+  globals = list(qo = qo))
+abm_run(world, go, ticks = 40, reps = 25, seed = 1, record = "globals",
+        params = list(net = c("random", "ring", "scale_free"),
+                      qo = c(0.02, 0.1)))
+}\if{html}{\out{</div>}}
+
+The run draws from a stream that continues after the world's, not from the
+same seed again, so a rule's random numbers are independent of the setup's.
+A function given a single run gets \code{seed} for the world, and the run uses a
+seed derived from it, which is not \code{seed}: a model pinned to a number with a
+built world will not return that number if it is rebuilt as a function.
 }
 
 \section{Measures}{

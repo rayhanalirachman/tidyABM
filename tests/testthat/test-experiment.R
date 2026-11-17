@@ -237,3 +237,82 @@ test_that("an experiment leaves the caller's random state alone", {
 test_that("abm_measures rejects anything that is not a result", {
   expect_error(abm_measures(1), class = "tidyABM_bad_result")
 })
+
+# a world per run -------------------------------------------------------------
+
+world <- function(net, n = 20) {
+  abm_setup(agents = abm_agents(n = n, w = ~runif(n)),
+            network = abm_network(net, degree = 2))
+}
+count <- abm_go(abm_neighbours(deg ~ n()),
+                abm_global(edges ~ sum(deg) / 2, w1 ~ w[1]))
+
+test_that("a function model builds a fresh world for every run", {
+  r <- abm_run(world, count, ticks = 1, reps = 4, seed = 1, record = "globals",
+               params = list(net = "poisson"))
+  g <- as.data.frame(abm_globals(r))
+  g <- g[g$tick == 1, ]
+  expect_equal(nrow(g), 4)
+  # a built world would repeat the starting population and the graph
+  expect_gt(length(unique(g$w1)), 1)
+  expect_gt(length(unique(g$edges)), 1)
+})
+
+test_that("a function model can sweep what a built world cannot", {
+  r <- abm_run(world, count, ticks = 1, seed = 1, record = "globals",
+               params = list(net = c("ring", "poisson"), n = c(10, 30)))
+  g <- as.data.frame(abm_globals(r))
+  g <- g[g$tick == 1 & g$net == "ring", ]
+  expect_equal(g$edges[order(g$n)], c(10, 30))   # a degree-2 ring has n edges
+})
+
+test_that("worlds and runs reproduce from the experiment seed", {
+  go <- function() abm_run(world, count, ticks = 2, reps = 3, seed = 7,
+                           record = "globals", params = list(net = "poisson"))
+  expect_equal(as.data.frame(abm_globals(go())), as.data.frame(abm_globals(go())))
+})
+
+test_that("the run's draws are not the setup's replayed", {
+  # setup draws w = runif(n) from the run's seed; if the run restarted that
+  # stream, its first runif(n()) would equal w
+  m <- function() abm_setup(agents = abm_agents(n = 50, w = ~runif(n), u = 0))
+  go <- abm_go(abm_rules(u ~ runif(n()), .scope = "population"))
+  r <- abm_run(m, go, ticks = 1, seed = 3, record = "all")
+  last <- r[r$tick == 1, ]
+  expect_false(isTRUE(all.equal(last$u, last$w)))
+})
+
+test_that("params must be arguments of the function, and it must return a model", {
+  expect_error(abm_run(world, count, ticks = 1, params = list(qo = 1)),
+               class = "tidyABM_bad_params")
+  expect_error(abm_run(function() 1, count, ticks = 1), class = "tidyABM_bad_model")
+  expect_error(abm_run(1, count, ticks = 1), class = "tidyABM_bad_model")
+})
+
+# cores ----------------------------------------------------------------------
+
+test_that("a parallel sweep returns exactly the serial result", {
+  go <- function(..., seed = 1) abm_run(econ(), give, ticks = 3, reps = 3,
+                                        seed = seed, params = list(step = 1:2), ...)
+  expect_identical(go(cores = 2), go())
+  # no seed: each run's seed comes from the caller's stream, so cores still
+  # cannot change the result
+  expect_identical(withr::with_seed(5, go(cores = 2, seed = NULL)),
+                   withr::with_seed(5, go(seed = NULL)))
+})
+
+test_that("a function model runs in parallel, and a failed check surfaces", {
+  r <- function(...) abm_run(world, count, ticks = 1, reps = 2, seed = 7,
+                             record = "globals", params = list(net = "poisson"), ...)
+  expect_identical(r(cores = 2), r())
+  m <- abm_setup(agents = abm_agents(n = 5, m = 10))
+  expect_error(abm_run(m, give, ticks = 1, reps = 2, cores = 2,
+                       checks = list(no = ~FALSE)), class = "tidyABM_check_failed")
+})
+
+test_that("cores must be a whole number or \"max\"", {
+  for (bad in list(0, 1.5, "all", NA, c(1, 2))) {
+    expect_error(abm_run(econ(), give, ticks = 1, cores = bad),
+                 class = "tidyABM_bad_cores")
+  }
+})

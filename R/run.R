@@ -59,7 +59,34 @@
 #' drawn once, before this function saw it, and every replicate begins from that
 #' same population. What varies across replicates is everything the run itself
 #' draws -- who is matched with whom, which agent acts first, what a rule
-#' samples. To vary the starting population too, build a world per replicate.
+#' samples. That includes a random network: a `"poisson"`, `"random"` or
+#' `"scale_free"` graph is built once, by [abm_setup()], and shared by every
+#' replicate.
+#'
+#' # A world per run
+#'
+#' To vary the starting population and the network too, hand `abm_run()` a
+#' *function* that builds the world instead of the world itself. It is called
+#' once per run, with that run's `params` as its arguments, under the run's
+#' seed, so `seed` reproduces the worlds as well as the runs. Because the
+#' parameters are arguments, `n`, `degree` and `dims` can be swept here, which
+#' they cannot when `model` is a built world.
+#'
+#' ```r
+#' world <- function(net, qo) abm_setup(
+#'   agents  = abm_agents(n = 441, income = ~runif(n, 0, 100)),
+#'   network = abm_network(net, degree = 4),
+#'   globals = list(qo = qo))
+#' abm_run(world, go, ticks = 40, reps = 25, seed = 1, record = "globals",
+#'         params = list(net = c("random", "ring", "scale_free"),
+#'                       qo = c(0.02, 0.1)))
+#' ```
+#'
+#' The run draws from a stream that continues after the world's, not from the
+#' same seed again, so a rule's random numbers are independent of the setup's.
+#' A function given a single run gets `seed` for the world, and the run uses a
+#' seed derived from it, which is not `seed`: a model pinned to a number with a
+#' built world will not return that number if it is rebuilt as a function.
 #'
 #' @section Measures:
 #'
@@ -103,7 +130,8 @@
 #' does. In a sweep the error also names the run, with its parameters and the
 #' seed it ran on: a single run with that seed and those `params` reproduces it.
 #'
-#' @param model An `abm_model` from [abm_setup()].
+#' @param model An `abm_model` from [abm_setup()], or a function that builds one
+#'   from a run's `params` and is called once per run. See *A world per run*.
 #' @param go An `abm_go` sequence.
 #' @param ticks Number of ticks to run.
 #' @param params Optional named list of values overriding the model's `globals`,
@@ -136,6 +164,11 @@
 #'   nothing while knitr, pkgdown or `R CMD check` is running the code, so it
 #'   never turns up in a rendered page. `TRUE` forces it on from the first tick,
 #'   `FALSE` off. The bar counts ticks for a single run and runs for many.
+#' @param cores How many CPU cores share the runs: a whole number, or `"max"`
+#'   for all of them. Each run is forked into its own process with
+#'   [parallel::mclapply()], and the result is identical to `cores = 1` (the
+#'   default). Windows cannot fork, so there it always runs on one core, and a
+#'   parallel sweep shows no progress bar.
 #'
 #' @return An `abm_result`: a tibble of one row per agent per tick, carrying
 #'   the run's globals, measures and final network as attributes. With several
@@ -157,10 +190,13 @@
 #'                 measures = list(richest = ~max(money)))
 #' abm_measures(many)
 abm_run <- function(model, go, ticks, params = NULL, reps = 1, measures = NULL,
-                    checks = NULL, seed = NULL, record = "all", progress = NULL) {
-  if (!inherits(model, "abm_model")) {
-    abm_abort("{.arg model} must come from {.fn abm_setup}.",
-              class = "tidyABM_bad_model")
+                    checks = NULL, seed = NULL, record = "all", progress = NULL,
+                    cores = 1) {
+  if (!is.function(model) && !inherits(model, "abm_model")) {
+    abm_abort(
+      c("{.arg model} must come from {.fn abm_setup}, or be a function that returns one.",
+        "i" = "See {.field Many runs} in {.fn abm_run} for a world per run."),
+      class = "tidyABM_bad_model")
   }
   if (!inherits(go, "abm_go")) {
     abm_abort("{.arg go} must come from {.fn abm_go}.",
@@ -197,6 +233,13 @@ abm_run <- function(model, go, ticks, params = NULL, reps = 1, measures = NULL,
               class = "tidyABM_bad_progress")
   }
 
+  if (identical(cores, "max")) cores <- parallel::detectCores()
+  if (!rlang::is_scalar_integerish(cores) || is.na(cores) || cores < 1) {
+    abm_abort("{.arg cores} must be a whole number, at least 1, or {.val max}.",
+              class = "tidyABM_bad_cores")
+  }
+  cores <- if (.Platform$OS.type == "windows") 1L else as.integer(cores)
+
   runs <- param_grid(params, reps)
   n_runs <- length(runs)
   seeds <- run_seeds(seed, n_runs)
@@ -207,7 +250,8 @@ abm_run <- function(model, go, ticks, params = NULL, reps = 1, measures = NULL,
   # `TRUE` overrides that and also drops cli's wait, so it shows from tick 1.
   # One run counts ticks, as it always has; many count runs, because "tick 340
   # of 500" says little when there are sixty of them.
-  show_progress <- (ticks > 0L || n_runs > 1L) &&
+  # a forked worker cannot move the parent's bar, so a parallel sweep has none
+  show_progress <- (ticks > 0L || n_runs > 1L) && (cores == 1L || n_runs == 1L) &&
     (if (is.null(progress)) rlang::is_interactive() else progress)
   if (isTRUE(progress)) {
     rlang::local_options(cli.progress_show_after = 0)
@@ -221,12 +265,14 @@ abm_run <- function(model, go, ticks, params = NULL, reps = 1, measures = NULL,
     )
   }
 
-  out <- vector("list", n_runs)
-  for (i in seq_len(n_runs)) {
-    out[[i]] <- withCallingHandlers(
-      run_once(apply_params(model, runs[[i]]$values), go, ticks,
-               seeds[[i]], keep, measures, checks,
-               bar = if (by_run) NULL else bar),
+  # the formulas marked for [eval_rule()] once, not once per run
+  go$steps <- mark_steps(go$steps)
+  one_run <- function(i) {
+    o <- withCallingHandlers({
+      start <- build_run(model, runs[[i]]$values, seeds[[i]])
+      run_once(start$model, go, ticks, start$seed, keep, measures, checks,
+               bar = if (by_run) NULL else bar)
+    },
       # one run of many failing says which one, and with what it would rerun
       tidyABM_check_failed = function(e) {
         if (!by_run) return()
@@ -240,6 +286,23 @@ abm_run <- function(model, go, ticks, params = NULL, reps = 1, measures = NULL,
       }
     )
     if (by_run && !is.null(bar)) cli::cli_progress_update(id = bar)
+    o
+  }
+  # each run has its own seed already, so a forked worker per core returns
+  # exactly what the loop would (Windows cannot fork: `cores` is 1 there)
+  if (cores > 1L && by_run) {
+    # mclapply's own warnings only announce the failures handled just below
+    out <- suppressWarnings(
+      parallel::mclapply(seq_len(n_runs), one_run, mc.cores = cores))
+    failed <- Filter(function(o) inherits(o, "try-error"), out)
+    if (length(failed)) stop(attr(failed[[1]], "condition"))
+    # a worker killed outright (out of memory, say) returns NULL, not an error
+    if (any(vapply(out, is.null, logical(1)))) {
+      abm_abort("A parallel worker died without a result; try fewer {.arg cores}.",
+                class = "tidyABM_worker_died")
+    }
+  } else {
+    out <- lapply(seq_len(n_runs), one_run)
   }
   if (!is.null(bar)) cli::cli_progress_done(id = bar)
 
@@ -296,6 +359,13 @@ new_abm_result <- function(population, globals, measures, network, relations,
 run_once <- function(model, go, ticks, seed, keep, measures, checks = NULL,
                      bar = NULL) {
   if (!is.null(seed)) local_seed(seed)
+  # nothing stacked carries over from another run; see [bind_groups()]
+  # ponytail: a fixed size, decided at the start; below it the bookkeeping
+  # costs more than the stacking it saves
+  rm(list = ls(.bound), envir = .bound)
+  rm(list = ls(.eval_env), envir = .eval_env)
+  rm(list = ls(.std_memo, all.names = TRUE), envir = .std_memo)
+  .bound$on <- n_agents(model) >= 5000L
 
   state <- list(
     groups    = model$groups,
@@ -313,31 +383,56 @@ run_once <- function(model, go, ticks, seed, keep, measures, checks = NULL,
   first <- snapshot(state, 0L)
   empty <- first[0, , drop = FALSE]
   if (keep[[1]]) snapshots[[1]] <- first
-  global_log[[1]] <- global_row(state, 0L)
+  global_log[[1]] <- global_cells(state, 0L)
   if (!is.null(measure_log)) measure_log[[1]] <- measure_row(measures, state, 0L)
   if (length(checks)) check_row(checks, state, 0L)
 
-  for (t in seq_len(ticks)) {
-    state$match <- NULL
-    state$tick <- t
-    for (i in seq_along(go$steps)) {
-      state <- run_step_reporting(go$steps[[i]], state, at = i)
+  steps <- plan_steps(go$steps)
+  # what the measures and checks read, worked out once rather than per tick
+  measure_reads <- read_vars(measures)
+  check_reads <- read_vars(checks)
+  # their group aggregates, planned once per schema
+  measure_plan <- new.env(parent = emptyenv())
+  check_plan <- new.env(parent = emptyenv())
+  # one handler for every step of every tick, rather than one set up per
+  # step: what [run_step_reporting()] does, for the step running when it fails
+  at <- 0L
+  withCallingHandlers({
+    for (t in seq_len(ticks)) {
+      state$match <- NULL
+      state$tick <- t
+      for (i in seq_along(steps)) {
+        at <- i
+        state <- run_step(steps[[i]], state)
+      }
+      at <- 0L
+      # a population that is not recorded is not kept, which is the whole point:
+      # the run then slows down rather than filling memory
+      if (keep[[t + 1L]]) snapshots[[t + 1L]] <- snapshot(state, t)
+      global_log[[t + 1L]] <- global_cells(state, t)
+      if (!is.null(measure_log)) {
+        measure_log[[t + 1L]] <- measure_row(measures, state, t, measure_reads, measure_plan)
+      }
+      if (length(checks)) check_row(checks, state, t, check_reads, check_plan)
+      if (!is.null(bar)) cli::cli_progress_update(id = bar)
     }
-    # a population that is not recorded is not kept, which is the whole point:
-    # the run then slows down rather than filling memory
-    if (keep[[t + 1L]]) snapshots[[t + 1L]] <- snapshot(state, t)
-    global_log[[t + 1L]] <- global_row(state, t)
-    if (!is.null(measure_log)) measure_log[[t + 1L]] <- measure_row(measures, state, t)
-    if (length(checks)) check_row(checks, state, t)
-    if (!is.null(bar)) cli::cli_progress_update(id = bar)
-  }
+  }, error = function(e) {
+    # outside a step (a measure, a check) the error goes on as it is
+    if (at == 0L || inherits(e, "tidyABM_error")) return()
+    rethrow_step_error(e, steps[[at]], state, at)
+  })
 
   snapshots <- Filter(Negate(is.null), snapshots)
   population <- if (length(snapshots)) dplyr::bind_rows(snapshots) else empty
-  population <- dplyr::relocate(population, "tick", ".id", ".group")
+  # `tick`, `.id` and `.group` first: what `dplyr::relocate()` does, without
+  # its tidyselect machinery once per run
+  front <- c("tick", ".id", ".group")
+  cols <- names(population)
+  population <- tibble::new_tibble(unclass(population)[c(front, cols[!cols %in% front])],
+                                   nrow = vctrs::vec_size(population))
   list(
     population = population,
-    globals    = dplyr::bind_rows(global_log),
+    globals    = global_table(global_log),
     measures   = if (is.null(measure_log)) NULL else dplyr::bind_rows(measure_log),
     network    = strip_draws(state$edges),
     relations  = relation_tables(state$relations)
@@ -471,7 +566,12 @@ run_step <- function(step, state) {
   state <- switch(
     class(step)[[1]],
     abm_match = {
-      m <- run_match(step, bind_groups(state$groups), state$edges, state$globals,
+      # these modes read agents only through their conditions and `by` columns
+      cols <- planned(step, "cols", if (step$pair %in% c("random", "one_of", "opposite_group")) {
+        reads <- read_vars(step[c("role", "eligible", "among", "weight")])
+        if (!is.null(reads)) c(reads, by_columns(step$by), by_columns(step$dot_by))
+      })
+      m <- run_match(step, bind_groups(state$groups, cols), state$edges, state$globals,
                      relations = state$relations)
       state$match <- list(match = m, size = step$size)
       state
@@ -494,11 +594,70 @@ run_step <- function(step, state) {
   )
   # a rule, a message or an inherited value may have written `.cell`, which is
   # how a mobile agent is moved by hand; `.x` / `.y` have to follow
-  if (!is.null(state$lattice) &&
-      inherits(step, c("abm_rules", "abm_sequential", "abm_tell", "abm_birth"))) {
+  # (only if the step can have: re-deriving them is a pass over every group)
+  if (!is.null(state$lattice) && planned(step, "writes_cell",
+      inherits(step, c("abm_rules", "abm_sequential", "abm_tell", "abm_birth")) &&
+      any(c(".cell", "partner_.cell") %in%
+            vapply(c(step$rules, step$cost, step$inherit), `[[`, "", "target")))) {
     state <- sync_cell_coords(state)
   }
   state
+}
+
+#' The run's own copy of the steps, each carrying an empty `plan`
+#'
+#' What a step works out from its formulas alone -- the columns they read,
+#' whether one writes `.cell` -- is the same on every tick, and [planned()]
+#' keeps it in the step's plan for the rest of the run. What also depends on
+#' the population's columns or on the globals, such as which rule applies to
+#' which group, is kept by [planned_for()] with the names it was worked out
+#' for, and worked out again when they change. The plan lives on a copy made
+#' per run, so the user's `go` is never touched and a step reused with another
+#' world starts afresh.
+#' @noRd
+plan_steps <- function(steps) {
+  lapply(steps, function(s) {
+    if (inherits(s, "abm_repeat")) s$steps <- plan_steps(s$steps)
+    s$plan <- new.env(parent = emptyenv())
+    s
+  })
+}
+
+#' `value`, worked out on the first ask of the run and kept in the step's plan
+#'
+#' `value` is a promise, so it is only evaluated when the plan does not hold
+#' it yet. A step with no plan (run outside [run_once()]) evaluates it each time.
+#' @noRd
+planned <- function(step, name, value) {
+  p <- .subset2(step, "plan")
+  if (is.null(p)) return(value)
+  v <- p[[name]]
+  if (is.null(v)) {
+    v <- list(value)
+    assign(name, v, envir = p)
+  }
+  v[[1]]
+}
+
+#' [planned()] for a value that also depends on `key`: kept while `key` is
+#' identical to the one it was worked out for
+#' @noRd
+planned_for <- function(step, name, key, value) {
+  p <- .subset2(step, "plan")
+  if (is.null(p)) return(value)
+  v <- p[[name]]
+  if (is.null(v) || !identical(v$key, key)) {
+    v <- list(key = key, value = value)
+    assign(name, v, envir = p)
+  }
+  v$value
+}
+
+#' The population's column names per group and the globals' names: what
+#' decides which rules apply where
+#' @noRd
+schema_key <- function(state) {
+  list(lapply(state$groups, names), names(state$globals))
 }
 
 snapshot <- function(state, t) {
@@ -508,21 +667,53 @@ snapshot <- function(state, t) {
   n <- nrow(out)
   cols <- as.list(out)
   cols$tick <- rep(t, n)
-  tibble::new_tibble(cols, nrow = n)
+  new_tbl(cols, n)
 }
 
-global_row <- function(state, t) {
-  if (!length(state$globals)) {
-    return(tibble::new_tibble(list(tick = t), nrow = 1L))
+#' One tick's globals as a bare list, for [global_table()]
+#'
+#' A global need not be a scalar -- a lookup table, a matrix of payoffs, a
+#' vector of prices. One row per tick is still the right shape for the log, so
+#' anything that is not a single value is wrapped in a list cell rather than
+#' silently recycling the tick column.
+#' @noRd
+global_cells <- function(state, t) {
+  g <- state$globals
+  # a single value stays as it is; anything else goes in a list cell
+  wrap <- lengths(g) != 1L | !vapply(lapply(g, dim), is.null, NA)
+  if (any(wrap)) g[wrap] <- lapply(g[wrap], list)
+  c(list(tick = t), g)
+}
+
+#' The log of [global_cells()] rows as the tibble `bind_rows()` of
+#' one-row tibbles of them makes
+#'
+#' When every row has the same names and each column is a bare scalar of one
+#' type, the columns are simply concatenated. Anything else -- a global that
+#' appears mid-run, one that changes type, a list cell or a classed value --
+#' goes through `bind_rows()`, as it always did.
+#' @noRd
+global_table <- function(rows) {
+  nms <- names(rows[[1]])
+  # a global named `tick` (or a repeated or empty name) is left to
+  # `bind_rows()`, whose name repair says what it renamed
+  if (!anyDuplicated(nms) && !anyNA(nms) && all(nzchar(nms)) &&
+      all(vapply(rows, function(r) identical(names(r), nms), NA))) {
+    cols <- lapply(nms, function(nm) {
+      v <- lapply(rows, .subset2, nm)
+      # every cell a bare atomic of the first one's type
+      types <- vapply(v, typeof, "")
+      if (types[[1]] %in% c("logical", "integer", "double", "complex", "character", "raw") &&
+          all(types == types[[1]]) && !any(lengths(lapply(v, attributes)))) {
+        unlist(v, use.names = FALSE)
+      }
+    })
+    if (!any(vapply(cols, is.null, NA))) {
+      names(cols) <- nms
+      return(new_tbl(cols, length(rows)))
+    }
   }
-  # A global need not be a scalar -- a lookup table, a matrix of payoffs, a
-  # vector of prices. One row per tick is still the right shape for the log, so
-  # anything that is not a single value is wrapped in a list column rather than
-  # silently recycling the tick column.
-  vals <- lapply(state$globals, function(v) {
-    if (is.null(dim(v)) && length(v) == 1L) v else list(v)
-  })
-  tibble::new_tibble(c(list(tick = t), vals), nrow = 1L)
+  dplyr::bind_rows(lapply(rows, tibble::new_tibble, nrow = 1L))
 }
 
 #' Global values recorded during a run

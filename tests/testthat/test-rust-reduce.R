@@ -108,6 +108,20 @@ test_that("empty vectors reduce as in R", {
   }
 })
 
+test_that("the mean of nothing is a run-time 0/0, with the hardware's NaN sign", {
+  # CI 775a129: a NaN constant (sign bit clear) differed from R on x86_64, where
+  # 0/0 sets the sign bit (fff8000000000000); arm64 clears it (7ff8000000000000)
+  zero <- 0
+  runtime_nan <- zero / zero
+  cases <- list(rs_reduce("mean", double(), FALSE), rs_reduce("mean", NA_real_, TRUE),
+                rs_reduce("mean", c(NaN, NA), TRUE), rs_reduce("mean", integer(), FALSE),
+                rs_reduce("mean", NA_integer_, TRUE), rs_reduce("mean", NA, TRUE))
+  for (i in seq_along(cases)) {
+    expect_same_as_r(cases[[i]], mean(double()), paste("empty mean, case", i))
+    expect_same_as_r(cases[[i]], runtime_nan, paste("empty mean vs 0/0, case", i))
+  }
+})
+
 test_that("group sums are per-group sum(), and rowsum() where R makes them equal", {
   withr::local_seed(7)
   for (n in c(10, 1000, big_n(1e5))) {

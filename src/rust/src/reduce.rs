@@ -18,21 +18,17 @@ pub fn sum(x: &[f64], na_rm: bool) -> f64 {
 }
 
 /// `mean(x)` for a double vector (NA removal, if wanted, is done by the caller as
-/// `mean.default()` does). `NaN` for an empty vector.
+/// `mean.default()` does). An empty vector gives the C helper's run-time `0/0`,
+/// whose NaN sign bit is the hardware's, as in R (no `f64::NAN` constant: its sign
+/// bit is clear, R's is set on x86_64).
 pub fn mean(x: &[f64]) -> f64 {
-    if x.is_empty() {
-        return f64::NAN;
-    }
     // SAFETY: as for `sum`.
     unsafe { rapi::tidyabm_ld_mean(x.as_ptr(), x.len() as isize) }
 }
 
-/// `mean(x)` for an integer vector without NA. `NaN` for an empty vector.
+/// `mean(x)` for an integer vector without NA; empty as in [`mean`].
 pub fn mean_int(x: &[i32]) -> f64 {
-    if x.is_empty() {
-        return f64::NAN;
-    }
-    // SAFETY: as for `sum`.
+    // SAFETY: as for `sum` (the C code reads nothing when the length is 0).
     unsafe { rapi::tidyabm_ld_mean_int(x.as_ptr(), x.len() as isize) }
 }
 

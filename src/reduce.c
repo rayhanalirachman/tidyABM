@@ -25,6 +25,14 @@ static int is_nan(double v) { return v != v; }
 
 static int is_finite(ldouble v) { return v == v && v - v == 0; }
 
+/* The mean of nothing: 0/0 computed at run time, so its NaN has the hardware's
+   sign bit (set on x86_64, clear on arm64), as R's mean() of an empty vector.
+   volatile stops the compiler folding it into a NaN constant of its own choice. */
+static double empty_mean(void) {
+    volatile ldouble zero = 0;
+    return (double) (zero / zero);
+}
+
 /* sum(x, na.rm = narm) of a double vector. */
 double tidyabm_ld_sum(const double *x, ptrdiff_t n, int narm) {
     ldouble s = 0;
@@ -35,6 +43,7 @@ double tidyabm_ld_sum(const double *x, ptrdiff_t n, int narm) {
 
 /*
  * mean(x) of a double vector without NA removal (mean.default removes them first).
+ * n may be 0.
  * The first pass is sum / n, corrected by the mean of the residuals when finite.
  * When the sum overflows although the mean would not, both passes are redone on
  * values divided by n first. (The scaled variant was singled out by differential
@@ -42,6 +51,7 @@ double tidyabm_ld_sum(const double *x, ptrdiff_t n, int narm) {
  */
 double tidyabm_ld_mean(const double *x, ptrdiff_t n) {
     ldouble s = 0, t = 0;
+    if (n == 0) return empty_mean();
     for (ptrdiff_t i = 0; i < n; i++) s += x[i];
     s /= n;
     if (is_finite(s)) {
@@ -57,8 +67,9 @@ double tidyabm_ld_mean(const double *x, ptrdiff_t n) {
     return (double) s;
 }
 
-/* mean(x) of an integer vector known to hold no NA. */
+/* mean(x) of an integer vector known to hold no NA (n may be 0). */
 double tidyabm_ld_mean_int(const int *x, ptrdiff_t n) {
+    if (n == 0) return empty_mean();
     ldouble s = 0;
     for (ptrdiff_t i = 0; i < n; i++) s += x[i];
     return (double) (s / n);

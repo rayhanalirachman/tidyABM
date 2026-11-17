@@ -1,0 +1,76 @@
+[PASS] Rust kernel + R rule alternating on one store == plain R (values and one RNG stream)
+[PASS] rlang::abort() inside an R call made from Rust: class preserved
+[PASS]    message and custom field preserved
+[PASS] base error 'object not found' from Rust-called R: same class and message
+[PASS] rethrow_step_error() on an error from Rust-called R == on the same error in R (class)
+[PASS]    ... and the full cli message
+   class: tidyABM_missing_column / tidyABM_step_error / tidyABM_error / rlang_error / error / condition 
+[PASS] warning() in Rust-called R reaches the handler and muffleWarning resumes
+[PASS] a restart established in R and invoked inside Rust-called R unwinds Rust frames
+[PASS] typed Rust error -> R error with that message
+   class: simpleError / error / condition 
+panic occured!
+
+Original message:
+    panicked at src/lib.rs:186:5:
+    boom
+
+Backtrace:
+    (Backtrace is not available on the release build)
+
+[PASS] panic! -> R error (panic = 'unwind', savvy catch_unwind)
+   class: simpleError / error / condition  message: panic happened 
+panic occured!
+
+Original message:
+    panicked at src/lib.rs:80:54:
+    index out of bounds: the len is 1 but the index is 1
+
+Backtrace:
+    (Backtrace is not available on the release build)
+
+panic occured!
+
+Original message:
+    panicked at src/lib.rs:80:54:
+    index out of bounds: the len is 1 but the index is 2
+
+Backtrace:
+    (Backtrace is not available on the release build)
+
+panic occured!
+
+Original message:
+    panicked at src/lib.rs:74:5:
+    a scoped thread panicked
+
+Backtrace:
+    (Backtrace is not available on the release build)
+
+[PASS] panic inside a worker thread (index out of bounds) -> R error, no abort
+[PASS] session alive after panics: further calls work
+[1] TRUE
+  
+   RESULT interrupted 1.383668 
+   ALIVE 2 
+[PASS] Ctrl-C honoured during Rust loop (child returned 0.01 s after SIGINT)
+panic occured!
+
+Original message:
+    panicked at src/lib.rs:186:5:
+    x
+
+Backtrace:
+    (Backtrace is not available on the release build)
+
+panic occured!
+
+Original message:
+    panicked at src/lib.rs:186:5:
+    x
+
+Backtrace:
+    (Backtrace is not available on the release build)
+
+[PASS] gctorture(TRUE): all round trips give the same results, no crash
+rustc: rustc 1.100.0 (0ef1bc386 2026-11-09)  R: R version 4.6.1 (2026-06-24) 

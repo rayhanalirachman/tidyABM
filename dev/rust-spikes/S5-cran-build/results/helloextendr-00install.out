@@ -1,0 +1,78 @@
+* installing *source* package 'helloextendr' ...
+** this is package 'helloextendr' version '0.0.0.9000'
+** using staged installation
+Using cargo 1.100.0 (3acc79c0c 2026-11-05)
+Using rustc 1.100.0 (0ef1bc386 2026-11-09)
+Building for CRAN.
+Writing `src/Makevars`.
+`tools/config.R` has finished.
+** libs
+using C compiler: 'Apple clang version 17.0.0 (clang-1700.6.3.2)'
+using SDK: 'MacOSX26.2.sdk'
+clang -arch arm64 -I"/Library/Frameworks/R.framework/Resources/include" -DNDEBUG   -I/opt/R/arm64/include    -fPIC  -falign-functions=64 -Wall -g -O2  -c entrypoint.c -o entrypoint.o
+if [ -d ./vendor ]; then \
+		echo "=== Using offline vendor directory ==="; \
+		mkdir -p /private/tmp/claude-501/-Users-rayhanalirachman-Documents--Github-Tidy-ABM-Packages/9409e65c-885e-4db3-acb0-2dc090ad97a6/scratchpad/s5/helloextendr.Rcheck/00_pkg_src/helloextendr/src/.cargo && \
+		cp rust/vendor-config.toml /private/tmp/claude-501/-Users-rayhanalirachman-Documents--Github-Tidy-ABM-Packages/9409e65c-885e-4db3-acb0-2dc090ad97a6/scratchpad/s5/helloextendr.Rcheck/00_pkg_src/helloextendr/src/.cargo/config.toml; \
+	elif [ -f ./rust/vendor.tar.xz ]; then \
+		echo "=== Using offline vendor tarball ==="; \
+		tar xf rust/vendor.tar.xz && \
+		mkdir -p /private/tmp/claude-501/-Users-rayhanalirachman-Documents--Github-Tidy-ABM-Packages/9409e65c-885e-4db3-acb0-2dc090ad97a6/scratchpad/s5/helloextendr.Rcheck/00_pkg_src/helloextendr/src/.cargo && \
+		cp rust/vendor-config.toml /private/tmp/claude-501/-Users-rayhanalirachman-Documents--Github-Tidy-ABM-Packages/9409e65c-885e-4db3-acb0-2dc090ad97a6/scratchpad/s5/helloextendr.Rcheck/00_pkg_src/helloextendr/src/.cargo/config.toml; \
+	fi
+=== Using offline vendor tarball ===
+export CARGO_HOME=/private/tmp/claude-501/-Users-rayhanalirachman-Documents--Github-Tidy-ABM-Packages/9409e65c-885e-4db3-acb0-2dc090ad97a6/scratchpad/s5/helloextendr.Rcheck/00_pkg_src/helloextendr/src/.cargo && \
+	export PATH="/private/tmp/claude-501/-Users-rayhanalirachman-Documents--Github-Tidy-ABM-Packages/9409e65c-885e-4db3-acb0-2dc090ad97a6/scratchpad/s5/helloextendr.Rcheck/R_check_bin:/Users/rayhanalirachman/.cargo/bin:/Users/rayhanalirachman/.pyenv/shims:/Users/rayhanalirachman/.pyenv/bin:/Users/rayhanalirachman/.juliaup/bin:/Library/Frameworks/Python.framework/Versions/3.11/bin:/Library/Frameworks/Python.framework/Versions/3.12/bin:/Library/Frameworks/Python.framework/Versions/3.13/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/pkg/env/global/bin:/opt/X11/bin:/Library/Apple/usr/bin:/opt/homebrew/bin:/Applications/quarto/bin:/Users/rayhanalirachman/.cargo/bin" && \
+	RUSTFLAGS=" --print=native-static-libs" cargo build -j 2 --offline --lib --release --manifest-path=./rust/Cargo.toml --target-dir ./rust/target 
+   Compiling proc-macro2 v1.0.107
+   Compiling quote v1.0.47
+   Compiling unicode-ident v1.0.27
+   Compiling extendr-ffi v0.9.0
+   Compiling paste v1.0.15
+   Compiling syn v2.0.119
+   Compiling syn v3.0.10
+   Compiling extendr-api v0.9.0
+   Compiling lazy_static v1.5.1
+   Compiling readonly v0.2.14
+   Compiling extendr-macros v0.9.0
+   Compiling once_cell v1.21.4
+   Compiling helloextendr v0.1.0 (/private/tmp/claude-501/-Users-rayhanalirachman-Documents--Github-Tidy-ABM-Packages/9409e65c-885e-4db3-acb0-2dc090ad97a6/scratchpad/s5/helloextendr.Rcheck/00_pkg_src/helloextendr/src/rust)
+note: link against the following native artifacts when linking against this static library. The order and any duplication can be significant on some platforms
+
+note: native-static-libs: -lR -lSystem -lc -lm
+
+    Finished `release` profile [optimized] target(s) in 9.61s
+export CARGO_HOME=/private/tmp/claude-501/-Users-rayhanalirachman-Documents--Github-Tidy-ABM-Packages/9409e65c-885e-4db3-acb0-2dc090ad97a6/scratchpad/s5/helloextendr.Rcheck/00_pkg_src/helloextendr/src/.cargo && \
+	export PATH="/private/tmp/claude-501/-Users-rayhanalirachman-Documents--Github-Tidy-ABM-Packages/9409e65c-885e-4db3-acb0-2dc090ad97a6/scratchpad/s5/helloextendr.Rcheck/R_check_bin:/Users/rayhanalirachman/.cargo/bin:/Users/rayhanalirachman/.pyenv/shims:/Users/rayhanalirachman/.pyenv/bin:/Users/rayhanalirachman/.juliaup/bin:/Library/Frameworks/Python.framework/Versions/3.11/bin:/Library/Frameworks/Python.framework/Versions/3.12/bin:/Library/Frameworks/Python.framework/Versions/3.13/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/pkg/env/global/bin:/opt/X11/bin:/Library/Apple/usr/bin:/opt/homebrew/bin:/Applications/quarto/bin:/Users/rayhanalirachman/.cargo/bin" && \
+	cargo run -j 2 --offline --bin document --manifest-path=./rust/Cargo.toml --target-dir ./rust/target 
+   Compiling proc-macro2 v1.0.107
+   Compiling unicode-ident v1.0.27
+   Compiling quote v1.0.47
+   Compiling extendr-ffi v0.9.0
+   Compiling paste v1.0.15
+   Compiling syn v2.0.119
+   Compiling syn v3.0.10
+   Compiling extendr-api v0.9.0
+   Compiling lazy_static v1.5.1
+   Compiling extendr-macros v0.9.0
+   Compiling readonly v0.2.14
+   Compiling once_cell v1.21.4
+   Compiling helloextendr v0.1.0 (/private/tmp/claude-501/-Users-rayhanalirachman-Documents--Github-Tidy-ABM-Packages/9409e65c-885e-4db3-acb0-2dc090ad97a6/scratchpad/s5/helloextendr.Rcheck/00_pkg_src/helloextendr/src/rust)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 8.50s
+     Running `rust/target/debug/document`
+# Always clean up CARGOTMP
+rm -Rf /private/tmp/claude-501/-Users-rayhanalirachman-Documents--Github-Tidy-ABM-Packages/9409e65c-885e-4db3-acb0-2dc090ad97a6/scratchpad/s5/helloextendr.Rcheck/00_pkg_src/helloextendr/src/.cargo;
+clang -arch arm64 -dynamiclib -Wl,-headerpad_max_install_names -undefined dynamic_lookup -L/Library/Frameworks/R.framework/Resources/lib -L/opt/R/arm64/lib -o helloextendr.so entrypoint.o -L./rust/target/release -lhelloextendr -F/Library/Frameworks/R.framework/.. -framework R
+rm -Rf /private/tmp/claude-501/-Users-rayhanalirachman-Documents--Github-Tidy-ABM-Packages/9409e65c-885e-4db3-acb0-2dc090ad97a6/scratchpad/s5/helloextendr.Rcheck/00_pkg_src/helloextendr/src/.cargo /private/tmp/claude-501/-Users-rayhanalirachman-Documents--Github-Tidy-ABM-Packages/9409e65c-885e-4db3-acb0-2dc090ad97a6/scratchpad/s5/helloextendr.Rcheck/00_pkg_src/helloextendr/src/vendor ./rust/target
+installing to /private/tmp/claude-501/-Users-rayhanalirachman-Documents--Github-Tidy-ABM-Packages/9409e65c-885e-4db3-acb0-2dc090ad97a6/scratchpad/s5/helloextendr.Rcheck/00LOCK-helloextendr/00new/helloextendr/libs
+** R
+** byte-compile and prepare package for lazy loading
+** help
+No man pages found in package  'helloextendr' 
+*** installing help indices
+** building package indices
+** testing if installed package can be loaded from temporary location
+** checking absolute paths in shared objects and dynamic libraries
+** testing if installed package can be loaded from final location
+** testing if installed package keeps a record of temporary installation path
+* DONE (helloextendr)

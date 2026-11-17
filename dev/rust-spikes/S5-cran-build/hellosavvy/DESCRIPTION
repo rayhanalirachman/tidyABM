@@ -1,0 +1,14 @@
+Package: hellosavvy
+Title: Hello Savvy Spike
+Version: 0.0.1
+Authors@R: c(person("Spike", "Author", email = "spike@example.invalid", role = c("aut", "cre")),
+    person("The authors of the dependency Rust crates", role = "ctb",
+    comment = "see inst/AUTHORS file for details"))
+Description: Throwaway package for spike S5 of the tidyABM Rust migration: checks
+    that a savvy-based package builds offline from vendored crates and passes
+    'R CMD check --as-cran'.
+License: MIT + file LICENSE
+Encoding: UTF-8
+SystemRequirements: Cargo (Rust's package manager), rustc >= 1.81
+Roxygen: list(markdown = TRUE)
+Config/roxygen2/version: 8.1.0

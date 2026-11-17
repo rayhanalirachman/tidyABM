@@ -1,0 +1,19 @@
+[package]
+name = "rspike"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["staticlib", "lib"]
+
+[dependencies]
+savvy = "=0.11.0"
+savvy-ffi = "=0.11.0"
+rrng = { path = "rrng" }  # copied from spikes/S1-rng by ../../build.sh
+
+[profile.release]
+# PLAN.md: catch panics and turn them into R errors instead of aborting the session
+panic = "unwind"
+lto = true
+codegen-units = 1

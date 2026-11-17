@@ -1,0 +1,2 @@
+useDynLib(rspike, .registration = TRUE)
+exportPattern("^[^\\.]")

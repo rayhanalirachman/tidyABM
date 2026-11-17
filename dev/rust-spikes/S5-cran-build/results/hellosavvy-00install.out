@@ -1,0 +1,59 @@
+* installing *source* package 'hellosavvy' ...
+** this is package 'hellosavvy' version '0.0.1'
+** using staged installation
+using Rust package manager: 'cargo 1.100.0 (3acc79c0c 2026-11-05)'
+using Rust compiler: 'rustc 1.100.0 (0ef1bc386 2026-11-09)'
+using macOS deployment target: 11.0
+** libs
+using C compiler: 'Apple clang version 17.0.0 (clang-1700.6.3.2)'
+using SDK: 'MacOSX26.2.sdk'
+clang -arch arm64 -I"/Library/Frameworks/R.framework/Resources/include" -DNDEBUG   -I/opt/R/arm64/include    -fPIC  -falign-functions=64 -Wall -g -O2  -c init.c -o init.o
+if [ -f ./rust/vendor.tar.xz ]; then \
+	  tar xf ./rust/vendor.tar.xz -C ./rust && \
+	  mkdir -p ./rust/.cargo-home && cp ./rust/vendor-config.toml ./rust/.cargo-home/config.toml; \
+	fi
+# In some environments, ~/.cargo/bin might not be included in PATH, so we need
+# to set it here to ensure cargo can be invoked. It is appended to PATH and
+# therefore is only used if cargo is absent from the user's PATH.
+export PATH="/private/tmp/claude-501/-Users-rayhanalirachman-Documents--Github-Tidy-ABM-Packages/9409e65c-885e-4db3-acb0-2dc090ad97a6/scratchpad/s5/hellosavvy.Rcheck/R_check_bin:/Users/rayhanalirachman/.cargo/bin:/Users/rayhanalirachman/.pyenv/shims:/Users/rayhanalirachman/.pyenv/bin:/Users/rayhanalirachman/.juliaup/bin:/Library/Frameworks/Python.framework/Versions/3.11/bin:/Library/Frameworks/Python.framework/Versions/3.12/bin:/Library/Frameworks/Python.framework/Versions/3.13/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/pkg/env/global/bin:/opt/X11/bin:/Library/Apple/usr/bin:/opt/homebrew/bin:/Applications/quarto/bin:/Users/rayhanalirachman/.cargo/bin" && \
+	  export CC="clang -arch arm64" && \
+	  export CFLAGS="-falign-functions=64 -Wall -g -O2 " && \
+	  export RUSTFLAGS="" && \
+	  if [ -f ./rust/vendor.tar.xz ]; then export CARGO_HOME="$PWD/rust/.cargo-home"; OFFLINE="-j 2 --offline"; fi && \
+	   export MACOSX_DEPLOYMENT_TARGET="11.0" && \
+	  if [ "" != "wasm32-unknown-emscripten" ]; then \
+	    cargo build $OFFLINE --lib --profile release  --manifest-path=./rust/Cargo.toml --target-dir ./rust/target; \
+	  else \
+	    export CARGO_PROFILE_DEV_PANIC="abort" && \
+	    export CARGO_PROFILE_RELEASE_PANIC="abort" && \
+	    export RUSTFLAGS=" -Zdefault-visibility=hidden" && \
+	    cargo +nightly build --lib --profile release  --manifest-path=./rust/Cargo.toml --target-dir ./rust/target --target  -Zbuild-std=panic_abort,std; \
+	  fi
+   Compiling find-msvc-tools v0.1.15
+   Compiling shlex v2.0.1
+   Compiling proc-macro2 v1.0.107
+   Compiling cc v1.11.2
+   Compiling unicode-ident v1.0.27
+   Compiling quote v1.0.47
+   Compiling savvy-ffi v0.11.0
+   Compiling syn v3.0.10
+   Compiling savvy v0.11.0
+   Compiling savvy-bindgen v0.11.0
+   Compiling savvy-macro v0.11.0
+   Compiling hellosavvy v0.1.0 (/private/tmp/claude-501/-Users-rayhanalirachman-Documents--Github-Tidy-ABM-Packages/9409e65c-885e-4db3-acb0-2dc090ad97a6/scratchpad/s5/hellosavvy.Rcheck/00_pkg_src/hellosavvy/src/rust)
+    Finished `release` profile [optimized] target(s) in 5.42s
+clang -arch arm64 -dynamiclib -Wl,-headerpad_max_install_names -undefined dynamic_lookup -L/Library/Frameworks/R.framework/Resources/lib -L/opt/R/arm64/lib -o hellosavvy.so init.o -L./rust/target//release -lhellosavvy -F/Library/Frameworks/R.framework/.. -framework R
+rm -f ./rust/target//release/libhellosavvy.a
+rm -Rf ./rust/.cargo-home ./rust/vendor
+installing to /private/tmp/claude-501/-Users-rayhanalirachman-Documents--Github-Tidy-ABM-Packages/9409e65c-885e-4db3-acb0-2dc090ad97a6/scratchpad/s5/hellosavvy.Rcheck/00LOCK-hellosavvy/00new/hellosavvy/libs
+** R
+** inst
+** byte-compile and prepare package for lazy loading
+** help
+*** installing help indices
+** building package indices
+** testing if installed package can be loaded from temporary location
+** checking absolute paths in shared objects and dynamic libraries
+** testing if installed package can be loaded from final location
+** testing if installed package keeps a record of temporary installation path
+* DONE (hellosavvy)

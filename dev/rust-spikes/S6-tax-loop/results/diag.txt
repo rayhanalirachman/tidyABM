@@ -1,0 +1,12 @@
+lattice$nb as given          identical TRUE  differing values    0 / 6000, max |diff| 0, first at run NA tick NA
+sorted ids                   identical FALSE differing values  489 / 6000, max |diff| 4.44e-16, first at run 1 tick 30
+reversed                     identical FALSE differing values  499 / 6000, max |diff| 4.44e-16, first at run 1 tick 30
+# A tibble: 3 x 2
+   from    to
+  <int> <int>
+1     1    22
+2     1   421
+3     1     2
+edges (from,to) then (to,from) identical TRUE  differing values    0 / 6000, max |diff| 0, first at run NA tick NA
+edges stable by from         identical TRUE  differing values    0 / 6000, max |diff| 0, first at run NA tick NA
+neighbour cache in run state? fields of model: groups, globals, edges, network_spec, lattice, agent_specs 

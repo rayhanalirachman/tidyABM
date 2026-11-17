@@ -1,0 +1,12 @@
+Rust crates vendored in src/rust/vendor.tar.xz (name, version, licence):
+cc 1.11.2 (MIT OR Apache-2.0)
+find-msvc-tools 0.1.15 (MIT OR Apache-2.0)
+proc-macro2 1.0.107 (MIT OR Apache-2.0)
+quote 1.0.47 (MIT OR Apache-2.0)
+savvy 0.11.0 (MIT)
+savvy-bindgen 0.11.0 (MIT)
+savvy-ffi 0.11.0 (MIT)
+savvy-macro 0.11.0 (MIT)
+shlex 2.0.1 (MIT OR Apache-2.0)
+syn 3.0.10 (MIT OR Apache-2.0)
+unicode-ident 1.0.27 ((MIT OR Apache-2.0) AND Unicode-3.0)

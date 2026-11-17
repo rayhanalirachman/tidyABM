@@ -1,0 +1,72 @@
+# Phase 0 spikes on the platforms the author's Mac cannot reach (S1, S2, S5).
+# Lives on the throwaway branch `rust-spikes`; the spikes are in dev/rust-spikes/.
+# Runs only on that branch (or by hand), so main's workflows are untouched.
+name: phase0-spikes
+on:
+  workflow_dispatch:
+  push:
+    branches: [rust-spikes]
+defaults:
+  run:
+    working-directory: dev/rust-spikes
+jobs:
+  spikes:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: ubuntu-latest,   r: release}
+          - {os: ubuntu-latest,   r: devel}
+          - {os: macos-latest,    r: release}   # arm64
+          - {os: macos-15-intel,  r: release}   # x86_64
+          - {os: windows-latest,  r: release}
+          - {os: windows-11-arm,  r: release}
+    runs-on: ${{ matrix.os }}
+    env:
+      _R_CHECK_CRAN_INCOMING_REMOTE_: false
+      MAKEFLAGS: -j2
+    steps:
+      - uses: actions/checkout@v4
+      - uses: r-lib/actions/setup-r@v2
+        with: {r-version: '${{ matrix.r }}', use-public-rspm: true}
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with: {packages: 'any::rcmdcheck, any::processx', needs: check}
+      - name: platform facts
+        shell: Rscript {0}
+        run: |
+          cat(R.version.string, R.version$platform, "\n")
+          cat("long double:", capabilities("long.double"), .Machine$sizeof.longdouble, "\n")
+          print(RNGkind())
+      - name: S1 RNG port vs R (1e6 draws per case on CI)
+        shell: bash
+        run: |
+          cd S1-rng/rrng && cargo build --release && cargo test --release && cd ..
+          mkdir -p "$RUNNER_TEMP/s1"
+          Rscript tests/compare.R "$PWD/rrng/target/release/dump" "$RUNNER_TEMP/s1" 1e6 | tee "$RUNNER_TEMP/s1.txt"
+      - name: S2 reductions / libm vs R
+        shell: bash
+        run: |
+          cd S2-reductions/rreduce && cargo build --release && cd ..
+          mkdir -p "$RUNNER_TEMP/s2" && cp ldsum.c "$RUNNER_TEMP/s2/"
+          (cd "$RUNNER_TEMP/s2" && R CMD SHLIB ldsum.c)
+          SO=$(ls "$RUNNER_TEMP"/s2/ldsum.* | grep -E '\.(so|dll)$')
+          Rscript compare.R "$PWD/rreduce/target/release/apply" "$SO" "$RUNNER_TEMP/s2" | tee "$RUNNER_TEMP/s2.txt"
+      - name: S5 hellosavvy R CMD check --as-cran (vendored, offline)
+        uses: r-lib/actions/check-r-package@v2
+        with: {working-directory: dev/rust-spikes/S5-cran-build/hellosavvy, args: 'c("--as-cran")', error-on: '"warning"'}
+      - name: S5 helloextendr R CMD check --as-cran (vendored, offline)
+        uses: r-lib/actions/check-r-package@v2
+        with: {working-directory: dev/rust-spikes/S5-cran-build/helloextendr, args: 'c("--as-cran")', error-on: '"warning"'}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: {name: 'spikes-${{ matrix.os }}-${{ matrix.r }}', path: '${{ runner.temp }}/s*.txt'}
+  msrv:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.81.0
+      - run: cd S5-cran-build/hellosavvy/src/rust && cargo +1.81.0 build --release
+  # R-hub sanitizers and webR: use the r-hub/actions "rhub" workflow on the
+  # hellosavvy package (platforms clang-asan, valgrind, nosuggests) and an r-universe
+  # registry entry for the webR (wasm) build.

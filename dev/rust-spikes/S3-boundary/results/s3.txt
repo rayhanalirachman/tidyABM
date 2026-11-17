@@ -1,0 +1,47 @@
+20:19  up 14 days,  7:32, 1 user, load averages: 4.17 4.16 4.10
+R closure call (baseline)                                      n=NA          0.068 us
+savvy no-op via generated R wrapper rs_noop()                  n=NA          0.157 us
+savvy no-op via .Call(<native symbol>)                         n=NA          0.072 us
+copy-out 1 double column, method st$col(1L)                    n=10          1.100 us
+copy-out 1 double column, .Call(col, ptr, 1L)                  n=10          0.500 us
+copy-in 1 double column, .Call(set_col, ptr, 1L, x)            n=10          0.300 us
+character column materialised (3-string pool)                  n=10          2.550 us
+character column from R-side mirror cache (version hit)        n=10          0.150 us
+tibble round trip: 10 cols out -> new_tibble -> 10 cols in     n=10         50.600 us
+copy-out 1 double column, method st$col(1L)                    n=441         1.400 us
+copy-out 1 double column, .Call(col, ptr, 1L)                  n=441         0.800 us
+copy-in 1 double column, .Call(set_col, ptr, 1L, x)            n=441         0.350 us
+character column materialised (3-string pool)                  n=441        96.850 us
+character column from R-side mirror cache (version hit)        n=441         0.200 us
+copy-out 1 double column, method st$col(1L)                    n=10000       4.700 us
+copy-out 1 double column, .Call(col, ptr, 1L)                  n=10000       3.900 us
+copy-in 1 double column, .Call(set_col, ptr, 1L, x)            n=10000       1.600 us
+character column materialised (3-string pool)                  n=10000    2181.800 us
+character column from R-side mirror cache (version hit)        n=10000       0.150 us
+tibble round trip: 10 cols out -> new_tibble -> 10 cols in     n=10000     131.500 us
+copy-out 1 double column, method st$col(1L)                    n=100000     42.500 us
+copy-out 1 double column, .Call(col, ptr, 1L)                  n=100000     42.000 us
+copy-in 1 double column, .Call(set_col, ptr, 1L, x)            n=100000     15.000 us
+character column materialised (3-string pool)                  n=100000  21862.000 us
+character column from R-side mirror cache (version hit)        n=100000      0.000 us
+R closure called from Rust (FunctionSexp$call), per call       n=NA          0.320 us
+R-driven loop: total per step (rng=FALSE, kernel incl.)        n=10          1.988 us
+R-driven loop: R side per step excl. kernel work (rng=FALSE)   n=10          1.787 us
+   GC time during 5 loops (rng=FALSE), s                       n=10          0.255 us
+R-driven loop: total per step (rng=TRUE, kernel incl.)         n=10          2.100 us
+R-driven loop: R side per step excl. kernel work (rng=TRUE)    n=10          1.750 us
+   GC time during 5 loops (rng=TRUE), s                        n=10          0.259 us
+R-driven loop: total per step (rng=FALSE, kernel incl.)        n=441         2.787 us
+R-driven loop: R side per step excl. kernel work (rng=FALSE)   n=441         2.537 us
+   GC time during 5 loops (rng=FALSE), s                       n=441         0.325 us
+R-driven loop: total per step (rng=TRUE, kernel incl.)         n=441         4.575 us
+R-driven loop: R side per step excl. kernel work (rng=TRUE)    n=441         1.975 us
+   GC time during 5 loops (rng=TRUE), s                        n=441         0.282 us
+Get+PutRNGstate pair (difference rng=TRUE vs FALSE at n=10, per step) n=10          0.112 us
+[1] 3.996 0.032 4.197 0.000 0.000
+abm_run tax sweep, ticks = 0: per run (150 runs), engine today n=441       820.000 us
+abm_run tax sweep, ticks = 1: per run (150 runs), engine today n=441      1826.667 us
+abm_run tax sweep, ticks = 40: per run (150 runs), engine today n=441     31660.000 us
+load: 20:32  up 14 days,  7:45, 1 user, load averages: 4.68 4.57 4.40 
+
+[exited with code 0]

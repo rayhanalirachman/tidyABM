@@ -1,0 +1,11 @@
+runs 150, ticks 40, agents 441, neighbour degrees 4
+A. Rust loop + R's C RNG, identical to engine: TRUE 
+   .Random.seed after one run identical to runif(441*40): TRUE 
+   full globals table identical to golden: TRUE 
+B. pure Rust RNG, 1 thread(s), identical to engine: TRUE
+B. pure Rust RNG, 2 thread(s), identical to engine: TRUE
+B. pure Rust RNG, 8 thread(s), identical to engine: TRUE
+time A (R loop over 150 runs, Rust year loop, C RNG): real 0.0410 s, cpu 0.0400 s (median of 7; min real 0.0400) 
+time B (150 runs in Rust, 1 thread):                 real 0.0370 s, cpu 0.0360 s (median of 7; min real 0.0360) 
+time B (150 runs in Rust, 8 threads):                real 0.0090 s, cpu 0.0450 s (median of 7; min real 0.0080) 
+load: 20:17  up 14 days,  7:31, 1 user, load averages: 3.65 4.09 4.07 

@@ -1,0 +1,18 @@
+rules in the go block: neighbours_share, declared, audited, penalty_due, believed_audit_chance, declared_share, mean_gross_tax_rate 
+  neighbours_share: R path: function `mean` not covered
+  mean_gross_tax_rate: R path: function `sum` not covered
+tax sweep, all five rules evaluated by the Rust IR evaluator, identical to engine: TRUE 
+same harness with the rules evaluated by R/dplyr (control), identical to engine: TRUE 
+rule (n = 441)                 R us    Rust us    ratio
+declared                      148.0       35.5      4.2
+audited                         7.0       15.0      0.5
+penalty_due                     6.5       13.0      0.5
+believed_audit_chance          60.5       13.5      4.5
+declared_share                  2.0        9.5      0.2
+
+property test, 5000 random expressions over 40 rows with NA/NaN/Inf/-0:
+             identical both_fallback_or_error     rust_fallback_r_ok 
+                  3630                   1329                     41 
+      compile_fallback               MISMATCH 
+                     0                      0 
+declared/income, env of 2 columns: method 2.90 us, .Call 2.05 us, noop .Call 0.15 us, R 0.50 us

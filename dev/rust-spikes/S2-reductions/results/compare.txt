@@ -1,0 +1,274 @@
+R version 4.6.1 (2026-06-24) aarch64-apple-darwin23  sizeof(long double) = 8  capabilities('long.double') = FALSE 
+Warning messages:
+1: In fn[[op]](x) : NaNs produced
+2: In fn[[op]](x) : NaNs produced
+3: In fn[[op]](x) : NaNs produced
+4: In fn[[op]](x) : NaNs produced
+5: In fn[[op]](x) : NaNs produced
+Warning message:
+In fn[[op]](x) : NaNs produced
+There were 50 or more warnings (use warnings() to see the first 50)
+                             test        n          input rust_identical
+                              sum      100           unif           TRUE
+                         sum_narm      100           unif           TRUE
+                             mean      100           unif           TRUE
+                           cumsum      100           unif           TRUE
+                              sum      100           wide           TRUE
+                         sum_narm      100           wide           TRUE
+                             mean      100           wide           TRUE
+                           cumsum      100           wide           TRUE
+                              sum      100         cancel           TRUE
+                         sum_narm      100         cancel           TRUE
+                             mean      100         cancel           TRUE
+                           cumsum      100         cancel           TRUE
+                              sum      100         na_nan           TRUE
+                         sum_narm      100         na_nan           TRUE
+                             mean      100         na_nan           TRUE
+                           cumsum      100         na_nan           TRUE
+                              sum      100      nan_first           TRUE
+                         sum_narm      100      nan_first           TRUE
+                             mean      100      nan_first           TRUE
+                           cumsum      100      nan_first           TRUE
+                              sum      100       na_first           TRUE
+                         sum_narm      100       na_first           TRUE
+                             mean      100       na_first           TRUE
+                           cumsum      100       na_first           TRUE
+                              sum      100            inf           TRUE
+                         sum_narm      100            inf           TRUE
+                             mean      100            inf           TRUE
+                           cumsum      100            inf           TRUE
+                              sum      100       overflow           TRUE
+                         sum_narm      100       overflow           TRUE
+                             mean      100       overflow           TRUE
+                           cumsum      100       overflow           TRUE
+                              sum      100       specials           TRUE
+                         sum_narm      100       specials           TRUE
+                             mean      100       specials           TRUE
+                           cumsum      100       specials           TRUE
+                              sum    10000           unif           TRUE
+                         sum_narm    10000           unif           TRUE
+                             mean    10000           unif           TRUE
+                           cumsum    10000           unif           TRUE
+                              sum    10000           wide           TRUE
+                         sum_narm    10000           wide           TRUE
+                             mean    10000           wide           TRUE
+                           cumsum    10000           wide           TRUE
+                              sum    10000         cancel           TRUE
+                         sum_narm    10000         cancel           TRUE
+                             mean    10000         cancel           TRUE
+                           cumsum    10000         cancel           TRUE
+                              sum    10000         na_nan           TRUE
+                         sum_narm    10000         na_nan           TRUE
+                             mean    10000         na_nan           TRUE
+                           cumsum    10000         na_nan           TRUE
+                              sum    10000      nan_first           TRUE
+                         sum_narm    10000      nan_first           TRUE
+                             mean    10000      nan_first           TRUE
+                           cumsum    10000      nan_first           TRUE
+                              sum    10000       na_first           TRUE
+                         sum_narm    10000       na_first           TRUE
+                             mean    10000       na_first           TRUE
+                           cumsum    10000       na_first           TRUE
+                              sum    10000            inf           TRUE
+                         sum_narm    10000            inf           TRUE
+                             mean    10000            inf           TRUE
+                           cumsum    10000            inf           TRUE
+                              sum    10000       overflow           TRUE
+                         sum_narm    10000       overflow           TRUE
+                             mean    10000       overflow           TRUE
+                           cumsum    10000       overflow           TRUE
+                              sum    10000       specials           TRUE
+                         sum_narm    10000       specials           TRUE
+                             mean    10000       specials           TRUE
+                           cumsum    10000       specials           TRUE
+                              sum  1000000           unif           TRUE
+                         sum_narm  1000000           unif           TRUE
+                             mean  1000000           unif           TRUE
+                           cumsum  1000000           unif           TRUE
+                              sum  1000000           wide           TRUE
+                         sum_narm  1000000           wide           TRUE
+                             mean  1000000           wide           TRUE
+                           cumsum  1000000           wide           TRUE
+                              sum  1000000         cancel           TRUE
+                         sum_narm  1000000         cancel           TRUE
+                             mean  1000000         cancel           TRUE
+                           cumsum  1000000         cancel           TRUE
+                              sum  1000000         na_nan           TRUE
+                         sum_narm  1000000         na_nan           TRUE
+                             mean  1000000         na_nan           TRUE
+                           cumsum  1000000         na_nan           TRUE
+                              sum  1000000      nan_first           TRUE
+                         sum_narm  1000000      nan_first           TRUE
+                             mean  1000000      nan_first           TRUE
+                           cumsum  1000000      nan_first           TRUE
+                              sum  1000000       na_first           TRUE
+                         sum_narm  1000000       na_first           TRUE
+                             mean  1000000       na_first           TRUE
+                           cumsum  1000000       na_first           TRUE
+                              sum  1000000            inf           TRUE
+                         sum_narm  1000000            inf           TRUE
+                             mean  1000000            inf           TRUE
+                           cumsum  1000000            inf           TRUE
+                              sum  1000000       overflow           TRUE
+                         sum_narm  1000000       overflow           TRUE
+                             mean  1000000       overflow           TRUE
+                           cumsum  1000000       overflow           TRUE
+                              sum  1000000       specials           TRUE
+                         sum_narm  1000000       specials           TRUE
+                             mean  1000000       specials           TRUE
+                           cumsum  1000000       specials           TRUE
+                              sum 10000000           unif           TRUE
+                         sum_narm 10000000           unif           TRUE
+                             mean 10000000           unif           TRUE
+                           cumsum 10000000           unif           TRUE
+                              sum 10000000           wide           TRUE
+                         sum_narm 10000000           wide           TRUE
+                             mean 10000000           wide           TRUE
+                           cumsum 10000000           wide           TRUE
+                              sum 10000000         cancel           TRUE
+                         sum_narm 10000000         cancel           TRUE
+                             mean 10000000         cancel           TRUE
+                           cumsum 10000000         cancel           TRUE
+                              exp 10100010       1e7 wide           TRUE
+                              log 10000010       1e7 wide           TRUE
+                             sqrt 10100011       1e7 wide           TRUE
+                             log2 10002108       1e7 wide           TRUE
+                            log10 10000611       1e7 wide           TRUE
+                            log1p 10100010       1e7 wide           TRUE
+                            expm1 10100010       1e7 wide           TRUE
+   exp (plain libm, no R wrapper) 10100010       1e7 wide          FALSE
+ log1p (plain libm, no R wrapper) 10100010       1e7 wide          FALSE
+                        pow (x^y) 10100000 1e7 + specials           TRUE
+ ldsum_identical rust_ns
+            TRUE    2.08
+              NA    5.00
+            TRUE    5.42
+            TRUE    3.34
+            TRUE    4.17
+              NA    2.92
+            TRUE    5.83
+            TRUE    2.09
+            TRUE    2.50
+              NA    4.58
+            TRUE    4.17
+            TRUE    3.75
+            TRUE    2.92
+              NA    4.59
+            TRUE    4.58
+            TRUE    2.92
+            TRUE    2.50
+              NA    3.75
+            TRUE    5.00
+            TRUE    3.75
+            TRUE    3.33
+              NA    2.50
+            TRUE    5.83
+            TRUE    3.75
+            TRUE    3.33
+              NA    4.16
+            TRUE    4.59
+            TRUE    4.17
+            TRUE    2.08
+              NA    5.00
+            TRUE    4.58
+            TRUE    3.33
+            TRUE    3.34
+              NA    3.75
+            TRUE    5.42
+            TRUE    5.42
+            TRUE    1.11
+              NA    1.83
+            TRUE    2.20
+            TRUE    1.31
+            TRUE    1.11
+              NA    1.83
+            TRUE    2.20
+            TRUE    1.35
+            TRUE    1.11
+              NA    1.83
+            TRUE    2.20
+            TRUE    1.25
+            TRUE    1.02
+              NA    1.73
+            TRUE    2.06
+            TRUE    1.87
+            TRUE    1.03
+              NA    1.72
+            TRUE    2.08
+            TRUE    2.02
+            TRUE    1.11
+              NA    1.84
+            TRUE    2.04
+            TRUE    1.92
+            TRUE    1.03
+              NA    1.82
+            TRUE    2.23
+            TRUE    2.07
+            TRUE    1.10
+              NA    1.83
+            TRUE    3.30
+            TRUE    1.32
+            TRUE    1.11
+              NA    1.83
+            TRUE    2.21
+            TRUE    1.93
+            TRUE    1.12
+              NA    1.93
+            TRUE    2.04
+            TRUE    1.14
+            TRUE    1.11
+              NA    1.83
+            TRUE    2.19
+            TRUE    1.13
+            TRUE    1.17
+              NA    1.84
+            TRUE    2.03
+            TRUE    1.13
+            TRUE    1.10
+              NA    1.84
+            TRUE    1.99
+            TRUE    1.56
+            TRUE    1.02
+              NA    1.70
+            TRUE    2.15
+            TRUE    1.86
+            TRUE    1.12
+              NA    1.82
+            TRUE    2.19
+            TRUE    1.55
+            TRUE    1.10
+              NA    1.83
+            TRUE    2.04
+            TRUE    1.74
+            TRUE    1.08
+              NA    1.80
+            TRUE    3.29
+            TRUE    1.12
+            TRUE    0.98
+              NA    1.82
+            TRUE    2.20
+            TRUE    1.73
+            TRUE    1.58
+              NA    2.33
+            TRUE    2.38
+            TRUE    1.78
+            TRUE    1.64
+              NA    2.26
+            TRUE    2.24
+            TRUE    1.25
+            TRUE    1.59
+              NA    1.90
+            TRUE    3.66
+            TRUE    1.55
+              NA    8.03
+              NA    5.59
+              NA    8.35
+              NA    4.00
+              NA    8.20
+              NA    9.39
+              NA    5.32
+              NA    7.06
+              NA    7.03
+              NA   23.60
+
+ALL RUST IDENTICAL (R-ported functions): TRUE   ALL ldsum.c IDENTICAL: TRUE 

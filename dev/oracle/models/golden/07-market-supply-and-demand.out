@@ -1,0 +1,14 @@
+1 seller (limit 20), 2 buyers (limits 40 and 35), 50 ticks
+
+tick     deal price     seller ask
+0                 -           20.0
+5              28.0           30.0
+10             30.0           31.0
+20             34.5           36.0
+30                -           35.0
+40                -           37.0
+50                -           39.0
+
+ticks with a trade: 23 of 51
+deal price 25.0 -> 39.0 (it drifts up, it does not settle)
+seller's ask 20.0 -> 39.0, against a limit of 20

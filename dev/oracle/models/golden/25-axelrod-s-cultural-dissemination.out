@@ -1,0 +1,9 @@
+400 agents, 4-regular network, 5 features, 400 ticks
+
+q         at tick 0  at tick 400
+2                32            9
+5               378          205
+10              399          287
+
+more traits per feature means fewer chances to be similar enough to
+interact, so variety survives: the count of distinct cultures rises with q

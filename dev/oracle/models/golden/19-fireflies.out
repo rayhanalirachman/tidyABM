@@ -1,0 +1,10 @@
+600 fireflies, 10-tick cycle, 6 neighbours each, 120 ticks
+
+flashing count, ticks 1-20:
+  54 65 36 12 10 7 7 5 2 7 63 146 98 15 11 8 6 5 3 1 
+flashing count, ticks 101-120:
+  1 0 0 0 17 476 38 5 3 1 1 0 0 0 0 377 161 5 3 1 
+
+ticks 1-30:   peak 215 of 600, 0 dark ticks
+ticks 91-120: peak 476 of 600, 10 dark ticks
+the settled pattern is a sawtooth: a burst of 476, then dark

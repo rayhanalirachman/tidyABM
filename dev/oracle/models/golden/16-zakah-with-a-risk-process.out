@@ -1,0 +1,11 @@
+500 households, AR(1) income, 3% chance of a 60% wealth hit, 300 ticks
+poverty line = half the median; persistently poor = below it in more
+than a quarter of the last 100 ticks
+
+               persistently        p10     gini
+baseline              13.6%        108    0.249
+with zakah             0.0%        144    0.169
+
+Caveat on calibration: moving 2.5% of nearly everyone's wealth to the few
+per cent below the line is an enormous per-head transfer, which is why
+relative poverty is eliminated rather than merely reduced.

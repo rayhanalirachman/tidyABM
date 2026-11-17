@@ -1,0 +1,6 @@
+d = 0.50   clusters = 1   predicted floor(1/(2d)) = 1
+d = 0.30   clusters = 3   predicted floor(1/(2d)) = 1
+d = 0.20   clusters = 3   predicted floor(1/(2d)) = 2
+d = 0.15   clusters = 5   predicted floor(1/(2d)) = 3
+d = 0.10   clusters = 5   predicted floor(1/(2d)) = 5
+[1] 0.302 0.520 0.748

@@ -1,0 +1,20 @@
+50x50 torus, von Neumann, checkerboard Metropolis, 400 sweeps
+T_c = 2 / log(1 + sqrt(2)) = 2.2692 
+
+ temp magnetisation susceptibility
+ 1.00        0.9991          0.002
+ 1.50        0.9863          0.040
+ 2.00        0.9161          0.533
+ 2.27        0.7039         20.280
+ 2.60        0.1229         20.973
+ 3.50        0.0404          3.187
+
+  Below T_c the mean spin settles on a non-zero magnetisation and
+  above it the lattice is disordered. The susceptibility (the variance
+  of the magnetisation, scaled by N) is two orders of magnitude larger
+  at 2.27 and 2.6 than at 2.0 or 3.5: on a 50x50 lattice with a
+  six-point sweep the finite-size peak sits just above T_c.
+  Started ordered and equilibrated, which is how spontaneous
+  magnetisation is measured. Quenching from a random start instead
+  traps the lattice in striped metastable states at low T -- a
+  finite-size artifact of the model, not of the grammar.

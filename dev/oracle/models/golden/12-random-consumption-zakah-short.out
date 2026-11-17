@@ -1,0 +1,13 @@
+300 households, nisab 100, absolute poverty line 30, 50 ticks
+
+tick       poor     median     gini
+0            35       51.7    0.294
+2             0       68.2    0.221
+5             0       91.5    0.172
+10            0      111.7    0.143
+15            0      124.8    0.143
+25            0      143.1    0.163
+50            0      164.9    0.192
+
+nobody is below the line from tick 1 onward: the transfer has no
+recipients and the model has nothing left to say

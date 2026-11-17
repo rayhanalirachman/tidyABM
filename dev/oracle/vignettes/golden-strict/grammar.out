@@ -1,0 +1,3 @@
+Error in eval(ei, envir) : '...' used in an incorrect context
+Calls: source -> withVisible -> eval -> eval
+Execution halted

@@ -1,0 +1,20 @@
+2 seed agents, 300 arrivals, one edge each
+
+agents 302, edges 301, mean degree 1.99
+max degree 36, top five: 36 22 19 16 16
+degree 1 holds 64.9% of agents; the top 5% hold 29.4% of edges
+
+degree distribution
+degree     agents
+1             196
+2              58
+3              18
+4              11
+5               7
+6               4
+7               2
+10              1
+16              2
+19              1
+22              1
+36              1

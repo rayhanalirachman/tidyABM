@@ -1,0 +1,8 @@
+uniform random preferences, men proposing, 5 seeds each
+Pittel (1989): the proposing side averages ~ln n, the other ~n/ln n
+
+    n      men     ln n      women     n/ln n
+   25     4.11     3.22        6.4        7.8
+   50     4.80     3.91        9.7       12.8
+  100     5.35     4.61       19.1       21.7
+  200     5.54     5.30       37.7       37.7

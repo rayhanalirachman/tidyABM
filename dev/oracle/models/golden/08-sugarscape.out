@@ -1,0 +1,25 @@
+50x50 torus, two sugar mountains, 400 agents, 500 ticks
+
+ tick population mean_wealth  gini mean_vision mean_metabolism
+    0        400        14.9 0.228        3.46            2.48
+   10        298        17.2 0.344        3.80            2.11
+   25        225        32.9 0.315        3.85            1.69
+   50        211        60.2 0.301        3.85            1.61
+  100        194       125.9 0.241        3.75            1.48
+  200        192       253.5 0.231        3.72            1.47
+  300        191       381.5 0.228        3.72            1.46
+  400        191       509.4 0.227        3.72            1.46
+  500        191       637.0 0.227        3.72            1.46
+
+  carrying capacity: 191 to 191 agents over the last 100 ticks
+  survivors: mean vision 3.72 (started 3.46), mean metabolism 1.46 (started 2.48)
+  wealth: mean 14.9 at the start, 637.0 at the end; Gini 0.228 -> peak 0.350 at tick 12 -> 0.227
+  wealth at the end: median 620, top tenth above 949, richest 984
+  one agent per cell at every recorded tick: TRUE
+
+  The population falls to what the landscape can feed and stays there.
+  Who survives is not random: the far-sighted and the frugal, which is
+  Epstein & Axtell's selection result. Inequality spikes while the poor
+  are dying off and then settles: once the survivors are the survivors,
+  wealth grows at a rate set by each one's vision and metabolism, so the
+  wealth Gini converges on the Gini of those income rates.

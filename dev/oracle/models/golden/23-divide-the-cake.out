@@ -1,0 +1,12 @@
+900 agents demanding 1/3, 1/2 or 2/3 of a cake worth 6, 150 ticks
+
+tick          n    modest      fair    greedy
+0           900     0.321     0.330     0.349
+5          1198     0.541     0.414     0.045
+10         1216     0.447     0.552     0.001
+20         1207     0.215     0.785     0.000
+50         1197     0.007     0.993     0.000
+100        1190     0.000     1.000     0.000
+150        1238     0.000     1.000     0.000
+
+greedy gone by tick 12, modest gone by tick 58; fair holds

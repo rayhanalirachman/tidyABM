@@ -1,0 +1,11 @@
+500 agents, $100 each, 1000 ticks
+
+tick         min     p25  median     p90     max
+0            100     100     100     100     100
+10            92      98     100     104     110
+100           72      94     100     112     128
+1000           6      80      98     140     194
+
+mean is conserved: 100.0 -> 100.0
+share held by the top decile: 0.100 -> 0.158
+agents with nothing at tick 1000: 0

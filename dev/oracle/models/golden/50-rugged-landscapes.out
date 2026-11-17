@@ -1,0 +1,8 @@
+N = 10 attributes, 100 organisations, 200 periods of search
+
+  K      fitness      forms  fit (jumps)      forms
+  0        0.688        1.0        0.688        1.0
+  1        0.701        2.8        0.706        2.8
+  3        0.701       14.4        0.721       11.8
+  5        0.698       28.6        0.721       23.0
+  9        0.661       55.4        0.701       41.2

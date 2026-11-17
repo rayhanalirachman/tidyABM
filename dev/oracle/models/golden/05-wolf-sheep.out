@@ -1,0 +1,33 @@
+40x40 torus, 120 sheep, 40 wolves, 400 ticks
+
+wolf_gain = 10  (predation too weak to sustain wolves)
+  sheep  min  118  max  183  final  172
+  wolves min    0  max   46  final    0
+
+wolf_gain = 20  (standard regime)
+  sheep  min  101  max  165  final  141
+  wolves min    6  max   46  final    9
+  both persist; peak cross-correlation at lag -39
+
+wolf_gain = 40  (stronger predation, sharper cycle)
+  sheep  min   36  max  144  final  102
+  wolves min   11  max  108  final   57
+  both persist; peak cross-correlation at lag -43
+
+  At wolf_gain = 10 the wolves die out and the sheep sit at carrying
+  capacity. At 20 both persist in a bounded cycle, and the peak
+  cross-correlation lands well away from lag 0 -- the populations are
+  out of phase, which is the classic predator-prey signature.
+
+  Raising wolf_gain does not flip the system to extinction so much as
+  drive it through ever-tighter bottlenecks. Sweeping further on this
+  same world (300 ticks, seed 1) gives minimum populations of:
+
+    wolf_gain    20    40    60   100   160
+    min sheep   101    36    24     2     1
+    max wolves   46   108   114   249   320
+
+  By 160 both populations are down to single figures and one more bad
+  draw ends the run. That is the collapse the design notes anticipated;
+  it just arrives as a bottleneck rather than as a clean extinction at
+  the tick counts used here.

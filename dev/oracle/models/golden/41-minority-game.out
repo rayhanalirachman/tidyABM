@@ -1,0 +1,10 @@
+   m    alpha    sigma^2/N  
+   2    0.040         5.62  #################
+   3    0.079         2.49  #######
+   4    0.158         1.94  ######
+   5    0.317         0.22  #
+   6    0.634         0.27  #
+   8    2.535         0.70  ##
+  10   10.139         0.82  ##
+
+random-choice benchmark is sigma^2/N = 1; the minimum should sit near alpha = 0.34

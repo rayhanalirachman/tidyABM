@@ -1,0 +1,13 @@
+100 agents, reserve ratio 0.1, 100 ticks
+
+tick         deposits        loans       reserves
+0                   0            0              0
+1                2537            0            254
+5                2570           46            211
+10               2595           70            189
+25               2675          151            117
+50               2817          282              0
+100              3038          306             -2
+
+money multiplier: deposits / (deposits - loans) = 1.11
+the reserve ratio of 0.10 caps lending at 304, and loans stand at 306

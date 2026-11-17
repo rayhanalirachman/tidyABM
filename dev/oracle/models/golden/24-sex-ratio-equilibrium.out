@@ -1,0 +1,20 @@
+1000 agents, longevity 8, maturity 2, cap 1500, 1200 ticks
+
+starting at 25% male
+tick         male   mean mcc
+0            0.24       0.25
+50           0.30       0.28
+200          0.34       0.35
+600          0.46       0.46
+1200         0.49       0.49
+
+starting at 75% male
+tick         male   mean mcc
+0            0.78       0.75
+50           0.72       0.72
+200          0.66       0.66
+600          0.58       0.57
+1200         0.54       0.53
+
+from either side, the adult sex ratio converges on 1/2 and the inherited
+male-child probability follows it: Fisher's principle

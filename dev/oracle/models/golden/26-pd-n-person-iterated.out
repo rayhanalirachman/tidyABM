@@ -1,0 +1,24 @@
+N = 24, T=5 R=3 P=1 S=0, 400 ticks; average payoff = score / games
+
+cooperate vs defect      defect 3.03, cooperate 1.48
+tit-for-tat vs cooperate TFT 3.00, cooperate 3.00
+tit-for-tat vs defect
+  tick       defect      TFT
+  5            2.33     1.87
+  20           2.40     1.63
+  100          1.48     1.83
+  400          1.12     1.95
+
+all six strategies together, tick 400
+  unforgiving      2.67
+  tit-for-tat      2.51
+  defect           2.89
+  unknown          2.23
+  random           2.28
+  cooperate        2.24
+
+One honest difference from NetLogo: there, agents wander a 441-patch world
+and meet sparsely, so opponents recur rarely. Here everyone is paired
+every tick out of 24, so each pair meets roughly every 23 ticks and the
+retaliatory strategies get enough encounters to learn. The two
+implementations are answering slightly different questions.

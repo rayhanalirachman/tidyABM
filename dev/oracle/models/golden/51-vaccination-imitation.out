@@ -1,0 +1,18 @@
+N = 500, mean degree 6, r = 0.4, g = 0.4, 2 seeds, 100 seasons
+
+     network     cost   vaccinated     infected
+      random     0.05        1.000        0.000
+      random     0.10        0.790        0.032
+      random     0.20        0.776        0.049
+      random     0.40        0.723        0.073
+      random     0.80        0.678        0.114
+     poisson     0.05        0.999        0.000
+     poisson     0.10        0.841        0.020
+     poisson     0.20        0.745        0.052
+     poisson     0.40        0.721        0.071
+     poisson     0.80        0.629        0.127
+  scale_free     0.05        1.000        0.000
+  scale_free     0.10        1.000        0.000
+  scale_free     0.20        1.000        0.000
+  scale_free     0.40        1.000        0.000
+  scale_free     0.80        0.860        0.026

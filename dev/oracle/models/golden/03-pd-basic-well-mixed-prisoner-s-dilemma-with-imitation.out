@@ -1,0 +1,13 @@
+100 agents, well mixed, T=5 R=3 P=1 S=0, 100 ticks
+
+tick   cooperating
+0             0.53
+1             0.46
+2             0.34
+5             0.00
+10            0.00
+20            0.00
+50            0.00
+100           0.00
+
+first tick with no cooperators: 5

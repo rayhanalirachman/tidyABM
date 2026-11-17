@@ -1,0 +1,7 @@
+100 agents, capacity 60, thresholds ~ U(40, 80), 20 ticks
+
+attendance by tick:
+  60 48 80 0 100 0 100 0 100 0 100 0 100 0 100 0 100 0 100 0 100 
+
+distinct attendance levels after tick 2: 2
+mean attendance over the last 10 ticks: 50.0 (capacity 60)

@@ -1,0 +1,13 @@
+N = 200 depositors, 50 days, till = 0.5 N, r1 = 1.2
+the till serves 0.5 / 1.2 = 41.7% of them, which is the critical
+withdrawal rate
+
+order      shock  run rate    front      2nd      3rd     back
+queue       0.30     0.306    0.308    0.294    0.324    0.297
+shuffled    0.30     0.305    0.295    0.313    0.309    0.302
+queue       0.36     0.370    0.366    0.353    0.395    0.367
+shuffled    0.36     0.363    0.353    0.374    0.368    0.357
+queue       0.44     0.507    0.435    0.427    0.462    0.705
+shuffled    0.44     0.684    0.660    0.713    0.641    0.722
+queue       0.52     0.633    0.511    0.514    0.548    0.961
+shuffled    0.52     0.755    0.727    0.767    0.725    0.802

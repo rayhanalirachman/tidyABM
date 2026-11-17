@@ -1,0 +1,14 @@
+200 agents, one spreader, 100 ticks
+
+tick     ignorant   spreader    stifler
+0             199          1          0
+2             196          4          0
+4             184         16          0
+6             142         56          2
+8              57         92         51
+10             16         16        168
+20             12          0        188
+50             12          0        188
+100            12          0        188
+
+never heard it: 12 of 200 (6.0%)

@@ -1,0 +1,19 @@
+100 agents, 0/1 opinion, adopt a random neighbour, 200 ticks
+
+tick   share holding 1
+0                0.47
+5                0.35
+20               0.43
+50               0.15
+100              0.58
+200              1.00
+
+consensus on opinion 1, first reached at tick 169
+
+Degree sweep (first tick at consensus, 200-tick budget)
+
+degree      consensus      final
+2                >200       0.58
+4                >200       0.20
+8                 101       1.00
+16                 37       1.00

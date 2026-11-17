@@ -1,0 +1,10 @@
+100 agents, groups of 4, pot doubled and split, 20 ticks
+
+contribution      gross      net
+0                 0.700    0.700
+1                 1.211    0.211
+
+free-riding is worth 0.489 per round, against the 1 - 2/4 = 0.5 the
+marginal per-capita return implies, and the two contribution types earn
+the same gross payoff whenever they land in the same group. That gap is
+the dilemma: the pot is worth having and nobody wants to pay into it.

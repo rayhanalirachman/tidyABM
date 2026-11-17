@@ -1,0 +1,5 @@
+source("/Users/rayhanalirachman/Documents/_Github/Tidy ABM Packages/sandbox/gross-2022-beautiful-cycles/gross-2022.R")
+Rprof("../rustq/gross.prof", interval = 0.005, gc.profiling = TRUE); p <- proc.time()
+o <- run_gross(seed = 1, T = 1000)
+d <- proc.time() - p; Rprof(NULL)
+cat(sprintf("tidyABM run_gross: real %.1f s, cpu %.1f s\n", d[["elapsed"]], d[["user.self"]] + d[["sys.self"]]))

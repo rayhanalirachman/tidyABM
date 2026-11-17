@@ -1,0 +1,111 @@
+# 4. Schelling segregation, with geography  (Segregation, Wilensky 1997)
+#
+# One agent per patch. Relocation is a mutual `opposite_group` match between
+# unhappy cells and empty cells -- the same exclusion guarantee that stops two
+# wolves eating one sheep stops two families taking one house. The lattice
+# never moves; a resident relocating is a data write on two rows.
+#
+# Reported: mean same-type neighbour share against the tolerance.
+
+library(tidyABM)
+
+schelling <- function(tol, w = 51, vacancy = 0.10, minority = 0.30, seed = 6) {
+  n_cells <- w * w; n_occ <- round(n_cells * (1 - vacancy))
+  abm_setup(
+    agents = abm_agents(
+      occ  = ~sample(c(rep(TRUE, n_occ), rep(FALSE, n - n_occ))),
+      type = ~if_else(occ, sample(c("A", "B"), n, TRUE, c(1 - minority, minority)),
+                      NA_character_)),
+    network = abm_network(type = "grid", dims = c(w, w),
+                          diagonals = TRUE, torus = TRUE),
+    globals = list(tol = tol), seed = seed)
+}
+
+go <- abm_go(
+  abm_neighbours(same ~ mean(type == own_type, na.rm = TRUE)),
+  abm_rules(unhappy ~ occ & !is.na(same) & same < tol),
+  abm_match(pair = "opposite_group", by = occ, eligible = unhappy | !occ),
+  abm_rules(
+    type ~ if_else(!occ & !is.na(partner_type), partner_type,
+                   if_else(unhappy, NA_character_, type)),
+    occ  ~ case_when(!occ & !is.na(partner_type) ~ TRUE,
+                     unhappy ~ FALSE, TRUE ~ occ)),
+  abm_global(seg ~ mean(same, na.rm = TRUE),
+             unhappy_n ~ sum(unhappy, na.rm = TRUE)))
+
+run_one <- function(tol, ticks = 100, seed = 6) {
+  g <- abm_globals(abm_run(schelling(tol, seed = seed), go, ticks = ticks,
+                           seed = seed, record = "globals", progress = FALSE))
+  c(start = g$seg[2], end = g$seg[nrow(g)], unhappy = g$unhappy_n[nrow(g)])
+}
+
+cat("51x51 torus, 10% vacant, 30% minority, 100 ticks\n\n")
+tols <- c(0.20, 0.30, 0.40, 0.50, 0.60)
+tab <- as.data.frame(t(vapply(tols, run_one, numeric(3))))
+tab <- cbind(tolerance = tols, round(tab, 3))
+print(tab, row.names = FALSE)
+cat("\n  `start` is the same-type share after one tick, `end` after 100.\n")
+cat("  A randomly mixed 70/30 population already sits at 0.7^2 + 0.3^2 = 0.58,\n")
+cat("  which is what `start` measures; segregation is the rise above it.\n")
+cat("  Asking for more similarity gets you more of it, well past what was\n")
+cat("  asked for -- which is the whole Schelling point.\n")
+
+# --- figures --------------------------------------------------------------
+# Parameter sweep: the same-type neighbour share before and after, against the
+# tolerance asked for. The gap between them is the Schelling point. Then the
+# lattice at tolerance 0.30 as it sorts itself: tick 0, 2, 5, 20 and 100, most
+# of the sorting happening in the first handful of ticks. The same run is
+# written out as a viewer.
+library(ggplot2)
+
+fig_file <- function(name, dir = "figures") {
+  a <- grep("^--file=", commandArgs(), value = TRUE)
+  d <- if (length(a)) dirname(sub("^--file=", "", a[1])) else "."
+  dir.create(file.path(d, "..", dir), showWarnings = FALSE)
+  file.path(d, "..", dir, name)
+}
+# Okabe-Ito, colour-blind safe; the same series colours in every script
+pal <- c("#0072B2", "#E69F00", "#009E73")
+fig_theme <- theme_minimal(base_size = 12) +
+  theme(panel.grid.minor = element_blank(), legend.position = "bottom",
+        plot.title.position = "plot")
+
+d <- rbind(
+  data.frame(tolerance = tab$tolerance, when = "after 1 tick",
+             share = tab$start),
+  data.frame(tolerance = tab$tolerance, when = "after 100 ticks",
+             share = tab$end))
+d$when <- factor(d$when, levels = c("after 1 tick", "after 100 ticks"))
+
+p <- ggplot(d, aes(tolerance, share, colour = when)) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed",
+              colour = "grey50") +
+  geom_line(linewidth = 0.7) + geom_point(size = 2) +
+  scale_colour_manual(values = pal) +
+  fig_theme +
+  labs(title = "Schelling: mild preferences, severe segregation",
+       subtitle = "51x51 torus, 10% vacant, 30% minority; dashed line is the share that was asked for",
+       x = "tolerance (minimum same-type share wanted)",
+       y = "mean same-type neighbour share", colour = NULL)
+print(p)
+ggsave(fig_file("04-schelling.png"), p, width = 7, height = 4.5, dpi = 150,
+       bg = "white")
+
+frames <- abm_run(schelling(0.30), go, ticks = 100, seed = 6, progress = FALSE)
+p2 <- abm_plot_lattice(frames, fill = type, tick = c(0, 2, 5, 20, 100)) +
+  scale_fill_manual(values = c(A = pal[1], B = pal[2]), name = NULL,
+                    na.translate = FALSE) +
+  theme(legend.position = "bottom") +
+  labs(title = "Tolerance 0.30: who lives next to whom, as the town sorts itself",
+       subtitle = sprintf("same-type share %.2f at tick 0, %.2f at tick 100; white cells are vacant",
+                          tab$start[tab$tolerance == 0.3], tab$end[tab$tolerance == 0.3]))
+print(p2)
+ggsave(fig_file("04-schelling-lattice.png"), p2, width = 11, height = 3.2, dpi = 150,
+       bg = "white")
+
+# --- viewer ---------------------------------------------------------------
+abm_view_lattice(
+  frames, fill = type, hover = "same",
+  file = fig_file("04-schelling.html", dir = "../../pkgdown/assets/viewers"),
+  title = "Schelling segregation", subtitle = "51x51 torus, tolerance 0.30, 10% vacant, 30% minority",
+  fill_colours = c(A = pal[1], B = pal[2]))

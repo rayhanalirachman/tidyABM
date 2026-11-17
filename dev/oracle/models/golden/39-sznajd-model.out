@@ -1,0 +1,8 @@
+  p_up   reached   P(all +1)  mean t_consensus
+  0.25      1.00        0.07              46
+  0.50      0.93        0.39              79
+  0.75      0.90        0.81              38
+
+The voter model would give P(all +1) = p_up exactly. This is steeper:
+low densities are wiped out and high ones run away. Binomial s.e. at 30 reps
+is about 0.09.

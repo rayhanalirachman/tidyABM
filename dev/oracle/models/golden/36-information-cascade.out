@@ -1,0 +1,5 @@
+p = 0.55   correct cascades 0.593   BHW p^2/(p^2+(1-p)^2) = 0.599
+p = 0.60   correct cascades 0.675   BHW p^2/(p^2+(1-p)^2) = 0.692
+p = 0.70   correct cascades 0.828   BHW p^2/(p^2+(1-p)^2) = 0.845
+p = 0.80   correct cascades 0.940   BHW p^2/(p^2+(1-p)^2) = 0.941
+p = 0.90   correct cascades 0.983   BHW p^2/(p^2+(1-p)^2) = 0.988

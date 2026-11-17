@@ -1,0 +1,16 @@
+infection chance 0.005   attack rate 0.01   R0-hat NA
+infection chance 0.010   attack rate 0.01   R0-hat NA
+infection chance 0.020   attack rate 0.01   R0-hat 0.17
+infection chance 0.050   attack rate 0.68   R0-hat 1.66
+infection chance 0.100   attack rate 0.95   R0-hat 3.19
+infection chance 0.200   attack rate 1.00   R0-hat 5.99
+Warning messages:
+1: Removed 2 rows containing missing values or values outside the scale range
+(`geom_line()`). 
+2: Removed 2 rows containing missing values or values outside the scale range
+(`geom_point()`). 
+Warning messages:
+1: Removed 2 rows containing missing values or values outside the scale range
+(`geom_line()`). 
+2: Removed 2 rows containing missing values or values outside the scale range
+(`geom_point()`). 

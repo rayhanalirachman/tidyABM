@@ -1,0 +1,29 @@
+== tests (NOT_CRAN=true)
+test blocks: 379  expectations: 2020  failed: 0  errors: 0  warnings: 0  skipped: 0 
+== vignettes vs original package
+-- corrections: diff lines        0
+-- grammar: diff lines        0
+-- models: diff lines        0
+-- tidyABM: diff lines        0
+-- (error-tolerant) grammar: diff lines        0
+-- (error-tolerant) tidyABM: diff lines        0
+== tax run 1
+tidyABM: real 3.2 s, cpu 3.1 s
+== tax run 2
+tidyABM: real 3.2 s, cpu 3.2 s
+tax identical to baseline: TRUE 
+== wolf-sheep run 1
+wolf-sheep 5 seeds: real 5.3 s, cpu 4.7 s
+== wolf-sheep run 2
+wolf-sheep 5 seeds: real 5.3 s, cpu 4.7 s
+wolf-sheep identical to baseline: TRUE 
+== gross timing
+tidyABM run_gross: real 12.0 s, cpu 11.2 s
+time: real 12.76 user 11.62 sys 0.17 
+gross identical to baseline: TRUE 
+load: 13:48  up 14 days,  1:01, 1 user, load averages: 6.99 5.39 4.62
+== gross check
+seed 1: tidyABM 11s, reference 4s, checks passed (largest SFC residual 7.2e-14); paths identical in 11 of 11 series
+seed 2: tidyABM 11s, reference 3s, checks passed (largest SFC residual 9.9e-14); paths identical in 11 of 11 series
+seed 3: tidyABM 11s, reference 3s, checks passed (largest SFC residual 7.8e-14); paths identical in 11 of 11 series
+DONE

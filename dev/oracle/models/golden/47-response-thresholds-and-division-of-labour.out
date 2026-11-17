@@ -1,0 +1,12 @@
+delta = 1, alpha = 3, p = 0.2, N = 100, 2 tasks, 2000 ticks
+predicted active fraction per task = delta / alpha = 0.333
+implied take-up probability: 0.225 -> stimulus for theta = 500: 270 
+
+thresholds                  task 1    task 2       s_1
+500 / 500                    0.332     0.334       212
+50 / 5000                    0.334     0.333        66
+
+who does the work, two castes (theta = 50 or 5000 per task)
+theta on task           1          2
+50                  0.688      0.569
+5000                0.000      0.000

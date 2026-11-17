@@ -1,0 +1,10 @@
+n = 100, 40 rounds per generation, 40 generations, 3 seeds, b = 1, c = 0.1
+Nowak & Sigmund's condition for cooperation is q > c/b = 0.1
+
+     q     mean k discriminators
+  0.02       3.03          0.005
+  0.05       0.37          0.732
+  0.08      -1.19          0.894
+  0.10      -1.95          0.976
+  0.15      -2.15          0.971
+  0.50      -2.56          0.970

@@ -1,0 +1,13 @@
+100 agents, two tags, unconditional strategies, 30 ticks
+
+tick        n  cooperating      red
+0         100         0.46     0.53
+5         105         0.44     0.54
+10        103         0.31     0.56
+15         91         0.13     0.57
+20         76         0.00     0.55
+25         56         0.00     0.57
+30         22         0.00     0.64
+
+the tag never enters a rule, so its share is a random walk and the
+cooperators are eaten: this is the model failing, not converging

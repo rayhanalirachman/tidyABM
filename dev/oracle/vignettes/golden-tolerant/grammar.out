@@ -1,0 +1,21 @@
+$collapse
+[1] FALSE
+
+$comment
+[1] "##"
+
+$eval
+[1] TRUE
+
+<abm_model> 100 agents in 1 group
+* agents: 100 agents ["money"]
+* globals: "price"
+* network: 200 edges
+Error in eval(e, globalenv()) : '...' used in an incorrect context
+Error in eval(e, globalenv()) : object 'go' not found
+Error in eval(e, globalenv()) : object 'result' not found
+Error in eval(e, globalenv()) : object 'result' not found
+Error in eval(e, globalenv()) : object 'result' not found
+Error in eval(e, globalenv()) : object 'result' not found
+Error in eval(e, globalenv()) : object 'result' not found
+Error in eval(e, globalenv()) : object 'go' not found

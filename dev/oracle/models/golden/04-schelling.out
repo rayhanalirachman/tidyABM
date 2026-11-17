@@ -1,0 +1,14 @@
+51x51 torus, 10% vacant, 30% minority, 100 ticks
+
+ tolerance start   end unhappy
+       0.2 0.575 0.647       5
+       0.3 0.575 0.713     144
+       0.4 0.575 0.867      14
+       0.5 0.575 0.854      36
+       0.6 0.575 0.969      10
+
+  `start` is the same-type share after one tick, `end` after 100.
+  A randomly mixed 70/30 population already sits at 0.7^2 + 0.3^2 = 0.58,
+  which is what `start` measures; segregation is the rise above it.
+  Asking for more similarity gets you more of it, well past what was
+  asked for -- which is the whole Schelling point.

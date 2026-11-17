@@ -1,0 +1,10 @@
+
+herding    (c = 0.24)
+  time at the extremes (share < .1 or > .9): 0.34  [Beta: 0.63]
+  time near the middle  (.4 < share < .6):   0.03  [Beta: 0.07]
+  s.d. of the share:                         0.365  [Beta: 0.412]
+
+no herding (c = 3.5)
+  time at the extremes (share < .1 or > .9): 0.00  [Beta: 0.01]
+  time near the middle  (.4 < share < .6):   0.32  [Beta: 0.40]
+  s.d. of the share:                         0.181  [Beta: 0.176]

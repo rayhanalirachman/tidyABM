@@ -1,0 +1,6 @@
+eps = 0.30  clusters = 1   1/(2*eps) = 1.7
+eps = 0.25  clusters = 1   1/(2*eps) = 2.0
+eps = 0.20  clusters = 2   1/(2*eps) = 2.5
+eps = 0.15  clusters = 3   1/(2*eps) = 3.3
+eps = 0.10  clusters = 3   1/(2*eps) = 5.0
+eps = 0.05  clusters = 8   1/(2*eps) = 10.0

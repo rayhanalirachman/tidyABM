@@ -1,0 +1,10 @@
+threshold start 0.2 (actual 0.14) -> end 0.14
+threshold start 0.4 (actual 0.37) -> end 0.47
+threshold start 0.5 (actual 0.49) -> end 0.59
+threshold start 0.6 (actual 0.58) -> end 0.82
+threshold start 0.8 (actual 0.82) -> end 0.95
+reward    start 0.2 (actual 0.14) -> end 0.02
+reward    start 0.4 (actual 0.37) -> end 0.32
+reward    start 0.5 (actual 0.49) -> end 0.36
+reward    start 0.6 (actual 0.58) -> end 0.44
+reward    start 0.8 (actual 0.82) -> end 0.50

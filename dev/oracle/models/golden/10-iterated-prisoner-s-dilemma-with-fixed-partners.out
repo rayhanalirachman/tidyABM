@@ -1,0 +1,11 @@
+100 agents in fixed pairs, copy-your-partner, 50 ticks
+
+tick     cooperating  mean payoff
+0               1.00         0.00
+1               1.00         3.00
+5               1.00         3.00
+10              1.00         3.00
+25              1.00         3.00
+50              1.00         3.00
+
+cooperation at tick 50: 1.00 (model 3, well mixed, reaches 0)

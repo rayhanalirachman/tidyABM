@@ -1,0 +1,8 @@
+best fitness by generation : 18 20 20 20 20 of 20
+mean fitness by generation : 15.9 18.1 19.4 19.2 19.1 
+first generation at the optimum: 8 
+optimum held from then on     : TRUE 
+mutation 0.01  best 20  mean 19.7
+mutation 0.03  best 20  mean 19.1
+mutation 0.10  best 20  mean 15.2
+mutation 0.30  best 16  mean 10.8

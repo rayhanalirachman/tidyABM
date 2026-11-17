@@ -1,0 +1,5 @@
+reds (fert 3.4) vs blues (fert 3.0), out of 300:
+  0   5  10  20  40  60 
+150 184 209 283 300 300 
+blue extinct at generation: 38 
+equal fertility, reds after 60 generations: 236 

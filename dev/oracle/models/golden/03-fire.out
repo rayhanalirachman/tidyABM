@@ -1,0 +1,18 @@
+100x100 bounded von Neumann grid, ignition on the left edge, 3 seeds
+
+ density burned spanned
+    0.40  0.025       0
+    0.45  0.030       0
+    0.50  0.053       0
+    0.55  0.195       0
+    0.60  0.696       1
+    0.65  0.943       1
+    0.70  0.982       1
+    0.75  0.993       1
+    0.80  0.997       1
+
+  `burned` is the fraction of trees that burned, `spanned` the fraction
+  of seeds where the fire reached the far edge.
+  p_c for site percolation on the square lattice is about 0.5927; the
+  jump in both columns brackets it. With diagonals = TRUE (Moore spread)
+  the transition drops to about 0.41 instead.

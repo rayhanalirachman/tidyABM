@@ -53,3 +53,6 @@ rsconnect/
 
 # stray R default graphics device output
 Rplots.pdf
+
+# oracle run outputs (dev/oracle/README.md)
+/dev/oracle/results/

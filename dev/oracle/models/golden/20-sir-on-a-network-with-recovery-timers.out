@@ -1,0 +1,10 @@
+1000 agents, 6-regular network, one seed case, recovery after 8 ticks
+R0 = beta * degree * duration = beta * 48
+
+beta           R0  ever infected   peak cases  peak tick
+0.01          0.5           0.1%            1          0
+0.03          1.4          19.1%           24         49
+0.06          2.9           0.1%            1          0
+
+below R0 = 1 the seed case burns out; above it the epidemic takes the
+whole network

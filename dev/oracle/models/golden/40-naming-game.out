@@ -1,0 +1,6 @@
+    N    N_w max  t_conv (int.)   t_conv / N^1.5
+   40        118            687            2.714
+   80        340           1920            2.683
+  160        876           4747            2.345
+
+fitted exponents (Baronchelli et al. report 1.5): N_w max ~ N^1.45, t_conv ~ N^1.39

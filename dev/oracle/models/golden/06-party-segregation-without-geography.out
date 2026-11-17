@@ -1,0 +1,23 @@
+The page's run: 200 agents, tolerance 0.05, 100 ticks
+
+tick      clumps   mean gap      settled
+0              1     0.0027         1.00
+1              1     0.0027         1.00
+10             1     0.0027         1.00
+100            1     0.0027         1.00
+
+Nothing moves. 200 agents on the unit interval sit 0.003 apart on
+average, so every agent is already inside its neighbour's tolerance and
+the jump rule never fires. The mechanism needs a sparse population.
+
+Population sweep, 100 ticks each
+
+n       clumps 0    clumps   settled 0     settled
+10             4         3        0.90        1.00
+20             7         4        0.85        1.00
+40             5         4        0.97        1.00
+80             3         3        1.00        1.00
+200            1         1        1.00        1.00
+
+At n = 10 the model does what it is meant to: 4 scattered opinions
+condense into 3 clumps and every agent ends within 0.05 of a neighbour.

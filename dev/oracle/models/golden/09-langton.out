@@ -1,0 +1,9 @@
+121x121 torus, one ant, heading 0 = north
+
+  100 steps:   20 black cells; matches reference: TRUE
+  500 steps:   62 black cells; matches reference: TRUE
+ 2000 steps:  202 black cells; matches reference: TRUE
+
+  From an all-white field the trajectory is chaotic for about 10,000
+  steps and then locks into a period-104 highway; the figure runs on
+  to 11,500 steps to show it.

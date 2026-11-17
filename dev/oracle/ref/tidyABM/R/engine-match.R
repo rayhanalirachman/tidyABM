@@ -1,0 +1,635 @@
+# Match execution --------------------------------------------------------
+
+# built once: `abm_match(.by =)` returns this for every partition it skips,
+# and `tibble::tibble()` costs more than the partitions it was skipping
+.empty_match <- tibble::new_tibble(
+  list(.id = integer(), .partner = integer(), .role = character(),
+       .group_id = integer()),
+  nrow = 0L
+)
+empty_match <- function() .empty_match
+
+#' The match table every pairing mode returns
+#'
+#' Built with `new_tibble()` rather than `tibble()`: a match is made every
+#' tick, and `tibble()`'s argument handling was a third of a simple model's
+#' run. `partner` and `role` may be a single value to recycle.
+#' @noRd
+new_match <- function(id, partner, role, group_id) {
+  n <- length(id)
+  new_tbl(
+    list(.id = id, .partner = rep_len(partner, n), .role = rep_len(role, n),
+         .group_id = group_id),
+    n
+  )
+}
+
+#' Evaluate a condition quosure against the agent tibble + globals
+#' @noRd
+eval_condition <- function(quo, agents, globals) {
+  if (is.null(quo)) return(rep(TRUE, nrow(agents)))
+  # Conditions go through the same data-masking path as rules, so that `n()`,
+  # `if_else()` and friends mean the same thing in `when =` as in `abm_rules()`.
+  out <- eval_rule(list(quo = quo), aug = agents, globals = globals,
+                   grouped = FALSE)
+  # a quoted condition -- `eligible = "money > 0"` -- used to die inside `&`
+  # with "operations are possible only for numeric, logical or complex types"
+  if (is.character(out) || is.list(out) || is.factor(out)) {
+    abm_abort(
+      c("A condition must be {.code TRUE} or {.code FALSE} per agent.",
+        "x" = "{.code {deparse1(rlang::quo_get_expr(quo))}} returned {.cls {class(out)[[1]]}}.",
+        "i" = if (is.character(out)) "Write the condition unquoted, {.code eligible = money > 0}, not {.code eligible = \"money > 0\"}."
+              else "Write a comparison, such as {.code money > 0} or {.code state == \"infected\"}."),
+      class = "tidyABM_bad_condition"
+    )
+  }
+  if (length(out) == 1L) out <- rep(out, nrow(agents))
+  # nearly always a plain logical with nothing missing, which is its own answer
+  if (is.logical(out) && is.null(attributes(out)) && !anyNA(out)) return(out)
+  out & !is.na(out)
+}
+
+#' Split a vector of ids into consecutive groups of `size`
+#' @noRd
+chunk_ids <- function(ids, size) {
+  n_full <- length(ids) %/% size
+  if (n_full == 0L) return(list(ids = integer(), gid = integer()))
+  keep <- ids[seq_len(n_full * size)]
+  list(ids = keep, gid = rep(seq_len(n_full), each = size))
+}
+
+#' Assign two roles within pairs
+#'
+#' Returns a character vector aligned with `a`/`b`, or NA for pairs where no
+#' assignment satisfies both conditions.
+#' @noRd
+assign_roles <- function(role_quo, agents, globals, a_idx, b_idx) {
+  exprs <- as.list(rlang::quo_get_expr(role_quo))[-1]
+  nms <- names(exprs)
+  env <- rlang::quo_get_env(role_quo)
+  conds <- lapply(exprs, function(e) {
+    eval_condition(rlang::new_quosure(e, env), agents, globals)
+  })
+  c1 <- conds[[1]]; c2 <- conds[[2]]
+
+  ab <- c1[a_idx] & c2[b_idx]   # a takes role 1
+  ba <- c1[b_idx] & c2[a_idx]   # b takes role 1
+  both <- ab & ba
+  if (any(both)) {
+    flip <- stats::runif(sum(both)) < 0.5
+    ab[both][flip] <- FALSE
+  }
+  role_a <- ifelse(ab, nms[[1]], ifelse(ba, nms[[2]], NA_character_))
+  role_b <- ifelse(ab, nms[[2]], ifelse(ba, nms[[1]], NA_character_))
+  list(a = role_a, b = role_b, ok = !is.na(role_a))
+}
+
+#' Run one abm_match step
+#'
+#' Returns a tibble of .id/.partner/.role/.group_id, for participating agents
+#' only. A match decides who meets whom; it never writes an agent column.
+#' @noRd
+run_match <- function(spec, agents, edges, globals, call = rlang::caller_env(),
+                      relations = NULL, eligible = NULL) {
+  if (!is.null(spec$dot_by)) {
+    return(run_match_by(spec, agents, edges, globals, call, relations))
+  }
+  # `eligible` arrives precomputed from `run_match_by()`, which evaluates it
+  # once over the population rather than once per partition
+  eligible <- eligible %||% eval_condition(spec$eligible, agents, globals)
+  pool <- agents$.id[eligible]
+  # `eligible` says who takes part; `among` says who may be picked. They are
+  # different questions for the directional modes, where choosing is one-way.
+  ch <- choice_set(spec, agents, globals, pool, call, relations)
+
+  res <- switch(
+    spec$pair,
+    random         = match_random(spec, agents, globals, pool),
+    one_of         = match_one_of(spec, agents, globals, pool, ch),
+    opposite_group = match_opposite(spec, agents, globals, pool, call),
+    nearest        = match_nearest(spec, agents, globals, pool, ch, call, relations),
+    network        = match_network(spec, agents, edges, pool)
+  )
+  res
+}
+
+#' Run a match once inside each partition of a `.by` column
+#'
+#' The whole match is replayed per partition -- eligibility, roles, the draw --
+#' so an agent is only ever paired with an agent sharing the column's value.
+#' `.group_id`s are re-based across partitions so that grouped rules still see
+#' one group per pair. `NA` is not a partition: an agent with no value sits the
+#' step out, the way it does in `abm_rules(.by =)`.
+#' @noRd
+run_match_by <- function(spec, agents, edges, globals, call, relations = NULL) {
+  by <- by_columns(spec$dot_by, call)
+  if (length(by) != 1L || !by %in% names(agents)) {
+    abm_abort(
+      c("{.arg .by} must name one existing agent column.",
+        "x" = "No column {.field {by}}."),
+      class = "tidyABM_missing_column", call = call
+    )
+  }
+  inner <- spec
+  inner$dot_by <- NULL
+
+  key <- agents[[by]]
+  eligible <- eval_condition(spec$eligible, agents, globals)
+  plain_key <- is.numeric(key) && !is.object(key)
+  if (plain_key && spec$pair == "opposite_group" && is.null(spec$role)) {
+    m <- match_by_opposite(spec, agents, key, eligible)
+    if (!is.null(m)) return(m)
+  }
+  # rows by key, in key order, `NA` keys left out: what `split()` gives, which
+  # for a plain number (a cell) needs no factor made of the key first
+  parts <- if (plain_key) {
+    grp <- vctrs::vec_group_loc(key)
+    at <- vctrs::vec_order(grp$key)
+    grp$loc[at[!is.na(grp$key[at])]]
+  } else {
+    split(seq_len(nrow(agents)), key)
+  }
+  # a partition with nobody eligible pairs nobody, and a mutual mode needs two;
+  # on a lattice most cells are one of those, so they are skipped before any
+  # tibble is built for them
+  need <- if (spec$pair %in% c("random", "opposite_group")) spec$size else 1L
+  out <- vector("list", length(parts))
+  offset <- 0L
+  for (i in seq_along(parts)) {
+    idx <- parts[[i]]
+    el <- eligible[idx]
+    if (sum(el) < need) next
+    sub <- vctrs::vec_slice(agents, idx)
+    m <- run_match(inner, sub, edges, globals, call, relations, eligible = el)
+    if (nrow(m) == 0L) next
+    m$.group_id <- m$.group_id + offset
+    offset <- max(m$.group_id)
+    out[[i]] <- m
+  }
+  out <- out[lengths(out) > 0L]
+  if (!length(out)) return(empty_match())
+  dplyr::bind_rows(out)
+}
+
+#' [run_match_by()] for `pair = "opposite_group"` with no roles
+#'
+#' Only a partition holding both sides draws anything, and on a lattice those
+#' are a few cells among thousands, so only they are visited, in key order,
+#' making the same two `shuffle()`s [match_opposite()] would. `NULL` when the
+#' general loop has to run instead: `by` not a plain column, or a partition
+#' with a third value, which it reports.
+#' @noRd
+match_by_opposite <- function(spec, agents, key, eligible) {
+  by <- rlang::quo_get_expr(spec$by)
+  if (!rlang::is_symbol(by)) return(NULL)
+  side <- agents[[rlang::as_string(by)]]
+  if (is.null(side)) return(NULL)
+  rows <- which(eligible & !is.na(key) & !is.na(side))
+  ids <- agents$.id[rows]
+  side <- side[rows]
+  grp <- vctrs::vec_group_loc(key[rows])
+  # distinct sides per partition
+  pid <- vctrs::vec_group_id(vctrs::new_data_frame(list(k = key[rows], s = side)))
+  kid <- vctrs::vec_group_id(key[rows])
+  nv <- tabulate(kid[!duplicated(pid)], nbins = nrow(grp))
+  if (any(nv > 2L)) return(NULL)
+  mixed <- which(nv == 2L)
+  mixed <- mixed[vctrs::vec_order(grp$key[mixed])]
+  if (!length(mixed)) return(empty_match())
+  out_id <- out_partner <- out_gid <- vector("list", length(mixed))
+  offset <- 0L
+  for (j in seq_along(mixed)) {
+    loc <- grp$loc[[mixed[[j]]]]
+    s <- side[loc]
+    id <- ids[loc]
+    vals <- sort(unique(s))
+    g1 <- shuffle(id[s == vals[[1]]])
+    g2 <- shuffle(id[s == vals[[2]]])
+    k <- min(length(g1), length(g2))
+    a <- g1[seq_len(k)]; b <- g2[seq_len(k)]
+    out_id[[j]] <- c(a, b)
+    out_partner[[j]] <- c(b, a)
+    out_gid[[j]] <- rep(seq_len(k), 2) + offset
+    offset <- offset + k
+  }
+  id <- unlist(out_id, use.names = FALSE)
+  new_match(id, unlist(out_partner, use.names = FALSE), NA_character_,
+            unlist(out_gid, use.names = FALSE))
+}
+
+#' Does a condition ask about the pair rather than about the candidate?
+#'
+#' `among` and `weight` are ordinary population conditions until one of them
+#' mentions an `own_<col>` -- or a relation: `.sellers`, `sellers_unmet`. Either
+#' is the signal that the question is "may *I* pick this one", not "may
+#' anyone", and it is the same signal `cost` gives.
+#' @noRd
+mentions_pair <- function(quo, relations = NULL) {
+  if (is.null(quo)) return(FALSE)
+  any(startsWith(all.vars(rlang::quo_get_expr(quo)), "own_")) ||
+    mentions_relation(quo, relations)
+}
+
+#' Who each chooser may pick, and with what weight
+#'
+#' Returns `ids` (the candidates, in agent order), `ok` (`NULL` when every
+#' chooser shares one candidate set, otherwise a chooser x candidate logical
+#' matrix whose rows follow `pool`) and `w` (`NULL`, a vector over `ids`, or a
+#' matrix shaped like `ok`).
+#' @noRd
+choice_set <- function(spec, agents, globals, pool, call = rlang::caller_env(),
+                       relations = NULL) {
+  if (!spec$pair %in% c("one_of", "nearest")) return(NULL)
+  pairwise <- mentions_pair(spec$among, relations) ||
+    mentions_pair(spec$weight, relations)
+
+  if (!pairwise) {
+    ids <- agents$.id[eval_condition(spec$among, agents, globals)]
+    w <- NULL
+    if (!is.null(spec$weight)) {
+      wv <- eval_rule(list(quo = spec$weight), aug = agents, globals = globals,
+                      grouped = FALSE)
+      if (length(wv) == 1L) wv <- rep(wv, nrow(agents))
+      w <- check_weight(wv, spec, call)[match(ids, agents$.id)]
+    }
+    return(list(ids = ids, ok = NULL, w = w))
+  }
+
+  # one row per (chooser, candidate): the candidate's columns under their own
+  # names, the chooser's under `own_`. The same view `cost` minimises over, so
+  # a comparison written for one means the same thing in the other.
+  focal <- which(agents$.id %in% pool)
+  if (!length(focal)) return(list(ids = agents$.id, ok = NULL, w = NULL))
+  # the parts of `among` that ask only about the candidate (`.group == "firms"`)
+  # are settled once over the population, so the cross product is built only
+  # for candidates that could pass: 1000 households x 100 firms rather than
+  # x 1100 agents
+  cand <- which(candidate_filter(spec$among, agents, globals))
+  if (!length(cand)) return(list(ids = agents$.id[0], ok = NULL, w = NULL))
+  ns <- length(focal); nc <- length(cand)
+  view <- pair_view(agents,
+                    focal_idx = rep(focal, each = nc),
+                    cand_idx  = rep(cand, times = ns),
+                    relations = relations,
+                    vars = unique(c(
+                      if (!is.null(spec$among)) all.vars(rlang::quo_get_expr(spec$among)),
+                      if (!is.null(spec$weight)) all.vars(rlang::quo_get_expr(spec$weight)))))
+
+  ok <- if (is.null(spec$among)) rep(TRUE, nrow(view))
+        else eval_over_view(spec$among, view, globals)
+  if (!is.logical(ok)) {
+    abm_abort(
+      c("{.arg among} must be a condition.",
+        "x" = "{.code {deparse1(rlang::quo_get_expr(spec$among))}} returned {.cls {class(ok)[[1]]}}."),
+      class = "tidyABM_bad_among", call = call
+    )
+  }
+  if (length(ok) == 1L) ok <- rep(ok, nrow(view))
+  ok[is.na(ok)] <- FALSE
+
+  w <- NULL
+  if (!is.null(spec$weight)) {
+    wv <- eval_over_view(spec$weight, view, globals)
+    if (length(wv) == 1L) wv <- rep(wv, nrow(view))
+    w <- matrix(check_weight(wv, spec, call), nrow = ns, byrow = TRUE)
+  }
+  list(ids = agents$.id[cand], ok = matrix(ok, nrow = ns, byrow = TRUE), w = w)
+}
+
+#' Which agents pass the candidate-only conjuncts of `among`
+#'
+#' A conjunct reading only agent columns and globals, through elementwise
+#' functions, means the same per candidate as per (chooser, candidate) row.
+#' Anything else -- `own_<col>`, a relation, `.of`, an aggregate, a variable
+#' from the model's environment -- is left to the pair view.
+#' @noRd
+candidate_filter <- function(quo, agents, globals) {
+  keep <- rep(TRUE, nrow(agents))
+  if (is.null(quo)) return(keep)
+  known <- c(names(agents), names(globals))
+  for (e in conjuncts(rlang::quo_get_expr(quo))) {
+    if (!is_elementwise(e) || !all(all.vars(e) %in% known)) next
+    keep <- keep & eval_condition(rlang::new_quosure(e, rlang::quo_get_env(quo)),
+                                  agents, globals)
+  }
+  keep
+}
+
+#' The top-level `&` terms of an expression
+#' @noRd
+conjuncts <- function(e) {
+  if (rlang::is_call(e, "(")) return(conjuncts(e[[2]]))
+  if (rlang::is_call(e, "&", n = 2)) return(c(conjuncts(e[[2]]), conjuncts(e[[3]])))
+  list(e)
+}
+
+#' @noRd
+check_weight <- function(w, spec, call) {
+  if (!is.numeric(w)) {
+    abm_abort(
+      c("{.arg weight} must be numeric.",
+        "x" = "{.code {deparse1(rlang::quo_get_expr(spec$weight))}} returned {.cls {class(w)[[1]]}}."),
+      class = "tidyABM_bad_weight", call = call
+    )
+  }
+  w[is.na(w)] <- 0
+  pmax(w, 0)
+}
+
+#' Draw one candidate per chooser, honouring a per-chooser set and weights
+#' @noRd
+draw_choices <- function(pool, ch) {
+  ids <- ch$ids
+  out <- rep(NA_integer_, length(pool))
+  for (i in seq_along(pool)) {
+    keep <- if (is.null(ch$ok)) rep(TRUE, length(ids)) else ch$ok[i, ]
+    keep <- keep & ids != pool[[i]]
+    if (!any(keep)) next
+    cand <- ids[keep]
+    if (is.null(ch$w)) {
+      out[[i]] <- cand[[sample.int(length(cand), 1L)]]
+    } else {
+      wi <- if (is.matrix(ch$w)) ch$w[i, keep] else ch$w[keep]
+      if (sum(wi) <= 0) next
+      out[[i]] <- cand[[sample.int(length(cand), 1L, prob = wi)]]
+    }
+  }
+  out
+}
+
+match_random <- function(spec, agents, globals, pool) {
+  pool <- shuffle(pool)
+  ch <- chunk_ids(pool, spec$size)
+  if (length(ch$ids) == 0L) return(empty_match())
+
+  if (spec$size == 2L) {
+    a <- ch$ids[c(TRUE, FALSE)]
+    b <- ch$ids[c(FALSE, TRUE)]
+    a_idx <- match(a, agents$.id); b_idx <- match(b, agents$.id)
+
+    if (is.null(spec$role)) {
+      m <- new_match(c(a, b), c(b, a), NA_character_, rep(seq_along(a), 2))
+    } else {
+      r <- assign_roles(spec$role, agents, globals, a_idx, b_idx)
+      keep <- r$ok
+      m <- new_match(c(a[keep], b[keep]), c(b[keep], a[keep]),
+                     c(r$a[keep], r$b[keep]), rep(seq_len(sum(keep)), 2))
+    }
+    return(m)
+  }
+
+  new_match(ch$ids, NA_integer_, NA_character_, ch$gid)
+}
+
+match_one_of <- function(spec, agents, globals, pool, ch = NULL) {
+  ch <- ch %||% list(ids = agents$.id, ok = NULL, w = NULL)
+  candidates <- ch$ids
+  if (length(pool) == 0L || length(candidates) == 0L) {
+    return(empty_match())
+  }
+  if (is.null(ch$ok) && is.null(ch$w)) {
+    # NetLogo's `one-of other turtles`: each eligible agent draws a partner from
+    # the candidate pool, itself excluded. Directional, so A may pick B while B
+    # picks someone else entirely.
+    # An agent that is its own only candidate has nobody to pick and sits out.
+    # with two candidates or more nobody is left without one: no lookup needed
+    if (length(candidates) <= 1L) pool <- pool[!(pool %in% candidates)]
+    if (length(pool) == 0L) return(empty_match())
+    draw <- draw_from(candidates, length(pool))
+    clash <- draw == pool
+    while (any(clash)) {
+      draw[clash] <- draw_from(candidates, sum(clash))
+      clash <- draw == pool
+    }
+  } else {
+    # a candidate set, or a weighting, that belongs to the chooser: it draws
+    # one agent at a time rather than one draw for the whole pool
+    draw <- draw_choices(pool, ch)
+    got <- !is.na(draw)
+    pool <- pool[got]; draw <- draw[got]
+    if (length(pool) == 0L) return(empty_match())
+  }
+  # with no roles everybody drawn is kept, with no role
+  if (is.null(spec$role)) return(new_match(pool, draw, NA_character_, seq_along(pool)))
+  r <- assign_roles(spec$role, agents, globals, match(pool, agents$.id),
+                    match(draw, agents$.id))
+  keep <- r$ok
+  new_match(pool[keep], draw[keep], r$a[keep], seq_len(sum(keep)))
+}
+
+match_opposite <- function(spec, agents, globals, pool, call) {
+  by <- by_columns(spec$by, call)
+  if (length(by) != 1L) {
+    abm_abort('{.arg by} must name one column when {.code pair = "opposite_group"}.',
+              class = "tidyABM_bad_by", call = call)
+  }
+  if (!by %in% names(agents)) {
+    abm_abort(c("Column {.field {by}} not found.",
+                "i" = "For a multi-group model use {.code by = .group}."),
+              class = "tidyABM_missing_column", call = call)
+  }
+  # the split is checked among the agents taking part: `eligible` says who
+  # does, so a third value held only by agents sitting the step out is not a
+  # specification error. A population that is all one kind this tick (every
+  # male dead, say) is a step where nobody pairs up, not an error either.
+  # two bare vectors, and no sort for a single kind: under `.by` this runs
+  # once per partition, and on a lattice most cells hold one kind
+  taking_part <- agents$.id %in% pool
+  ids <- agents$.id[taking_part]
+  side <- agents[[by]][taking_part]
+  vals <- unique(side[!is.na(side)])
+  if (length(vals) > 1L) vals <- sort(vals)
+  if (length(vals) > 2L) {
+    all_vals <- sort(unique(agents[[by]][!is.na(agents[[by]])]))
+    abm_abort(
+      c("{.field {by}} must take at most two values for opposite-group matching.",
+        "x" = "Among the agents taking part it takes {length(vals)} values: {.val {vals}}.",
+        "i" = "{.arg by} names the two sides; {.arg eligible} says who takes part, and an agent whose value is {.val NA} sits out."),
+      class = "tidyABM_bad_by", call = call
+    )
+  }
+  if (length(vals) < 2L) {
+    return(empty_match())
+  }
+  # `which()` rather than logical indexing: an agent whose `by` value is `NA`
+  # is in neither side, and `ids[NA]` would have put a phantom `NA` agent
+  # into one of them, to be paired with a real one
+  g1 <- shuffle(ids[which(side == vals[[1]])])
+  g2 <- shuffle(ids[which(side == vals[[2]])])
+  k <- min(length(g1), length(g2))
+  if (k == 0L) return(empty_match())
+  a <- g1[seq_len(k)]; b <- g2[seq_len(k)]
+
+  if (is.null(spec$role)) {
+    role_a <- rep(NA_character_, k); role_b <- role_a; keep <- rep(TRUE, k)
+  } else {
+    r <- assign_roles(spec$role, agents, globals, match(a, agents$.id),
+                      match(b, agents$.id))
+    role_a <- r$a; role_b <- r$b; keep <- r$ok
+  }
+
+  new_match(c(a[keep], b[keep]), c(b[keep], a[keep]),
+            c(role_a[keep], role_b[keep]), rep(seq_len(sum(keep)), 2))
+}
+
+match_nearest <- function(spec, agents, globals, pool, ch, call, relations = NULL) {
+  ch <- ch %||% list(ids = agents$.id, ok = NULL, w = NULL)
+  if (!is.null(spec$cost)) {
+    return(match_cheapest(spec, agents, globals, pool, ch, call, relations))
+  }
+  candidates <- ch$ids
+  by <- by_columns(spec$by, call)
+  missing <- setdiff(by, names(agents))
+  if (length(missing)) {
+    abm_abort("Column{?s} {.field {missing}} not found.",
+              class = "tidyABM_missing_column", call = call)
+  }
+  # logical coordinates measured as 0/1 before this check existed, so they
+  # still do; a character or factor column never measured anything
+  not_num <- by[!vapply(by, function(b) is.numeric(agents[[b]]) || is.logical(agents[[b]]),
+                        logical(1))]
+  if (length(not_num)) {
+    abm_abort(
+      c('{.code pair = "nearest"} measures distance, so {.arg by} must name numeric columns.',
+        "x" = "{.field {not_num}} {?is/are} {.cls {class(agents[[not_num[[1]]]])[[1]]}}.",
+        "i" = "For a nearness that is not a distance, write it as {.arg cost}: {.code cost = <number the chooser minimises>}."),
+      class = "tidyABM_bad_by", call = call
+    )
+  }
+  sub <- agents[agents$.id %in% pool, , drop = FALSE]
+  cand <- agents[agents$.id %in% candidates, , drop = FALSE]
+  if (nrow(sub) == 0L || nrow(cand) == 0L) {
+    return(empty_match())
+  }
+
+  a <- as.matrix(sub[, by, drop = FALSE])
+  b <- as.matrix(cand[, by, drop = FALSE])
+  # squared Euclidean distance from every chooser to every candidate; only the
+  # ordering matters, so the square root is not worth taking
+  d <- outer(rowSums(a^2), rowSums(b^2), "+") - 2 * (a %*% t(b))
+  d[outer(sub$.id, cand$.id, "==")] <- Inf   # never yourself
+  # a candidate set of the chooser's own rules the rest out
+  if (!is.null(ch$ok)) d[!ch$ok[, match(cand$.id, ch$ids), drop = FALSE]] <- Inf
+  ok <- is.finite(matrixStats_rowMins(d))
+  if (!any(ok)) return(empty_match())
+  nearest <- max.col(-d, ties.method = "first")
+
+  new_match(sub$.id[ok], cand$.id[nearest[ok]], NA_character_, seq_len(sum(ok)))
+}
+
+#' `pair = "nearest"` with a cost expression rather than a coordinate
+#'
+#' One row per (chooser, candidate): the candidate's columns under their own
+#' names, the chooser's under `own_<col>`. That is the same view
+#' `abm_neighbours()` gives, and it is what lets the thing being minimised be a
+#' delivered price or an energy deficit rather than a distance.
+#' @noRd
+match_cheapest <- function(spec, agents, globals, pool, ch, call, relations = NULL) {
+  candidates <- ch$ids
+  sub_idx  <- which(agents$.id %in% pool)
+  cand_idx <- which(agents$.id %in% candidates)
+  if (!length(sub_idx) || !length(cand_idx)) {
+    return(empty_match())
+  }
+  cand <- agents[cand_idx, , drop = FALSE]
+  # every column, `.id` and `.group` included, so a cost can say "my rank of
+  # this candidate" (`own_rank[[.]][.id]`) as well as "the price it charges".
+  # `.of` is the chooser and `.id` the candidate, as in every other pair view.
+  ci <- rep(cand_idx, times = length(sub_idx))
+  si <- rep(sub_idx,  each  = length(cand_idx))
+  view <- pair_view(agents, si, ci, relations)
+
+  quo <- spec$cost
+  quo <- rlang::quo_set_env(quo, abm_eval_env(quo, globals))
+  val <- dplyr::pull(dplyr::mutate(view, .abm_cost = !!quo), ".abm_cost")
+  if (length(val) == 1L) val <- rep(val, nrow(view))
+  if (!is.numeric(val)) {
+    abm_abort(
+      c("{.arg cost} must be numeric.",
+        "x" = "{.code {deparse1(rlang::quo_get_expr(spec$cost))}} returned {.cls {class(val)[[1]]}}."),
+      class = "tidyABM_bad_cost", call = call
+    )
+  }
+  val[view$.of == view$.id] <- NA_real_   # never yourself
+  # a candidate set of the chooser's own rules the rest out
+  if (!is.null(ch$ok)) val[!as.vector(t(ch$ok[, match(cand$.id, ch$ids), drop = FALSE]))] <- NA_real_
+  keep <- !is.na(val)
+  if (!any(keep)) return(empty_match())
+
+  ord <- order(view$.of[keep], val[keep])
+  ch  <- view$.of[keep][ord]
+  cd  <- view$.id[keep][ord]
+  first <- !duplicated(ch)
+  new_match(ch[first], cd[first], NA_character_, seq_len(sum(first)))
+}
+
+#' Row minima of a matrix, without a dependency
+#' @noRd
+matrixStats_rowMins <- function(x) {
+  if (ncol(x) == 0L) return(rep(Inf, nrow(x)))
+  do.call(pmin, c(lapply(seq_len(ncol(x)), function(j) x[, j]), list(na.rm = TRUE)))
+}
+
+match_network <- function(spec, agents, edges, pool) {
+  if (is.null(edges) || nrow(edges) == 0L) return(empty_match())
+  # the neighbour table as two bare vectors: each edge read both ways round.
+  # The same rows `neighbour_table()` gives, without building a tibble and
+  # slicing it twice per tick.
+  id  <- c(edges$from, edges$to)
+  nbr <- c(edges$to, edges$from)
+  keep <- id %in% pool & nbr %in% agents$.id
+  id <- id[keep]; nbr <- nbr[keep]
+  if (!length(id)) return(empty_match())
+
+  o <- sample.int(length(id))
+  id <- id[o]; nbr <- nbr[o]
+  pick <- !duplicated(id)
+  new_match(id[pick], nbr[pick], NA_character_, seq_len(sum(pick)))
+}
+
+#' Pick `k` distinct target agents for a newborn
+#'
+#' One draw per target, rejecting repeats, which is what "m distinct edges per
+#' new node" means in preferential attachment. `k = 1` makes exactly the one
+#' draw `attach_target()` always made, so a model that does not ask for more
+#' links sees the same random stream it always did.
+#' @noRd
+attach_targets <- function(spec, agents, edges, k = 1L) {
+  out <- integer()
+  attempts <- 0L
+  cap <- 10L * k
+  while (length(out) < k && attempts < cap) {
+    attempts <- attempts + 1L
+    hit <- attach_target(spec, agents[!agents$.id %in% out, , drop = FALSE],
+                         edges)
+    if (is.na(hit) || hit %in% out) next
+    out <- c(out, hit)
+  }
+  out
+}
+
+#' The parent's own neighbours, which is what makes a newborn's place local
+#'
+#' `exclude` holds the newborn and its siblings: an offspring settles among the
+#' agents already there, not among the ones born with it.
+#' @noRd
+parent_neighbours <- function(edges, parent, k, exclude = integer()) {
+  if (k <= 0L || is.na(parent) || is.null(edges) || nrow(edges) == 0L) {
+    return(integer())
+  }
+  nb <- c(edges$to[edges$from == parent], edges$from[edges$to == parent])
+  nb <- unique(nb[!nb %in% c(parent, exclude)])
+  if (!length(nb)) return(integer())
+  nb[sample.int(length(nb), min(k, length(nb)))]
+}
+
+#' Pick a target agent for a newborn, given an `attach_via` match spec
+#' @noRd
+attach_target <- function(spec, agents, edges) {
+  if (spec$from == "random_edge" && !is.null(edges) && nrow(edges) > 0L) {
+    e <- sample.int(nrow(edges), 1L)
+    return(if (stats::runif(1) < 0.5) edges$from[[e]] else edges$to[[e]])
+  }
+  if (nrow(agents) == 0L) return(NA_integer_)
+  agents$.id[sample.int(nrow(agents), 1L)]
+}

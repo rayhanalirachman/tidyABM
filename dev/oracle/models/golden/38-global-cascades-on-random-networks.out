@@ -1,0 +1,9 @@
+analytic cascade window for phi = 0.18: z in (1.021, 5.765)
+
+    z  P(cascade)  in window?
+  0.5       0.00  no
+  1.5       0.65  yes
+  3.0       0.85  yes
+  5.0       0.75  yes
+  6.5       0.00  no
+  9.0       0.00  no

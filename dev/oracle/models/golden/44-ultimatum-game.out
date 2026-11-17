@@ -1,0 +1,11 @@
+    w    mean p    mean q
+  0.0     0.183     0.073
+  0.2     0.239     0.137
+  0.5     0.287     0.226
+  0.8     0.283     0.582
+  1.0     0.160     0.587
+
+Nowak, Page & Sigmund: w = 0 converges near the rational solution S(0,0);
+information moves the population towards the fair one, with q a little below p.
+At w = 1 this implementation degenerates -- an informed proposer always meets
+the demand, so p stops being selected on at all and only q is left.

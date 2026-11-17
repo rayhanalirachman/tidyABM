@@ -1,0 +1,15 @@
+100 agents, 10 predictors each, memory 5, capacity 60, 300 ticks
+
+last 200 ticks: mean 57.2, sd 3.4, range 50-65, 16 distinct levels
+autocorrelation at lags 1..6: -0.16 -0.40 -0.29 +0.15 +0.60 -0.10
+no period up to lag 6
+
+Predictors per agent, across four population draws
+
+predictors   draw 1   draw 2   draw 3   draw 4
+1                 1        1        2        2
+3                 1        4        4        6
+10               16       17       10       16
+
+levels in the last 200 ticks: 1 or 2 is a fixed point or a two-cycle.
+Ten predictors never settles; one settles in every draw.

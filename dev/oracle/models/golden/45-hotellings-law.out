@@ -1,0 +1,8 @@
+  shops  where they end up             mean walk  best walk
+      2  50, 51                             24.8       12.5
+      3  48, 49, 49                         24.8        8.4
+      5  30, 31, 47, 53, 54                 17.4        5.0
+
+Two shops meet in the middle (Hotelling's minimum differentiation) and
+the buyers walk about twice as far as they would if the shops were placed
+to suit them.

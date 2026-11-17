@@ -1,0 +1,13 @@
+200 agents, five alleles, 800 ticks
+
+tick      alive counts
+0             5  39  34  44  46  37
+50            4  20  88   0  82  10
+100           2   0 190   0  10   0
+200           1   0 200   0   0   0
+400           1   0 200   0   0   0
+800           1   0 200   0   0   0
+
+Fixation probability: 120 replicates starting at 30/70
+
+minority allele fixed in 33 of 120 runs (28%); theory says 30%

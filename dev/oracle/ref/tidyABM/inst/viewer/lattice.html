@@ -1,0 +1,427 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>__TITLE__</title>
+<style>
+:root {
+  color-scheme: light dark;
+  --bg: #fbfbf9; --panel: #ffffff; --ink: #1f2328; --muted: #6b7280;
+  --line: #d9dcdf; --accent: #0072b2; --accent-ink: #ffffff; --cell: #e3e3e0;
+  --control: #f1f2f0; --control-hover: #e4e6e3; --shadow: 0 1px 2px rgba(0,0,0,.06);
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #16181c; --panel: #1f2227; --ink: #e6e7ea; --muted: #9aa0a8;
+    --line: #363b43; --accent: #56b4e9; --accent-ink: #0b1118; --cell: #3a3e45;
+    --control: #272b31; --control-hover: #31363d; --shadow: 0 1px 2px rgba(0,0,0,.4);
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #16181c; --panel: #1f2227; --ink: #e6e7ea; --muted: #9aa0a8;
+  --line: #363b43; --accent: #56b4e9; --accent-ink: #0b1118; --cell: #3a3e45;
+  --control: #272b31; --control-hover: #31363d; --shadow: 0 1px 2px rgba(0,0,0,.4);
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--font); }
+body { padding: 20px 16px 32px; line-height: 1.4; }
+.page { max-width: 1040px; margin: 0 auto; }
+header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+h1 { font-size: 1.25rem; font-weight: 650; margin: 0; letter-spacing: -0.01em; }
+.subtitle { margin: 2px 0 0; color: var(--muted); font-size: 0.9rem; }
+.theme { flex: none; }
+.layout { display: grid; grid-template-columns: minmax(0, 1fr) 200px; gap: 20px; align-items: start; }
+@media (max-width: 720px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+.view { position: relative; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px; box-shadow: var(--shadow); }
+canvas { display: block; width: 100%; height: auto; touch-action: none; cursor: crosshair; border-radius: 4px; }
+.tip { position: absolute; pointer-events: none; display: none; background: var(--ink); color: var(--bg); padding: 6px 9px; border-radius: 6px; font-size: 0.78rem; line-height: 1.35; max-width: 260px; white-space: pre-line; z-index: 2; box-shadow: 0 2px 8px rgba(0,0,0,.25); }
+.controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; }
+button, select { font: inherit; color: var(--ink); background: var(--control); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; cursor: pointer; min-height: 36px; }
+button:hover, select:hover { background: var(--control-hover); }
+button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button.play { background: var(--accent); color: var(--accent-ink); border-color: transparent; min-width: 76px; font-weight: 600; }
+.step { min-width: 36px; padding: 6px 8px; }
+.tick { font-variant-numeric: tabular-nums; font-family: var(--mono); font-size: 0.85rem; color: var(--muted); white-space: nowrap; }
+.slider { flex: 1 1 140px; display: flex; align-items: center; min-width: 120px; }
+input[type=range] { width: 100%; accent-color: var(--accent); margin: 0; }
+.speed { display: flex; align-items: center; gap: 6px; font-size: 0.85rem; color: var(--muted); }
+.readout { margin-top: 10px; min-height: 1.4em; font-family: var(--mono); font-size: 0.8rem; color: var(--muted); white-space: pre-wrap; word-break: break-word; }
+aside { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; box-shadow: var(--shadow); font-size: 0.85rem; }
+aside h2 { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 0 0 6px; font-weight: 600; }
+aside section + section { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+.key { display: flex; align-items: center; gap: 8px; margin: 3px 0; }
+.sw { width: 14px; height: 14px; border-radius: 3px; flex: none; border: 1px solid rgba(0,0,0,.15); }
+.dot { width: 12px; height: 12px; border-radius: 50%; flex: none; margin: 0 1px; }
+.lab { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.n { font-variant-numeric: tabular-nums; font-family: var(--mono); color: var(--muted); font-size: 0.78rem; }
+.ramp { height: 12px; border-radius: 3px; border: 1px solid rgba(0,0,0,.15); margin: 4px 0 2px; }
+.ends { display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--muted); font-family: var(--mono); }
+.hint { margin-top: 10px; font-size: 0.75rem; color: var(--muted); }
+kbd { font-family: var(--mono); font-size: 0.72rem; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0 4px; }
+</style>
+</head>
+<body>
+<div class="page">
+  <header>
+    <div>
+      <h1 id="title"></h1>
+      <p class="subtitle" id="subtitle"></p>
+    </div>
+    <button class="theme" id="theme" type="button" title="Switch light / dark" aria-label="Switch light or dark theme">&#9681;</button>
+  </header>
+  <div class="layout">
+    <div>
+      <div class="view">
+        <canvas id="c" aria-label="The lattice" role="img"></canvas>
+        <div class="tip" id="tip"></div>
+      </div>
+      <div class="controls">
+        <button class="step" id="first" type="button" title="First tick" aria-label="First tick">&#9198;</button>
+        <button class="step" id="prev" type="button" title="Previous tick" aria-label="Previous tick">&#9664;</button>
+        <button class="play" id="play" type="button">Play</button>
+        <button class="step" id="next" type="button" title="Next tick" aria-label="Next tick">&#9654;</button>
+        <button class="step" id="last" type="button" title="Last tick" aria-label="Last tick">&#9197;</button>
+        <div class="slider"><input type="range" id="slider" min="0" max="0" value="0" step="1" aria-label="Tick"></div>
+        <span class="tick" id="tick"></span>
+        <label class="speed">speed
+          <select id="speed" aria-label="Playback speed">
+            <option value="0.25">&#188;&#215;</option>
+            <option value="0.5">&#189;&#215;</option>
+            <option value="1" selected>1&#215;</option>
+            <option value="2">2&#215;</option>
+            <option value="4">4&#215;</option>
+            <option value="8">8&#215;</option>
+          </select>
+        </label>
+      </div>
+      <div class="readout" id="readout"></div>
+    </div>
+    <aside id="legend"></aside>
+  </div>
+</div>
+<script>
+"use strict";
+const D = /*__DATA__*/null;
+const SYMBOLS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz!#$%&()*+,-:";
+const NA = 255;
+const SYM = new Map(); for (let i = 0; i < SYMBOLS.length; i++) SYM.set(SYMBOLS[i], i);
+
+// --- data -----------------------------------------------------------------
+const W = D.w, H = D.h, N = W * H, T = D.ticks.length;
+const layers = D.layers, agents = D.agents;
+const fillIx = layers.findIndex(l => l.role === "fill");
+const markIx = layers.findIndex(l => l.role === "mark");
+const decoded = new Map();            // "t:k" -> Uint8Array
+function frame(t, k) {
+  const key = t + ":" + k;
+  let f = decoded.get(key);
+  if (f) return f;
+  const s = D.frames[t][k];
+  f = new Uint8Array(N).fill(NA);
+  let i = 0, pos = 0;
+  while (i < s.length && pos < N) {
+    const c = s[i++];
+    let n = 0;
+    while (i < s.length) {
+      const d = s.charCodeAt(i) - 48;
+      if (d < 0 || d > 9) break;
+      n = n * 10 + d; i++;
+    }
+    const v = c === "." ? NA : SYM.get(c);
+    const rep = n || 1;
+    for (let j = 0; j < rep && pos < N; j++) f[pos++] = v;
+  }
+  decoded.set(key, f);
+  return f;
+}
+function value(spec, code) {           // the readable value behind a code
+  if (code === NA || code === null || code === undefined) return null;
+  if (spec.type === "discrete") return spec.levels[code];
+  if (spec.type === "number") return code;
+  return spec.min + code * spec.step;
+}
+function fmt(spec, v, digits) {
+  if (v === null) return "–";
+  if (typeof v !== "number") return String(v);
+  const s = Math.abs(v) >= 1000 ? v.toFixed(0) : parseFloat(v.toPrecision(digits || 4)).toString();
+  return (spec.type === "continuous" && spec.step !== 1) ? "≈" + s : s;
+}
+
+// --- colours --------------------------------------------------------------
+const probe = document.createElement("canvas").getContext("2d");
+function cssColour(c) {                // a colour the browser can read, or grey
+  probe.fillStyle = "#010203"; probe.fillStyle = c;
+  return probe.fillStyle === "#010203" && c !== "#010203" ? "#999999" : c;
+}
+function hex(c) {
+  probe.fillStyle = cssColour(c);
+  const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(probe.fillStyle);
+  return m ? [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)] : [153, 153, 153];
+}
+function ramp(stops, t) {              // interpolate a gradient, t in [0,1]
+  const n = stops.length - 1, p = Math.min(Math.max(t, 0), 1) * n;
+  const i = Math.min(Math.floor(p), n - 1), u = p - i;
+  const a = hex(stops[i]), b = hex(stops[i + 1]);
+  return "rgb(" + a.map((x, k) => Math.round(x + (b[k] - x) * u)).join(",") + ")";
+}
+function palette(spec) {               // code -> css colour
+  const out = new Array(64).fill(null);
+  if (spec.type === "discrete") {
+    spec.levels.forEach((_, i) => { out[i] = cssColour(spec.colours[i]); });
+  } else {
+    const span = spec.max - spec.min;
+    for (let i = 0; i < 64; i++) {
+      const v = spec.min + i * spec.step;
+      if (v > spec.max + 1e-9) break;
+      out[i] = ramp(spec.colours, span > 0 ? (v - spec.min) / span : 0);
+    }
+  }
+  return out;
+}
+const fillPal = fillIx >= 0 ? palette(layers[fillIx]) : null;
+const markPal = markIx >= 0 ? palette(layers[markIx]) : null;
+const agentPal = agents ? palette(agents.colour) : null;
+
+// --- drawing --------------------------------------------------------------
+const canvas = document.getElementById("c"), ctx = canvas.getContext("2d");
+let cssW = 0, cs = 0, ex = [], ey = [];   // cell edges snapped to device pixels
+function css(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+function size() {
+  const box = canvas.parentElement.getBoundingClientRect();
+  cssW = Math.max(120, box.width - 20);
+  cs = cssW / W;
+  const dpr = window.devicePixelRatio || 1;
+  canvas.style.height = (cs * H) + "px";
+  canvas.width = Math.round(cssW * dpr);
+  canvas.height = Math.round(cs * H * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ex = []; ey = [];
+  for (let x = 0; x <= W; x++) ex.push(Math.round(x * cs * dpr) / dpr);
+  for (let y = 0; y <= H; y++) ey.push(Math.round(y * cs * dpr) / dpr);
+}
+function draw() {
+  const t = state.t;
+  ctx.fillStyle = css("--panel");
+  ctx.fillRect(0, 0, cssW, cs * H);
+  const cell = css("--cell");
+  const fill = fillIx >= 0 ? frame(t, fillIx) : null;
+  const mark = markIx >= 0 ? frame(t, markIx) : null;
+  // cells, on edges snapped to device pixels so the raster has no seams
+  for (let y = 0; y < H; y++) {
+    const top = ey[H - 1 - y], hgt = ey[H - y] - top;
+    for (let x = 0; x < W; x++) {
+      const i = x + y * W;
+      let col = null;
+      if (mark && mark[i] !== NA) col = markPal[mark[i]];
+      else if (fill) col = fill[i] === NA ? null : fillPal[fill[i]];
+      else col = cell;
+      if (col === null) continue;
+      ctx.fillStyle = col;
+      ctx.fillRect(ex[x], top, ex[x + 1] - ex[x], hgt);
+    }
+  }
+  if (agents) {
+    const a = agents.frames[t], k = agents.stride;
+    const r = Math.max(1.4, cs * 0.34);
+    const stroke = cs >= 6;
+    const seen = new Map();
+    ctx.lineWidth = Math.max(0.6, cs * 0.06);
+    ctx.strokeStyle = css("--panel");
+    for (let j = 0; j < a.length; j += k) {
+      const idx = a[j], code = a[j + 3];
+      const n = seen.get(idx) || 0; seen.set(idx, n + 1);
+      const x = idx % W, y = Math.floor(idx / W);
+      // stack several agents on one cell in a small ring, so they all show
+      const ang = n ? (n - 1) * 2.4 : 0, off = n ? cs * 0.22 : 0;
+      const cx = (x + 0.5) * cs + Math.cos(ang) * off;
+      const cy = (H - 0.5 - y) * cs + Math.sin(ang) * off;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.fillStyle = code === null ? "#888" : agentPal[code];
+      ctx.fill();
+      if (stroke) ctx.stroke();
+    }
+  }
+  updateChrome();
+}
+
+// --- legend -------------------------------------------------------------
+const legend = document.getElementById("legend");
+const counters = [];                   // {spec, t: 'fill'|'agents', nodes: [...]}
+function esc(s) { const d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
+function keyRow(colour, label, dot) {
+  return '<div class="key"><span class="' + (dot ? "dot" : "sw") + '" style="background:' + colour + '"></span>' +
+         '<span class="lab" title="' + esc(label) + '">' + esc(label) + '</span><span class="n"></span></div>';
+}
+function block(spec, heading, dot, countsFrom) {
+  let html = "<section><h2>" + esc(heading) + "</h2>";
+  if (spec.type === "discrete") {
+    html += spec.levels.map((l, i) => keyRow(cssColour(spec.colours[i]), l, dot)).join("");
+  } else {
+    const stops = spec.colours.map((c, i) => cssColour(c) + " " + (100 * i / (spec.colours.length - 1)) + "%").join(",");
+    html += '<div class="lab" title="' + esc(spec.name) + '">' + esc(spec.name) + "</div>" +
+            '<div class="ramp" style="background:linear-gradient(90deg,' + stops + ')"></div>' +
+            '<div class="ends"><span>' + fmt(spec, spec.min, 3).replace("≈", "") + "</span><span>" +
+            fmt(spec, spec.max, 3).replace("≈", "") + "</span></div>";
+  }
+  html += "</section>";
+  const sec = document.createElement("div"); sec.innerHTML = html;
+  const node = sec.firstChild;
+  legend.appendChild(node);
+  if (spec.type === "discrete" && countsFrom) {
+    counters.push({ spec, from: countsFrom, nodes: Array.from(node.querySelectorAll(".n")) });
+  }
+}
+if (fillIx >= 0) block(layers[fillIx], "Cells", false, "fill");
+if (markIx >= 0) block(layers[markIx], "Marks", false, "mark");
+if (agents) block(agents.colour, "Agents", true, "agents");
+if (!legend.children.length) legend.innerHTML = "<section><h2>Cells</h2><div class='key'><span class='sw' style='background:var(--cell)'></span><span class='lab'>cell</span></div></section>";
+legend.insertAdjacentHTML("beforeend",
+  '<div class="hint"><kbd>space</kbd> play · <kbd>←</kbd> <kbd>→</kbd> step · <kbd>shift</kbd> + <kbd>→</kbd> ten · hover a cell to read it</div>');
+function counts() {
+  const t = state.t;
+  for (const c of counters) {
+    const n = new Array(64).fill(0);
+    if (c.from === "agents") {
+      const a = agents.frames[t], k = agents.stride;
+      for (let j = 0; j < a.length; j += k) if (a[j + 3] !== null) n[a[j + 3]]++;
+    } else {
+      const f = frame(t, c.from === "fill" ? fillIx : markIx);
+      for (let i = 0; i < N; i++) if (f[i] !== NA) n[f[i]]++;
+    }
+    c.nodes.forEach((node, i) => { node.textContent = n[i]; });
+  }
+}
+
+// --- playback -----------------------------------------------------------
+const state = { t: 0, playing: false, speed: 1 };
+const slider = document.getElementById("slider"), tickLabel = document.getElementById("tick");
+const playBtn = document.getElementById("play");
+slider.max = T - 1;
+function setTick(t, fromSlider) {
+  state.t = Math.min(Math.max(t, 0), T - 1);
+  if (!fromSlider) slider.value = state.t;
+  draw();
+  if (hovered) readout(hovered.x, hovered.y, false);
+}
+function updateChrome() {
+  tickLabel.textContent = "tick " + D.ticks[state.t] + " / " + D.ticks[T - 1];
+  playBtn.textContent = state.playing ? "Pause" : "Play";
+  playBtn.setAttribute("aria-pressed", state.playing);
+  counts();
+}
+let last = 0, acc = 0;
+function loop(now) {
+  if (!state.playing) return;
+  const dt = Math.min(now - last, 500); last = now;
+  acc += dt * D.fps * state.speed / 1000;
+  if (acc >= 1) {
+    const steps = Math.floor(acc); acc -= steps;
+    setTick((state.t + steps) % T);
+  }
+  requestAnimationFrame(loop);
+}
+function play(on) {
+  if (T < 2) return;
+  state.playing = on === undefined ? !state.playing : on;
+  if (state.playing) { last = performance.now(); acc = 0; requestAnimationFrame(loop); }
+  updateChrome();
+}
+playBtn.addEventListener("click", () => play());
+document.getElementById("first").addEventListener("click", () => { play(false); setTick(0); });
+document.getElementById("last").addEventListener("click", () => { play(false); setTick(T - 1); });
+document.getElementById("prev").addEventListener("click", () => { play(false); setTick(state.t - 1); });
+document.getElementById("next").addEventListener("click", () => { play(false); setTick(state.t + 1); });
+slider.addEventListener("input", () => { play(false); setTick(+slider.value, true); });
+document.getElementById("speed").addEventListener("change", e => { state.speed = +e.target.value; });
+document.addEventListener("keydown", e => {
+  if (e.target.tagName === "SELECT" || e.target.tagName === "INPUT") return;
+  const k = e.shiftKey ? 10 : 1;
+  if (e.key === " ") { e.preventDefault(); play(); }
+  else if (e.key === "ArrowRight") { e.preventDefault(); play(false); setTick(state.t + k); }
+  else if (e.key === "ArrowLeft") { e.preventDefault(); play(false); setTick(state.t - k); }
+  else if (e.key === "Home") { play(false); setTick(0); }
+  else if (e.key === "End") { play(false); setTick(T - 1); }
+});
+
+// --- hover ----------------------------------------------------------------
+const tip = document.getElementById("tip"), out = document.getElementById("readout");
+let hovered = null;
+function describe(x, y) {              // x, y are 1-based lattice coordinates
+  const t = state.t, i = (x - 1) + (y - 1) * W;
+  const lines = ["cell (" + x + ", " + y + ")"];
+  layers.forEach((l, k) => {
+    const v = value(l, frame(t, k)[i]);
+    if (l.role === "mark" && v === null) return;
+    lines.push(l.name + ": " + fmt(l, v));
+  });
+  if (agents) {
+    const a = agents.frames[t], k = agents.stride;
+    let n = 0;
+    for (let j = 0; j < a.length; j += k) {
+      if (a[j] !== i) continue;
+      n++;
+      let s = agents.groups[a[j + 2]] + " #" + a[j + 1];
+      if (agents.colour.name !== ".group") s += " · " + agents.colour.name + " " + fmt(agents.colour, value(agents.colour, a[j + 3]));
+      agents.hover.forEach((h, m) => { s += " · " + h.name + " " + fmt(h, value(h, a[j + 4 + m])); });
+      lines.push(s);
+    }
+    if (!n) lines.push("no agent here");
+  }
+  return lines;
+}
+function readout(x, y, showTip, px, py) {
+  const lines = describe(x, y);
+  out.textContent = lines.join("  ·  ");
+  if (showTip) {
+    tip.textContent = lines.join("\n");
+    tip.style.display = "block";
+    const box = canvas.parentElement.getBoundingClientRect();
+    let left = px + 14, top = py + 14;
+    if (left + tip.offsetWidth > box.width - 8) left = px - tip.offsetWidth - 10;
+    if (top + tip.offsetHeight > box.height - 8) top = py - tip.offsetHeight - 10;
+    tip.style.left = Math.max(4, left) + "px"; tip.style.top = Math.max(4, top) + "px";
+  }
+}
+function cellAt(e) {
+  const r = canvas.getBoundingClientRect();
+  const px = e.clientX - r.left, py = e.clientY - r.top;
+  const x = Math.floor(px / cs) + 1, y = H - Math.floor(py / cs);
+  if (x < 1 || x > W || y < 1 || y > H) return null;
+  return { x, y, px: px + 10, py: py + 10 };
+}
+canvas.addEventListener("pointermove", e => {
+  const c = cellAt(e);
+  if (!c) { hovered = null; tip.style.display = "none"; return; }
+  hovered = c;
+  readout(c.x, c.y, e.pointerType === "mouse", c.px, c.py);
+});
+canvas.addEventListener("pointerdown", e => {
+  const c = cellAt(e);
+  if (c) { hovered = c; readout(c.x, c.y, false); }
+});
+canvas.addEventListener("pointerleave", () => { hovered = null; tip.style.display = "none"; });
+
+// --- theme and layout -------------------------------------------------------
+document.getElementById("theme").addEventListener("click", () => {
+  const root = document.documentElement;
+  const dark = root.dataset.theme ? root.dataset.theme === "dark"
+             : window.matchMedia("(prefers-color-scheme: dark)").matches;
+  root.dataset.theme = dark ? "light" : "dark";
+  draw();
+});
+window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", draw);
+window.addEventListener("resize", () => { size(); draw(); });
+document.getElementById("title").textContent = D.title;
+document.getElementById("subtitle").textContent = D.subtitle || (W + " × " + H + " lattice, " + T + (T === 1 ? " frame" : " frames"));
+if (!D.subtitle) document.getElementById("subtitle").textContent += agents ? ", " + agents.groups.join(" and ") + " on it" : "";
+out.textContent = "hover a cell to read it";
+size();
+setTick(0);
+</script>
+</body>
+</html>

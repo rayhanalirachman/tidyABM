@@ -1,0 +1,369 @@
+# Parameters, replicates and measures -------------------------------------
+#
+# The experiment layer sits above the scheduler in `run.R`: it decides *which*
+# runs happen and what is recorded about each, while `run_once()` still does
+# exactly one run. Everything here is inert when `abm_run()` is called the way
+# it always has been, so a single run takes the same path and returns the same
+# columns it did before any of this existed.
+
+#' Check `params` against the model's globals
+#'
+#' A parameter is a global. That is the whole rule, and the error says so,
+#' because the first thing anyone tries is `n` or `degree` -- both of which are
+#' fixed when the world is built and cannot be reached from here.
+#' @noRd
+check_params <- function(params, model, call = rlang::caller_env()) {
+  if (is.null(params)) return(NULL)
+  if (!is.list(params) || !length(params) || !rlang::is_named(params)) {
+    abm_abort(
+      c("{.arg params} must be a named list of values to override globals with.",
+        "i" = "For example {.code params = list(d = c(0.1, 0.2, 0.3))}."),
+      class = "tidyABM_bad_params", call = call
+    )
+  }
+  if (is.function(model)) {
+    # a world-building function takes its parameters as arguments, so any
+    # argument is a parameter -- `n`, `degree` and `dims` included
+    args <- names(formals(model))
+    unknown <- if ("..." %in% args) character() else setdiff(names(params), args)
+    if (length(unknown)) {
+      abm_abort(
+        c("{.arg params} names must be arguments of the function {.arg model}.",
+          "x" = "{.field {unknown}} {?is/are} not."),
+        class = "tidyABM_bad_params", call = call
+      )
+    }
+    return(params)
+  }
+  unknown <- setdiff(names(params), names(model$globals))
+  if (length(unknown)) {
+    abm_abort(
+      c("{.arg params} can only override values that are already globals.",
+        "x" = "{.field {unknown}} {?is/are} not in the model's {.arg globals}.",
+        "i" = "A structural parameter such as {.arg n}, {.arg degree} or {.arg dims} is
+               fixed when {.fn abm_setup} is called, so sweeping one still needs a
+               world per value."),
+      class = "tidyABM_bad_params", call = call
+    )
+  }
+  params
+}
+
+#' The candidate values a `params` entry names
+#'
+#' A bare vector sweeps, one run per element. A global that is itself a vector --
+#' a payoff matrix, a table of prices -- is held fixed by wrapping it in a
+#' `list()`, which is the same rule `global_cells()` uses when it writes a
+#' non-scalar global into the log.
+#' @noRd
+param_values <- function(x) if (is.list(x)) x else as.list(x)
+
+#' The runs an experiment is made of
+#'
+#' One entry per run, in the order they are run: the parameter combinations in
+#' `expand.grid()` order, each repeated `reps` times.
+#' @noRd
+param_grid <- function(params, reps) {
+  combos <- if (is.null(params)) {
+    list(stats::setNames(list(), character()))
+  } else {
+    vals <- lapply(params, param_values)
+    idx <- expand.grid(lapply(vals, seq_along), KEEP.OUT.ATTRS = FALSE)
+    lapply(seq_len(nrow(idx)), function(i) {
+      Map(function(v, j) v[[j]], vals, as.integer(idx[i, ]))
+    })
+  }
+  out <- vector("list", length(combos) * reps)
+  k <- 0L
+  for (ci in seq_along(combos)) {
+    for (r in seq_len(reps)) {
+      k <- k + 1L
+      out[[k]] <- list(.run = k, .rep = r, values = combos[[ci]])
+    }
+  }
+  out
+}
+
+#' A world with one run's parameters written into its globals
+#' @noRd
+apply_params <- function(model, values) {
+  for (nm in names(values)) model$globals[[nm]] <- values[[nm]]
+  model
+}
+
+#' The world one run starts from, and the seed the run itself uses
+#'
+#' A world is handed over as it is, with the run's parameters written into its
+#' globals. A function is called with them instead, under the run's seed, so the
+#' world it builds is drawn fresh for that run. The run then gets a seed taken
+#' from the same stream *after* the world, not the same seed again: restarting
+#' the stream would make a rule's first `runif(n())` repeat the setup's, and a
+#' column drawn at setup would correlate with a draw made in the run.
+#' @noRd
+build_run <- function(model, values, seed) {
+  if (!is.function(model)) {
+    return(list(model = apply_params(model, values), seed = seed))
+  }
+  if (!is.null(seed)) local_seed(seed)
+  built <- do.call(model, values)
+  if (!inherits(built, "abm_model")) {
+    abm_abort(
+      c("{.arg model} is a function, so it must return an {.cls abm_model}.",
+        "i" = "Build it with {.fn abm_setup}."),
+      class = "tidyABM_bad_model"
+    )
+  }
+  list(model = built,
+       seed = if (!is.null(seed)) sample.int(.Machine$integer.max, 1L))
+}
+
+#' One row identifying a run: `.run`, `.rep` and the parameters it used
+#' @noRd
+run_meta <- function(spec) {
+  # a parameter may be a vector -- the same reason `global_cells()` list-wraps a
+  # non-scalar global, and the same treatment
+  vals <- lapply(spec$values, function(v) {
+    if (is.null(dim(v)) && length(v) == 1L) v else list(v)
+  })
+  # bare cells under ordinary names are a one-row tibble as they stand; the
+  # rest goes through tibble()'s checks and bind_cols()' name repair
+  nms <- names(vals)
+  if (all(vapply(vals, function(v) is.list(v) || (is.atomic(v) && !is.null(v) &&
+                                                  is.null(attributes(v))), NA)) &&
+      all(nzchar(nms)) && !anyDuplicated(nms) && !any(nms %in% c(".run", ".rep"))) {
+    return(tibble::new_tibble(c(list(.run = spec$.run, .rep = spec$.rep), vals),
+                              nrow = 1L))
+  }
+  meta <- tibble::tibble(.run = spec$.run, .rep = spec$.rep)
+  if (length(vals)) meta <- dplyr::bind_cols(meta, tibble::as_tibble(vals))
+  meta
+}
+
+#' Per-run seeds derived from the experiment seed
+#'
+#' A single run uses `seed` as given, so every model written before this argument
+#' existed returns the number it always did. More than one run derives a seed per
+#' run from it, so the experiment reproduces as a unit rather than each run
+#' needing its own bookkeeping.
+#' @noRd
+run_seeds <- function(seed, n) {
+  if (n == 1L) return(list(seed))
+  # no seed: each run still gets its own, drawn from the caller's stream, so
+  # parallel workers never share one stream and `cores` cannot change results
+  if (is.null(seed)) return(as.list(sample.int(.Machine$integer.max, n)))
+  old <- if (exists(".Random.seed", .GlobalEnv)) get(".Random.seed", .GlobalEnv) else NULL
+  set.seed(seed)
+  s <- sample.int(.Machine$integer.max, n)
+  if (!is.null(old)) {
+    assign(".Random.seed", old, envir = .GlobalEnv)
+  } else if (exists(".Random.seed", .GlobalEnv)) {
+    rm(".Random.seed", envir = .GlobalEnv)
+  }
+  as.list(s)
+}
+
+#' Check `measures` (or `checks`) and return the quosures to evaluate
+#'
+#' The two arguments are the same shape -- a named list of one-sided formulas
+#' over the population -- so they are checked by the same code, each under its
+#' own name and error class.
+#' @noRd
+check_measures <- function(measures, arg = "measures",
+                           class = "tidyABM_bad_measures",
+                           call = rlang::caller_env()) {
+  if (is.null(measures)) return(NULL)
+  example <- if (arg == "checks") "list(money = ~sum(m) == 3000)" else "list(mean_x = ~mean(x))"
+  if (!is.list(measures) || !length(measures) || !rlang::is_named(measures)) {
+    abm_abort(
+      c("{.arg {arg}} must be a named list of one-sided formulas.",
+        "i" = "For example {.code {arg} = {example}}."),
+      class = class, call = call
+    )
+  }
+  bad <- names(measures)[!vapply(measures, is_formula1, logical(1))]
+  if (length(bad)) {
+    abm_abort(
+      c("Every entry of {.arg {arg}} must be a one-sided formula.",
+        "x" = "{.field {bad}} {?is/are} not.",
+        "i" = "An entry has no left-hand side: it is named by the list, as in
+               {.code {example}}."),
+      class = class, call = call
+    )
+  }
+  # a check is never written to a table, so only a measure can collide
+  taken <- if (arg == "measures") intersect(names(measures), c("tick", ".run", ".rep"))
+  if (length(taken)) {
+    abm_abort(
+      c("A measure cannot be named {.field {taken}}.",
+        "i" = "Those name the run itself in the table {.fn abm_measures} returns."),
+      class = class, call = call
+    )
+  }
+  lapply(measures, rlang::as_quosure)
+}
+
+#' One formula evaluated over the whole population, globals in scope
+#'
+#' Evaluated through the same mask an [abm_global()] right-hand side is, so
+#' `n()` means the population size. Shared by measures and checks.
+#' @noRd
+eval_over_population <- function(quo, combined, globals) {
+  # the shortcut `run_global()` takes: `eval_tidy()` over the tibble unless the
+  # expression needs something only a dplyr mask supplies, `reframe()` otherwise
+  val <- NULL
+  if (!needs_mask(rlang::quo_get_expr(quo))) {
+    val <- rlang::eval_tidy(
+      rlang::quo_get_expr(quo),
+      data = combined, env = abm_eval_env(quo, globals, n = nrow(combined)))
+  }
+  if (length(val) != 1L) {
+    quo <- rlang::quo_set_env(
+      quo, rlang::new_environment(globals, parent = rlang::quo_get_env(quo)))
+    val <- dplyr::pull(dplyr::reframe(combined, .abm_value = !!quo), ".abm_value")
+  }
+  val
+}
+
+#' A function of a formula's name giving its value over the population, as
+#' [eval_over_population()] gives it
+#'
+#' With a `plan` (an environment, kept for the run) and several groups, a
+#' formula's group aggregates are evaluated over their group alone (see
+#' [narrow_plan()]); the stack of everything the formulas read is built only
+#' if some formula still needs it.
+#' @noRd
+population_evaluator <- function(quos, state, reads, plan = NULL) {
+  groups <- state$groups
+  np <- NULL
+  if (!is.null(plan) && length(groups) > 1L &&
+      (plan$narrowable %||% (plan$narrowable <- narrowable(quos)))) {
+    key <- schema_key(state)
+    if (!identical(plan$key, key)) {
+      plan$key <- key
+      plan$val <- narrow_plan(quos, groups)
+    }
+    np <- plan$val
+  }
+  full <- NULL
+  stack <- function() {
+    if (is.null(full)) full <<- bind_groups(groups, reads, ids = FALSE)
+    full
+  }
+  if (is.null(np)) {
+    stack()
+    return(function(nm) eval_over_population(quos[[nm]], full, state$globals))
+  }
+  n <- sum(vapply(groups, vctrs::vec_size, 0L))
+  rest <- if (length(np$rest)) bind_groups(groups, np$rest, ids = FALSE)
+  names(np$rules) <- names(quos)
+  function(nm) {
+    p <- np$rules[[nm]]
+    val <- NULL
+    if (!is.null(p)) {
+      q <- quos[[nm]]
+      val <- narrow_eval(p, q, groups, rest, abm_eval_env(q, state$globals, n = n), n)
+    }
+    if (length(val) == 1L) val else eval_over_population(quos[[nm]], stack(), state$globals)
+  }
+}
+
+#' One tick's measures, as a single row
+#'
+#' The result is written to the log and nowhere else: no step can read a
+#' measure back, which is the whole reason it is not an `abm_global()`.
+#' @noRd
+measure_row <- function(quos, state, t, reads = read_vars(quos), plan = NULL) {
+  pop <- population_evaluator(quos, state, reads, plan)
+  vals <- lapply(names(quos), function(nm) {
+    val <- pop(nm)
+    if (length(val) != 1L) {
+      abm_abort(
+        c("A measure must collapse to a single value.",
+          "x" = "{.code {nm} = ~{deparse1(rlang::quo_get_expr(quos[[nm]]))}} returned {length(val)} values at tick {t}.",
+          "i" = "Wrap it in an aggregate such as {.fn sum} or {.fn mean}."),
+        class = "tidyABM_bad_measures"
+      )
+    }
+    if (is.null(dim(val)) && length(val) == 1L) val else list(val)
+  })
+  names(vals) <- names(quos)
+  tibble::new_tibble(c(list(tick = t), vals), nrow = 1L)
+}
+
+#' Stop the run if any check is not `TRUE` at tick `t`
+#'
+#' A check is a measure that must hold. It is evaluated the way a measure is and
+#' recorded nowhere: it either passes silently or ends the run, with the tick
+#' and the check's name on the condition so a caller can pick them up.
+#' `NA` fails, because a ledger that has gone `NA` is not consistent.
+#' @noRd
+check_row <- function(quos, state, t, reads = read_vars(quos), plan = NULL) {
+  pop <- population_evaluator(quos, state, reads, plan)
+  for (nm in names(quos)) {
+    ok <- pop(nm)
+    # only a failing check is deparsed
+    delayedAssign("expr", deparse1(rlang::quo_get_expr(quos[[nm]])))
+    if (!is.logical(ok) || length(ok) != 1L) {
+      abm_abort(
+        c("A check must return a single {.code TRUE} or {.code FALSE}.",
+          "x" = "{.code {nm} = ~{expr}} returned {.cls {class(ok)}} of length {length(ok)} at tick {t}.",
+          "i" = "Write the tolerance into the formula, as in
+                 {.code ~abs(sum(m) - total) < 1e-9}."),
+        class = "tidyABM_bad_checks", call = NULL
+      )
+    }
+    if (!isTRUE(ok)) {
+      abm_abort(
+        c("Check {.field {nm}} failed at tick {t}.",
+          "x" = "{.code ~{expr}} is {ok}.",
+          "i" = "Rerun with {.code ticks = {t}, record = \"final\"} to inspect that state."),
+        class = "tidyABM_check_failed", tick = t, check = nm, call = NULL
+      )
+    }
+  }
+  invisible(NULL)
+}
+
+#' Prefix a run's identifying columns onto one of its tables
+#'
+#' A parameter is a global, so the table [abm_globals()] returns already has a
+#' column for it, holding the value the run actually used and any later change
+#' an `abm_global()` step made to it. Prefixing a second copy would say the same
+#' thing worse, so a meta column the table already has is dropped and `.run` is
+#' left to tell the runs apart.
+#' @noRd
+with_meta <- function(x, meta) {
+  if (is.null(x)) return(NULL)
+  meta <- meta[, !names(meta) %in% names(x), drop = FALSE]
+  if (!ncol(meta)) return(x)
+  if (!nrow(x)) return(dplyr::bind_cols(meta[0, , drop = FALSE], x))
+  dplyr::bind_cols(meta[rep(1L, nrow(x)), , drop = FALSE], x)
+}
+
+#' Measures recorded during a run
+#'
+#' The table `measures =` built: one row per tick of every run, with the run's
+#' identifying columns in front of it when there was more than one run.
+#'
+#' Measures are observations rather than model state, which is what separates
+#' them from [abm_globals()]. A global is readable by every rule in the model; a
+#' measure is written to this table and is invisible to the model that produced
+#' it.
+#'
+#' @param x An `abm_result` from [abm_run()].
+#' @return A tibble with one row per tick per run, or `NULL` if the run was made
+#'   without `measures`.
+#' @export
+#' @examples
+#' m  <- abm_setup(agents = abm_agents(n = 20, x = ~runif(20)))
+#' go <- abm_go(abm_rules(x ~ x * 0.9))
+#' r  <- abm_run(m, go, ticks = 5, seed = 1,
+#'               measures = list(total = ~sum(x), spread = ~sd(x)))
+#' abm_measures(r)
+abm_measures <- function(x) {
+  if (!inherits(x, "abm_result")) {
+    abm_abort("{.arg x} must be the result of {.fn abm_run}.",
+              class = "tidyABM_bad_result")
+  }
+  attr(x, "measures")
+}

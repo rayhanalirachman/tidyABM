@@ -1,0 +1,11 @@
+mass action: S* = area / (catch * gain), W* = (r * area / catch)(1 - S*/K)
+Lotka-Volterra: the predator peak lags the prey peak by a quarter cycle
+
+                   mean      min      max predicted
+sheep               605       65     1085      250
+wolves              195       40      474      180
+
+period 600 ticks; predator lag 149 ticks (a quarter cycle is 150)
+
+ratio-dependent pairing, same parameters:
+sheep 0 [0, 3]   wolves 1 [0, 11]

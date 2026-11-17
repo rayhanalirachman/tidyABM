@@ -1,0 +1,16 @@
+400 nodes, random edges, largest component against mean degree
+
+ticks           edges    mean degree      largest
+10                106           0.53           3%
+20                196           0.98          28%
+30                298           1.49          58%
+40                405           2.02          80%
+50                492           2.46          88%
+60                598           2.99          95%
+80                772           3.86          98%
+100               953           4.76         100%
+150              1431           7.16         100%
+200              1945           9.72         100%
+
+the jump happens as the mean degree crosses 1, which is the
+Erdos-Renyi percolation threshold

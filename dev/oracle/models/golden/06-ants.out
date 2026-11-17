@@ -1,0 +1,15 @@
+35x35 bounded grid, 80 ants, nest at the centre, two food piles
+
+ tick food_left carrying_n chem_total
+    1        42          0          0
+   51        37          0        463
+  101        31          3        777
+  151        25          1        762
+  201        22          1        307
+  251        19          0         74
+  301        14          0        236
+  351        10          1        498
+
+  food consumed: 35 of 42
+  peak trail strength: 938, at tick 144
+  trail strength at the end: 493  (spent piles evaporate)

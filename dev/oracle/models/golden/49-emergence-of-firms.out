@@ -1,0 +1,11 @@
+N = 500 agents, degree-4 friendship network, 400 periods, 5 seeds
+
+   firms mean size    biggest     effort   ccdf slope
+     161     3.10         32      0.321         1.73
+
+turnover: the biggest firm at 5 snapshots of one run
+  t =  80   firm 384   size  15   firms 166
+  t = 160   firm 411   size  22   firms 160
+  t = 240   firm 21    size  17   firms 150
+  t = 320   firm 293   size   9   firms 168
+  t = 400   firm 230   size  66   firms 161

@@ -1,0 +1,8 @@
+400 agents, 4-regular network, 400 ticks, five population draws
+
+               ethnocentric   altruist   egoist   traitor
+well mixed            0.256      0.208    0.312     0.224
+local                 0.368      0.326    0.145     0.161
+
+local reproduction takes egoism from 0.31 to 0.14
+mean degree at tick 400: 3.26, isolated 5%, same-tag edges 84%

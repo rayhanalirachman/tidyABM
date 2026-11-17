@@ -1,0 +1,11 @@
+300 nodes, ring lattice of degree 4, 20 ticks of rewiring
+
+                          edges   clustering    path length
+ring lattice                600         0.50           37.9
+p = 0.001                   600         0.47           14.2
+p = 0.005                   600         0.44            9.2
+p = 0.020                   598         0.32            6.0
+p = 0.050                   600         0.14            4.8
+
+the edge count holds at 600 throughout, which is what `one_of` buys;
+`pair = "random"` here loses roughly half the rewired edges every tick

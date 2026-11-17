@@ -1,8 +1,10 @@
 <urlset xmlns = 'http://www.sitemaps.org/schemas/sitemap/0.9'>
 <url><loc>https://rayhanalirachman.github.io/tidyABM/404.html</loc></url>
+<url><loc>https://rayhanalirachman.github.io/tidyABM/CODE_OF_CONDUCT.html</loc></url>
+<url><loc>https://rayhanalirachman.github.io/tidyABM/CONTRIBUTING.html</loc></url>
 <url><loc>https://rayhanalirachman.github.io/tidyABM/LICENSE-text.html</loc></url>
 <url><loc>https://rayhanalirachman.github.io/tidyABM/LICENSE.html</loc></url>
-<url><loc>https://rayhanalirachman.github.io/tidyABM/MODELS.html</loc></url>
+<url><loc>https://rayhanalirachman.github.io/tidyABM/SUPPORT.html</loc></url>
 <url><loc>https://rayhanalirachman.github.io/tidyABM/articles/corrections.html</loc></url>
 <url><loc>https://rayhanalirachman.github.io/tidyABM/articles/grammar.html</loc></url>
 <url><loc>https://rayhanalirachman.github.io/tidyABM/articles/index.html</loc></url>
@@ -43,5 +45,12 @@
 <url><loc>https://rayhanalirachman.github.io/tidyABM/reference/n_agents.html</loc></url>
 <url><loc>https://rayhanalirachman.github.io/tidyABM/reference/reexports.html</loc></url>
 <url><loc>https://rayhanalirachman.github.io/tidyABM/reference/tidyABM-package.html</loc></url>
+<url><loc>https://rayhanalirachman.github.io/tidyABM/viewers/01-life.html</loc></url>
+<url><loc>https://rayhanalirachman.github.io/tidyABM/viewers/03-fire.html</loc></url>
+<url><loc>https://rayhanalirachman.github.io/tidyABM/viewers/04-schelling.html</loc></url>
+<url><loc>https://rayhanalirachman.github.io/tidyABM/viewers/05-wolf-sheep.html</loc></url>
+<url><loc>https://rayhanalirachman.github.io/tidyABM/viewers/06-ants.html</loc></url>
+<url><loc>https://rayhanalirachman.github.io/tidyABM/viewers/08-sugarscape.html</loc></url>
+<url><loc>https://rayhanalirachman.github.io/tidyABM/viewers/13-rebellion.html</loc></url>
 </urlset>
 

@@ -108,7 +108,7 @@ before.
   it has regrown, Sugarscape’s by the sugar standing on each cell,
   Rebellion has a lattice figure, and Life, Fire, Schelling, Wolf-Sheep,
   Ants and Sugarscape have strips of the world through the run. Each of
-  those seven has a viewer under `models/spatial/viewers/`.
+  those seven has a viewer on the pkgdown site, under `viewers/`.
 
 ### The spatial grammar, audited
 
@@ -780,9 +780,10 @@ were ported as a second stress test. Three of them needed something new:
   (Team Assembly).
 
 Four idioms came out of the round that needed no code change, and are
-written up in `MODELS.md` because none of them is obvious: drawing a
-resampling index once and indexing every trait by it (a multi-trait
-genome otherwise gets shuffled apart); a `parent` flag that makes
+written up in the model notes under `models/` because none of them is
+obvious: drawing a resampling index once and indexing every trait by it
+(a multi-trait genome otherwise gets shuffled apart); a `parent` flag
+that makes
 [`abm_birth()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_birth.md)
 repeatable for fertility above one; building steps and rules
 programmatically with [`rep()`](https://rdrr.io/r/base/rep.html),

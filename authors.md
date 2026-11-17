@@ -7,7 +7,7 @@
 ## Citation
 
 Source:
-[`DESCRIPTION`](https://github.com/rayhanalirachman/tidyABM/blob/main/DESCRIPTION)
+[`inst/CITATION`](https://github.com/rayhanalirachman/tidyABM/blob/main/inst/CITATION)
 
 Rachman R (2026). *tidyABM: Agent-Based Modelling with Tidy Data and a
 Declarative Grammar*. R package version 0.0.0.9000,

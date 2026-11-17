@@ -21,7 +21,8 @@ abm_run(
   checks = NULL,
   seed = NULL,
   record = "all",
-  progress = NULL
+  progress = NULL,
+  cores = 1
 )
 ```
 
@@ -30,7 +31,9 @@ abm_run(
 - model:
 
   An `abm_model` from
-  [`abm_setup()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_setup.md).
+  [`abm_setup()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_setup.md),
+  or a function that builds one from a run's `params` and is called once
+  per run. See *A world per run*.
 
 - go:
 
@@ -96,6 +99,15 @@ abm_run(
   so it never turns up in a rendered page. `TRUE` forces it on from the
   first tick, `FALSE` off. The bar counts ticks for a single run and
   runs for many.
+
+- cores:
+
+  How many CPU cores share the runs: a whole number, or `"max"` for all
+  of them. Each run is forked into its own process with
+  [`parallel::mclapply()`](https://rdrr.io/r/parallel/mclapply.html),
+  and the result is identical to `cores = 1` (the default). Windows
+  cannot fork, so there it always runs on one core, and a parallel sweep
+  shows no progress bar.
 
 ## Value
 
@@ -166,8 +178,33 @@ world that has already been built, so a starting column drawn with
 `~runif(n)` was drawn once, before this function saw it, and every
 replicate begins from that same population. What varies across
 replicates is everything the run itself draws – who is matched with
-whom, which agent acts first, what a rule samples. To vary the starting
-population too, build a world per replicate.
+whom, which agent acts first, what a rule samples. That includes a
+random network: a `"poisson"`, `"random"` or `"scale_free"` graph is
+built once, by
+[`abm_setup()`](https://rayhanalirachman.github.io/tidyABM/reference/abm_setup.md),
+and shared by every replicate.A world per run
+
+To vary the starting population and the network too, hand `abm_run()` a
+*function* that builds the world instead of the world itself. It is
+called once per run, with that run's `params` as its arguments, under
+the run's seed, so `seed` reproduces the worlds as well as the runs.
+Because the parameters are arguments, `n`, `degree` and `dims` can be
+swept here, which they cannot when `model` is a built world.
+
+    world <- function(net, qo) abm_setup(
+      agents  = abm_agents(n = 441, income = ~runif(n, 0, 100)),
+      network = abm_network(net, degree = 4),
+      globals = list(qo = qo))
+    abm_run(world, go, ticks = 40, reps = 25, seed = 1, record = "globals",
+            params = list(net = c("random", "ring", "scale_free"),
+                          qo = c(0.02, 0.1)))
+
+The run draws from a stream that continues after the world's, not from
+the same seed again, so a rule's random numbers are independent of the
+setup's. A function given a single run gets `seed` for the world, and
+the run uses a seed derived from it, which is not `seed`: a model pinned
+to a number with a built world will not return that number if it is
+rebuilt as a function.
 
 ## Measures
 

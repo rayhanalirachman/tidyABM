@@ -60,3 +60,16 @@ Platforms: Linux R release 4.6.2 (x86_64), Linux R-devel, macOS arm64, macOS Int
 | S5 on Windows x86_64 (and arm64) | INSTALL FAILS at link time: Rust 1.100 std needs `WaitOnAddress`/`WakeByAddress*`, so `-lsynchronization` is missing from PKG_LIBS in `Makevars.win.in`. Fix added to hellosavvy, helloextendr and rspike; not yet re-run |
 
 Open: re-run CI after the two fixes; find what R-devel does with RNGkind.
+
+## CI run 2 (commit 91f3d8b, after the Windows link fix and --no-manual)
+
+| Item | Result |
+|---|---|
+| S5 `R CMD check --as-cran` (hellosavvy and helloextendr): Windows x86_64, Linux, macOS arm64, macOS Intel | PASS. The Windows kill criterion is cleared: `-lsynchronization` was the only thing missing |
+| S5 Windows arm64 | hellosavvy PASS; helloextendr FAIL: its Makevars.win builds the target from `$(WIN)`, which is empty on arm64 (`-pc-windows-gnu`). savvy's configure handles arm64; one more reason to prefer savvy |
+| MSRV (Rust 1.81) | PASS |
+| S1 pure-Rust RNG vs R | macOS arm64 105/105, macOS Intel 105/105, Linux x86_64 105/105. **Windows x86_64 100/105**: `norm` differs in 12-22 draws per 1e6 (libm exp/log differ from R's mingw build; same rows fail in S2). **Windows arm64 95/105**: `norm` differs in about 51% of draws and `exp` in 1.3% (fused multiply-add contraction differs from the macOS arm64 case) |
+| S1 on R-devel | `RNGkind()` now returns a 4th element, "BTPE" (a binomial-kind setting). The assertion compared all of it; now compares the first three. Not re-run. The Rust rbinom must follow the binomial kind once R-devel ships it |
+| S2 | R-ported math is identical on macOS arm64 and Windows arm64; not identical on x86_64 (long double) and Windows x86_64 math; the `ldsum.c` helper is identical everywhere |
+
+Consequence for the plan: on Windows the Rust code must use R's own RNG through the C API (the default while R is in the loop) and take R's math for exp/log; the pure-Rust RNG path for parallel runs is enabled only on platforms where S1 passes (macOS, Linux x86_64) until Windows is fixed or waived by the user (D2).

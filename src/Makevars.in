@@ -1,0 +1,53 @@
+TARGET = @TARGET@
+
+PROFILE = @PROFILE@
+FEATURE_FLAGS = @FEATURE_FLAGS@
+
+# Add flags if necessary
+RUSTFLAGS =
+
+# relative (spike S5): $(CURDIR)/rust/target breaks make when the package path has spaces
+TARGET_DIR = ./rust/target
+LIBDIR = $(TARGET_DIR)/$(TARGET)/$(subst dev,debug,$(PROFILE))
+STATLIB = $(LIBDIR)/libtidyabm.a
+PKG_LIBS = -L$(LIBDIR) -ltidyabm
+
+CARGO_BUILD_ARGS = --lib --profile $(PROFILE) $(FEATURE_FLAGS) --manifest-path=./rust/Cargo.toml --target-dir $(TARGET_DIR)
+
+all: $(SHLIB) clean_intermediate
+
+$(SHLIB): $(STATLIB)
+
+$(STATLIB):
+# offline (spike S5): build from vendored crates when src/rust/vendor.tar.xz exists
+# (CRAN policy: no downloads at install time, at most 2 jobs)
+	if [ -f ./rust/vendor.tar.xz ]; then \
+	  tar xf ./rust/vendor.tar.xz -C ./rust && \
+	  mkdir -p ./rust/.cargo-home && cp ./rust/vendor-config.toml ./rust/.cargo-home/config.toml; \
+	fi
+	# In some environments, ~/.cargo/bin might not be included in PATH, so we need
+	# to set it here to ensure cargo can be invoked. It is appended to PATH and
+	# therefore is only used if cargo is absent from the user's PATH.
+	export PATH="$(PATH):$(HOME)/.cargo/bin" && \
+	  export CC="$(CC)" && \
+	  export CFLAGS="$(CFLAGS)" && \
+	  export RUSTFLAGS="$(RUSTFLAGS)" && \
+	  if [ -f ./rust/vendor.tar.xz ]; then export CARGO_HOME="$$PWD/rust/.cargo-home"; OFFLINE="-j 2 --offline"; fi && \
+	  @BEFORE_CARGO_BUILD@ \
+	  if [ "$(TARGET)" != "wasm32-unknown-emscripten" ]; then \
+	    cargo build $$OFFLINE $(CARGO_BUILD_ARGS); \
+	  else \
+	    export CARGO_PROFILE_DEV_PANIC="abort" && \
+	    export CARGO_PROFILE_RELEASE_PANIC="abort" && \
+	    export RUSTFLAGS="$(RUSTFLAGS) -Zdefault-visibility=hidden" && \
+	    cargo +nightly build $(CARGO_BUILD_ARGS) --target $(TARGET) -Zbuild-std=panic_abort,std; \
+	  fi
+
+clean_intermediate: $(SHLIB)
+	rm -f $(STATLIB)
+	rm -Rf ./rust/.cargo-home ./rust/vendor
+
+clean:
+	rm -Rf $(SHLIB) $(OBJECTS) $(STATLIB) ./rust/target
+
+.PHONY: all clean_intermediate clean

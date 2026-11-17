@@ -1,0 +1,26 @@
+# The savvy bridge crate (R entry points). Pure Rust code goes into tidyabm-core,
+# which has no R dependency, so `cargo test` runs without an R session.
+[package]
+name = "tidyabm"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.81"
+license = "MIT"
+publish = false
+
+[lib]
+crate-type = ["staticlib", "lib"]
+
+[dependencies]
+savvy = "=0.11.0"
+tidyabm-core = { path = "tidyabm-core" }
+
+[workspace]
+members = ["tidyabm-core"]
+
+[profile.release]
+# Panics must become R errors, never abort the R session (PLAN.md, spike S4).
+# savvy's template default is "abort".
+panic = "unwind"
+lto = true
+codegen-units = 1

@@ -13,6 +13,7 @@ A declarative grammar for writing agent-based models (ABMs) in R. Models are des
 \seealso{
 Useful links:
 \itemize{
+  \item \url{https://rayhanalirachman.github.io/tidyABM/}
   \item \url{https://github.com/rayhanalirachman/tidyABM}
   \item Report bugs at \url{https://github.com/rayhanalirachman/tidyABM/issues}
 }
@@ -24,6 +25,11 @@ Useful links:
 Authors:
 \itemize{
   \item Rayhan Ali Rachman \email{rayhanalirachman@gmail.com}
+}
+
+Other contributors:
+\itemize{
+  \item The authors of the dependency Rust crates (see inst/AUTHORS file for details) [contributor]
 }
 
 }

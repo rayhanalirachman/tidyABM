@@ -69,7 +69,7 @@ Several ticks are drawn as one facet each, in a single row when there are
 six or fewer: a strip showing how the world evolved.
 }
 \examples{
-\dontshow{if (rlang::is_installed("ggplot2")) (if (getRversion() >= "3.4") withAutoprint else force)(\{ # examplesIf}
+\dontshow{if (rlang::is_installed("ggplot2")) withAutoprint(\{ # examplesIf}
 life <- abm_setup(agents = abm_grid(dims = c(30, 30), alive = ~runif(n) < 0.3))
 go <- abm_go(abm_neighbours(k ~ sum(alive)),
              abm_rules(alive ~ k == 3 | (alive & k == 2)))

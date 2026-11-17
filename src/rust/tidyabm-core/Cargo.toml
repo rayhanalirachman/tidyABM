@@ -1,0 +1,10 @@
+# Engine code with no R dependency (testable with plain `cargo test`).
+[package]
+name = "tidyabm-core"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.81"
+license = "MIT"
+publish = false
+
+[dependencies]

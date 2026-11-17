@@ -12,3 +12,11 @@
 ^\.DS_Store$
 ^CITATION\.cff$
 ^codecov\.yml$
+^src/rust/\.cargo$
+^src/rust/target$
+^src/Makevars$
+^src/Makevars\.win$
+^src/rust/vendor$
+^src/rust/\.cargo-home$
+^tools/vendor\.sh$
+^src/rust/deny\.toml$

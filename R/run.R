@@ -227,6 +227,7 @@ abm_run <- function(model, go, ticks, params = NULL, reps = 1, measures = NULL,
   params <- check_params(params, model)
   measures <- check_measures(measures)
   checks <- check_measures(checks, "checks", "tidyABM_bad_checks")
+  engine_resolve()  # validates options(tidyABM.engine); every run uses the R engine
 
   if (!is.null(progress) && !rlang::is_bool(progress)) {
     abm_abort("{.arg progress} must be {.code TRUE}, {.code FALSE} or {.code NULL}.",

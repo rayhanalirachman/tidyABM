@@ -1,5 +1,23 @@
 # tidyABM (development version)
 
+## Rust plumbing (no change in behaviour)
+
+The package now contains compiled Rust code, the first step of moving the engine
+to Rust (branch `rust`). Nothing a model does changes: every run still uses the R
+engine, and results are identical.
+
+* tidyABM needs R >= 4.2 (was 4.1), and installing it from source needs Rust's
+  `cargo` and `rustc` >= 1.81 (`SystemRequirements`). The Rust crates it uses are
+  bundled in the source package, so the build works offline; they are listed with
+  their licences (all MIT or Apache-2.0) in `inst/AUTHORS`.
+* `options(tidyABM.engine = )` chooses the engine: `"r"` (the default), `"auto"`,
+  `"rust"` or `"both"`. For now `"auto"` runs the R engine, `"rust"` and `"both"`
+  stop with a `tidyABM_engine_unavailable` error, and any other value with
+  `tidyABM_bad_engine`.
+* Contributors: `dev/CONTRIBUTING-rust.md` explains the Rust toolchain, `savvy-cli`,
+  `cargo test`, vendoring and the oracle (`dev/oracle/`) that every migration step
+  is checked against.
+
 ## Checks: an accounting identity that stops the run
 
 `abm_run(checks = list(bank = ~abs(bL - bDEP - bNW) < 1e-9 * max(1, bL)))`

@@ -136,6 +136,6 @@ small <- abm_setup(agents  = abm_agents(alive = ~runif(n) < 0.30),
                    seed = 1)
 r_small <- abm_run(small, life_go, ticks = 200, seed = 1, progress = FALSE)
 abm_view_lattice(
-  r_small, fill = alive, file = fig_file("01-life.html", dir = "viewers"),
+  r_small, fill = alive, file = fig_file("01-life.html", dir = "../../pkgdown/assets/viewers"),
   title = "Game of Life", subtitle = "60x60 torus, density 0.30 at tick 0, 200 ticks",
   fill_colours = life_colours)

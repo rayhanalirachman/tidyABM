@@ -95,9 +95,8 @@ walking evaporates within a few dozen ticks.
 ![6. The trail through the run](figures/06-ants-strip.png)
 
 **Reproduce:** [`06-ants.R`](scripts/06-ants.R) · **Watch:**
-[`viewers/06-ants.html`](viewers/06-ants.html), the field every other tick with
-the nest and food marked (download and open; see
-[the viewers](viewers/README.md))
+[`06-ants.html`](https://rayhanalirachman.github.io/tidyABM/viewers/06-ants.html), the field every other tick with
+the nest and food marked (plays in the browser; see [the viewers](viewers.md))
 
 ---
 

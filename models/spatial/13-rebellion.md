@@ -83,9 +83,8 @@ quiet again.
 ![13. A burst on the lattice](figures/13-rebellion-lattice.png)
 
 **Reproduce:** [`13-rebellion.R`](scripts/13-rebellion.R) · **Watch:**
-[`viewers/13-rebellion.html`](viewers/13-rebellion.html), legitimacy 0.82 for
-150 ticks, every tick (download and open; see
-[the viewers](viewers/README.md))
+[`13-rebellion.html`](https://rayhanalirachman.github.io/tidyABM/viewers/13-rebellion.html), legitimacy 0.82 for
+150 ticks, every tick (plays in the browser; see [the viewers](viewers.md))
 
 ---
 

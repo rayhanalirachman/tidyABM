@@ -68,7 +68,7 @@ recorded run to one self-contained HTML file — canvas, play / pause, a tick
 slider, a speed control, a legend with the counts at the current tick, and a
 readout of whatever cell or agent the pointer is over — that opens from disk
 with no server and no network, on a laptop or a phone, in light or dark mode.
-Seven of the models have one under [`viewers/`](viewers/README.md); the
+Seven of the models have one under [`viewers/`](viewers.md); the
 scripts write them alongside the figures.
 
 ```r

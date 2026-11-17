@@ -143,6 +143,6 @@ abm_view_lattice(
   r82, agents = TRUE, hover = "jail", tick = 0:150,
   colour = case_when(.group == "cops" ~ "cop", active ~ "active",
                      jail > 0 ~ "jailed", TRUE ~ "quiet"),
-  file = fig_file("13-rebellion.html", dir = "viewers"),
+  file = fig_file("13-rebellion.html", dir = "../../pkgdown/assets/viewers"),
   title = "Rebellion", subtitle = "22x22 torus, legitimacy 0.82, 339 people and 19 cops, the first 150 ticks",
   labels = c(colour = "status"), agent_colours = status_colours)

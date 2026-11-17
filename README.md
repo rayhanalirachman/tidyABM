@@ -1,6 +1,8 @@
 # tidyABM <a href="https://rayhanalirachman.github.io/tidyABM/"><img src="man/figures/logo.png" align="right" height="139" alt="tidyABM website" /></a>
 
 <!-- badges: start -->
+[![R-CMD-check](https://github.com/rayhanalirachman/tidyABM/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/rayhanalirachman/tidyABM/actions/workflows/R-CMD-check.yaml)
+[![Codecov test coverage](https://codecov.io/gh/rayhanalirachman/tidyABM/graph/badge.svg)](https://app.codecov.io/gh/rayhanalirachman/tidyABM)
 [![Lifecycle: experimental](https://img.shields.io/badge/lifecycle-experimental-orange.svg)](https://lifecycle.r-lib.org/articles/stages.html#experimental)
 <!-- badges: end -->
 

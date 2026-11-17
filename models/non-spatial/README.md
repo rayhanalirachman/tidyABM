@@ -1,6 +1,6 @@
-# The non-spatial corpus: 56 models
+# The non-spatial corpus: 54 models
 
-Fifty-six models implemented in tidyABM, one file each, with the concept, a
+Fifty-four models implemented in tidyABM, one file each, with the concept, a
 NetLogo-style sketch of the original where one exists, the working package code,
 the numbers the run produced and a figure of the result. This is one half of
 [the corpus](../README.md); the other is the ten lattice models in
@@ -69,7 +69,7 @@ The set the grammar was designed against.
 | 9 | [Public Goods Game](09-public-goods-game.md) |
 | 10 | [Iterated Prisoner's Dilemma with fixed partners](10-iterated-prisoner-s-dilemma-with-fixed-partners.md) |
 | 11 | [Preferential Attachment (Wilensky & Rand, ch. 5)](11-preferential-attachment.md) |
-| 12 | [Random Consumption Zakah, short form (custom)](12-random-consumption-zakah-short.md) |
+| 12 | [Random Consumption Zakah, short form (custom), draft](../../dev/wip/12-random-consumption-zakah-short.md) |
 | 13 | [Bank Reserves (Wilensky, NetLogo Social Science)](13-bank-reserves.md) |
 
 ### Part 2: three of those, corrected
@@ -80,7 +80,7 @@ Models 2, 4 and 12 run correctly and do not show the behaviour they are known fo
 |---|---|
 | 14 | [El Farol with inductive agents (Arthur 1994)](14-el-farol-with-inductive-agents.md) |
 | 15 | [Ethnocentrism, Hammond & Axelrod (2006)](15-ethnocentrism-hammond-axelrod.md) |
-| 16 | [Zakah with a risk process](16-zakah-with-a-risk-process.md) |
+| 16 | [Zakah with a risk process, draft](../../dev/wip/16-zakah-with-a-risk-process.md) |
 
 ### Part 3: the first stress test
 

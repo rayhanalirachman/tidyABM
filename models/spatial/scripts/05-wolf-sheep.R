@@ -172,7 +172,7 @@ ggsave(fig_file("05-wolf-sheep-strip.png"), p3, width = 11, height = 3.4, dpi = 
 # The same run, every other tick, played back in the browser.
 abm_view_lattice(
   runs[["20"]], fill = if_else(grass, 30L, 30L - countdown), agents = TRUE,
-  hover = "energy", file = fig_file("05-wolf-sheep.html", dir = "viewers"),
+  hover = "energy", file = fig_file("05-wolf-sheep.html", dir = "../../pkgdown/assets/viewers"),
   title = "Wolf-Sheep-Grass", subtitle = "40x40 torus, wolf_gain = 20, every other tick of 400",
   labels = c(fill = "grass height"),
   fill_colours = c("#E8DCC5", "#C9DFA3", "#78B86C", "#2E8B3A"),

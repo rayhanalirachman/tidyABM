@@ -47,8 +47,6 @@ recommendation is from the audit. Tick the box when done.
   (maybe an error); `along = "network"` on a non-lattice network can never move
   anything; `range = <column>` for per-agent vision; Rebellion's vision-radius
   `within =` is still an O(n^2) pair scan.
-- Viewers: host `models/spatial/viewers/` on the pkgdown site (on GitHub they
-  show as source, so they must be downloaded and opened).
 - Viewer extras: a `trans =` for continuous fill, a globals sparkline under the
   canvas, a "download PNG of this frame" button.
 - Check CI (`R-CMD-check`, all operating systems) after every push to `main`.

@@ -63,8 +63,8 @@ into the setup; at density 0.65 the front takes about 200 ticks to cross the
 ![3. The front crossing the grid at density 0.65](figures/03-fire-strip.png)
 
 **Reproduce:** [`03-fire.R`](scripts/03-fire.R) · **Watch:**
-[`viewers/03-fire.html`](viewers/03-fire.html), a 60×60 forest at density 0.63
-until the fire is out (download and open; see [the viewers](viewers/README.md))
+[`03-fire.html`](https://rayhanalirachman.github.io/tidyABM/viewers/03-fire.html), a 60×60 forest at density 0.63
+until the fire is out (plays in the browser; see [the viewers](viewers.md))
 
 ---
 

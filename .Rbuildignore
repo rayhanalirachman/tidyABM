@@ -2,12 +2,13 @@
 ^\.Rproj\.user$
 ^LICENSE\.md$
 ^\.github$
+^\.gitattributes$
 ^_pkgdown\.yml$
 ^docs$
 ^pkgdown$
 ^dev$
 ^\.Rhistory$
-^MODELS\.md$
 ^models$
-^work in progress$
 ^\.DS_Store$
+^CITATION\.cff$
+^codecov\.yml$

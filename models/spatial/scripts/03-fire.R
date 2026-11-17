@@ -163,6 +163,6 @@ small <- abm_run(lit_forest(0.63, w = 60, seed = 3), spread_go, ticks = 400,
 done_small <- out_tick(small)
 abm_view_lattice(
   small, fill = state, tick = sort(unique(small$tick[small$tick <= done_small])),
-  file = fig_file("03-fire.html", dir = "viewers"),
+  file = fig_file("03-fire.html", dir = "../../pkgdown/assets/viewers"),
   title = "Forest Fire", subtitle = sprintf("60x60 bounded grid, density 0.63, seed 3; out by tick %d", done_small),
   labels = c(fill = "state"), fill_colours = fire_colours)

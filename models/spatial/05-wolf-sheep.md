@@ -99,9 +99,9 @@ wolves sit where the sheep are.
 ![5. Every 100 ticks](figures/05-wolf-sheep-strip.png)
 
 **Reproduce:** [`05-wolf-sheep.R`](scripts/05-wolf-sheep.R) · **Watch:**
-[`viewers/05-wolf-sheep.html`](viewers/05-wolf-sheep.html), the standard regime
+[`05-wolf-sheep.html`](https://rayhanalirachman.github.io/tidyABM/viewers/05-wolf-sheep.html), the standard regime
 every other tick, with each animal's energy in the readout (download and open;
-see [the viewers](viewers/README.md))
+see [the viewers](viewers.md))
 
 ---
 

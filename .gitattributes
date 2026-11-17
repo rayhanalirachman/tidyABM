@@ -1,0 +1,4 @@
+# Keep GitHub's language bar about the package, not the corpus or generated pages.
+models/** linguist-documentation
+pkgdown/** linguist-documentation
+inst/viewer/*.html linguist-detectable=false

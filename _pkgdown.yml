@@ -7,7 +7,7 @@ home:
   links:
   - text: The model corpus
     href: https://github.com/rayhanalirachman/tidyABM/blob/main/models/README.md
-  - text: The 56 non-spatial models
+  - text: The 54 non-spatial models
     href: https://github.com/rayhanalirachman/tidyABM/blob/main/models/non-spatial/README.md
   - text: The spatial models
     href: https://github.com/rayhanalirachman/tidyABM/blob/main/models/spatial/README.md

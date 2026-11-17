@@ -80,7 +80,7 @@ every model script in `models/` prints the same numbers as before.
   regrown, Sugarscape's by the sugar standing on each cell, Rebellion has a
   lattice figure, and Life, Fire, Schelling, Wolf-Sheep, Ants and Sugarscape
   have strips of the world through the run. Each of those seven has a viewer
-  under `models/spatial/viewers/`.
+  on the pkgdown site, under `viewers/`.
 
 ## The spatial grammar, audited
 
@@ -575,7 +575,7 @@ stress test. Three of them needed something new:
   (Team Assembly).
 
 Four idioms came out of the round that needed no code change, and are written up
-in `MODELS.md` because none of them is obvious: drawing a resampling index once
+in the model notes under `models/` because none of them is obvious: drawing a resampling index once
 and indexing every trait by it (a multi-trait genome otherwise gets shuffled
 apart); a `parent` flag that makes `abm_birth()` repeatable for fertility above
 one; building steps and rules programmatically with `rep()`, `do.call()` and

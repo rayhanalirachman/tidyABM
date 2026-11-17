@@ -60,9 +60,8 @@ Most of the sorting happens in the first handful of ticks: the patches that
 form by tick 5 only consolidate afterwards.
 
 **Reproduce:** [`04-schelling.R`](scripts/04-schelling.R) · **Watch:**
-[`viewers/04-schelling.html`](viewers/04-schelling.html), the same run tick by
-tick, with each cell's same-type share in the readout (download and open; see
-[the viewers](viewers/README.md))
+[`04-schelling.html`](https://rayhanalirachman.github.io/tidyABM/viewers/04-schelling.html), the same run tick by
+tick, with each cell's same-type share in the readout (plays in the browser; see [the viewers](viewers.md))
 
 ---
 

@@ -92,9 +92,9 @@ mountain that fills back in at one unit a tick.
 ![8. The die-off, five ticks](figures/08-sugarscape-strip.png)
 
 **Reproduce:** [`08-sugarscape.R`](scripts/08-sugarscape.R) · **Watch:**
-[`viewers/08-sugarscape.html`](viewers/08-sugarscape.html), every fifth tick,
+[`08-sugarscape.html`](https://rayhanalirachman.github.io/tidyABM/viewers/08-sugarscape.html), every fifth tick,
 with each agent's wealth, vision and metabolism in the readout (download and
-open; see [the viewers](viewers/README.md))
+open; see [the viewers](viewers.md))
 
 ---
 

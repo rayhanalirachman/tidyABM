@@ -157,6 +157,6 @@ ggsave(fig_file("08-sugarscape-strip.png"), p3, width = 11, height = 3.4, dpi = 
 # --- viewer ---------------------------------------------------------------
 abm_view_lattice(
   r, fill = sugar, agents = TRUE, hover = c("wealth", "vision", "metabolism"),
-  file = fig_file("08-sugarscape.html", dir = "viewers"),
+  file = fig_file("08-sugarscape.html", dir = "../../pkgdown/assets/viewers"),
   title = "Sugarscape", subtitle = "50x50 torus, 400 agents, every fifth tick of 500",
   fill_colours = c("#FFFCF5", pal[2]))

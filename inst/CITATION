@@ -1,0 +1,8 @@
+bibentry(
+  bibtype = "Manual",
+  title   = "tidyABM: Agent-Based Modelling with Tidy Data and a Declarative Grammar",
+  author  = person("Rayhan Ali", "Rachman"),
+  year    = "2026",
+  note    = paste("R package version", meta$Version),
+  url     = "https://github.com/rayhanalirachman/tidyABM"
+)

@@ -1,5 +1,6 @@
 # Models 47-56, the fourth stress test, at reduced scale. The full-scale runs
-# that produced the numbers in models/ live in models/scripts/.
+# that produced the numbers in models/non-spatial/ live in
+# models/non-spatial/scripts/.
 
 # 47. Response thresholds and the division of labour ------------------------
 

@@ -106,6 +106,6 @@ ggsave(fig_file("04-schelling-lattice.png"), p2, width = 11, height = 3.2, dpi =
 # --- viewer ---------------------------------------------------------------
 abm_view_lattice(
   frames, fill = type, hover = "same",
-  file = fig_file("04-schelling.html", dir = "viewers"),
+  file = fig_file("04-schelling.html", dir = "../../pkgdown/assets/viewers"),
   title = "Schelling segregation", subtitle = "51x51 torus, tolerance 0.30, 10% vacant, 30% minority",
   fill_colours = c(A = pal[1], B = pal[2]))

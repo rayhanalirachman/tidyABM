@@ -1,5 +1,6 @@
 # Models 37-46, the third stress test, at reduced scale. The full-scale runs
-# that produced the numbers in MODELS.md live in models-part5/.
+# that produced the numbers in models/non-spatial/ live in
+# models/non-spatial/scripts/.
 
 # 37. Virus on a Network ---------------------------------------------------
 

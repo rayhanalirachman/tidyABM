@@ -168,7 +168,7 @@ abm_view_lattice(
   r, fill = sqrt(chemical), agents = TRUE,
   mark = case_when(nest ~ "nest", food > 0 ~ "food"),
   colour = if_else(carrying, "carrying food", "foraging"),
-  hover = "chemical", file = fig_file("06-ants.html", dir = "viewers"),
+  hover = "chemical", file = fig_file("06-ants.html", dir = "../../pkgdown/assets/viewers"),
   title = "Ants", subtitle = "35x35 bounded grid, 80 ants, every other tick of 400",
   labels = c(fill = "sqrt(pheromone)"),
   fill_colours = c("#F4F7FA", pal[1]),

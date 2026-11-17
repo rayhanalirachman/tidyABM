@@ -50,10 +50,10 @@ jobs:
           Rscript compare.R "$PWD/rreduce/target/release/apply" "$SO" "$RUNNER_TEMP/s2" | tee "$RUNNER_TEMP/s2.txt"
       - name: S5 hellosavvy R CMD check --as-cran (vendored, offline)
         uses: r-lib/actions/check-r-package@v2
-        with: {working-directory: S5-cran-build/hellosavvy, args: 'c("--as-cran")', error-on: '"warning"'}
+        with: {working-directory: S5-cran-build/hellosavvy, args: 'c("--as-cran", "--no-manual")', error-on: '"warning"'}
       - name: S5 helloextendr R CMD check --as-cran (vendored, offline)
         uses: r-lib/actions/check-r-package@v2
-        with: {working-directory: S5-cran-build/helloextendr, args: 'c("--as-cran")', error-on: '"warning"'}
+        with: {working-directory: S5-cran-build/helloextendr, args: 'c("--as-cran", "--no-manual")', error-on: '"warning"'}
       - uses: actions/upload-artifact@v4
         if: always()
         with: {name: 'spikes-${{ matrix.os }}-${{ matrix.r }}', path: '${{ runner.temp }}/s*.txt'}

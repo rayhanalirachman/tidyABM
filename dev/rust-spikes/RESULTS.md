@@ -45,3 +45,18 @@ Code quality: `cargo fmt` applied and `cargo clippy` clean (0 warnings) for `rrn
 `rreduce` and `rspike`. `unsafe` is confined to `rspike/src/rust/src/rapi.rs` (four
 R C API declarations, each call with a SAFETY comment: main thread only, the one
 longjmp-capable call wrapped in `savvy::unwind_protect`).
+
+## CI run 1 (GitHub Actions, commit b94a272, 2026-11-17)
+
+Platforms: Linux R release 4.6.2 (x86_64), Linux R-devel, macOS arm64, macOS Intel, Windows x86_64, Windows arm64, plus an MSRV job (Rust 1.81).
+
+| Item | Result |
+|---|---|
+| MSRV job (Rust 1.81, hellosavvy) | PASS |
+| S1 RNG port vs R, Linux x86_64 R 4.6.2 | PASS, 105/105 identical (R runif 13.8 ns, rnorm 38.9 ns per draw; Rust unif 6.7 ns) |
+| S1 on R-devel | FAIL before any output: the default `RNGkind()` was not Mersenne-Twister/Inversion/Rejection. The script now prints the value (to find out what R-devel changed). Unresolved |
+| S2 on Linux x86_64 (long double = 16 bytes) | Rust plain f64 sums/means differ from R in many cases (expected: R accumulates in long double). The C helper `ldsum.c` is identical in all cases. Math wrappers still need the R-ported layer. Confirms the plan's x86_64 helper |
+| S5 `R CMD check`, Linux and macOS | Build, install and tests pass. The only ERROR was the PDF manual (no LaTeX on the runner). Fixed by `--no-manual` in the workflow |
+| S5 on Windows x86_64 (and arm64) | INSTALL FAILS at link time: Rust 1.100 std needs `WaitOnAddress`/`WakeByAddress*`, so `-lsynchronization` is missing from PKG_LIBS in `Makevars.win.in`. Fix added to hellosavvy, helloextendr and rspike; not yet re-run |
+
+Open: re-run CI after the two fixes; find what R-devel does with RNGkind.

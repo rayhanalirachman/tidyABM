@@ -3,7 +3,10 @@
 # Every comparison is identical() on the draws AND on .Random.seed afterwards.
 args <- commandArgs(TRUE); bin <- args[1]; tmp <- args[2]
 count <- if (length(args) >= 3) as.numeric(args[3]) else 1e7
-stopifnot(identical(RNGkind(), c("Mersenne-Twister", "Inversion", "Rejection")))
+if (!identical(RNGkind(), c("Mersenne-Twister", "Inversion", "Rejection"))) {
+  cat("RNGkind() is not the default on this R:", RNGkind(), "\n")
+  stop("non-default RNGkind")
+}
 w <- function(n) as.numeric((seq_len(n) * 7919) %% 13 + 1)
 # gen -> list(n values to try, count scale, R expression, result type)
 specs <- list(

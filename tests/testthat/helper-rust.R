@@ -54,3 +54,28 @@ expect_same_draws <- function(rust, r, seed, what) {
   expect_same_as_r(a, b, paste0(what, ", seed ", seed))
   expect_same_as_r(sa, rng_seed(), paste0(what, ", .Random.seed after, seed ", seed))
 }
+
+# The engines (test-rust-engine.R, test-rust-kernels.R)
+run_in <- function(engine, ...) {
+  withr::local_options(tidyABM.engine = engine)
+  abm_run(...)
+}
+
+# the same call under every engine: identical results and the same random state after
+expect_engines_agree <- function(..., what = "model") {
+  withr::local_seed(99)
+  ref <- run_in("r", ...)
+  seed_r <- rng_get()
+  for (engine in c("auto", "rust", "both")) {
+    withr::local_seed(99)
+    got <- run_in(engine, ...)
+    expect(identical(got, ref),
+           paste0(what, ": engine \"", engine, "\" differs from \"r\" on ", rust_platform(),
+                  "; ", diff_where(ref, got) %||% "?"))
+    for (a in c("globals", "measures", "network", "relations")) {
+      expect(identical(attr(got, a), attr(ref, a)), paste(what, engine, a))
+    }
+    expect_identical(rng_get(), seed_r, label = paste(what, engine, ".Random.seed after"))
+  }
+  invisible(ref)
+}

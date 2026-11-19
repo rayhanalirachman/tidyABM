@@ -9,7 +9,9 @@ OUT="${2:-$O/results/verify-$(date +%Y%m%d-%H%M%S)}"; mkdir -p "$OUT"; OUT="$(cd
 L="$OUT/verify.log"; : > "$L"
 log() { echo "$*" | tee -a "$L"; }
 export TIDYABM_PKG="$PKG"
-log "== oracle verify  pkg=$PKG  $(date)"
+# TIDYABM_ENGINE=both (or rust, auto) runs everything below under that engine
+if [ -n "${TIDYABM_ENGINE:-}" ]; then export R_PROFILE_USER="$O/scripts/engine-profile.R"; fi
+log "== oracle verify  pkg=$PKG  engine=${TIDYABM_ENGINE:-default}  $(date)"
 log "   $(Rscript -e 'cat(R.version.string, "dplyr", format(packageVersion("dplyr")), "vctrs", format(packageVersion("vctrs")), "rlang", format(packageVersion("rlang")), "igraph", format(packageVersion("igraph")), R.version$platform)')"
 
 log "== 1. testthat (NOT_CRAN=true); expect 379 blocks / 2020 expectations, 0 failed, 0 errors"

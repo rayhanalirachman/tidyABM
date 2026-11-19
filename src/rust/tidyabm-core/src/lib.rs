@@ -1,10 +1,13 @@
 //! tidyABM's engine code that does not touch R. Phase 1 added the panic guard the R
 //! entry points run under; phase 2 the sampling algorithms over R's generator
-//! (`sample`) and the reductions that need no long double (`reduce`). The column
-//! store and kernels arrive in later phases.
+//! (`sample`) and the reductions that need no long double (`reduce`); phase 3 the
+//! column store, its snapshots and the stacking of the run's result (`store`); phase
+//! 4 the step kernels (`neighbours`).
 
+pub mod neighbours;
 pub mod reduce;
 pub mod sample;
+pub mod store;
 
 use std::any::Any;
 use std::panic::{self, AssertUnwindSafe};

@@ -1,12 +1,15 @@
-# The engine switch and the R side of the Rust bridge (migration phase 1).
+# The engine switch and the R side of the Rust bridge (migration phases 1 and 3).
 #
 # `options(tidyABM.engine = )` picks the engine a run uses:
 #   "r"    the R engine (the default, and the reference implementation);
-#   "auto" the Rust engine where it covers a model, else R;
-#   "rust" the Rust engine only;
-#   "both" each step on both engines, compared (a developer tool).
-# Phase 1 ships the compiled library and this switch, but no Rust run path yet, so
-# "auto" runs the R engine and "rust" / "both" stop with an error.
+#   "auto" the Rust path for a run with at least one step that has a Rust kernel,
+#          else the R engine;
+#   "rust" the Rust path: the groups in the Rust column store, every step without
+#          a kernel run by the R engine's step function through the step adapter;
+#   "both" each step on the R engine and on the Rust path, compared after every
+#          step (a developer and CI tool: user code in a step runs twice).
+# Phase 3 has the store and the adapter but no kernel, so "auto" runs the R engine
+# (R/run-rust.R).
 
 engine_choices <- c("auto", "r", "rust", "both")
 
@@ -21,13 +24,7 @@ engine_resolve <- function(call = rlang::caller_env()) {
               else "It is {.obj_type_friendly {engine}}."),
       class = "tidyABM_bad_engine", call = call)
   }
-  if (engine %in% c("rust", "both")) {
-    abm_abort(
-      c("The Rust engine cannot run models yet.",
-        "i" = "Use {.code options(tidyABM.engine = \"r\")} (the default) or {.val auto}."),
-      class = "tidyABM_engine_unavailable", call = call)
-  }
-  "r"
+  engine
 }
 
 #' Call into the Rust library, raising its errors as tidyABM conditions

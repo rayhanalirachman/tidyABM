@@ -1,33 +1,26 @@
-# The Rust library and the engine switch (migration phase 1). No model runs in Rust
-# yet: these tests cover the build, the calls and the error transport.
+# The Rust library and the engine switch (migration phase 1): the build, the calls
+# and the error transport. The Rust run path itself is tested in test-rust-engine.R.
 
 test_that("the engine option defaults to the R engine and is validated", {
   withr::local_options(tidyABM.engine = NULL)
   expect_identical(engine_resolve(), "r")
-  withr::local_options(tidyABM.engine = "r")
-  expect_identical(engine_resolve(), "r")
-  withr::local_options(tidyABM.engine = "auto")
-  expect_identical(engine_resolve(), "r")
-
+  for (engine in c("r", "auto", "rust", "both")) {
+    withr::local_options(tidyABM.engine = engine)
+    expect_identical(engine_resolve(), engine)
+  }
   for (bad in list("fast", c("r", "auto"), 1, NA_character_, TRUE)) {
     withr::local_options(tidyABM.engine = bad)
     expect_error(engine_resolve(), class = "tidyABM_bad_engine")
   }
-  for (later in c("rust", "both")) {
-    withr::local_options(tidyABM.engine = later)
-    expect_error(engine_resolve(), class = "tidyABM_engine_unavailable")
-  }
 })
 
-test_that("abm_run() checks the engine option and runs the R engine", {
+test_that("abm_run() checks the engine option", {
   m <- abm_setup(agents = abm_agents(n = 5, x = ~runif(n)), seed = 1)
   go <- abm_go(abm_rules(x ~ x + runif(n())))
   withr::local_options(tidyABM.engine = NULL)
   ref <- abm_run(m, go, ticks = 3, seed = 2)
   withr::local_options(tidyABM.engine = "auto")
   expect_identical(abm_run(m, go, ticks = 3, seed = 2), ref)
-  withr::local_options(tidyABM.engine = "rust")
-  expect_snapshot(abm_run(m, go, ticks = 3, seed = 2), error = TRUE)
   withr::local_options(tidyABM.engine = "fast")
   expect_snapshot(abm_run(m, go, ticks = 3, seed = 2), error = TRUE)
 })

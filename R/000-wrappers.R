@@ -75,6 +75,15 @@ NULL
   .Call(savvy_rs_info__impl)
 }
 
+#' `abm_neighbours()`'s network fast path: `sum()` (`mean = FALSE`) or `mean()` of
+#' `x` over each agent's neighbours through the R engine's padded index (`cols`,
+#' `cnt` from `nb_index()`), in `nb_fold()`'s order; `NULL` where `nb_fold()` must
+#' answer (an `NA`/`NaN` sum, a malformed index).
+#' @noRd
+`rs_nb_fold` <- function(`mean`, `x`, `cols`, `cnt`) {
+  .Call(savvy_rs_nb_fold__impl, `mean`, `x`, `cols`, `cnt`)
+}
+
 #' Do nothing (measures the cost of a call).
 #' @noRd
 `rs_noop` <- function() {
@@ -124,4 +133,88 @@ NULL
   invisible(.Call(savvy_rs_test_rng_fail__impl, `n`, `how`))
 }
 
+### wrapper functions for AgentStore
+
+`AgentStore_assemble` <- function(self) {
+  function() {
+    .Call(savvy_AgentStore_assemble__impl, `self`)
+  }
+}
+
+`AgentStore_export` <- function(self) {
+  function() {
+    .Call(savvy_AgentStore_export__impl, `self`)
+  }
+}
+
+`AgentStore_load` <- function(self) {
+  function(`groups`) {
+    invisible(.Call(savvy_AgentStore_load__impl, `self`, `groups`))
+  }
+}
+
+`AgentStore_recorded_groups` <- function(self) {
+  function(`k`) {
+    .Call(savvy_AgentStore_recorded_groups__impl, `self`, `k`)
+  }
+}
+
+`AgentStore_set_col` <- function(self) {
+  function(`group`, `name`, `values`) {
+    invisible(.Call(savvy_AgentStore_set_col__impl, `self`, `group`, `name`, `values`))
+  }
+}
+
+`AgentStore_snapshot` <- function(self) {
+  function(`tick`, `keep`) {
+    invisible(.Call(savvy_AgentStore_snapshot__impl, `self`, `tick`, `keep`))
+  }
+}
+
+`AgentStore_stats` <- function(self) {
+  function() {
+    .Call(savvy_AgentStore_stats__impl, `self`)
+  }
+}
+
+`AgentStore_ticks` <- function(self) {
+  function() {
+    .Call(savvy_AgentStore_ticks__impl, `self`)
+  }
+}
+
+`.savvy_wrap_AgentStore` <- function(ptr) {
+  e <- new.env(parent = emptyenv())
+  e$.ptr <- ptr
+  e$`assemble` <- `AgentStore_assemble`(ptr)
+  e$`export` <- `AgentStore_export`(ptr)
+  e$`load` <- `AgentStore_load`(ptr)
+  e$`recorded_groups` <- `AgentStore_recorded_groups`(ptr)
+  e$`set_col` <- `AgentStore_set_col`(ptr)
+  e$`snapshot` <- `AgentStore_snapshot`(ptr)
+  e$`stats` <- `AgentStore_stats`(ptr)
+  e$`ticks` <- `AgentStore_ticks`(ptr)
+
+  class(e) <- c("tidyABM::AgentStore", "AgentStore", "savvy_tidyABM__sealed")
+  e
+}
+
+
+#' A run's agent groups in Rust (an external pointer in R; see R/run-rust.R).
+#' @noRd
+`AgentStore` <- new.env(parent = emptyenv())
+
+### associated functions for AgentStore
+
+`AgentStore`$`new` <- function(`groups`, `special`, `use_mirror`) {
+  .savvy_wrap_AgentStore(.Call(savvy_AgentStore_new__impl, `groups`, `special`, `use_mirror`))
+}
+
+
+class(`AgentStore`) <- c("tidyABM::AgentStore__bundle", "savvy_tidyABM__sealed")
+
+#' @export
+`print.tidyABM::AgentStore__bundle` <- function(x, ...) {
+  cat('tidyABM::AgentStore\n')
+}
 

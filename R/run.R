@@ -227,7 +227,7 @@ abm_run <- function(model, go, ticks, params = NULL, reps = 1, measures = NULL,
   params <- check_params(params, model)
   measures <- check_measures(measures)
   checks <- check_measures(checks, "checks", "tidyABM_bad_checks")
-  engine_resolve()  # validates options(tidyABM.engine); every run uses the R engine
+  engine <- engine_resolve()
 
   if (!is.null(progress) && !rlang::is_bool(progress)) {
     abm_abort("{.arg progress} must be {.code TRUE}, {.code FALSE} or {.code NULL}.",
@@ -268,11 +268,12 @@ abm_run <- function(model, go, ticks, params = NULL, reps = 1, measures = NULL,
 
   # the formulas marked for [eval_rule()] once, not once per run
   go$steps <- mark_steps(go$steps)
+  run_fn <- engine_run_once(engine, go$steps)  # run_once() unless a Rust path is asked for
   one_run <- function(i) {
     o <- withCallingHandlers({
       start <- build_run(model, runs[[i]]$values, seeds[[i]])
-      run_once(start$model, go, ticks, start$seed, keep, measures, checks,
-               bar = if (by_run) NULL else bar)
+      run_fn(start$model, go, ticks, start$seed, keep, measures, checks,
+             bar = if (by_run) NULL else bar)
     },
       # one run of many failing says which one, and with what it would rerun
       tidyABM_check_failed = function(e) {

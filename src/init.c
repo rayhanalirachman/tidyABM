@@ -64,6 +64,11 @@ SEXP savvy_rs_info__impl(void) {
     return handle_result(res);
 }
 
+SEXP savvy_rs_nb_fold__impl(SEXP c_arg__mean, SEXP c_arg__x, SEXP c_arg__cols, SEXP c_arg__cnt) {
+    SEXP res = savvy_rs_nb_fold__ffi(c_arg__mean, c_arg__x, c_arg__cols, c_arg__cnt);
+    return handle_result(res);
+}
+
 SEXP savvy_rs_noop__impl(void) {
     SEXP res = savvy_rs_noop__ffi();
     return handle_result(res);
@@ -99,6 +104,51 @@ SEXP savvy_rs_test_rng_fail__impl(SEXP c_arg__n, SEXP c_arg__how) {
     return handle_result(res);
 }
 
+SEXP savvy_AgentStore_assemble__impl(SEXP self__) {
+    SEXP res = savvy_AgentStore_assemble__ffi(self__);
+    return handle_result(res);
+}
+
+SEXP savvy_AgentStore_export__impl(SEXP self__) {
+    SEXP res = savvy_AgentStore_export__ffi(self__);
+    return handle_result(res);
+}
+
+SEXP savvy_AgentStore_load__impl(SEXP self__, SEXP c_arg__groups) {
+    SEXP res = savvy_AgentStore_load__ffi(self__, c_arg__groups);
+    return handle_result(res);
+}
+
+SEXP savvy_AgentStore_new__impl(SEXP c_arg__groups, SEXP c_arg__special, SEXP c_arg__use_mirror) {
+    SEXP res = savvy_AgentStore_new__ffi(c_arg__groups, c_arg__special, c_arg__use_mirror);
+    return handle_result(res);
+}
+
+SEXP savvy_AgentStore_recorded_groups__impl(SEXP self__, SEXP c_arg__k) {
+    SEXP res = savvy_AgentStore_recorded_groups__ffi(self__, c_arg__k);
+    return handle_result(res);
+}
+
+SEXP savvy_AgentStore_set_col__impl(SEXP self__, SEXP c_arg__group, SEXP c_arg__name, SEXP c_arg__values) {
+    SEXP res = savvy_AgentStore_set_col__ffi(self__, c_arg__group, c_arg__name, c_arg__values);
+    return handle_result(res);
+}
+
+SEXP savvy_AgentStore_snapshot__impl(SEXP self__, SEXP c_arg__tick, SEXP c_arg__keep) {
+    SEXP res = savvy_AgentStore_snapshot__ffi(self__, c_arg__tick, c_arg__keep);
+    return handle_result(res);
+}
+
+SEXP savvy_AgentStore_stats__impl(SEXP self__) {
+    SEXP res = savvy_AgentStore_stats__ffi(self__);
+    return handle_result(res);
+}
+
+SEXP savvy_AgentStore_ticks__impl(SEXP self__) {
+    SEXP res = savvy_AgentStore_ticks__ffi(self__);
+    return handle_result(res);
+}
+
 
 static const R_CallMethodDef CallEntries[] = {
     {"savvy_rs_bernoulli__impl", (DL_FUNC) &savvy_rs_bernoulli__impl, 2},
@@ -106,6 +156,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"savvy_rs_draw__impl", (DL_FUNC) &savvy_rs_draw__impl, 4},
     {"savvy_rs_group_sum__impl", (DL_FUNC) &savvy_rs_group_sum__impl, 4},
     {"savvy_rs_info__impl", (DL_FUNC) &savvy_rs_info__impl, 0},
+    {"savvy_rs_nb_fold__impl", (DL_FUNC) &savvy_rs_nb_fold__impl, 4},
     {"savvy_rs_noop__impl", (DL_FUNC) &savvy_rs_noop__impl, 0},
     {"savvy_rs_pow__impl", (DL_FUNC) &savvy_rs_pow__impl, 2},
     {"savvy_rs_reduce__impl", (DL_FUNC) &savvy_rs_reduce__impl, 3},
@@ -113,6 +164,15 @@ static const R_CallMethodDef CallEntries[] = {
     {"savvy_rs_test_error__impl", (DL_FUNC) &savvy_rs_test_error__impl, 1},
     {"savvy_rs_test_panic__impl", (DL_FUNC) &savvy_rs_test_panic__impl, 2},
     {"savvy_rs_test_rng_fail__impl", (DL_FUNC) &savvy_rs_test_rng_fail__impl, 2},
+    {"savvy_AgentStore_assemble__impl", (DL_FUNC) &savvy_AgentStore_assemble__impl, 1},
+    {"savvy_AgentStore_export__impl", (DL_FUNC) &savvy_AgentStore_export__impl, 1},
+    {"savvy_AgentStore_load__impl", (DL_FUNC) &savvy_AgentStore_load__impl, 2},
+    {"savvy_AgentStore_new__impl", (DL_FUNC) &savvy_AgentStore_new__impl, 3},
+    {"savvy_AgentStore_recorded_groups__impl", (DL_FUNC) &savvy_AgentStore_recorded_groups__impl, 2},
+    {"savvy_AgentStore_set_col__impl", (DL_FUNC) &savvy_AgentStore_set_col__impl, 4},
+    {"savvy_AgentStore_snapshot__impl", (DL_FUNC) &savvy_AgentStore_snapshot__impl, 3},
+    {"savvy_AgentStore_stats__impl", (DL_FUNC) &savvy_AgentStore_stats__impl, 1},
+    {"savvy_AgentStore_ticks__impl", (DL_FUNC) &savvy_AgentStore_ticks__impl, 1},
     {NULL, NULL, 0}
 };
 

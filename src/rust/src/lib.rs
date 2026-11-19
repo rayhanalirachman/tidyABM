@@ -14,6 +14,7 @@
 mod rapi;
 mod reduce;
 mod rng;
+mod store;
 
 use savvy::{
     savvy, IntegerSexp, NotAvailableValue, NullSexp, OwnedIntegerSexp, OwnedLogicalSexp,
@@ -24,7 +25,7 @@ use tidyabm_core::{guard, on_worker, ERROR_PREFIX, VERSION};
 
 /// Run an entry point's body under tidyABM's panic guard; a panic becomes an error
 /// whose message starts with `tidyabm_core::PANIC_PREFIX`.
-fn run<T>(body: impl FnOnce() -> savvy::Result<T>) -> savvy::Result<T> {
+pub(crate) fn run<T>(body: impl FnOnce() -> savvy::Result<T>) -> savvy::Result<T> {
     guard(body).unwrap_or_else(|msg| Err(savvy::Error::new(msg)))
 }
 
@@ -92,7 +93,7 @@ fn rs_test_panic(msg: &str, worker: bool) -> savvy::Result<()> {
 // ---- Phase 2: R's random number generator and R-order reductions ---------------
 
 /// A typed error (prefix `ERROR_PREFIX`) raised in R as `tidyABM_rust_error`.
-fn typed_error(msg: impl std::fmt::Display) -> savvy::Error {
+pub(crate) fn typed_error(msg: impl std::fmt::Display) -> savvy::Error {
     savvy::Error::new(format!("{ERROR_PREFIX}{msg}"))
 }
 
@@ -333,5 +334,35 @@ fn rs_pow(x: RealSexp, y: RealSexp) -> savvy::Result<Sexp> {
             })
         }?;
         OwnedRealSexp::try_from_slice(out).map(Into::into)
+    })
+}
+
+/// `abm_neighbours()`'s network fast path: `sum()` (`mean = FALSE`) or `mean()` of
+/// `x` over each agent's neighbours through the R engine's padded index (`cols`,
+/// `cnt` from `nb_index()`), in `nb_fold()`'s order; `NULL` where `nb_fold()` must
+/// answer (an `NA`/`NaN` sum, a malformed index).
+/// @noRd
+#[savvy]
+fn rs_nb_fold(mean: bool, x: Sexp, cols: savvy::ListSexp, cnt: Sexp) -> savvy::Result<Sexp> {
+    run(|| {
+        let (Some(x), Some(cnt)) = (
+            store::numbers_of::<f64>(x.0, rapi::REALSXP)?,
+            store::numbers_of::<i32>(cnt.0, rapi::INTSXP)?,
+        ) else {
+            return decline();
+        };
+        let mut slices: Vec<&[i32]> = Vec::with_capacity(cols.len());
+        for (_, c) in cols.iter() {
+            match store::numbers_of::<i32>(c.0, rapi::INTSXP)? {
+                Some(v) => slices.push(v),
+                None => return decline(),
+            }
+        }
+        // SAFETY: reading a static of R's (R's NA_real_, not a Rust constant)
+        let na = unsafe { rapi::R_NaReal };
+        match tidyabm_core::neighbours::nb_fold(mean, x, &slices, cnt, na) {
+            Some(v) => OwnedRealSexp::try_from_slice(v).map(Into::into),
+            None => decline(),
+        }
     })
 }

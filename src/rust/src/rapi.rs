@@ -59,6 +59,60 @@ pub unsafe fn protect<F: FnOnce() + Copy>(f: F) -> savvy::Result<()> {
     .map(|_| ())
 }
 
+/// [`protect`] for a closure that returns a plain value (a number, a raw pointer, a
+/// `SEXP`); `init` is returned only if R raised, and is then discarded.
+///
+/// # Safety
+///
+/// As [`protect`].
+pub unsafe fn protect_value<T: Copy, F: FnOnce() -> T + Copy>(init: T, f: F) -> savvy::Result<T> {
+    let mut out = init;
+    let p: *mut T = &mut out;
+    // SAFETY: caller's contract; `p` points at `out`, alive for the whole call.
+    unsafe { protect(move || *p = f()) }?;
+    Ok(out)
+}
+
+// The column store (`store.rs`, migration phase 3): R's public API for vectors,
+// attributes and identity ("Writing R Extensions", 5.9 and 6.21). Main thread only.
+// `TYPEOF`, `Rf_xlength`, `SET_STRING_ELT` and `VECTOR_ELT` neither allocate nor
+// raise; the rest may
+// allocate (ALTREP data pointers materialise, attribute copies allocate) and so may
+// raise an R error, and are called only inside `protect`.
+pub type SexpType = std::os::raw::c_uint;
+pub const LGLSXP: SexpType = 10;
+pub const INTSXP: SexpType = 13;
+pub const REALSXP: SexpType = 14;
+pub const STRSXP: SexpType = 16;
+pub const VECSXP: SexpType = 19;
+
+extern "C" {
+    pub static R_NaString: SEXP;
+    pub static R_NaReal: f64;
+    pub static R_NamesSymbol: SEXP;
+
+    pub fn TYPEOF(x: SEXP) -> SexpType;
+    pub fn Rf_xlength(x: SEXP) -> isize;
+    pub fn Rf_allocVector(t: SexpType, n: isize) -> SEXP;
+    pub fn Rf_protect(x: SEXP) -> SEXP;
+    pub fn Rf_unprotect(n: c_int);
+    pub fn REAL_RO(x: SEXP) -> *const f64;
+    pub fn INTEGER_RO(x: SEXP) -> *const c_int;
+    pub fn LOGICAL_RO(x: SEXP) -> *const c_int;
+    // never allocate or raise: NULL for an ALTREP vector without data in memory
+    pub fn REAL_OR_NULL(x: SEXP) -> *const f64;
+    pub fn INTEGER_OR_NULL(x: SEXP) -> *const c_int;
+    pub fn DATAPTR_OR_NULL(x: SEXP) -> *const std::ffi::c_void;
+    pub fn LOGICAL(x: SEXP) -> *mut c_int;
+    pub fn STRING_PTR_RO(x: SEXP) -> *const SEXP;
+    pub fn SET_STRING_ELT(x: SEXP, i: isize, v: SEXP);
+    pub fn VECTOR_ELT(x: SEXP, i: isize) -> SEXP;
+    pub fn Rf_getAttrib(x: SEXP, name: SEXP) -> SEXP;
+    pub fn Rf_setAttrib(x: SEXP, name: SEXP, value: SEXP) -> SEXP;
+    pub fn SHALLOW_DUPLICATE_ATTRIB(to: SEXP, from: SEXP);
+    pub fn R_compute_identical(x: SEXP, y: SEXP, flags: c_int) -> c_int;
+}
+
 // src/reduce.c (tidyABM's own C; pure computation, safe on any thread)
 extern "C" {
     pub fn tidyabm_ld_bytes() -> c_int;

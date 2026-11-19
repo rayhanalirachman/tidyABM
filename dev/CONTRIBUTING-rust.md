@@ -14,9 +14,12 @@ pure R.
 | `src/rust/src/rapi.rs` | hand-written declarations of R's public C API (RNG, Rmath) and of `src/reduce.c`; `protect()` |
 | `src/rust/src/rng.rs` | `with_rng()` / `RRng`: R's own generator from Rust, main thread only |
 | `src/rust/src/reduce.rs` | safe wrappers over the long-double C helper |
+| `src/rust/src/store.rs` | the column store's R side (`AgentStore`): loading groups, exporting them, the write API `set_col()`, the string pool, the mirror cache, snapshots, stacking the result |
 | `src/reduce.c` | long-double sums, means, cumsums, group sums (Rust has no long double) |
-| `src/rust/tidyabm-core/` | engine code with no R dependency; `cargo test` runs here (`sample.rs`, `reduce.rs`) |
+| `src/rust/tidyabm-core/` | engine code with no R dependency; `cargo test` runs here (`sample.rs`, `reduce.rs`, `store.rs`, `neighbours.rs`) |
 | `R/rust-blocks.R` | `rust_rng_ok()` (verified `RNGkind()`s) and the R-side wrappers with their R fallbacks |
+| `R/run-rust.R` | the Rust run path: `run_once_rust()`, the step adapter, kernel dispatch and replay (`rust_step()`), "both" mode |
+| `R/rust-kernels.R` | the step kernels (`rk_*`) and their registry `rust_kernels` |
 | `src/rust/Cargo.lock` | pinned crate versions (committed) |
 | `src/rust/vendor.tar.xz`, `vendor-config.toml` | all crates for the offline build (committed) |
 | `src/rust/deny.toml` | licence / advisory policy for cargo-deny (CI) |
@@ -51,10 +54,21 @@ cargo test -p tidyabm-core
 
 `load_all()` decides whether to recompile from the C files in `src/` only, so after
 editing `.rs` files run `touch src/init.c` before the next `load_all()`; otherwise it
-keeps the old library. Avoid `pkgbuild::clean_dll()`: it also deletes the `.a` files
+keeps the old library. **`load_all()` builds the Rust library unoptimised** (pkgbuild
+passes `DEBUG=true`, so `configure` picks cargo's `dev` profile): Rust code then runs
+10-20x slower (the neighbour fold: 100 us instead of 6). Before timing anything, and
+in any shell that runs the oracle, `export SAVVY_PROFILE=release` and rebuild
+(`touch src/init.c`); `grep PROFILE src/Makevars` says which one the last build used.
+Any later `load_all()` that recompiles without that variable goes back to `dev`. Avoid `pkgbuild::clean_dll()`: it also deletes the `.a` files
 that cargo's build scripts left under `src/rust/target` (savvy's
 `libunwind_protect.a`), and the next build fails with "could not find native static
 library `unwind_protect`" until `src/rust/target` is removed.
+
+Run `cargo clippy` / `cargo build` with a target directory of their own
+(`CARGO_TARGET_DIR=/tmp/tidyabm-target cargo clippy ...`): a dev build in
+`src/rust/target/debug` can leave a `libtidyabm.a` that the next `load_all()` links
+without savvy's C helper (`symbol not found: _unwind_protect_impl`); deleting
+`src/rust/target/debug` fixes it.
 
 The savvy crate's own tests do not link without an R session; test entry points
 from R (`tests/testthat/test-rust-*.R`) and keep logic in `tidyabm-core`.
@@ -90,6 +104,62 @@ Rules the code follows (PLAN.md section 1):
 * The Rust path draws only under the `RNGkind()`s the tests verified
   (`rust_rng_ok()`); every other kind, and every parameter for which R would warn,
   takes R's own function.
+
+## The engines and the column store (phase 3)
+
+`options(tidyABM.engine = )`: `"r"` (default) is the R engine; `"rust"` keeps the
+run's groups in the Rust column store (`AgentStore`) and runs each step through its
+Rust kernel (`R/rust-kernels.R`) or, while none exists, through the *step adapter* (the R engine's step
+function over the store's groups, loaded back afterwards); `"auto"` takes the Rust
+path only when some step has a kernel registered with `auto = TRUE`; `"both"` runs every step on the R engine and
+on the Rust path from the same state, `.Random.seed` and caches, and stops at the
+first difference (`tidyABM_engine_mismatch`, naming step, tick, group, column, row
+and both values). A kernel is `function(step, state, store)` registered in
+`rust_kernels` (`R/rust-kernels.R`) under the step's class; test it with
+`TIDYABM_ENGINE=both` over the test suite and the oracle (`TIDYABM_ENGINE=both
+./scripts/verify.sh`, the same for `models.sh`).
+
+Store rules: doubles, integers and logicals keep their bits; a character column is
+codes into a pool of R's own `CHARSXP`s; a typed column's attributes (factor
+levels, classes, names, dim) live on a zero-length donor and come back with
+`SHALLOW_DUPLICATE_ATTRIB()`; list, complex, raw and data-frame columns are opaque
+preserved R objects. Every column, group and the group list keep the R object they
+came from (the mirror): `export()` hands it back while Rust has not changed the
+column, and `load()` copies only columns whose object changed. `set_col()` drops the
+written column's, its group's and the list's mirrors in one place.
+Results are stacked in Rust when every column is a plain typed vector of one type,
+otherwise by R's own `bind_rows()` over the recorded groups.
+
+## Step kernels (phase 4)
+
+A kernel is `function(step, state, store)` in `R/rust-kernels.R`, registered in
+`rust_kernels` under the step's class with `auto = TRUE` only once it is proven in
+"both" mode **and** measured faster than the R engine on paired runs. Rules:
+
+* Follow the R engine's step function line for line where it does R work (same
+  helpers, same `planned()` keys, same `state` fields such as `nb_cache`): "both"
+  compares the whole `state`, not just the groups.
+* Decline (`return(NULL)`) before changing anything for any shape the kernel does
+  not take; the step then runs through the adapter from the original state and
+  `.Random.seed`.
+* Write columns only through `store$set_col(group, name, values)` (it drops the
+  column's, the group's and the list's mirrors), then set
+  `state$groups <- store$export()`. `values` must be what `assign_rule()` would
+  have written over every row (bare, unnamed, one value per row).
+* Never print. Outside "both", a kernel that errors, warns or messages is replayed
+  on the R path (`rust_step()`), so the user sees R's own condition exactly once;
+  under "both" the same thing is a mismatch, so kernel faults are caught, not hidden.
+* `options(tidyABM.rust_kernels = c(neighbours = FALSE))` turns a kernel off
+  (step class without `abm_`).
+* Rust code reads R vectors through `store::numbers_of()` (no copy; ALTREP data is
+  materialised inside `protect`) and returns `NULL` (decline) for anything it does
+  not handle bit for bit (for example sums that meet `NA`/`NaN`, whose payload choice
+  is `rowsum()`'s).
+
+The store outside "both" is brought up to date only when read: the adapter marks it
+stale (`sync$ok`), and `run_once_rust()` loads `state$groups` before a kernel or a
+recorded snapshot. Under `use_mirror` a loaded typed column is kept as R's vector and
+copied into Rust only for a snapshot that may reach the result (lazy copy-in).
 
 ## Vendoring (offline builds)
 

@@ -72,9 +72,75 @@ pub fn nb_fold(mean: bool, x: &[f64], cols: &[&[i32]], cnt: &[i32], na: f64) -> 
     Some(out)
 }
 
+/// The R engine's `nb_fold_int()` for an integer or logical `x` (as `i32`, `NA`
+/// as [`crate::sample::NA_INT`]): `Ok(sums)` with `NA` for agents without
+/// neighbours, or for `mean` the sums divided by the counts as doubles (`na` for
+/// none). Sums are exact (`i64`); `None` where the R engine has to answer: a
+/// neighbourhood that meets `NA`, a sum outside the integer range, a bad index.
+pub fn nb_fold_int(
+    mean: bool,
+    x: &[i32],
+    cols: &[&[i32]],
+    cnt: &[i32],
+    na: f64,
+) -> Option<Result<Vec<i32>, Vec<f64>>> {
+    use crate::sample::NA_INT;
+    let n = x.len();
+    if cnt.len() != n || cols.iter().any(|c| c.len() != n) {
+        return None;
+    }
+    let mut s = vec![0i64; n];
+    for col in cols {
+        for (si, &k) in s.iter_mut().zip(col.iter()) {
+            let k = usize::try_from(k).ok()?;
+            match k {
+                _ if k >= 1 && k <= n => {
+                    let v = x[k - 1];
+                    if v == NA_INT {
+                        return None;
+                    }
+                    *si += i64::from(v);
+                    if si.unsigned_abs() > i32::MAX as u64 {
+                        return None;
+                    }
+                }
+                _ if k == n + 1 => {}
+                _ => return None,
+            }
+        }
+    }
+    if !mean {
+        return Some(Ok(s
+            .iter()
+            .zip(cnt)
+            .map(|(&v, &c)| if c == 0 { NA_INT } else { v as i32 })
+            .collect()));
+    }
+    Some(Err(s
+        .iter()
+        .zip(cnt)
+        .map(|(&v, &c)| if c == 0 { na } else { v as f64 / f64::from(c) })
+        .collect()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn integer_folds_are_exact_and_decline_na() {
+        let c1 = [2, 1, 4];
+        let c2 = [3, 4, 4];
+        let cols: [&[i32]; 2] = [&c1, &c2];
+        let cnt = [2, 1, 0];
+        let s = nb_fold_int(false, &[1, 0, 1], &cols, &cnt, na()).unwrap();
+        assert_eq!(s, Ok(vec![1, 1, crate::sample::NA_INT]));
+        let Err(m) = nb_fold_int(true, &[1, 0, 1], &cols, &cnt, na()).unwrap() else {
+            panic!()
+        };
+        assert_eq!((m[0], m[1], m[2].to_bits()), (0.5, 1.0, na().to_bits()));
+        assert!(nb_fold_int(false, &[1, crate::sample::NA_INT, 1], &cols, &cnt, na()).is_none());
+    }
 
     fn na() -> f64 {
         f64::from_bits(0x7ff0_0000_0000_07a2)

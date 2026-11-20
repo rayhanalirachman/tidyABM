@@ -115,3 +115,35 @@ test_that("network neighbours fold natively over several groups, by id", {
   run_in("rust", m, go, ticks = 4, seed = 2)
   expect_identical(.rl_last$stats[[2]], 0L)
 })
+
+test_that("ticks logged natively (FR9) give R's globals table", {
+  m <- abm_setup(agents = abm_agents(n = 20, x = ~runif(n), g = ~sample(1:3, n, TRUE)),
+                 globals = list(tot = 0, v = c(1, 2)), seed = 8)
+  go <- abm_go(abm_global(tot ~ tot + sum(x)),
+               abm_global(by_g ~ sum(x), .by = g),           # a named vector: list cells
+               abm_rules(x ~ x * 0.9 + runif(n())))
+  for (rec in list("final", "globals", 4L, "all")) {
+    expect_engines_agree(m, go, ticks = 9, seed = 2, record = rec, what = paste("FR9", rec))
+  }
+  later <- abm_go(abm_rules(x ~ x + 1), abm_global(newg ~ if_else(sum(x) > 30, 1, 0)))
+  expect_engines_agree(m, later, ticks = 6, seed = 1, record = "final", what = "FR9 later")
+})
+
+test_that("native steps keep every new R object protected (gctorture)", {
+  # ~3 minutes: opt-in (TIDYABM_GCTORTURE=run); found a column left unprotected
+  # in the neighbour fold's commit, which freed it now and then under load
+  skip_if_not(Sys.getenv("TIDYABM_GCTORTURE") == "run", "gctorture test is opt-in")
+  m <- abm_setup(agents = list(a = abm_agents(n = 6, x = ~runif(n), k = ~sample(1:2, n, TRUE)),
+                               b = abm_agents(n = 3, x = ~runif(n), k = 1L)),
+                 network = abm_network(type = "ring", degree = 2), globals = list(t = 0), seed = 1)
+  w <- 2
+  go <- abm_go(abm_neighbours(s ~ mean(x), c ~ sum(k)),
+               abm_rules(x ~ x * 0.5 + runif(n()) * w, y ~ vapply(x, function(v) v, 0)),
+               abm_rules(x ~ x - mean(x), .by = k),
+               abm_global(t ~ t + sum(x)))
+  ref <- run_in("r", m, go, ticks = 2, seed = 3)
+  gctorture(TRUE)
+  got <- tryCatch(run_in("rust", m, go, ticks = 2, seed = 3), error = identity)
+  gctorture(FALSE)
+  expect_identical(got, ref)
+})

@@ -13,7 +13,8 @@ rx_platform <- function() {
 # scope holding the globals and the engine's `n()`
 rx_r_value <- function(e, data, globals, n) {
   env <- list2env(c(globals, list(n = function() n, if_else = dplyr::if_else, runif = stats::runif,
-                                  case_when = dplyr::case_when)), parent = baseenv())
+                                  case_when = dplyr::case_when, coalesce = dplyr::coalesce,
+                                  rnorm = stats::rnorm, "%in%" = in_rowwise)), parent = baseenv())
   warned <- FALSE
   val <- tryCatch(withCallingHandlers(eval(e, data, env), warning = function(w) {
     warned <<- TRUE
@@ -27,7 +28,8 @@ rx_rust_value <- function(e, data, globals, n) {
   cp <- rx_compile(e)
   if (is_rx_no(cp)) return(list(no = unclass(cp)))
   ins <- c(data, globals)[cp$syms]
-  prog <- RxProgram$new(list(rx_bind(cp$ir, cp$syms)), -1L)
+  nb <- rx_number_calls(list(rx_bind(cp$ir, cp$syms)))
+  prog <- RxProgram$new(nb$irs, -1L, nb$fns)
   out <- prog$eval(unname(ins), as.integer(n), as.integer(n), FALSE)
   if (is.null(out)) list(no = rs_rx_reason()) else list(value = out[[1]])
 }
@@ -47,7 +49,7 @@ rx_random_expr <- function(depth, type = sample(c("num", "lgl", "chr"), 1, prob 
   if (depth <= 0 || stats::runif(1) < 0.25) return(leaf(type))
   sub <- function(t = type) rx_random_expr(depth - 1, t)
   switch(type,
-    num = switch(sample(9, 1),
+    num = switch(sample(17, 1),
       call(sample(c("+", "-", "*", "/"), 1), sub(), sub()),
       call("-", sub()),
       call("if_else", sub("lgl"), sub(), sub()),
@@ -56,15 +58,29 @@ rx_random_expr <- function(depth, type = sample(c("num", "lgl", "chr"), 1, prob 
       call(sample(c("exp", "log", "sqrt"), 1), sub()),
       call(sample(c("sum", "mean"), 1), sub()),
       quote(runif(n())),
-      quote(n())),
-    lgl = switch(sample(6, 1),
+      quote(n()),
+      # FR3
+      call("^", sub(), sub()),
+      call(sample(c("abs", "cumsum", "round", "floor", "sign", "max", "as.integer"), 1), sub()),
+      call("coalesce", sub(), sub()),
+      call(sample(c("sum", "mean"), 1), sub(), na.rm = TRUE),
+      call(sample(c("runif", "rnorm"), 1), quote(n()), sub(), sub()),
+      call("sample", sample(list(quote(i1), quote(d2), 3L, quote(n())), 1)[[1]], quote(n()),
+           replace = TRUE),
+      call("[", sample(list(quote(d1), quote(i1), quote(d2)), 1)[[1]],
+           quote(sample(n(), n(), replace = TRUE))),
+      call(sample(c("%%", "%/%"), 1), sub(), sub())),
+    lgl = switch(sample(7, 1),
       call(sample(c("<", ">", "<=", ">=", "==", "!="), 1), sub("num"), sub("num")),
       call(sample(c("==", "!="), 1), sub("chr"), sub("chr")),
       call(sample(c("&", "|"), 1), sub(), sub()),
       call("!", sub()),
       call("is.na", sub(sample(c("num", "chr", "lgl"), 1))),
-      call("if_else", sub(), sub(), sub())),
-    chr = switch(sample(2, 1),
+      call("if_else", sub(), sub(), sub()),
+      call("%in%", sub(sample(c("num", "chr"), 1)), sample(list(quote(c(1, 2.5, 3)),
+           quote(c(-1L, 3L)), quote(c("a", NA)), quote(i1)), 1)[[1]])),
+    chr = switch(sample(3, 1),
+      call("coalesce", sub(), sub()),
       call("if_else", sub("lgl"), sub(), sub()),
       call("case_when", call("~", sub("lgl"), sub()), .default = sub())))
 }
@@ -175,9 +191,9 @@ test_that("errors, masked functions and uncovered formulas are the R engine's", 
     withr::local_options(tidyABM.engine = eng)
     expect_identical(abm_run(m, masked, ticks = 1, seed = 1), ref)
   }
-  cov <- rx_coverage(abm_go(abm_rules(y ~ x^2, z ~ rank(x)), abm_rules(w ~ sum(x), .by = x)))
+  cov <- rx_coverage(abm_go(abm_rules(y ~ rank(x)^2, z ~ rank(x)), abm_global(w ~ sum(x), .by = x)))
   expect_identical(cov$path, c("r", "r", "r"))
-  expect_match(cov$reason[[1]], "`^()` is not compiled yet", fixed = TRUE)
+  expect_match(cov$reason[[1]], "`rank()` is not compiled yet", fixed = TRUE)
   expect_match(cov$reason[[3]], ".by", fixed = TRUE)
 })
 

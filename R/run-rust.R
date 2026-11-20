@@ -47,11 +47,15 @@ engine_run_once <- function(engine, steps) {
     !is.null(k) && (is.null(k$can) || isTRUE(k$can(s)))
   }, NA))
   native <- has && any(vapply(steps, rl_kind, 0L, kernels = kernels) > 0L)
-  rust_fn <- if (native) run_once_loop else run_once_rust
+  # a run with no step the loop takes natively is the R engine's own: the store
+  # adapter only added conversion costs (measured, FR3); "both" still tests it
+  rust_fn <- if (native) function(...) run_once_loop(..., kernels = kernels)
+             else if (has) function(...) run_once_rust(..., kernels = kernels)
+             else run_once
   switch(engine,
     r = run_once,
-    auto = if (has) function(...) rust_fn(..., kernels = kernels) else run_once,
-    rust = function(...) rust_fn(..., kernels = kernels),
+    auto = rust_fn,
+    rust = rust_fn,
     both = function(...) run_once_rust(..., kernels = kernels, both = TRUE))
 }
 

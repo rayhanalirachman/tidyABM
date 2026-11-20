@@ -235,8 +235,8 @@ class(`AgentStore`) <- c("tidyABM::AgentStore__bundle", "savvy_tidyABM__sealed")
 ### wrapper functions for RunLoop
 
 `RunLoop_run` <- function(self) {
-  function(`state`, `ticks`) {
-    .Call(savvy_RunLoop_run__impl, `self`, `state`, `ticks`)
+  function(`state`, `ticks`, `need`, `glog`) {
+    .Call(savvy_RunLoop_run__impl, `self`, `state`, `ticks`, `need`, `glog`)
   }
 }
 
@@ -313,8 +313,8 @@ class(`RunLoop`) <- c("tidyABM::RunLoop__bundle", "savvy_tidyABM__sealed")
 
 ### associated functions for RxProgram
 
-`RxProgram`$`new` <- function(`rules`, `writes`) {
-  .savvy_wrap_RxProgram(.Call(savvy_RxProgram_new__impl, `rules`, `writes`))
+`RxProgram`$`new` <- function(`rules`, `writes`, `fns`) {
+  .savvy_wrap_RxProgram(.Call(savvy_RxProgram_new__impl, `rules`, `writes`, `fns`))
 }
 
 

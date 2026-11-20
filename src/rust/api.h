@@ -27,10 +27,10 @@ SEXP savvy_AgentStore_ticks__ffi(SEXP self__);
 
 // methods and associated functions for RunLoop
 SEXP savvy_RunLoop_new__ffi(SEXP c_arg__kinds, SEXP c_arg__prep, SEXP c_arg__seg, SEXP c_arg__tick, SEXP c_arg__rng, SEXP c_arg__ctx);
-SEXP savvy_RunLoop_run__ffi(SEXP self__, SEXP c_arg__state, SEXP c_arg__ticks);
+SEXP savvy_RunLoop_run__ffi(SEXP self__, SEXP c_arg__state, SEXP c_arg__ticks, SEXP c_arg__need, SEXP c_arg__glog);
 SEXP savvy_RunLoop_stats__ffi(SEXP self__);
 
 // methods and associated functions for RxProgram
 SEXP savvy_RxProgram_draws__ffi(SEXP self__);
 SEXP savvy_RxProgram_eval__ffi(SEXP self__, SEXP c_arg__inputs, SEXP c_arg__n, SEXP c_arg__out_n, SEXP c_arg__stacked);
-SEXP savvy_RxProgram_new__ffi(SEXP c_arg__rules, SEXP c_arg__writes);
+SEXP savvy_RxProgram_new__ffi(SEXP c_arg__rules, SEXP c_arg__writes, SEXP c_arg__fns);

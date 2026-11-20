@@ -28,7 +28,7 @@ use crate::store::{self, keep, kept_from, H};
 use crate::{run, typed_error};
 use savvy::ffi::SEXP;
 use savvy::protect::insert_to_preserved_list;
-use savvy::{savvy, IntegerSexp, NullSexp, OwnedListSexp, Sexp};
+use savvy::{savvy, IntegerSexp, LogicalSexp, NullSexp, OwnedListSexp, Sexp};
 use tidyabm_core::expr::{Decline, Vals};
 
 /// Build a new R object with `f` inside `protect` and keep it before anything
@@ -166,7 +166,7 @@ fn find_str(x: SEXP, want: &[u8]) -> savvy::Result<Option<usize>> {
 /// Is every one of `xs` free of attributes? (`ATTRIB()` is not API: each one's
 /// attributes are copied onto a new empty vector, which is compared with a bare
 /// one; all in one protected call.)
-fn all_bare(xs: &[SEXP]) -> savvy::Result<bool> {
+pub(crate) fn all_bare(xs: &[SEXP]) -> savvy::Result<bool> {
     if xs.is_empty() {
         return Ok(true);
     }
@@ -238,6 +238,45 @@ fn set_named(x: SEXP, nm: SEXP, v: SEXP) -> savvy::Result<H> {
     with_elt(x, i, v, nm)
 }
 
+/// `x[[name]] <- NULL` on a shallow copy (the element dropped when present).
+fn without(x: SEXP, name: &[u8]) -> savvy::Result<H> {
+    let Some(i) = find_str(x, name)? else {
+        return keep(x);
+    };
+    // SAFETY: main thread; `x` protected by the caller; the new list and names
+    // are protected while filled; indices stay within the lengths.
+    unsafe {
+        build(move || {
+            let n = rapi::Rf_xlength(x) as usize;
+            let y = rapi::Rf_protect(rapi::Rf_allocVector(VECSXP, n as isize - 1));
+            let old = rapi::Rf_getAttrib(x, rapi::R_NamesSymbol);
+            let nn = rapi::Rf_protect(rapi::Rf_allocVector(STRSXP, n as isize - 1));
+            let mut j = 0;
+            for k in 0..n {
+                if k == i {
+                    continue;
+                }
+                rapi::SET_VECTOR_ELT(y, j, rapi::VECTOR_ELT(x, k as isize));
+                rapi::SET_STRING_ELT(nn, j, rapi::STRING_ELT(old, k as isize));
+                j += 1;
+            }
+            rapi::SHALLOW_DUPLICATE_ATTRIB(y, x);
+            rapi::Rf_setAttrib(y, rapi::R_NamesSymbol, nn);
+            rapi::Rf_unprotect(2);
+            y
+        })
+    }
+}
+
+/// `x$tick <- t` on a shallow copy.
+fn set_tick(x: SEXP, t: i32) -> savvy::Result<H> {
+    // SAFETY: main thread; the scalar is kept before anything else allocates.
+    let v = unsafe { build(move || rapi::Rf_ScalarInteger(t)) }?;
+    // SAFETY: as above (installing/making the CHARSXP may allocate).
+    let nm = unsafe { build(move || rapi::Rf_mkChar(c"tick".as_ptr())) }?;
+    set_named(x, nm.get(), v.get())
+}
+
 /// The rows of an agent group (a data frame whose first column is `.id`).
 fn rows(g: SEXP) -> Option<usize> {
     // SAFETY: reading a type tag.
@@ -270,15 +309,37 @@ struct GroupPlan {
     cols: Vec<SEXP>,
     globs: Vec<SEXP>,
     targets: Vec<SEXP>,
+    /// the formula-environment values it reads: positions in `scope_fn()`'s list
+    scope: Vec<usize>,
+    /// every rule elementwise (may run under a standing match)
+    ew: bool,
+    /// each rule in order: its place in `prog`, or -1 for a rule R evaluates
+    /// (empty: every rule is in `prog`); `ridx` its index in `step$rules`
+    order: Vec<i32>,
+    ridx: Vec<i32>,
+    /// the targets of every rule in `order`
+    all_targets: Vec<SEXP>,
+}
+
+/// The R closures of a step whose rules R and Rust share (`rl_rule_fns()`).
+struct Mixed {
+    rule_fn: SEXP,
+    rng_save: SEXP,
+    rng_restore: SEXP,
 }
 
 /// A native step compiled by `prep` (`R/run-loop.R`, `rl_prep()`).
 struct Plan {
     global: bool,
+    /// `.by` rules: the key column's name
+    by: Option<SEXP>,
     nb: Option<NbPlan>,
     scope_match: bool,
     draws: bool,
     groups: Vec<GroupPlan>,
+    /// R closure returning the formula-environment values (kept by `_desc`)
+    scope_fn: Option<SEXP>,
+    mixed: Option<Mixed>,
     // the descriptor: keeps the names' CHARSXPs and the programs alive
     _desc: H,
 }
@@ -378,12 +439,38 @@ fn parse_plan(desc: H) -> savvy::Result<Plan> {
         // SAFETY: as just above; the program is not mutated while borrowed.
         draws |= unsafe { &*prog }.draws_any();
         let name = field(g, b"name")?;
+        let scope = store::numbers_of::<i32>(field(g, b"scope")?, INTSXP)?
+            .unwrap_or(&[])
+            .iter()
+            .map(|&k| usize::try_from(k).map_err(|_| bad("scope index")))
+            .collect::<savvy::Result<Vec<_>>>()?;
+        let ew = field(g, b"ew")?;
+        let ints = |nm: &[u8]| -> savvy::Result<Vec<i32>> {
+            Ok(match find_str(g, nm)? {
+                Some(i) => store::numbers_of::<i32>(elt(g, i), INTSXP)?
+                    .unwrap_or(&[])
+                    .to_vec(),
+                None => Vec::new(),
+            })
+        };
+        let all_targets = match find_str(g, b"all_targets")? {
+            Some(i) => chars(elt(g, i))?,
+            None => Vec::new(),
+        };
         groups.push(GroupPlan {
+            order: ints(b"order")?,
+            ridx: ints(b"ridx")?,
+            all_targets,
             name: chars(name)?.first().copied().ok_or_else(|| bad("name"))?,
             prog,
             cols: chars(field(g, b"cols")?)?,
             globs: chars(field(g, b"globs")?)?,
             targets: chars(field(g, b"targets")?)?,
+            scope,
+            // SAFETY: reading a type tag, then a logical of length 1.
+            ew: unsafe { rapi::TYPEOF(ew) } == rapi::LGLSXP
+                && len(ew) == 1
+                && unsafe { *rapi::LOGICAL_RO(ew) } == 1,
         });
     }
     let nb = if kind == 3 {
@@ -391,12 +478,36 @@ fn parse_plan(desc: H) -> savvy::Result<Plan> {
     } else {
         None
     };
+    let scope_fn = find_str(d, b"scope_fn")?.map(|i| elt(d, i));
+    let mixed = match find_str(d, b"rule_fn")? {
+        Some(i) => Some(Mixed {
+            rule_fn: elt(d, i),
+            rng_save: field(d, b"rng_save")?,
+            rng_restore: field(d, b"rng_restore")?,
+        }),
+        None => None,
+    };
+    // an R-evaluated rule may draw
+    let draws = draws || mixed.is_some();
+    let by = if kind == 4 {
+        Some(
+            chars(field(d, b"by")?)?
+                .first()
+                .copied()
+                .ok_or_else(|| bad("by"))?,
+        )
+    } else {
+        None
+    };
     Ok(Plan {
+        mixed,
+        by,
         global: kind == 2,
         nb,
         scope_match,
         draws,
         groups,
+        scope_fn,
         _desc: desc,
     })
 }
@@ -441,6 +552,101 @@ fn read_globals(st: SEXP, globs: &[SEXP], ins: &mut Vec<SEXP>) -> savvy::Result<
     Ok(true)
 }
 
+/// The formula-environment values of `plan` (an R list kept by the returned
+/// handle), `Ok(None)` when they cannot be read (the step declines); an empty
+/// handle-less `Ok(Some(None))` when the plan reads none.
+fn scope_values(plan: &Plan) -> savvy::Result<Option<Option<H>>> {
+    let Some(f) = plan.scope_fn else {
+        return Ok(Some(None));
+    };
+    // SAFETY: main thread; `f` is kept by the plan's descriptor.
+    let v = unsafe {
+        build(move || {
+            let call = rapi::Rf_protect(rapi::Rf_lcons(f, rapi::R_NilValue));
+            let res = rapi::Rf_eval(call, rapi::R_GlobalEnv);
+            rapi::Rf_unprotect(1);
+            res
+        })
+    }?;
+    // SAFETY: reading a type tag.
+    if unsafe { rapi::TYPEOF(v.get()) } != VECSXP {
+        return Ok(None);
+    }
+    Ok(Some(Some(v)))
+}
+
+/// Append the scope values `idx` of `vals` to `xs`; `false` when one is missing.
+fn read_scope(vals: &Option<H>, idx: &[usize], xs: &mut Vec<SEXP>) -> bool {
+    if idx.is_empty() {
+        return true;
+    }
+    let Some(v) = vals else { return false };
+    let v = v.get();
+    for &k in idx {
+        if k >= len(v) {
+            return false;
+        }
+        xs.push(elt(v, k));
+    }
+    true
+}
+
+/// R closure `f()` called for its effect.
+fn call0(f: SEXP) -> savvy::Result<()> {
+    // SAFETY: main thread; `f` is kept by the plan's descriptor; the value is
+    // not used.
+    unsafe { eval_r(f, &[]) }.map(|_| ())
+}
+
+/// `rule_fn(g, globals, i, multi)` (`rl_rule_fns()`): one rule's value from R.
+fn call_rule(f: SEXP, g: SEXP, gl: SEXP, i: i32, multi: i32) -> savvy::Result<H> {
+    // SAFETY: main thread; `f` kept by the descriptor, `g` and `gl` by the state;
+    // everything allocated is protected until the call has run; the value is
+    // kept inside the same protected call.
+    unsafe {
+        build(move || {
+            let m = rapi::Rf_protect(rapi::Rf_ScalarInteger(multi));
+            let iv = rapi::Rf_protect(rapi::Rf_ScalarInteger(i));
+            let a = rapi::Rf_protect(rapi::Rf_cons(m, rapi::R_NilValue));
+            let a = rapi::Rf_protect(rapi::Rf_cons(iv, a));
+            let a = rapi::Rf_protect(rapi::Rf_cons(gl, a));
+            let a = rapi::Rf_protect(rapi::Rf_cons(g, a));
+            let call = rapi::Rf_protect(rapi::Rf_lcons(f, a));
+            let res = rapi::Rf_eval(call, rapi::R_GlobalEnv);
+            rapi::Rf_unprotect(7);
+            res
+        })
+    }
+}
+
+/// An R rule's value as `assign_rule()` takes it: an atomic vector of length 1
+/// or `n` with no attribute but names (which it drops); `None` otherwise.
+fn r_value<'a>(x: SEXP, n: usize) -> savvy::Result<Option<Vals<'a>>> {
+    // SAFETY: reading a type tag.
+    let t = unsafe { rapi::TYPEOF(x) };
+    if !matches!(t, rapi::LGLSXP | INTSXP | rapi::REALSXP | STRSXP) || !(len(x) == n || len(x) == 1)
+    {
+        return Ok(None);
+    }
+    // SAFETY: main thread; `x` is kept by the caller; the two new vectors are
+    // protected while compared.
+    let bare = unsafe {
+        rapi::protect_value(0, move || {
+            let a = rapi::Rf_protect(rapi::Rf_allocVector(t, 0));
+            rapi::SHALLOW_DUPLICATE_ATTRIB(a, x);
+            rapi::Rf_setAttrib(a, rapi::R_NamesSymbol, rapi::R_NilValue);
+            let b = rapi::Rf_protect(rapi::Rf_allocVector(t, 0));
+            let same = rapi::R_compute_identical(a, b, 16);
+            rapi::Rf_unprotect(2);
+            same
+        })
+    }?;
+    if bare == 0 {
+        return Ok(None);
+    }
+    expr::vals_of(x, false)
+}
+
 /// `abm_rules()` natively (the shapes of slice 1's `rk_rules()`): every group's
 /// rules from the start-of-step columns, then the writes. `None` = declined.
 fn exec_rules(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
@@ -449,19 +655,50 @@ fn exec_rules(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
             return decline("a relation");
         }
     }
+    // a standing match with pairs narrows a match-scope step to the agents it
+    // placed (`run_rules()`: rows `!is.na(.group_id)`); elementwise rules give
+    // the same values over the whole group, others go to R
+    let mut placed: Option<std::collections::HashMap<i32, bool>> = None;
     if plan.scope_match {
         if let Some(mi) = find_str(st, b"match")? {
-            // SAFETY: reading a static of R's.
-            if elt(st, mi) != unsafe { rapi::R_NilValue } {
-                return decline("a standing match");
+            let m = elt(st, mi);
+            if m != rapi_nil() {
+                let Some(mm) = find_str(m, b"match")?.map(|i| elt(m, i)) else {
+                    return decline("a match without its table");
+                };
+                if rows(mm).unwrap_or(0) > 0 {
+                    if plan.groups.iter().any(|g| !g.ew) {
+                        return decline("a rule that is not elementwise under a standing match");
+                    }
+                    let col = |nm: &[u8]| -> savvy::Result<Option<&[i32]>> {
+                        match find_str(mm, nm)? {
+                            Some(j) => store::numbers_of::<i32>(elt(mm, j), INTSXP),
+                            None => Ok(None),
+                        }
+                    };
+                    let (Some(ids), Some(gid)) = (col(b".id")?, col(b".group_id")?) else {
+                        return decline("a match table of another shape");
+                    };
+                    let mut map = std::collections::HashMap::with_capacity(ids.len());
+                    for (&id, &g) in ids.iter().zip(gid) {
+                        // match() takes the first row of an id
+                        map.entry(id).or_insert(g != tidyabm_core::sample::NA_INT);
+                    }
+                    placed = Some(map);
+                }
             }
         }
     }
+    let Some(svals) = scope_values(plan)? else {
+        return decline("a formula-environment value that cannot be read");
+    };
     let gi = find_str(st, b"groups")?.ok_or_else(|| bad("no groups"))?;
     let groups = elt(st, gi);
     let gnames = names_of(groups)?;
-    let mut results: Vec<(usize, OwnedListSexp, &GroupPlan)> = Vec::new();
+    let mut results: Vec<(usize, OwnedListSexp, &[SEXP])> = Vec::new();
     let mut applied = false;
+    // a step mixing R and Rust rules: an R rule has run / the rest is R's
+    let (mut r_ran, mut r_mode) = (false, false);
     for gp in &plan.groups {
         let Some(k) = find(gnames, gp.name) else {
             return decline("a group not found");
@@ -485,23 +722,118 @@ fn exec_rules(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
         if !read_globals(st, &gp.globs, &mut xs)? {
             return decline("a global not found");
         }
+        if !read_scope(&svals, &gp.scope, &mut xs) {
+            return decline("a formula-environment value not found");
+        }
         let Some(ins) = inputs(&xs)? else {
             return decline("an input that is not a bare vector");
         };
         // SAFETY: the program is kept alive by the plan's descriptor.
         let prog = unsafe { &*gp.prog };
-        let res = match prog.compute(ins, n, n)? {
-            Ok(r) => r,
-            Err(d) => {
-                expr::note_decline(&d);
-                return Ok(None);
+        // R values of R-evaluated rules, kept while they are read
+        let mut held: Vec<H> = Vec::new();
+        let (res, targets): (Vec<Vals>, &[SEXP]) = match &plan.mixed {
+            Some(mx) if gp.order.iter().any(|&o| o < 0) || r_ran => {
+                let multi = i32::from(gp.order.len() > 1);
+                let mut vals = Vec::with_capacity(gp.order.len());
+                for (pos, &o) in gp.order.iter().enumerate() {
+                    if o >= 0 && !r_mode {
+                        let k = o as usize;
+                        let save = r_ran && prog.draws_rule(k);
+                        if save {
+                            call0(mx.rng_save)?;
+                        }
+                        match prog.compute_one(k, &ins, n)? {
+                            Ok(v) => {
+                                vals.push(v);
+                                continue;
+                            }
+                            Err(d) if !r_ran => {
+                                expr::note_decline(&d);
+                                return Ok(None);
+                            }
+                            Err(_) => {
+                                // an R rule has run (its effects stay): this rule
+                                // and the rest are R's, from the stream before it
+                                if save {
+                                    call0(mx.rng_restore)?;
+                                }
+                                r_mode = true;
+                            }
+                        }
+                    }
+                    let gl = find_str(st, b"globals")?.map_or_else(rapi_nil, |i| elt(st, i));
+                    let v = call_rule(mx.rule_fn, g, gl, gp.ridx[pos], multi)?;
+                    r_ran = true;
+                    match r_value(v.get(), n)? {
+                        Some(x) => {
+                            vals.push(x);
+                            held.push(v);
+                        }
+                        None => return decline("an R-evaluated rule gave another kind of value"),
+                    }
+                }
+                (vals, &gp.all_targets)
             }
+            _ => match prog.compute(ins, n, n)? {
+                Ok(r) => (r, &gp.targets),
+                Err(d) => {
+                    expr::note_decline(&d);
+                    return Ok(None);
+                }
+            },
         };
         let mut out = OwnedListSexp::new(res.len(), false)?;
+        // the rows the step writes, when a match narrows it
+        let mask: Option<Vec<bool>> = match &placed {
+            None => None,
+            Some(map) => {
+                let Some(j) = find_str(g, b".id")? else {
+                    return decline("a group without ids");
+                };
+                let Some(ids) = store::numbers_of::<i32>(elt(g, j), INTSXP)? else {
+                    return decline("ids that are not integers");
+                };
+                let m: Vec<bool> = ids
+                    .iter()
+                    .map(|id| *map.get(id).unwrap_or(&false))
+                    .collect();
+                if m.iter().all(|&b| b) {
+                    None
+                } else {
+                    Some(m)
+                }
+            }
+        };
         for (i, v) in res.iter().enumerate() {
-            out.set_value(i, expr::to_r(v, n)?)?;
+            match &mask {
+                None => out.set_value(i, expr::to_r(v, n)?)?,
+                Some(m) => {
+                    let old = match find(cn, targets[i]) {
+                        Some(j) => {
+                            let c = elt(g, j);
+                            if !all_bare(&[c])? {
+                                return decline("a target column with attributes");
+                            }
+                            match expr::vals_of(c, false)? {
+                                Some(v) => Some(v),
+                                None => return decline("a target column of another type"),
+                            }
+                        }
+                        None => None,
+                    };
+                    match expr::assign_rows(old, v, m)? {
+                        Ok(col) => out.set_value(i, expr::to_r(&col, n)?)?,
+                        Err(d) => {
+                            expr::note_decline(&d);
+                            return Ok(None);
+                        }
+                    }
+                }
+            }
         }
-        results.push((k, out, gp));
+        drop(held);
+        results.push((k, out, targets));
     }
     if !applied && (0..len(groups)).any(|k| rows(elt(groups, k)).unwrap_or(0) > 0) {
         // nobody to apply the rules to: the R engine's error to raise
@@ -509,10 +841,10 @@ fn exec_rules(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
     }
     // commit
     let mut cur: Option<H> = None;
-    for (k, out, gp) in &results {
+    for (k, out, targets) in &results {
         let gs = cur.as_ref().map_or(groups, |h| h.get());
         let mut g: Option<H> = None;
-        for (i, &t) in gp.targets.iter().enumerate() {
+        for (i, &t) in targets.iter().enumerate() {
             let base = g.as_ref().map_or_else(|| elt(gs, *k), |h| h.get());
             g = Some(set_named(base, t, elt(out.inner(), i))?);
         }
@@ -568,6 +900,12 @@ fn exec_global(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
     if !read_globals(st, &gp.globs, &mut xs)? {
         return decline("a global not found");
     }
+    let Some(svals) = scope_values(plan)? else {
+        return decline("a formula-environment value that cannot be read");
+    };
+    if !read_scope(&svals, &gp.scope, &mut xs) {
+        return decline("a formula-environment value not found");
+    }
     if !all_bare(&xs)? {
         return decline("an input that is not a bare vector");
     }
@@ -590,7 +928,7 @@ fn exec_global(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
     for &x in &xs[n_cols..] {
         match expr::vals_of(x, false)? {
             Some(v) => ins.push(v),
-            None => return decline("a global of an unsupported type"),
+            None => return decline("a global or scope value of an unsupported type"),
         }
     }
     // SAFETY: the program is kept alive by the plan's descriptor.
@@ -614,6 +952,231 @@ fn exec_global(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
     match cur {
         // SAFETY: reading a static of R's (unused name: `li` is in range).
         Some(g) => Ok(Some(with_elt(st, li, g.get(), unsafe {
+            rapi::R_BlankString
+        })?)),
+        None => Ok(Some(keep(st)?)),
+    }
+}
+
+/// Column `name` of every group stacked (`None` when a group lacks it, a column
+/// has attributes or an unsupported type).
+fn stacked_col<'a>(groups: SEXP, name: SEXP) -> savvy::Result<Option<Vals<'a>>> {
+    let ng = len(groups);
+    let mut parts = Vec::with_capacity(ng);
+    for k in 0..ng {
+        let g = elt(groups, k);
+        let Some(j) = find(names_of(g)?, name) else {
+            return Ok(None);
+        };
+        parts.push(elt(g, j));
+    }
+    if !all_bare(&parts)? {
+        return Ok(None);
+    }
+    if ng == 1 {
+        return expr::vals_of(parts[0], false);
+    }
+    let mut l = OwnedListSexp::new(ng, false)?;
+    for (k, &p) in parts.iter().enumerate() {
+        l.set_value(k, Sexp(p))?;
+    }
+    expr::stacked(l.inner())
+}
+
+/// `abm_rules(.by = )` natively ([run_rules_by()]): the groups stacked, each rule
+/// evaluated once per value of the key in `group_by()`'s order (`NA` too, its
+/// rows then keeping their old value), the later rules reading what the earlier
+/// wrote, then each value written back to every group.
+fn exec_by(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
+    use tidyabm_core::expr as ce;
+    let gp = plan.groups.first().ok_or_else(|| bad("no program"))?;
+    let by = plan.by.ok_or_else(|| bad("no key"))?;
+    if let Some(ri) = find_str(st, b"relations")? {
+        if len(elt(st, ri)) > 0 {
+            return decline("a relation");
+        }
+    }
+    let gi = find_str(st, b"groups")?.ok_or_else(|| bad("no groups"))?;
+    let groups = elt(st, gi);
+    let ng = len(groups);
+    let mut sizes = Vec::with_capacity(ng);
+    for k in 0..ng {
+        match rows(elt(groups, k)) {
+            Some(r) => sizes.push(r),
+            None => return decline("a group without columns"),
+        }
+    }
+    let n: usize = sizes.iter().sum();
+    if n == 0 {
+        return Ok(Some(keep(st)?));
+    }
+    let mut ins: Vec<Vals> = Vec::with_capacity(gp.cols.len() + gp.globs.len());
+    for &c in &gp.cols {
+        match stacked_col(groups, c)? {
+            Some(v) => ins.push(v),
+            None => return decline("a column some group lacks or of another kind"),
+        }
+    }
+    let n_cols = ins.len();
+    let mut xs = Vec::new();
+    if !read_globals(st, &gp.globs, &mut xs)? {
+        return decline("a global not found");
+    }
+    let Some(svals) = scope_values(plan)? else {
+        return decline("a formula-environment value that cannot be read");
+    };
+    if !read_scope(&svals, &gp.scope, &mut xs) {
+        return decline("a formula-environment value not found");
+    }
+    let Some(more) = inputs(&xs)? else {
+        return decline("a global or scope value of an unsupported type");
+    };
+    ins.extend(more);
+    let Some(key0) = stacked_col(groups, by)? else {
+        return decline("a key of another kind");
+    };
+    let taking: Vec<bool> = match &key0 {
+        Vals::Int(v) | Vals::Lgl(v) => v
+            .iter()
+            .map(|&x| x != tidyabm_core::sample::NA_INT)
+            .collect(),
+        Vals::Dbl(v) => v.iter().map(|x| !x.is_nan()).collect(),
+        Vals::Str(_) => return decline("a string key"),
+    };
+    let all_taking = taking.iter().all(|&t| t);
+    // SAFETY: the program is kept alive by the plan's descriptor.
+    let prog = unsafe { &*gp.prog };
+    // what this step has written, by target, for later rules' keys and old values
+    let mut written: Vec<(SEXP, Vals)> = Vec::new();
+    let mut values: Vec<Vals> = Vec::with_capacity(gp.targets.len());
+    for (k, &t) in gp.targets.iter().enumerate() {
+        let key = written
+            .iter()
+            .rev()
+            .find(|(w, _)| *w == by)
+            .map_or(&key0, |(_, v)| v);
+        let Some(loc) = ce::group_rows(key) else {
+            return decline("a key of another kind");
+        };
+        let mut parts = Vec::with_capacity(loc.len());
+        for rows_g in &loc {
+            let sliced: Vec<Vals> = ins
+                .iter()
+                .enumerate()
+                .map(|(j, v)| {
+                    if j < n_cols {
+                        ce::take(v, rows_g)
+                    } else {
+                        v.clone()
+                    }
+                })
+                .collect();
+            match prog.compute_one(k, &sliced, rows_g.len())? {
+                Ok(v) => parts.push(expr::owned(v)),
+                Err(d) => {
+                    expr::note_decline(&d);
+                    return Ok(None);
+                }
+            }
+        }
+        let value = match expr::with_host(|h| ce::unchop(parts, &loc, n, h)) {
+            Ok(v) => v,
+            Err(d) => {
+                expr::note_decline(&d);
+                return Ok(None);
+            }
+        };
+        let value = if all_taking {
+            value
+        } else {
+            let old_w = written
+                .iter()
+                .rev()
+                .find(|(w, _)| *w == t)
+                .map(|(_, v)| v.clone());
+            let old = match old_w {
+                Some(v) => Some(v),
+                None => {
+                    let present = (0..ng)
+                        .filter(|&g| find(names_of(elt(groups, g)).unwrap_or(&[]), t).is_some())
+                        .count();
+                    if present == 0 {
+                        None
+                    } else {
+                        match stacked_col(groups, t)? {
+                            Some(v) => Some(v),
+                            None => return decline("an old target of another kind"),
+                        }
+                    }
+                }
+            };
+            match expr::with_host(|h| ce::keep_old(value, old.as_ref(), &taking, h)) {
+                Ok(v) => expr::owned(v),
+                Err(d) => {
+                    expr::note_decline(&d);
+                    return Ok(None);
+                }
+            }
+        };
+        if let Some(w) = prog.write_of(k) {
+            if w >= ins.len() {
+                return Err(bad("write target out of range"));
+            }
+            ins[w] = value.clone();
+        }
+        written.push((t, value.clone()));
+        values.push(value);
+    }
+    // commit: rule by rule, group by group (a group's rows are a run of the stack)
+    let mut cur: Option<H> = None;
+    for (k, &t) in gp.targets.iter().enumerate() {
+        let mut start = 0;
+        for (g, &sz) in sizes.iter().enumerate() {
+            let rows_g: Vec<usize> = (start..start + sz).collect();
+            start += sz;
+            if sz == 0 {
+                continue;
+            }
+            let gs = cur.as_ref().map_or(groups, |h| h.get());
+            let base = elt(gs, g);
+            let v = ce::take(&values[k], &rows_g);
+            let tp = &taking[rows_g[0]..rows_g[0] + sz];
+            // the new column is held here from the moment it exists (`to_r()`
+            // returns it unprotected; anything allocating after it could free it)
+            let mut hold = OwnedListSexp::new(1, false)?;
+            let col = if tp.iter().all(|&b| b) {
+                expr::to_r(&v, sz)?
+            } else {
+                let old = match find(names_of(base)?, t) {
+                    Some(j) => {
+                        let c = elt(base, j);
+                        if !all_bare(&[c])? {
+                            return decline("a target column with attributes");
+                        }
+                        match expr::vals_of(c, false)? {
+                            Some(v) => Some(v),
+                            None => return decline("a target column of another type"),
+                        }
+                    }
+                    None => None,
+                };
+                match expr::assign_rows(old, &v, tp)? {
+                    Ok(c) => expr::to_r(&c, sz)?,
+                    Err(d) => {
+                        expr::note_decline(&d);
+                        return Ok(None);
+                    }
+                }
+            };
+            hold.set_value(0, col)?;
+            let g2 = set_named(base, t, elt(hold.inner(), 0))?;
+            // SAFETY: reading a static of R's (unused name: `g` is in range).
+            cur = Some(with_elt(gs, g, g2.get(), unsafe { rapi::R_BlankString })?);
+        }
+    }
+    match cur {
+        // SAFETY: as above.
+        Some(gs) => Ok(Some(with_elt(st, gi, gs.get(), unsafe {
             rapi::R_BlankString
         })?)),
         None => Ok(Some(keep(st)?)),
@@ -683,24 +1246,43 @@ fn exec_nb(nb: &NbPlan, st: SEXP) -> savvy::Result<Option<H>> {
     let cnt = store::numbers_of::<i32>(nb.cnt, INTSXP)?.ok_or_else(|| bad("nb counts"))?;
     // SAFETY: reading a static of R's (its NA_real_, not a Rust constant).
     let na = unsafe { rapi::R_NaReal };
-    let mut vals: Vec<Vec<f64>> = Vec::with_capacity(nb.args.len());
+    let mut vals: Vec<Vals> = Vec::with_capacity(nb.args.len());
     for (r, &a) in nb.args.iter().enumerate() {
-        let mut x: Vec<f64> = Vec::with_capacity(n);
+        let mut parts = Vec::with_capacity(ng);
         for k in 0..ng {
             let g = elt(groups, k);
             let Some(j) = find(names_of(g)?, a) else {
                 return decline("a column some group lacks");
             };
-            let col = elt(g, j);
-            if !all_bare(&[col])? {
-                return decline("an input that is not a bare vector");
-            }
-            match store::numbers_of::<f64>(col, rapi::REALSXP)? {
-                Some(v) => x.extend_from_slice(v),
-                None => return decline("a column that is not double"),
-            }
+            parts.push(elt(g, j));
         }
-        match tidyabm_core::neighbours::nb_fold(nb.mean[r], &x, &cols, cnt, na) {
+        if !all_bare(&parts)? {
+            return decline("an input that is not a bare vector");
+        }
+        // the column stacked: double, or integer/logical (`nb_fold_int()`)
+        let x = if ng == 1 {
+            expr::vals_of(parts[0], false)?
+        } else {
+            let mut l = OwnedListSexp::new(ng, false)?;
+            for (k, &p) in parts.iter().enumerate() {
+                l.set_value(k, Sexp(p))?;
+            }
+            expr::stacked(l.inner())?
+        };
+        let folded = match x {
+            Some(Vals::Dbl(x)) => tidyabm_core::neighbours::nb_fold(nb.mean[r], &x, &cols, cnt, na)
+                .map(|v| Vals::Dbl(std::borrow::Cow::Owned(v))),
+            Some(Vals::Int(x) | Vals::Lgl(x)) => {
+                tidyabm_core::neighbours::nb_fold_int(nb.mean[r], &x, &cols, cnt, na).map(|v| {
+                    match v {
+                        Ok(s) => Vals::Int(std::borrow::Cow::Owned(s)),
+                        Err(m) => Vals::Dbl(std::borrow::Cow::Owned(m)),
+                    }
+                })
+            }
+            _ => return decline("a column that is not a number"),
+        };
+        match folded {
             Some(v) => vals.push(v),
             None => return decline("a neighbourhood that meets NA or NaN"),
         }
@@ -714,16 +1296,22 @@ fn exec_nb(nb: &NbPlan, st: SEXP) -> savvy::Result<Option<H>> {
         let gs = cur.as_ref().map_or(groups, |h| h.get());
         let mut g: Option<H> = None;
         for (r, &t) in nb.targets.iter().enumerate() {
-            let v: Vec<f64> = if ng == 1 {
-                vals[r].clone()
-            } else {
-                gids.iter().map(|&id| vals[r][id as usize - 1]).collect()
+            let pick = |id: &i32| *id as usize - 1;
+            let v = match &vals[r] {
+                _ if ng == 1 => vals[r].clone(),
+                Vals::Dbl(d) => Vals::Dbl(std::borrow::Cow::Owned(
+                    gids.iter().map(|id| d[pick(id)]).collect(),
+                )),
+                Vals::Int(d) | Vals::Lgl(d) => Vals::Int(std::borrow::Cow::Owned(
+                    gids.iter().map(|id| d[pick(id)]).collect(),
+                )),
+                Vals::Str(_) => return Err(bad("a string fold")),
             };
-            let col = expr::to_r(&Vals::Dbl(std::borrow::Cow::Owned(v)), gids.len())?;
-            let base = g.as_ref().map_or_else(|| elt(gs, k), |h| h.get());
-            // `col` is unprotected: kept in a list while the group is copied
+            // the list that holds the new column exists before it (`to_r()`
+            // returns it unprotected; an allocation after it could free it)
             let mut hold = OwnedListSexp::new(1, false)?;
-            hold.set_value(0, col)?;
+            hold.set_value(0, expr::to_r(&v, gids.len())?)?;
+            let base = g.as_ref().map_or_else(|| elt(gs, k), |h| h.get());
             g = Some(set_named(base, t, elt(hold.inner(), 0))?);
         }
         if let Some(g) = g {
@@ -743,7 +1331,9 @@ fn exec(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
     if let Some(nb) = &plan.nb {
         return exec_nb(nb, st);
     }
-    if plan.global {
+    if plan.by.is_some() {
+        exec_by(plan, st)
+    } else if plan.global {
         exec_global(plan, st)
     } else {
         exec_rules(plan, st)
@@ -767,6 +1357,9 @@ fn rs_native_exec(desc: Sexp, state: Sexp) -> savvy::Result<Sexp> {
 
 // ---- the loop ----------------------------------------------------------------
 
+/// Consecutive run-time declines after which a step stays on R for its schema.
+const DECLINES_BEFORE_SKIP: u32 = 8;
+
 enum Slot {
     /// not compiled for the current schema yet
     Fresh,
@@ -774,7 +1367,7 @@ enum Slot {
     Never,
     /// R for the schema `key`
     Skip(Vec<usize>),
-    Ready(Vec<usize>, Plan),
+    Ready(Vec<usize>, Box<Plan>),
 }
 
 /// A run driven from Rust. `kinds[i]`: 0 an R step, 1 native `abm_rules`, 2
@@ -801,6 +1394,8 @@ pub struct RunLoop {
     stats: [i32; 4],
     /// `.Random.seed` was saved for the current native attempt
     saved: bool,
+    /// consecutive run-time declines per step (reset by a native success)
+    declines: Vec<u32>,
 }
 
 impl RunLoop {
@@ -847,7 +1442,7 @@ impl RunLoop {
             self.slots[i] = if t == rapi::LGLSXP {
                 Slot::Never
             } else if t == VECSXP {
-                Slot::Ready(key, parse_plan(d)?)
+                Slot::Ready(key, Box::new(parse_plan(d)?))
             } else {
                 Slot::Skip(key)
             };
@@ -861,6 +1456,19 @@ impl RunLoop {
         }
         let out = exec(plan, st)?;
         self.stats[if out.is_some() { 0 } else { 1 }] += 1;
+        if out.is_some() {
+            self.declines[i] = 0;
+        } else {
+            // a step that keeps declining for this schema is left to R until the
+            // schema changes: each attempt costs its inputs' checks for nothing
+            self.declines[i] += 1;
+            if self.declines[i] >= DECLINES_BEFORE_SKIP {
+                self.declines[i] = 0;
+                if let Slot::Ready(k, _) = &self.slots[i] {
+                    self.slots[i] = Slot::Skip(k.clone());
+                }
+            }
+        }
         Ok(out)
     }
 
@@ -885,6 +1493,7 @@ impl RunLoop {
                 rapi::protect_value(rapi::R_NilValue, || rapi::Rf_install(c"st".as_ptr()))
             }?;
             let kinds = kinds.as_slice().to_vec();
+            let n_steps = kinds.len();
             Ok(RunLoop {
                 slots: kinds.iter().map(|_| Slot::Fresh).collect(),
                 kinds,
@@ -896,14 +1505,28 @@ impl RunLoop {
                 st_sym,
                 stats: [0; 4],
                 saved: false,
+                declines: vec![0; n_steps],
             })
         })
     }
 
     /// Run `ticks` ticks from `state` (tick 0 already recorded); the final state.
-    fn run(&mut self, state: Sexp, ticks: i32) -> savvy::Result<Sexp> {
+    fn run(
+        &mut self,
+        state: Sexp,
+        ticks: i32,
+        need: LogicalSexp,
+        glog: Sexp,
+    ) -> savvy::Result<Sexp> {
         run(|| {
             let n = self.kinds.len();
+            // the ticks whose book-keeping needs R (a snapshot, measures, checks,
+            // progress); the others log their globals into `glog` here
+            let need: Vec<bool> = need.iter().collect();
+            // SAFETY: reading a type tag.
+            let glog_ok = unsafe { rapi::TYPEOF(glog.0) } == VECSXP
+                && len(glog.0) == ticks as usize + 1
+                && need.len() == ticks as usize + 1;
             self.put(state.0)?;
             let (seg, tick) = (self.seg.get(), self.tick.get());
             let mut st = self.call_state(tick, &[0, i32::from(ticks > 0)])?;
@@ -935,7 +1558,23 @@ impl RunLoop {
                     i = j + 1;
                 }
                 let next = if t < ticks { t + 1 } else { 0 };
-                st = self.call_state(tick, &[t, next])?;
+                if !glog_ok || need[t as usize] {
+                    st = self.call_state(tick, &[t, next])?;
+                    continue;
+                }
+                // FR9: `global_log[[t + 1]]`'s globals, then `st$match <- NULL;
+                // st$tick <- next` (as the R callback does)
+                let gl = find_str(st, b"globals")?.map_or_else(rapi_nil, |i| elt(st, i));
+                // SAFETY: main thread; `glog` is the run's own log list (no other R
+                // value aliases it), `t <= ticks` is in range, `gl` is protected
+                // by the state.
+                unsafe { rapi::SET_VECTOR_ELT(glog.0, t as isize, gl) };
+                if next > 0 {
+                    let s1 = without(st, b"match")?;
+                    let s2 = set_tick(s1.get(), next)?;
+                    self.put(s2.get())?;
+                    st = s2.get();
+                }
             }
             Ok(Sexp(st))
         })

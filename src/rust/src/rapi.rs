@@ -128,6 +128,8 @@ extern "C" {
     pub fn Rf_ScalarInteger(x: c_int) -> SEXP;
     pub fn SET_VECTOR_ELT(x: SEXP, i: isize, v: SEXP) -> SEXP;
     pub fn STRING_ELT(x: SEXP, i: isize) -> SEXP;
+    // FR9: native tick book-keeping
+    pub fn Rf_mkChar(s: *const std::os::raw::c_char) -> SEXP;
 }
 
 // src/reduce.c (tidyABM's own C; pure computation, safe on any thread)

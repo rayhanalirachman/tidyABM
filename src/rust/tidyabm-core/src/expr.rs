@@ -125,6 +125,24 @@ pub enum Node {
     /// `runif(n())`
     Runif,
     Reduce(Red, Box<Node>),
+    /// `sum(x, na.rm = TRUE)`, `mean(x, na.rm = TRUE)`
+    ReduceNaRm(Red, Box<Node>),
+    /// a literal vector (`c(1, 2)`, `c("a", "b")`), evaluated by R at compile time
+    ConstVec(Vals<'static>),
+    /// a base function R computes over the evaluated arguments (`^`, `abs()`,
+    /// `cumsum()`, ...): the host's function table entry `.0`
+    Call(usize, Vec<Node>),
+    /// dplyr's `coalesce(x, y, ...)`
+    Coalesce(Vec<Node>),
+    /// `x %in% table` (the engine's `in_rowwise()`, base `match()` for an atomic
+    /// table)
+    In(Box<Node>, Box<Node>),
+    /// `sample(x, size, replace = TRUE)`
+    Sample(Box<Node>, Box<Node>),
+    /// `runif(n(), a, b)` (`false`) / `rnorm(n(), a, b)` (`true`)
+    Rand(bool, Box<Node>, Box<Node>),
+    /// `x[i]`, `i` positive whole numbers or `NA`
+    Index(Box<Node>, Box<Node>),
 }
 
 /// What the evaluator needs from R.
@@ -145,9 +163,30 @@ pub trait Host {
     fn mean(&self, x: &[f64]) -> f64;
     /// `mean(x)` of integers without `NA`.
     fn mean_int(&self, x: &[i32]) -> f64;
+    /// R's function `f` (the program's table) over `args`: its value, or a
+    /// decline where it warned, erred or returned something else than a bare
+    /// vector.
+    fn call(&mut self, f: usize, args: &[Vals]) -> Result<Vals<'static>, Decline>;
+    /// `n` draws of `Rf_runif(a, b)` (`norm = false`) or `Rf_rnorm(a, b)`.
+    fn rand2(&mut self, norm: bool, a: f64, b: f64, n: usize) -> Result<Vec<f64>, Decline>;
+    /// `n` index draws `R_unif_index(dn)`, as 1-based values.
+    fn unif_index(&mut self, dn: f64, n: usize) -> Result<Vec<i32>, Decline>;
 }
 
 type R<T> = Result<T, Decline>;
+
+/// Typed slices of values already cast to one type, for the selections below.
+macro_rules! typed {
+    ($vals:expr, $var:ident) => {
+        $vals
+            .iter()
+            .map(|v| match v {
+                Vals::$var(x) => &x[..],
+                _ => unreachable!("values are cast to the result type first"),
+            })
+            .collect::<Vec<_>>()
+    };
+}
 
 /// The common length of operands of length 1 or `n` (R recycles others too, with or
 /// without a warning; the engine never builds them, so they decline).
@@ -305,7 +344,439 @@ pub fn eval<'a>(node: &Node, inputs: &[Vals<'a>], n: usize, h: &mut dyn Host) ->
         }
         Node::Runif => Ok(Vals::Dbl(Cow::Owned(h.runif(n)?))),
         Node::Reduce(r, x) => reduce(*r, eval(x, inputs, n, h)?, h),
+        Node::ReduceNaRm(r, x) => reduce_na_rm(*r, eval(x, inputs, n, h)?, h),
+        Node::ConstVec(v) => Ok(v.clone()),
+        Node::Call(f, args) => {
+            let mut vals = Vec::with_capacity(args.len());
+            for a in args {
+                vals.push(eval(a, inputs, n, h)?);
+            }
+            h.call(*f, &vals)
+        }
+        Node::Coalesce(args) => {
+            let mut vals = Vec::with_capacity(args.len());
+            for a in args {
+                vals.push(eval(a, inputs, n, h)?);
+            }
+            coalesce(vals, h)
+        }
+        Node::In(x, t) => {
+            let x = eval(x, inputs, n, h)?;
+            let t = eval(t, inputs, n, h)?;
+            is_in(&x, &t, h)
+        }
+        Node::Sample(x, size) => {
+            let x = eval(x, inputs, n, h)?;
+            let size = whole(&eval(size, inputs, n, h)?, 0.0)?;
+            sample(x, size, h)
+        }
+        Node::Rand(norm, a, b) => {
+            let a = scalar_dbl(eval(a, inputs, n, h)?, h)?;
+            let b = scalar_dbl(eval(b, inputs, n, h)?, h)?;
+            let v = h.rand2(*norm, a, b, n)?;
+            if v.iter().any(|x| x.is_nan()) {
+                return Err(Decline("runif()/rnorm() made NaN (R warns)"));
+            }
+            Ok(Vals::Dbl(Cow::Owned(v)))
+        }
+        Node::Index(x, i) => {
+            let x = eval(x, inputs, n, h)?;
+            let i = eval(i, inputs, n, h)?;
+            index(x, &i, h)
+        }
     }
+}
+
+/// The engine's `assign_rule()` for some rows: `value` (length 1 or `rows.len()`)
+/// written into the rows `rows` of column `old`, both cast to their vctrs common
+/// type first (`vec_cast_common()`); a new column (`old` `None`) is `NA` of the
+/// value's type elsewhere (`vec_init()`).
+pub fn assign_rows(
+    old: Option<Vals>,
+    value: Vals,
+    rows: &[bool],
+    h: &dyn Host,
+) -> R<Vals<'static>> {
+    let n = rows.len();
+    if value.len() != 1 && value.len() != n {
+        return Err(Decline("a value of the wrong length"));
+    }
+    let old = match old {
+        Some(o) if o.len() == n => o,
+        Some(_) => return Err(Decline("a column of the wrong length")),
+        None => {
+            // vec_init(value, n): NA of the value's own type
+            let k = match value {
+                Vals::Lgl(_) => Konst::Lgl(NA_INT),
+                Vals::Int(_) => Konst::Int(NA_INT),
+                Vals::Dbl(_) => Konst::Dbl(h.na_real()),
+                Vals::Str(_) => Konst::Str(h.na_str()),
+            };
+            match k {
+                Konst::Lgl(x) => Vals::Lgl(Cow::Owned(vec![x; n])),
+                Konst::Int(x) => Vals::Int(Cow::Owned(vec![x; n])),
+                Konst::Dbl(x) => Vals::Dbl(Cow::Owned(vec![x; n])),
+                Konst::Str(x) => Vals::Str(Cow::Owned(vec![x; n])),
+            }
+        }
+    };
+    let to = common_type(&[&old, &value])?;
+    let old = cast(old, to, h)?;
+    let value = cast(value, to, h)?;
+    fn put<T: Copy>(o: &[T], v: &[T], rows: &[bool]) -> Vec<T> {
+        o.iter()
+            .enumerate()
+            .map(|(i, &x)| if rows[i] { at(v, i) } else { x })
+            .collect()
+    }
+    Ok(match (&old, &value) {
+        (Vals::Lgl(o), Vals::Lgl(v)) => Vals::Lgl(Cow::Owned(put(o, v, rows))),
+        (Vals::Int(o), Vals::Int(v)) => Vals::Int(Cow::Owned(put(o, v, rows))),
+        (Vals::Dbl(o), Vals::Dbl(v)) => Vals::Dbl(Cow::Owned(put(o, v, rows))),
+        (Vals::Str(o), Vals::Str(v)) => Vals::Str(Cow::Owned(put(o, v, rows))),
+        _ => return Err(Decline("values of incompatible types")),
+    })
+}
+
+/// The rows of each value of a `.by` key, in the order `group_by()` and
+/// `vec_order()` visit them: ascending, `NA` last (logicals `FALSE`, `TRUE`,
+/// `NA`), each group's rows in row order; `-0` and `0` one value. `None` for a
+/// key the engine does not group natively (strings, a double `NaN`/`NA`).
+pub fn group_rows(key: &Vals) -> Option<Vec<Vec<usize>>> {
+    use std::collections::HashMap;
+    match key {
+        Vals::Int(v) | Vals::Lgl(v) => {
+            let mut at: HashMap<i32, usize> = HashMap::new();
+            let mut out: Vec<(i32, Vec<usize>)> = Vec::new();
+            for (i, &x) in v.iter().enumerate() {
+                let g = *at.entry(x).or_insert_with(|| {
+                    out.push((x, Vec::new()));
+                    out.len() - 1
+                });
+                out[g].1.push(i);
+            }
+            out.sort_by_key(|(x, _)| (*x == NA_INT, *x));
+            Some(out.into_iter().map(|(_, r)| r).collect())
+        }
+        Vals::Dbl(v) => {
+            if v.iter().any(|x| x.is_nan()) {
+                return None;
+            }
+            let mut at: HashMap<u64, usize> = HashMap::new();
+            let mut out: Vec<(f64, Vec<usize>)> = Vec::new();
+            for (i, &x) in v.iter().enumerate() {
+                let bits = if x == 0.0 { 0 } else { x.to_bits() };
+                let g = *at.entry(bits).or_insert_with(|| {
+                    out.push((x, Vec::new()));
+                    out.len() - 1
+                });
+                out[g].1.push(i);
+            }
+            out.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+            Some(out.into_iter().map(|(_, r)| r).collect())
+        }
+        Vals::Str(_) => None,
+    }
+}
+
+/// `v`'s elements at `rows`.
+pub fn take<'a>(v: &Vals, rows: &[usize]) -> Vals<'a> {
+    match v {
+        Vals::Lgl(x) => Vals::Lgl(Cow::Owned(rows.iter().map(|&i| at(x, i)).collect())),
+        Vals::Int(x) => Vals::Int(Cow::Owned(rows.iter().map(|&i| at(x, i)).collect())),
+        Vals::Dbl(x) => Vals::Dbl(Cow::Owned(rows.iter().map(|&i| at(x, i)).collect())),
+        Vals::Str(x) => Vals::Str(Cow::Owned(rows.iter().map(|&i| at(x, i)).collect())),
+    }
+}
+
+/// Per-group values (each of length 1 or its group's size) put back at their
+/// rows of an `n`-row result, in vctrs' common type of all of them
+/// (`list_unchop(indices =)`).
+pub fn unchop(parts: Vec<Vals>, groups: &[Vec<usize>], n: usize, h: &dyn Host) -> R<Vals<'static>> {
+    let to = common_type(&parts.iter().collect::<Vec<_>>())?;
+    let mut cast_parts = Vec::with_capacity(parts.len());
+    for p in parts {
+        cast_parts.push(cast(p, to, h)?);
+    }
+    fn fill<T: Copy>(parts: &[&[T]], groups: &[Vec<usize>], n: usize, init: T) -> Vec<T> {
+        let mut out = vec![init; n];
+        for (p, rows) in parts.iter().zip(groups) {
+            for (j, &i) in rows.iter().enumerate() {
+                out[i] = at(p, j);
+            }
+        }
+        out
+    }
+    Ok(match to {
+        0 => Vals::Lgl(Cow::Owned(fill(
+            &typed!(cast_parts, Lgl),
+            groups,
+            n,
+            NA_INT,
+        ))),
+        1 => Vals::Int(Cow::Owned(fill(
+            &typed!(cast_parts, Int),
+            groups,
+            n,
+            NA_INT,
+        ))),
+        2 => Vals::Dbl(Cow::Owned(fill(
+            &typed!(cast_parts, Dbl),
+            groups,
+            n,
+            h.na_real(),
+        ))),
+        _ => Vals::Str(Cow::Owned(fill(
+            &typed!(cast_parts, Str),
+            groups,
+            n,
+            h.na_str(),
+        ))),
+    })
+}
+
+/// `value[!keep] <- old[!keep]` (base R's `[<-`: the higher of the two types;
+/// strings with numbers decline); `old` `None` writes `NA`.
+pub fn keep_old<'a>(
+    value: Vals<'a>,
+    old: Option<&Vals>,
+    keep: &[bool],
+    h: &dyn Host,
+) -> R<Vals<'a>> {
+    let to = match old {
+        Some(o) => {
+            if (o.rank() == 3) != (value.rank() == 3) {
+                return Err(Decline("strings replaced by numbers"));
+            }
+            o.rank().max(value.rank())
+        }
+        None => value.rank(),
+    };
+    let v = cast(value, to, h)?;
+    let o = match old {
+        Some(o) => Some(cast(o.clone(), to, h)?),
+        None => None,
+    };
+    fn put<T: Copy>(v: &[T], o: Option<&[T]>, keep: &[bool], na: T) -> Vec<T> {
+        (0..keep.len())
+            .map(|i| {
+                if keep[i] {
+                    at(v, i)
+                } else {
+                    o.map_or(na, |o| at(o, i))
+                }
+            })
+            .collect()
+    }
+    Ok(match (&v, &o) {
+        (Vals::Lgl(x), Some(Vals::Lgl(y))) => Vals::Lgl(Cow::Owned(put(x, Some(y), keep, NA_INT))),
+        (Vals::Lgl(x), None) => Vals::Lgl(Cow::Owned(put(x, None, keep, NA_INT))),
+        (Vals::Int(x), Some(Vals::Int(y))) => Vals::Int(Cow::Owned(put(x, Some(y), keep, NA_INT))),
+        (Vals::Int(x), None) => Vals::Int(Cow::Owned(put(x, None, keep, NA_INT))),
+        (Vals::Dbl(x), Some(Vals::Dbl(y))) => {
+            Vals::Dbl(Cow::Owned(put(x, Some(y), keep, h.na_real())))
+        }
+        (Vals::Dbl(x), None) => Vals::Dbl(Cow::Owned(put(x, None, keep, h.na_real()))),
+        (Vals::Str(x), Some(Vals::Str(y))) => {
+            Vals::Str(Cow::Owned(put(x, Some(y), keep, h.na_str())))
+        }
+        (Vals::Str(x), None) => Vals::Str(Cow::Owned(put(x, None, keep, h.na_str()))),
+        _ => return Err(Decline("values of incompatible types")),
+    })
+}
+
+/// A length-1 number as a double.
+fn scalar_dbl(v: Vals, h: &dyn Host) -> R<f64> {
+    if v.len() != 1 {
+        return Err(Decline("a parameter that is not one value"));
+    }
+    Ok(as_dbl(v, h.na_real())?[0])
+}
+
+/// A length-1 whole number `>= lo` (not `NA`) as a `usize`.
+fn whole(v: &Vals, lo: f64) -> R<usize> {
+    let x = match v {
+        Vals::Int(x) if x.len() == 1 && x[0] != NA_INT => f64::from(x[0]),
+        Vals::Dbl(x) if x.len() == 1 => x[0],
+        _ => return Err(Decline("a size that is not one whole number")),
+    };
+    if !(x.is_finite() && x >= lo && x.fract() == 0.0 && x <= i32::MAX as f64) {
+        return Err(Decline("a size that is not one whole number"));
+    }
+    Ok(x as usize)
+}
+
+fn reduce_na_rm<'a>(r: Red, x: Vals<'a>, h: &dyn Host) -> R<Vals<'a>> {
+    Ok(match x {
+        Vals::Dbl(v) => {
+            let kept: Vec<f64> = v.iter().copied().filter(|x| !x.is_nan()).collect();
+            Vals::Dbl(Cow::Owned(vec![match r {
+                Red::Sum => h.sum(&kept),
+                Red::Mean => h.mean(&kept),
+            }]))
+        }
+        Vals::Int(v) | Vals::Lgl(v) => match r {
+            Red::Sum => match crate::reduce::sum_int(&v, true) {
+                Some(s) => Vals::Int(Cow::Owned(vec![s])),
+                None => return Err(Decline("integer sum overflows")),
+            },
+            Red::Mean => {
+                let kept: Vec<i32> = v.iter().copied().filter(|&x| x != NA_INT).collect();
+                Vals::Dbl(Cow::Owned(vec![h.mean_int(&kept)]))
+            }
+        },
+        Vals::Str(_) => return Err(Decline("sum()/mean() of strings")),
+    })
+}
+
+/// Is element `i` of `v` missing as vctrs sees it (`NA`, and `NaN` for doubles)?
+fn missing(v: &Vals, i: usize, na_str: usize) -> bool {
+    match v {
+        Vals::Dbl(x) => at(x, i).is_nan(),
+        Vals::Int(x) | Vals::Lgl(x) => at(x, i) == NA_INT,
+        Vals::Str(x) => at(x, i) == na_str,
+    }
+}
+
+/// dplyr's `coalesce()`: the common type and size of the arguments, each
+/// missing element filled from the next argument.
+fn coalesce<'a>(vals: Vec<Vals<'a>>, h: &dyn Host) -> R<Vals<'a>> {
+    if vals.is_empty() || vals.iter().any(Vals::is_empty) {
+        return Err(Decline("coalesce() of nothing"));
+    }
+    let n = size_common(&vals.iter().map(Vals::len).collect::<Vec<_>>())?;
+    let to = common_type(&vals.iter().collect::<Vec<_>>())?;
+    let mut cast_vals = Vec::with_capacity(vals.len());
+    for v in vals {
+        cast_vals.push(cast(v, to, h)?);
+    }
+    let na_str = h.na_str();
+    // the row's value: the first argument not missing there, else the last's
+    let pick_row = |i: usize| {
+        cast_vals
+            .iter()
+            .position(|v| !missing(v, i, na_str))
+            .unwrap_or(cast_vals.len() - 1)
+    };
+    let rows: Vec<usize> = (0..n).map(pick_row).collect();
+    Ok(match to {
+        0 => {
+            let v = typed!(cast_vals, Lgl);
+            Vals::Lgl(Cow::Owned((0..n).map(|i| at(v[rows[i]], i)).collect()))
+        }
+        1 => {
+            let v = typed!(cast_vals, Int);
+            Vals::Int(Cow::Owned((0..n).map(|i| at(v[rows[i]], i)).collect()))
+        }
+        2 => {
+            let v = typed!(cast_vals, Dbl);
+            Vals::Dbl(Cow::Owned((0..n).map(|i| at(v[rows[i]], i)).collect()))
+        }
+        _ => {
+            let v = typed!(cast_vals, Str);
+            Vals::Str(Cow::Owned((0..n).map(|i| at(v[rows[i]], i)).collect()))
+        }
+    })
+}
+
+/// `match(x, table, nomatch = 0) > 0` for atomic `x` and `table`.
+fn is_in<'a>(x: &Vals, t: &Vals, h: &dyn Host) -> R<Vals<'a>> {
+    let out: Vec<i32> = match (x, t) {
+        (Vals::Str(x), Vals::Str(t)) => {
+            let ascii = |s: &usize| *s == h.na_str() || h.str_ascii(*s);
+            if !x.iter().all(ascii) || !t.iter().all(ascii) {
+                return Err(Decline("%in% of non-ASCII strings"));
+            }
+            x.iter().map(|s| t.contains(s) as i32).collect()
+        }
+        (Vals::Str(_), _) | (_, Vals::Str(_)) => {
+            return Err(Decline("%in% of strings and numbers"));
+        }
+        (Vals::Int(x) | Vals::Lgl(x), Vals::Int(t) | Vals::Lgl(t)) => {
+            x.iter().map(|v| t.contains(v) as i32).collect()
+        }
+        _ => {
+            let na = h.na_real();
+            let x = as_dbl(x.clone(), na)?;
+            let t = as_dbl(t.clone(), na)?;
+            // R tells NA from NaN in match(): left to R
+            if x.iter().chain(t.iter()).any(|v| v.is_nan()) {
+                return Err(Decline("%in% meets NA or NaN doubles"));
+            }
+            x.iter().map(|v| t.contains(v) as i32).collect()
+        }
+    };
+    Ok(Vals::Lgl(Cow::Owned(out)))
+}
+
+/// `sample(x, size, replace = TRUE)`: `sample.int(x, ...)` for one whole number
+/// `x >= 1`, else `x[sample.int(length(x), ...)]`.
+fn sample<'a>(x: Vals<'a>, size: usize, h: &mut dyn Host) -> R<Vals<'a>> {
+    let one_num = x.len() == 1 && matches!(x, Vals::Int(_) | Vals::Dbl(_));
+    if one_num {
+        let v = match &x {
+            Vals::Int(v) if v[0] != NA_INT => Some(f64::from(v[0])),
+            Vals::Dbl(v) => Some(v[0]),
+            _ => None,
+        };
+        if let Some(v) = v.filter(|v| v.is_finite() && *v >= 1.0) {
+            if v.fract() != 0.0 || v > i32::MAX as f64 {
+                return Err(Decline("sample() of a number that is not whole"));
+            }
+            return Ok(Vals::Int(Cow::Owned(h.unif_index(v, size)?)));
+        }
+    }
+    if x.is_empty() || x.len() > i32::MAX as usize {
+        return Err(Decline("sample() of an empty vector"));
+    }
+    let idx = h.unif_index(x.len() as f64, size)?;
+    let ix = Vals::Int(Cow::Owned(idx));
+    index(x, &ix, h)
+}
+
+/// `x[i]` for positive whole indices (`NA` or past the end gives `NA`).
+fn index<'a>(x: Vals<'a>, i: &Vals, h: &dyn Host) -> R<Vals<'a>> {
+    let m = x.len();
+    let pos: Vec<Option<usize>> = match i {
+        Vals::Int(v) => v
+            .iter()
+            .map(|&k| match k {
+                NA_INT => Ok(None),
+                k if k >= 1 => Ok(Some(k as usize - 1).filter(|&j| j < m)),
+                _ => Err(Decline("an index that is not positive")),
+            })
+            .collect::<R<_>>()?,
+        Vals::Dbl(v) => v
+            .iter()
+            .map(|&k| {
+                if !(k.is_finite() && k >= 1.0) {
+                    return Err(Decline("an index that is not a positive number"));
+                }
+                Ok(Some(k.trunc() as usize - 1).filter(|&j| j < m))
+            })
+            .collect::<R<_>>()?,
+        _ => return Err(Decline("an index that is not a number")),
+    };
+    Ok(match x {
+        Vals::Dbl(v) => {
+            let na = h.na_real();
+            Vals::Dbl(Cow::Owned(
+                pos.iter().map(|p| p.map_or(na, |j| v[j])).collect(),
+            ))
+        }
+        Vals::Int(v) => Vals::Int(Cow::Owned(
+            pos.iter().map(|p| p.map_or(NA_INT, |j| v[j])).collect(),
+        )),
+        Vals::Lgl(v) => Vals::Lgl(Cow::Owned(
+            pos.iter().map(|p| p.map_or(NA_INT, |j| v[j])).collect(),
+        )),
+        Vals::Str(v) => {
+            let na = h.na_str();
+            Vals::Str(Cow::Owned(
+                pos.iter().map(|p| p.map_or(na, |j| v[j])).collect(),
+            ))
+        }
+    })
 }
 
 fn unary<'a>(op: Un, x: Vals<'a>, h: &dyn Host) -> R<Vals<'a>> {
@@ -485,19 +956,6 @@ fn cmp_vec<T: PartialOrd + Copy>(op: Bin, x: &[T], y: &[T], na: impl Fn(T) -> bo
         Bin::Eq => map2(x, y, |p, q| g(p, q, p == q)),
         _ => map2(x, y, |p, q| g(p, q, p != q)),
     }
-}
-
-/// Typed slices of values already cast to one type, for the selections below.
-macro_rules! typed {
-    ($vals:expr, $var:ident) => {
-        $vals
-            .iter()
-            .map(|v| match v {
-                Vals::$var(x) => &x[..],
-                _ => unreachable!("values are cast to the result type first"),
-            })
-            .collect::<Vec<_>>()
-    };
 }
 
 /// `case_when()`'s pick per row: the first value whose condition is `TRUE`, else
@@ -773,6 +1231,61 @@ mod tests {
         fn mean_int(&self, x: &[i32]) -> f64 {
             x.iter().map(|&v| v as f64).sum::<f64>() / x.len() as f64
         }
+        fn call(&mut self, _f: usize, _args: &[Vals]) -> R<Vals<'static>> {
+            Err(Decline("no R here"))
+        }
+        fn rand2(&mut self, _norm: bool, a: f64, b: f64, n: usize) -> R<Vec<f64>> {
+            Ok(self.draws.drain(..n).map(|u| a + (b - a) * u).collect())
+        }
+        fn unif_index(&mut self, dn: f64, n: usize) -> R<Vec<i32>> {
+            Ok(self
+                .draws
+                .drain(..n)
+                .map(|u| (u * dn).floor() as i32 + 1)
+                .collect())
+        }
+    }
+
+    #[test]
+    fn coalesce_in_sample_index() {
+        let mut h = Plain {
+            draws: vec![0.1, 0.9, 0.5],
+        };
+        // coalesce(x, 0L): double; NaN is missing too
+        let ins = [dbl(&[1.0, na_real(), f64::NAN])];
+        let c = Node::Coalesce(vec![Node::Input(0), Node::Const(Konst::Int(0))]);
+        let Vals::Dbl(v) = eval(&c, &ins, 3, &mut h).unwrap() else {
+            panic!()
+        };
+        assert_eq!(*v, [1.0, 0.0, 0.0]);
+        // 2 %in% c(1, 2) on integers; doubles with NA decline
+        let t = Vals::Int(Cow::Owned(vec![1, 2]));
+        let x = Vals::Int(Cow::Owned(vec![2, 3, NA_INT]));
+        let Vals::Lgl(v) = is_in(&x, &t, &h).unwrap() else {
+            panic!()
+        };
+        assert_eq!(*v, [1, 0, 0]);
+        assert!(is_in(&dbl(&[na_real()]), &dbl(&[1.0]), &h).is_err());
+        // sample(c(10, 20), 3, TRUE) and sample(5, 0, TRUE)
+        let s = sample(dbl(&[10.0, 20.0]), 3, &mut h).unwrap();
+        assert!(matches!(s, Vals::Dbl(v) if *v == [10.0, 20.0, 20.0]));
+        assert!(matches!(sample(dbl(&[5.0]), 0, &mut h).unwrap(), Vals::Int(v) if v.is_empty()));
+        assert!(sample(dbl(&[2.5]), 1, &mut h).is_err());
+        // x[i]: NA and past the end give NA; 0 declines
+        let i = Vals::Int(Cow::Owned(vec![2, NA_INT, 9]));
+        let Vals::Dbl(v) = index(dbl(&[1.0, 2.0]), &i, &h).unwrap() else {
+            panic!()
+        };
+        assert_eq!(
+            (v[0], v[1].to_bits(), v[2].to_bits()),
+            (2.0, na_real().to_bits(), na_real().to_bits())
+        );
+        assert!(index(dbl(&[1.0]), &Vals::Int(Cow::Owned(vec![0])), &h).is_err());
+        // sum(x, na.rm = TRUE) skips NA
+        let Vals::Dbl(v) = reduce_na_rm(Red::Sum, dbl(&[1.0, na_real(), 2.0]), &h).unwrap() else {
+            panic!()
+        };
+        assert_eq!(v[0], 3.0);
     }
 
     fn dbl(v: &[f64]) -> Vals<'static> {

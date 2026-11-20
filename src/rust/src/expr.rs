@@ -32,8 +32,11 @@ pub struct RxProgram {
     rules: Vec<Node>,
     writes: Vec<Option<usize>>,
     draws: bool,
+    /// the R functions `Node::Call` names (kept alive by `_fns`)
+    fns: Vec<SEXP>,
     // the IR list: keeps the literal strings' CHARSXPs alive
     _ir: H,
+    _fns: H,
 }
 
 fn bad(what: &str) -> savvy::Error {
@@ -121,16 +124,41 @@ fn decode(x: SEXP) -> savvy::Result<Node> {
         "sqrt" => Node::Math(MathFn::Sqrt, boxed(1)?),
         "sum" => Node::Reduce(Red::Sum, boxed(1)?),
         "mean" => Node::Reduce(Red::Mean, boxed(1)?),
+        "sum_narm" => Node::ReduceNaRm(Red::Sum, boxed(1)?),
+        "mean_narm" => Node::ReduceNaRm(Red::Mean, boxed(1)?),
+        "constv" => {
+            let v = l.get_by_index(1).ok_or_else(|| bad("constv"))?.0;
+            match vals_of(v, false)? {
+                // the IR list keeps `v` (and its CHARSXPs) alive
+                Some(v) => Node::ConstVec(owned(v)),
+                None => return Err(bad("constv of an unsupported type")),
+            }
+        }
+        "call" => {
+            let k = l.get_by_index(1).ok_or_else(|| bad("call index"))?.0;
+            let k = store::numbers_of::<i32>(k, rapi::INTSXP)?.ok_or_else(|| bad("call index"))?;
+            let k = usize::try_from(k[0]).map_err(|_| bad("call index"))?;
+            Node::Call(k, (2..l.len()).map(arg).collect::<savvy::Result<Vec<_>>>()?)
+        }
+        "coalesce" => Node::Coalesce((1..l.len()).map(arg).collect::<savvy::Result<Vec<_>>>()?),
+        "%in%" => Node::In(boxed(1)?, boxed(2)?),
+        "sample" => Node::Sample(boxed(1)?, boxed(2)?),
+        "runif_ab" => Node::Rand(false, boxed(1)?, boxed(2)?),
+        "rnorm_ab" => Node::Rand(true, boxed(1)?, boxed(2)?),
+        "[" => Node::Index(boxed(1)?, boxed(2)?),
         other => return Err(bad(&format!("unknown operator `{other}`"))),
     })
 }
 
 fn draws(n: &Node) -> bool {
     match n {
-        Node::Runif => true,
-        Node::Const(_) | Node::Input(_) | Node::N => false,
-        Node::Unary(_, x) | Node::Math(_, x) | Node::Reduce(_, x) => draws(x),
-        Node::Bin(_, a, b) => draws(a) || draws(b),
+        Node::Runif | Node::Sample(..) | Node::Rand(..) => true,
+        Node::Const(_) | Node::Input(_) | Node::N | Node::ConstVec(_) => false,
+        Node::Unary(_, x) | Node::Math(_, x) | Node::Reduce(_, x) | Node::ReduceNaRm(_, x) => {
+            draws(x)
+        }
+        Node::Bin(_, a, b) | Node::In(a, b) | Node::Index(a, b) => draws(a) || draws(b),
+        Node::Call(_, a) | Node::Coalesce(a) => a.iter().any(draws),
         Node::IfElse(a, b, c) => draws(a) || draws(b) || draws(c),
         Node::CaseWhen(p, d) => {
             p.iter().any(|(c, v)| draws(c) || draws(v)) || d.as_deref().is_some_and(draws)
@@ -232,6 +260,7 @@ pub(crate) fn owned(v: Vals<'_>) -> Vals<'static> {
 
 struct RHost<'r> {
     rng: Option<&'r mut RRng>,
+    fns: &'r [SEXP],
     na_real: f64,
     na_str: usize,
     /// an R condition caught while calling R back, re-raised after `eval()`
@@ -287,6 +316,103 @@ impl Host for RHost<'_> {
     fn mean_int(&self, x: &[i32]) -> f64 {
         reduce::mean_int(x)
     }
+    fn call(&mut self, f: usize, args: &[Vals]) -> Result<Vals<'static>, Decline> {
+        let Some(&fun) = self.fns.get(f) else {
+            return Err(Decline("a function out of range"));
+        };
+        // numbers only: with them the functions called this way cannot err
+        if args.iter().any(|a| matches!(a, Vals::Str(_))) {
+            return Err(Decline("a string handed to an R function"));
+        }
+        if args.len() > 1 {
+            common_len(args)?;
+        }
+        match call_fn(fun, args) {
+            Ok(Some(v)) => Ok(v),
+            Ok(None) => Err(Decline(
+                "R's function warned, erred or gave a classed value",
+            )),
+            Err(e) => {
+                self.err = Some(e);
+                Err(Decline("an R condition in a function call"))
+            }
+        }
+    }
+    fn rand2(&mut self, norm: bool, a: f64, b: f64, n: usize) -> Result<Vec<f64>, Decline> {
+        let Some(r) = self.rng.as_deref_mut() else {
+            return Err(Decline("a draw outside the RNG scope"));
+        };
+        let mut v = vec![0.0; n];
+        let f = if norm { rapi::Rf_rnorm } else { rapi::Rf_runif };
+        if let Err(e) = r.fill(&mut v, Draw::Rmath2(f, a, b)) {
+            self.err = Some(e);
+            return Err(Decline("an R condition while drawing"));
+        }
+        Ok(v)
+    }
+    fn unif_index(&mut self, dn: f64, n: usize) -> Result<Vec<i32>, Decline> {
+        let Some(r) = self.rng.as_deref_mut() else {
+            return Err(Decline("a draw outside the RNG scope"));
+        };
+        let mut v = vec![0.0; n];
+        if let Err(e) = r.fill(&mut v, Draw::Index(dn)) {
+            self.err = Some(e);
+            return Err(Decline("an R condition while drawing"));
+        }
+        Ok(v.iter().map(|&x| x as i32 + 1).collect())
+    }
+}
+
+/// The common length of arguments of length 1 or `n` (else a decline: R would
+/// recycle, maybe with a warning).
+fn common_len(args: &[Vals]) -> Result<usize, Decline> {
+    let mut n = 1;
+    for a in args {
+        match a.len() {
+            0 => return Err(Decline("zero-length argument")),
+            1 => {}
+            l if n == 1 || n == l => n = l,
+            _ => return Err(Decline("arguments of different lengths")),
+        }
+    }
+    Ok(n)
+}
+
+/// R function `fun` called with `args` (as new R vectors); `None` when it
+/// returned `NULL` (a guarded function caught a condition) or anything else than
+/// a bare logical, integer or double vector.
+fn call_fn(fun: SEXP, args: &[Vals]) -> savvy::Result<Option<Vals<'static>>> {
+    // the arguments as R vectors, kept in a list while the call is built
+    let mut held = OwnedListSexp::new(args.len(), false)?;
+    for (i, a) in args.iter().enumerate() {
+        held.set_value(i, to_r(a, a.len())?)?;
+    }
+    let hp = held.inner();
+    let k = args.len();
+    // SAFETY: main thread; `fun` is kept by the program, the arguments by `held`;
+    // every object allocated is protected until the result is kept; an R error
+    // longjmps to `protect` and comes back as `Err`.
+    let (x, tok) = unsafe {
+        rapi::protect_value((rapi::R_NilValue, rapi::R_NilValue), move || {
+            let mut a = rapi::R_NilValue;
+            for i in (0..k).rev() {
+                a = rapi::Rf_protect(rapi::Rf_cons(rapi::VECTOR_ELT(hp, i as isize), a));
+            }
+            let call = rapi::Rf_protect(rapi::Rf_lcons(fun, a));
+            let res = rapi::Rf_protect(rapi::Rf_eval(call, rapi::R_BaseEnv));
+            let tok = savvy::protect::insert_to_preserved_list(res);
+            rapi::Rf_unprotect(k as i32 + 2);
+            (res, tok)
+        })
+    }?;
+    let res = store::kept_from(x, tok);
+    let x = res.get();
+    // SAFETY: reading a type tag.
+    let t = unsafe { rapi::TYPEOF(x) };
+    if !matches!(t, REALSXP | rapi::INTSXP | LGLSXP) || !crate::runloop::all_bare(&[x])? {
+        return Ok(None);
+    }
+    Ok(vals_of(x, false)?.map(owned))
 }
 
 /// R's own `exp(x)` (`log`, `sqrt`) over a copy of `x`, its result copied back.
@@ -362,9 +488,11 @@ pub(crate) fn to_r(v: &Vals, n: usize) -> savvy::Result<Sexp> {
 impl RxProgram {
     /// Decode the IR: `rules` a list of node trees, `writes` (integer, 0-based, -1
     /// for none) the input each rule's result replaces for the rules after it.
-    fn new(rules: ListSexp, writes: savvy::IntegerSexp) -> savvy::Result<Self> {
+    fn new(rules: ListSexp, writes: savvy::IntegerSexp, fns: ListSexp) -> savvy::Result<Self> {
         run(|| {
             let ir = store::keep(rules.inner())?;
+            let kept_fns = store::keep(fns.inner())?;
+            let fn_list: Vec<SEXP> = fns.values_iter().map(|f| f.0).collect();
             let mut out = Vec::with_capacity(rules.len());
             for r in rules.values_iter() {
                 out.push(decode(r.0)?);
@@ -382,7 +510,9 @@ impl RxProgram {
                 rules: out,
                 writes,
                 draws,
+                fns: fn_list,
                 _ir: ir,
+                _fns: kept_fns,
             })
         })
     }
@@ -427,6 +557,51 @@ impl RxProgram {
         self.draws
     }
 
+    /// The input rule `k` overwrites for the rules after it.
+    pub(crate) fn write_of(&self, k: usize) -> Option<usize> {
+        self.writes.get(k).copied().flatten()
+    }
+
+    /// Does rule `k` draw?
+    pub(crate) fn draws_rule(&self, k: usize) -> bool {
+        self.rules.get(k).is_some_and(draws)
+    }
+
+    /// Rule `k` alone over `n` rows of `ins` (a step whose rules R and Rust
+    /// share: each in its turn); as [`RxProgram::compute`].
+    pub(crate) fn compute_one<'a>(
+        &self,
+        k: usize,
+        ins: &[Vals<'a>],
+        n: usize,
+    ) -> savvy::Result<Result<Vals<'a>, Decline>> {
+        let rule = self.rules.get(k).ok_or_else(|| bad("rule out of range"))?;
+        // SAFETY: reading statics of R's (its NA_real_ and NA_character_).
+        let (na_real, na_str) = unsafe { (rapi::R_NaReal, rapi::R_NaString as usize) };
+        let body = |rng: Option<&mut RRng>| -> savvy::Result<Result<Vals<'a>, Decline>> {
+            let mut h = RHost {
+                rng,
+                fns: &self.fns,
+                na_real,
+                na_str,
+                err: None,
+            };
+            match ce::eval(rule, ins, n, &mut h) {
+                Ok(v) if v.len() == n || v.len() == 1 => Ok(Ok(v)),
+                Ok(_) => Ok(Err(Decline("a result of the wrong length"))),
+                Err(d) => match h.err.take() {
+                    Some(e) => Err(e),
+                    None => Ok(Err(d)),
+                },
+            }
+        };
+        if draws(rule) {
+            rng::with_rng(|r| body(Some(r)))
+        } else {
+            body(None)
+        }
+    }
+
     /// Every rule, in order, over `n` rows of `ins` (the later rules seeing the
     /// inputs earlier ones overwrite); `Err(Decline)` where R must evaluate the
     /// step, and also for a result whose length is neither `out_n` nor 1. An R
@@ -442,6 +617,7 @@ impl RxProgram {
         let mut body = |rng: Option<&mut RRng>| -> savvy::Result<Result<Vec<Vals<'a>>, Decline>> {
             let mut h = RHost {
                 rng,
+                fns: &self.fns,
                 na_real,
                 na_str,
                 err: None,
@@ -480,6 +656,41 @@ impl RxProgram {
             other => other,
         })
     }
+}
+
+/// `assign_rule()`'s write of `value` (length 1 or `rows.len()`) into the rows
+/// `rows` of column `old` (`None`: a new column, `NA` elsewhere), in the vctrs
+/// common type of the two.
+pub(crate) fn assign_rows(
+    old: Option<Vals>,
+    value: &Vals,
+    rows: &[bool],
+) -> savvy::Result<Result<Vals<'static>, Decline>> {
+    // SAFETY: reading statics of R's (its NA_real_ and NA_character_).
+    let (na_real, na_str) = unsafe { (rapi::R_NaReal, rapi::R_NaString as usize) };
+    let h = RHost {
+        rng: None,
+        fns: &[],
+        na_real,
+        na_str,
+        err: None,
+    };
+    Ok(ce::assign_rows(old, value.clone(), rows, &h))
+}
+
+/// `f` with an evaluator host that has no generator and no functions (R's NA
+/// values only), for the typing helpers of `tidyabm_core::expr`.
+pub(crate) fn with_host<T>(f: impl FnOnce(&dyn Host) -> T) -> T {
+    // SAFETY: reading statics of R's (its NA_real_ and NA_character_).
+    let (na_real, na_str) = unsafe { (rapi::R_NaReal, rapi::R_NaString as usize) };
+    let h = RHost {
+        rng: None,
+        fns: &[],
+        na_real,
+        na_str,
+        err: None,
+    };
+    f(&h)
 }
 
 /// Keep `d` as the reason the last evaluation declined (for `rs_rx_reason()`).

@@ -19,7 +19,7 @@
 rust_kernels <- list(
   abm_neighbours = list(fun = rk_native, auto = FALSE, store = FALSE, can = rl_nb_ok,
                         native = 3L),
-  abm_rules      = list(fun = rk_native, auto = FALSE, store = FALSE, can = rx_rules_ok,
+  abm_rules      = list(fun = rk_native, auto = FALSE, store = FALSE, can = rx_rules_mixed_ok,
                         native = 1L),
   abm_global     = list(fun = rk_native, auto = FALSE, store = FALSE, can = rx_global_ok,
                         native = 2L)

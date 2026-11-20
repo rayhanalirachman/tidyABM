@@ -167,10 +167,18 @@ copied into Rust only for a snapshot that may reach the result (lazy copy-in).
 
 ## Compiled formulas (phase 5)
 
-`abm_rules()` (no `.by`, nothing read of a pairing, no pairing splitting the rows,
-no relation, no value from the formula's environment) and `abm_global()` (no
-`.by`) run natively inside the Rust tick loop (next sections) when every formula of the step is in the grammar of
-`R/rust-expr.R` (see its header and `rx_coverage(go)` for the reason a rule is not).
+`abm_rules()` (no `.by`, nothing read of a pairing, no relation) and `abm_global()`
+(no `.by`) run natively inside the Rust tick loop (next sections) when a formula of
+the step is in the grammar of `R/rust-expr.R` (see its header and `rx_coverage(go)`
+for the reason a rule is not). An `abm_rules()` step may mix compiled rules with
+rules R evaluates (user functions, `Map()`, ...): `rl_rule_fns()`'s `rule_fn` is
+called for those in rule order (the native rules in between draw in the same
+order); once an R rule has run its effects stay, so a later native decline does not
+replay the step but hands that rule and the rest to R from the stream before it
+(`rng_save`/`rng_restore`). Values from the formula's environment are read every
+step through `scope_fn` (as the R engine reads them). Under a standing match with
+pairs, a match-scope step of elementwise rules writes only the placed agents
+(`assign_rows()`: vctrs' common type of column and value); other rules go to R.
 How it fits together:
 
 * `rx_compile()` turns a formula into nested lists once per session; `rx_program()`
@@ -187,6 +195,13 @@ How it fits together:
 * `rl_prep()` returns `FALSE` for a step whose formulas can never compile (it
   then always runs in R); `can(step)` tells "auto" whether a run has anything a
   kernel can take.
+
+A pure base function whose bits only R's own code gives (`^`, `abs`, `round`,
+`cumsum`, `min`/`max`, `%%`, `as.integer`, ...) is not reimplemented: list it in
+`rx_call_spec` (arity, and whether it can warn) and the evaluator calls R's own
+function on the evaluated numeric arguments (`Node::Call`); one that can warn is
+called through a guard that turns any condition into a decline (`%%` warns about
+lost accuracy for large operands: found by the property test).
 
 Adding a function to the grammar: add it to `rx_fns()` and `rx_compile()` (R), to
 `decode()` (`src/rust/src/expr.rs`) and to `Node`/`eval()` in
@@ -229,7 +244,8 @@ A run with a step that a *native* kernel takes (`native` in `rust_kernels`) runs
 with its tick loop in Rust: `run_once_loop()` (`R/run-loop.R`) builds the state
 and the R callbacks, `RunLoop` (`src/rust/src/runloop.rs`) owns the state list for
 the whole run. Native steps (today `abm_rules`/`abm_global` in the compiled
-grammar and network `abm_neighbours` of bare columns) run without any R code; every
+grammar and network `abm_neighbours` `sum`/`mean` of bare double, integer or
+logical columns) run without any R code; every
 other step, and each run of consecutive such steps, is one callback (`seg`) into
 the R engine's own `run_step()`. Rules:
 
@@ -248,10 +264,21 @@ the R engine's own `run_step()`. Rules:
   `getAttrib(x, names)` on a list is the one call made outside it (it neither
   allocates nor raises there). `ATTRIB()`/`OBJECT()` are not API: attributes are
   checked with `all_bare()` (copy onto an empty vector, `R_compute_identical`).
+  `expr::to_r()` returns its new vector *unprotected*: store it at once into a
+  list that already exists (`OwnedListSexp::set_value`), never allocate the
+  holder after it (that freed a column now and then in 0f61deb's neighbour
+  commit; `TIDYABM_GCTORTURE=run` runs a `gctorture()` test of the native steps).
+* Rules/global descriptors are memoised for the session (`rl_prep_memo()`,
+  keyed by the step's rules, the state's names, function-valued globals,
+  `RNGkind()`), so a sweep compiles each step once.
 * "both" mode runs the same executor step by step (`rk_native()` ->
   `rs_native_exec()`) against the R engine; the loop itself is checked by result
   identity with "r" (tests, oracle, models/). `.rl_last$stats` holds the last
   loop's counters: native steps run, declined, compiled, R callbacks.
+* A run with no step the loop takes natively runs on the R engine under "rust"
+  and "auto" (the store adapter only added conversion cost); "both" still
+  exercises the store. A step that declines 8 times in a row stays on R until
+  the schema changes (`DECLINES_BEFORE_SKIP`).
 * Adding a native step kind: an `rl_prep_<kind>()` in `R/run-loop.R`, a `kind`
   number in the registry (`native =`, with a static `can()`), its executor in
   `runloop.rs` (`exec()` dispatch), a "both"-mode test via

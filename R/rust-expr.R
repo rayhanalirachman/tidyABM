@@ -13,19 +13,49 @@
 # formula's environment; `( )`, unary `-`, `+ - * /`, `< > <= >= == !=`, `& | !`,
 # `is.na()`, dplyr's `if_else(c, t, f)` and `case_when(... , .default =)`,
 # `pmin()`/`pmax()` (no `na.rm`), `exp()`, `log(x)`, `sqrt()` (R's own, called
-# back), `sum(x)`, `mean(x)`, `n()`, `runif(n())`. Every function name must find
-# the standard function from the formula's scope.
+# back), `sum(x)`, `mean(x)`, `n()`, `runif(n())`. FR3: values from the
+# formula's environment (any length), `c()` of literals, `sum`/`mean(x, na.rm =)`,
+# dplyr's `coalesce()`, `%in%` (the engine's `in_rowwise()` with an atomic
+# table), `sample(x, size, replace = TRUE)`, `runif(n(), a, b)`, `rnorm(n(), a,
+# b)`, `x[i]` (positive indices), and the base functions in `rx_call_spec`
+# (`^`, `abs`, `round`, `cumsum`, `min`/`max`, `%%`, `as.integer`, ...), which R
+# itself computes over the evaluated arguments. Every function name must find the
+# standard function from the formula's scope.
 
 # The functions the IR takes, and what each name must find
 rx_fns <- function() {
-  list(
+  c(list(
     "(" = base::`(`, "-" = base::`-`, "+" = base::`+`, "*" = base::`*`,
     "/" = base::`/`, "<" = base::`<`, ">" = base::`>`, "<=" = base::`<=`,
     ">=" = base::`>=`, "==" = base::`==`, "!=" = base::`!=`, "&" = base::`&`,
     "|" = base::`|`, "!" = base::`!`, is.na = base::is.na, pmin = base::pmin,
     pmax = base::pmax, exp = base::exp, log = base::log, sqrt = base::sqrt,
     sum = base::sum, mean = base::mean, runif = stats::runif,
-    if_else = dplyr::if_else, case_when = dplyr::case_when)
+    if_else = dplyr::if_else, case_when = dplyr::case_when,
+    # FR3
+    c = base::c, coalesce = dplyr::coalesce, "%in%" = in_rowwise, sample = base::sample,
+    rnorm = stats::rnorm, "[" = base::`[`), rx_call_fns())
+}
+
+# Base functions R itself computes over the evaluated (numeric) arguments: their
+# arity, and whether they can warn (then called through a guard that turns any
+# condition into a decline, so the step is replayed on the R path)
+rx_call_spec <- list(
+  "^" = c(2, 2, 0), "%%" = c(2, 2, 1), "%/%" = c(2, 2, 1), abs = c(1, 1, 0),
+  sign = c(1, 1, 0), floor = c(1, 1, 0), ceiling = c(1, 1, 0), trunc = c(1, 1, 0),
+  round = c(1, 2, 0), signif = c(1, 2, 0), cumsum = c(1, 1, 1), cumprod = c(1, 1, 1),
+  cummax = c(1, 1, 1), cummin = c(1, 1, 1), as.integer = c(1, 1, 1),
+  as.numeric = c(1, 1, 1), as.double = c(1, 1, 1), min = c(1, Inf, 1), max = c(1, Inf, 1),
+  log2 = c(1, 1, 1), log10 = c(1, 1, 1), log1p = c(1, 1, 1), expm1 = c(1, 1, 0))
+
+rx_call_fns <- function() lapply(rlang::set_names(names(rx_call_spec)), get, envir = baseenv())
+
+# the function a `call` node runs: R's own, or behind the guard
+rx_call_fun <- function(fn) {
+  f <- get(fn, envir = baseenv())
+  if (!rx_call_spec[[fn]][[3]]) return(f)
+  function(...) tryCatch(f(...), warning = function(w) NULL, message = function(m) NULL,
+                         error = function(e) NULL)
 }
 
 # dplyr versions whose if_else()/case_when() semantics the evaluator was checked
@@ -97,17 +127,15 @@ rx_compile <- function(expr) {
       }
       return(c(list("if_else"), lapply(args, walk)))
     }
-    if (any(nzchar(nms))) no(paste0("named arguments to `", fn, "()`"))
-    if (fn == "runif") {
-      if (!(length(args) == 1L && identical(args[[1]], quote(n())))) {
-        no("`runif()` other than `runif(n())`")
-      }
-      heads <<- c(heads, "n")
-      return(list("runif"))
+    if (fn %in% rx_fr3_fns) {
+      r <- rx_walk_fr3(fn, e, args, nms, walk, no, function(h) heads <<- c(heads, h))
+      if (!is.null(r)) return(r)
     }
+    if (any(nzchar(nms))) no(paste0("named arguments to `", fn, "()`"))
     k <- length(args)
     arity <- switch(fn, "(" = , "!" = , is.na = , exp = , log = , sqrt = , sum = ,
                     mean = k == 1L, "-" = k %in% 1:2, pmin = , pmax = k >= 2L, k == 2L)
+    # `"%in%"` = list("%in%", x, table); `"["` = list("[", x, i)
     if (!arity) no(paste0("`", fn, "()` with ", k, " argument", if (k != 1L) "s"))
     if (fn == "(") return(walk(args[[1]]))
     op <- if (fn == "-" && k == 1L) "neg" else fn
@@ -115,6 +143,63 @@ rx_compile <- function(expr) {
   }
   tryCatch(list(ir = walk(expr), syms = unique(syms), heads = unique(heads)),
            rx_stop = function(e) rx_no(conditionMessage(e)))
+}
+
+# FR3's constructs, compiled apart from [rx_compile()] so their byte code is only
+# built (R's JIT, first use) for a formula that has one: the tick loop's cold
+# start stays as short as before
+rx_fr3_fns <- c("coalesce", "sum", "mean", "runif", "rnorm", "sample", "c",
+                names(rx_call_spec))
+rx_walk_fr3 <- function(fn, e, args, nms, walk, no, add_head) {
+  if (fn %in% c("coalesce") && !rx_dplyr_ok()) {
+    no(paste0("dplyr ", utils::packageVersion("dplyr"), " is outside the verified range"))
+  }
+  if (fn %in% c("sum", "mean") && any(nzchar(nms))) {
+    if (!identical(nms, c("", "na.rm"))) no(paste0("`", fn, "()` with other than `na.rm`"))
+    narm <- args[[2]]
+    if (!(is.logical(narm) && length(narm) == 1L && !is.na(narm))) no("`na.rm` that is not TRUE or FALSE")
+    return(list(if (narm) paste0(fn, "_narm") else fn, walk(args[[1]])))
+  }
+  if (fn %in% c("runif", "rnorm", "sample")) {
+    m <- tryCatch(as.list(match.call(rx_fns()[[fn]], e))[-1], error = function(err) NULL)
+    if (is.null(m)) no(paste0("`", fn, "()` arguments that do not match"))
+    first <- names(m)[[1]]
+    if (fn == "sample") {
+      if (!setequal(names(m), c("x", "size", "replace")) || !isTRUE(m$replace)) {
+        no("`sample()` other than `sample(x, size, replace = TRUE)`")
+      }
+      return(list("sample", walk(m$x), walk(m$size)))
+    }
+    if (!identical(m$n, quote(n()))) no(paste0("`", fn, "()` whose first argument is not `n()`"))
+    add_head("n")
+    p <- if (fn == "runif") c("min", "max") else c("mean", "sd")
+    if (!all(names(m) %in% c("n", p))) no(paste0("`", fn, "()` with other arguments"))
+    if (fn == "runif" && length(m) == 1L) return(list("runif"))
+    a <- if (is.null(m[[p[1]]])) list("const", if (fn == "runif") 0 else 0) else walk(m[[p[1]]])
+    b <- if (is.null(m[[p[2]]])) list("const", 1) else walk(m[[p[2]]])
+    return(list(if (fn == "runif") "runif_ab" else "rnorm_ab", a, b))
+  }
+  if (any(nzchar(nms))) no(paste0("named arguments to `", fn, "()`"))
+  if (fn == "c") {
+    if (!length(args) || !all(vapply(args, function(a) is.atomic(a) && length(a) == 1L &&
+                                       is.null(attributes(a)) &&
+                                       typeof(a) %in% c("logical", "integer", "double", "character"), NA))) {
+      no("`c()` of other than literal values")
+    }
+    return(list("constv", do.call(base::c, args)))
+  }
+  if (fn == "coalesce") {
+    if (!length(args)) no("`coalesce()` of nothing")
+    return(c(list("coalesce"), lapply(args, walk)))
+  }
+  if (fn %in% names(rx_call_spec)) {
+    ar <- rx_call_spec[[fn]]
+    if (length(args) < ar[[1]] || length(args) > ar[[2]]) {
+      no(paste0("`", fn, "()` with ", length(args), " arguments"))
+    }
+    return(c(list("call", fn), lapply(args, walk)))
+  }
+  NULL
 }
 
 #' Does every function a formula calls find the standard one from `env`?
@@ -135,7 +220,11 @@ rx_heads_ok <- function(heads, env) {
 #' @noRd
 rx_bind <- function(ir, names) {
   if (identical(ir[[1]], "sym")) return(list("in", match(ir[[2]], names) - 1L))
-  if (identical(ir[[1]], "const")) return(ir)
+  if (identical(ir[[1]], "const") || identical(ir[[1]], "constv")) return(ir)
+  if (identical(ir[[1]], "call")) {
+    ir[-(1:2)] <- lapply(ir[-(1:2)], rx_bind, names = names)
+    return(ir)
+  }
   if (identical(ir[[1]], "case_when")) {
     ir[[2]] <- lapply(ir[[2]], function(p) lapply(p, rx_bind, names = names))
     if (!is.null(ir[[3]])) ir[[3]] <- rx_bind(ir[[3]], names)
@@ -168,10 +257,36 @@ rx_new_program <- function(exprs, names, writes, irs) {
                 "|", paste(names, collapse = "\r"), "|", paste(writes, collapse = ","))
   hit <- .rx_memo[[key]]
   if (is.null(hit) || !identical(hit$exprs, exprs)) {
-    hit <- list(exprs = exprs, prog = RxProgram$new(irs, writes))
+    # (numbering only a program that calls R functions: its byte code is built on
+    # first use)
+    nb <- if ("call" %in% unlist(irs, use.names = FALSE)) rx_number_calls(irs)
+          else list(irs = irs, fns = list())
+    hit <- list(exprs = exprs, prog = RxProgram$new(nb$irs, writes, nb$fns))
     assign(key, hit, envir = .rx_memo)
   }
   hit$prog
+}
+
+#' The `call` nodes of a program's IRs numbered: `irs` with each function name
+#' replaced by its 0-based place in `fns`, the functions `RxProgram$new()` calls
+#' @noRd
+rx_number_calls <- function(irs) {
+  fns <- character()
+  number <- function(ir) {
+    if (!is.list(ir)) return(ir)
+    if (identical(ir[[1]], "call")) {
+      if (!ir[[2]] %in% fns) fns <<- c(fns, ir[[2]])
+      ir[[2]] <- match(ir[[2]], fns) - 1L
+      ir[-(1:2)] <- lapply(ir[-(1:2)], number)
+      return(ir)
+    }
+    if (identical(ir[[1]], "const") || identical(ir[[1]], "constv")) return(ir)
+    # a node (its operator first) or a list of nodes (case_when()'s pairs)
+    if (is.character(ir[[1]])) ir[-1] <- lapply(ir[-1], number) else ir <- lapply(ir, number)
+    ir
+  }
+  irs <- lapply(irs, number)
+  list(irs = irs, fns = lapply(fns, rx_call_fun))
 }
 
 #' Where each name a program reads comes from for a group with columns `cols`:
@@ -210,7 +325,12 @@ rx_program <- function(step, idx, cols, globals, global_step = FALSE) {
   targets <- vapply(rules, `[[`, "", "target")
   # a global step's rules see the globals written before them; a column of the
   # same name hides the global, as in the R engine's data mask
-  writes <- if (global_step) {
+  writes <- if (identical(global_step, "by")) {
+    # `.by` rules: a later rule reads the column an earlier one wrote
+    w <- match(targets, names) - 1L
+    w[is.na(w) | !(src[w + 1L] %in% 1L)] <- -1L
+    as.integer(w)
+  } else if (global_step) {
     w <- match(targets, names) - 1L
     w[is.na(w) | (src[w + 1L] %in% 1L)] <- -1L
     as.integer(w)
@@ -243,6 +363,20 @@ rx_rules_ok <- function(step) {
     !(step$uses_match %||% reads_match(lapply(step$rules, `[[`, "quo"))) &&
     !any(vapply(step$rules, function(r) r$target == ".cell" || startsWith(r$target, "partner_"), NA))
 }
+# at least one rule compiled (the others are evaluated by R inside the native step)
+rx_rules_mixed_ok <- function(step) {
+  if (!is.null(step$by)) return(rx_by_ok(step))
+  is.null(step$by) && any(!vapply(rx_rules(step), is_rx_no, NA)) &&
+    !(step$uses_match %||% reads_match(lapply(step$rules, `[[`, "quo"))) &&
+    !any(vapply(step$rules, function(r) r$target == ".cell" || startsWith(r$target, "partner_"), NA))
+}
+# `.by` rules: every rule compiled, one `.by` column, nothing read of a pairing
+rx_by_ok <- function(step) {
+  !is.null(step$by) && length(by_columns(step$by)) == 1L &&
+    !any(vapply(rx_rules(step), is_rx_no, NA)) &&
+    !(step$uses_match %||% reads_match(lapply(step$rules, `[[`, "quo"))) &&
+    !any(vapply(step$rules, function(r) r$target == ".cell" || startsWith(r$target, "partner_"), NA))
+}
 rx_global_ok <- function(step) is.null(step$by) && !any(vapply(rx_rules(step), is_rx_no, NA))
 
 #' Which rules of a go block the Rust evaluator takes, and why the others not
@@ -262,7 +396,7 @@ rx_coverage <- function(go) {
         next
       }
       if (!cls %in% c("abm_rules", "abm_global")) next
-      shape <- if (!is.null(s$by)) "`.by` is not compiled yet"
+      shape <- if (!is.null(s$by) && cls == "abm_global") "`.by` is not compiled yet"
       for (r in s$rules) {
         cp <- rx_compile(rlang::quo_get_expr(r$quo))
         why <- shape %||% if (is_rx_no(cp)) unclass(cp) else ""

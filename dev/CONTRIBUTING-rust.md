@@ -16,10 +16,12 @@ pure R.
 | `src/rust/src/reduce.rs` | safe wrappers over the long-double C helper |
 | `src/rust/src/store.rs` | the column store's R side (`AgentStore`): loading groups, exporting them, the write API `set_col()`, the string pool, the mirror cache, snapshots, stacking the result |
 | `src/reduce.c` | long-double sums, means, cumsums, group sums (Rust has no long double) |
-| `src/rust/tidyabm-core/` | engine code with no R dependency; `cargo test` runs here (`sample.rs`, `reduce.rs`, `store.rs`, `neighbours.rs`) |
+| `src/rust/tidyabm-core/` | engine code with no R dependency; `cargo test` runs here (`sample.rs`, `reduce.rs`, `store.rs`, `neighbours.rs`, `expr.rs` the evaluator) |
 | `R/rust-blocks.R` | `rust_rng_ok()` (verified `RNGkind()`s) and the R-side wrappers with their R fallbacks |
 | `R/run-rust.R` | the Rust run path: `run_once_rust()`, the step adapter, kernel dispatch and replay (`rust_step()`), "both" mode |
 | `R/rust-kernels.R` | the step kernels (`rk_*`) and their registry `rust_kernels` |
+| `R/rust-expr.R` | the expression compiler (`rx_compile()`), the compiled-rule kernels `rk_rules()` / `rk_global()`, `rx_coverage()` |
+| `src/rust/src/expr.rs` | `RxProgram`: decodes the IR, reads R's columns in place, R callbacks for draws and `exp`/`log`/`sqrt` |
 | `src/rust/Cargo.lock` | pinned crate versions (committed) |
 | `src/rust/vendor.tar.xz`, `vendor-config.toml` | all crates for the offline build (committed) |
 | `src/rust/deny.toml` | licence / advisory policy for cargo-deny (CI) |
@@ -160,6 +162,43 @@ The store outside "both" is brought up to date only when read: the adapter marks
 stale (`sync$ok`), and `run_once_rust()` loads `state$groups` before a kernel or a
 recorded snapshot. Under `use_mirror` a loaded typed column is kept as R's vector and
 copied into Rust only for a snapshot that may reach the result (lazy copy-in).
+
+## Compiled formulas (phase 5)
+
+`abm_rules()` (no `.by`, nothing read of a pairing, no pairing splitting the rows,
+no relation) and `abm_global()` (no `.by`, more than one group) evaluate their
+formulas in Rust when every formula of the step is in the grammar of
+`R/rust-expr.R` (see its header and `rx_coverage(go)` for the reason a rule is not).
+How it fits together:
+
+* `rx_compile()` turns a formula into nested lists once per session; `rx_program()`
+  binds names to input slots for a group (column, then global, then the formula's
+  environment, as the R engine's mask finds them), checks that every function name
+  finds the standard function, and builds an `RxProgram` (kept per session).
+* `RxProgram$eval(inputs, n, out_n, stacked)` evaluates the rules in order and
+  returns R vectors, or `NULL` with the reason in `rs_rx_reason()`. Rust never
+  warns: wherever R would warn, error or give bits Rust cannot reproduce exactly, it
+  returns `NULL` and `rust_step()` replays the step on the R path from the saved
+  state and `.Random.seed`.
+* Typing is R's and vctrs', decided per call from the data (`tidyabm-core/src/expr.rs`).
+* Kernels that work on `state$groups` (not the store) are registered with
+  `store = FALSE`; `rust_step()` then marks the store stale instead of loading it.
+  A step whose formulas can never compile is marked `rust_no` in its plan and goes
+  straight to the adapter afterwards. `can(step)` tells "auto" whether a run has
+  anything a kernel can take.
+
+Adding a function to the grammar: add it to `rx_fns()` and `rx_compile()` (R), to
+`decode()` (`src/rust/src/expr.rs`) and to `Node`/`eval()` in
+`tidyabm-core/src/expr.rs` with a cargo test; then extend `rx_random_expr()` in
+`tests/testthat/test-rust-expr.R` so the property test (3,000 random formulas with
+`NA`, `NaN`, `Inf`, `-0`, integer extremes, strings) covers it, and run the suite
+under `TIDYABM_ENGINE=both`. Behaviour comes from R's documentation and
+differential tests only (D13): for example, integer `/` gives R's `NA_real_` for an
+`NA` operand, `pmin(0, -0)` keeps the first, dplyr 1.2's `case_when()` sizes its
+conditions and values apart. Measure with `SAVVY_PROFILE=release`: a kernel step
+costs ~25-30 us of R-side overhead before any evaluation, so a formula R already
+evaluates in a few microseconds is not worth compiling (one-group `abm_global()`
+steps decline for that reason).
 
 ## Vendoring (offline builds)
 

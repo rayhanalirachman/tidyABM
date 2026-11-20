@@ -11,6 +11,7 @@
 //! After editing this file run `savvy-cli update .` from the package root to
 //! regenerate `R/000-wrappers.R`, `src/init.c` and `src/rust/api.h`.
 
+mod expr;
 mod rapi;
 mod reduce;
 mod rng;

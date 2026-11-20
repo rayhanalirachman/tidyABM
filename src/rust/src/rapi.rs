@@ -98,7 +98,6 @@ extern "C" {
     pub fn Rf_unprotect(n: c_int);
     pub fn REAL_RO(x: SEXP) -> *const f64;
     pub fn INTEGER_RO(x: SEXP) -> *const c_int;
-    pub fn LOGICAL_RO(x: SEXP) -> *const c_int;
     // never allocate or raise: NULL for an ALTREP vector without data in memory
     pub fn REAL_OR_NULL(x: SEXP) -> *const f64;
     pub fn INTEGER_OR_NULL(x: SEXP) -> *const c_int;
@@ -111,6 +110,14 @@ extern "C" {
     pub fn Rf_setAttrib(x: SEXP, name: SEXP, value: SEXP) -> SEXP;
     pub fn SHALLOW_DUPLICATE_ATTRIB(to: SEXP, from: SEXP);
     pub fn R_compute_identical(x: SEXP, y: SEXP, flags: c_int) -> c_int;
+
+    // the expression evaluator (phase 5): R's own `exp`/`log`/`sqrt` called back
+    pub static R_BaseEnv: SEXP;
+    pub fn Rf_install(name: *const std::os::raw::c_char) -> SEXP;
+    pub fn Rf_lang2(f: SEXP, x: SEXP) -> SEXP;
+    pub fn Rf_eval(e: SEXP, env: SEXP) -> SEXP;
+    pub fn R_CHAR(x: SEXP) -> *const std::os::raw::c_char;
+    pub fn LOGICAL_RO(x: SEXP) -> *const c_int;
 }
 
 // src/reduce.c (tidyABM's own C; pure computation, safe on any thread)

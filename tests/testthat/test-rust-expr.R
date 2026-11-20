@@ -1,0 +1,194 @@
+# The Rust expression evaluator (migration phase 5): every formula it takes gives
+# R's value bit for bit, draws R's stream in R's order, and declines wherever R
+# would warn or error, so the R engine then says it itself.
+
+rx_platform <- function() {
+  info <- rs_info()
+  paste0(info[["target_arch"]], "-", info[["target_os"]], ", long double ",
+         info[["long_double_bytes"]], " bytes, ", R.version.string, ", dplyr ",
+         utils::packageVersion("dplyr"))
+}
+
+# R's value of `e` over `data`, as the engine evaluates a rule: base eval() in a
+# scope holding the globals and the engine's `n()`
+rx_r_value <- function(e, data, globals, n) {
+  env <- list2env(c(globals, list(n = function() n, if_else = dplyr::if_else, runif = stats::runif,
+                                  case_when = dplyr::case_when)), parent = baseenv())
+  warned <- FALSE
+  val <- tryCatch(withCallingHandlers(eval(e, data, env), warning = function(w) {
+    warned <<- TRUE
+    invokeRestart("muffleWarning")
+  }), error = function(err) structure(list(), class = "rx_r_error"))
+  if (warned || inherits(val, "rx_r_error")) return(NULL)
+  val
+}
+
+rx_rust_value <- function(e, data, globals, n) {
+  cp <- rx_compile(e)
+  if (is_rx_no(cp)) return(list(no = unclass(cp)))
+  ins <- c(data, globals)[cp$syms]
+  prog <- RxProgram$new(list(rx_bind(cp$ir, cp$syms)), -1L)
+  out <- prog$eval(unname(ins), as.integer(n), as.integer(n), FALSE)
+  if (is.null(out)) list(no = rs_rx_reason()) else list(value = out[[1]])
+}
+
+bits <- function(x) if (is.double(x)) sprintf("%016s", vapply(x, function(v) {
+  paste(sprintf("%02x", rev(as.integer(writeBin(v, raw(), endian = "little")))), collapse = "")
+}, "")) else format(x)
+
+# a random formula over the columns d1 d2 (double), i1 (integer), l1 l2
+# (logical), s1 (character) and the globals g1 (double), k1 (integer)
+rx_random_expr <- function(depth, type = sample(c("num", "lgl", "chr"), 1, prob = c(5, 3, 1))) {
+  leaf <- function(type) switch(type,
+    num = sample(list(quote(d1), quote(d2), quote(i1), quote(g1), quote(k1), 2.5, -1, 0L,
+                      3L, NA_real_, NA_integer_, 1e300, -0, Inf), 1)[[1]],
+    lgl = sample(list(quote(l1), quote(l2), TRUE, FALSE, NA), 1)[[1]],
+    chr = sample(list(quote(s1), "a", "b", NA_character_), 1)[[1]])
+  if (depth <= 0 || stats::runif(1) < 0.25) return(leaf(type))
+  sub <- function(t = type) rx_random_expr(depth - 1, t)
+  switch(type,
+    num = switch(sample(9, 1),
+      call(sample(c("+", "-", "*", "/"), 1), sub(), sub()),
+      call("-", sub()),
+      call("if_else", sub("lgl"), sub(), sub()),
+      call("case_when", call("~", sub("lgl"), sub()), call("~", sub("lgl"), sub()), .default = sub()),
+      call(sample(c("pmin", "pmax"), 1), sub(), sub()),
+      call(sample(c("exp", "log", "sqrt"), 1), sub()),
+      call(sample(c("sum", "mean"), 1), sub()),
+      quote(runif(n())),
+      quote(n())),
+    lgl = switch(sample(6, 1),
+      call(sample(c("<", ">", "<=", ">=", "==", "!="), 1), sub("num"), sub("num")),
+      call(sample(c("==", "!="), 1), sub("chr"), sub("chr")),
+      call(sample(c("&", "|"), 1), sub(), sub()),
+      call("!", sub()),
+      call("is.na", sub(sample(c("num", "chr", "lgl"), 1))),
+      call("if_else", sub(), sub(), sub())),
+    chr = switch(sample(2, 1),
+      call("if_else", sub("lgl"), sub(), sub()),
+      call("case_when", call("~", sub("lgl"), sub()), .default = sub())))
+}
+
+test_that("random formulas give R's bits, R's draws, or a decline where R warns", {
+  skip_on_cran()
+  set.seed(20261120)
+  n <- 12L
+  cases <- if (identical(Sys.getenv("NOT_CRAN"), "true")) 3000L else 300L
+  agree <- 0L
+  declined <- 0L
+  for (k in seq_len(cases)) {
+    data <- list(
+      d1 = sample(c(stats::rnorm(n, sd = 10), NA, NaN, Inf, -Inf, 0, -0, 1e-310), n, TRUE),
+      d2 = stats::runif(n, -2, 5),
+      i1 = sample(c(-3:3, NA, .Machine$integer.max, -.Machine$integer.max), n, TRUE),
+      l1 = sample(c(TRUE, FALSE, NA), n, TRUE),
+      l2 = stats::runif(n) < 0.5,
+      s1 = sample(c("a", "b", "c", NA), n, TRUE))
+    globals <- list(g1 = stats::rnorm(1), k1 = sample(c(2L, NA), 1))
+    e <- rx_random_expr(4)
+    seed <- sample.int(1e6, 1)
+    set.seed(seed)
+    r <- rx_r_value(e, data, globals, n)
+    seed_r <- .Random.seed
+    set.seed(seed)
+    s <- rx_rust_value(e, data, globals, n)
+    seed_s <- .Random.seed
+    if (!is.null(s$no)) {
+      declined <- declined + 1L
+      next
+    }
+    where <- paste0("\n  platform: ", rx_platform(), "\n  formula: ", deparse1(e))
+    expect(!is.null(r), paste0("Rust gave a value where R warned or failed", where))
+    if (is.null(r)) next
+    if (length(r) == 1L) r <- rep(r, n)
+    same <- identical(r, s$value)
+    if (!same && typeof(r) == typeof(s$value) && length(r) == length(s$value)) {
+      i <- which(bits(r) != bits(s$value))[1]
+      where <- paste0(where, "\n  first difference at row ", i, ": R ", bits(r)[i],
+                      ", Rust ", bits(s$value)[i])
+    }
+    expect(same, paste0("values differ", where))
+    expect(identical(seed_r, seed_s), paste0(".Random.seed differs", where))
+    agree <- agree + same
+  }
+  # the evaluator covers most of what it is given (the rest R evaluates)
+  expect_gt(agree, cases * 0.4)
+})
+
+test_that("the engine path matches the R engine on compiled rules (\"both\" compares each step)", {
+  m <- abm_setup(
+    agents = list(
+      a = abm_agents(n = 30, x = ~stats::runif(n, -1, 3), k = ~sample(c(1L, NA, 4L), n, TRUE),
+                     s = ~sample(c("u", "v"), n, TRUE), ok = TRUE),
+      b = abm_agents(n = 20, x = ~stats::rnorm(n), k = 2L, s = "v", ok = FALSE)),
+    globals = list(rate = 0.3, tot = 0), seed = 3)
+  go <- abm_go(
+    abm_rules(x ~ case_when(s == "u" & x > 1 ~ pmin(x, 2), is.na(k) ~ exp(x) / 10,
+                            .default = if_else(ok, x - rate, log(x + 3))),
+              k ~ k + 1L,
+              ok ~ runif(n()) < rate | x > mean(x)),
+    abm_global(tot ~ sum(x) / n(), cnt ~ sum(ok)))
+  for (eng in c("rust", "both")) {
+    withr::local_options(tidyABM.engine = "r")
+    ref <- abm_run(m, go, ticks = 6, seed = 9)
+    withr::local_options(tidyABM.engine = eng)
+    expect_identical(abm_run(m, go, ticks = 6, seed = 9), ref)
+  }
+  cov <- rx_coverage(go)
+  expect_true(all(cov$path == "rust"))
+})
+
+test_that("a compiled rule that would warn is left to R, which warns", {
+  m <- abm_setup(agents = abm_agents(n = 5, x = c(1, 2, -3, 4, 5), i = .Machine$integer.max - 2L),
+                 seed = 1)
+  for (go in list(abm_go(abm_rules(y ~ log(x))), abm_go(abm_rules(i ~ i + 1L)))) {
+    withr::local_options(tidyABM.engine = "r")
+    w_r <- character()
+    ref <- withCallingHandlers(abm_run(m, go, ticks = 2, seed = 1), warning = function(w) {
+      w_r <<- c(w_r, conditionMessage(w)); invokeRestart("muffleWarning")
+    })
+    for (eng in c("rust", "both")) {
+      withr::local_options(tidyABM.engine = eng)
+      w_s <- character()
+      got <- withCallingHandlers(abm_run(m, go, ticks = 2, seed = 1), warning = function(w) {
+        w_s <<- c(w_s, conditionMessage(w)); invokeRestart("muffleWarning")
+      })
+      expect_identical(got, ref)
+      expect_identical(w_s, w_r)
+    }
+  }
+})
+
+test_that("errors, masked functions and uncovered formulas are the R engine's", {
+  m <- abm_setup(agents = abm_agents(n = 4, x = 1:4 / 2), seed = 1)
+  bad <- abm_go(abm_rules(y ~ x + nope))
+  withr::local_options(tidyABM.engine = "r")
+  ref <- tryCatch(abm_run(m, bad, ticks = 1), error = function(e) conditionMessage(e))
+  withr::local_options(tidyABM.engine = "rust")
+  expect_identical(tryCatch(abm_run(m, bad, ticks = 1), error = function(e) conditionMessage(e)), ref)
+
+  pmin <- function(...) base::pmax(...)
+  masked <- abm_go(abm_rules(y ~ pmin(x, 1)))
+  for (eng in c("rust", "both")) {
+    withr::local_options(tidyABM.engine = "r")
+    ref <- abm_run(m, masked, ticks = 1, seed = 1)
+    withr::local_options(tidyABM.engine = eng)
+    expect_identical(abm_run(m, masked, ticks = 1, seed = 1), ref)
+  }
+  cov <- rx_coverage(abm_go(abm_rules(y ~ x^2, z ~ rank(x)), abm_rules(w ~ sum(x), .by = x)))
+  expect_identical(cov$path, c("r", "r", "r"))
+  expect_match(cov$reason[[1]], "`^()` is not compiled yet", fixed = TRUE)
+  expect_match(cov$reason[[3]], ".by", fixed = TRUE)
+})
+
+test_that("strings compare by identity, and non-ASCII strings are left to R", {
+  m <- abm_setup(agents = abm_agents(n = 4, s = c("café", "b", NA, "café")), seed = 1)
+  latin <- iconv("café", "UTF-8", "latin1")
+  go <- abm_go(abm_rules(hit ~ s == latin, other ~ s != "b"))
+  withr::local_options(tidyABM.engine = "r")
+  ref <- abm_run(m, go, ticks = 1, record = "all")
+  for (eng in c("rust", "both")) {
+    withr::local_options(tidyABM.engine = eng)
+    expect_identical(abm_run(m, go, ticks = 1, record = "all"), ref)
+  }
+})

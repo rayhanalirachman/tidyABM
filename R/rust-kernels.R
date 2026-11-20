@@ -83,8 +83,14 @@ rk_neighbours <- function(step, state, store) {
 }
 
 #' Rust kernels by step class: `fun` the kernel, `auto` whether "auto" uses it
-#' (proven in "both" mode and measured faster than the R engine)
+#' (proven in "both" mode and measured faster than the R engine), `store` whether
+#' it reads and writes the column store (`FALSE`: it works on `state$groups` like
+#' an R step function, and the store is brought up to date when next read), and
+#' `can(step)`, for "auto", whether a step's formulas can take the kernel at all
+#' (a run whose steps cannot stays on the R engine)
 #' @noRd
 rust_kernels <- list(
-  abm_neighbours = list(fun = rk_neighbours, auto = FALSE)
+  abm_neighbours = list(fun = rk_neighbours, auto = FALSE, store = TRUE),
+  abm_rules      = list(fun = rk_rules, auto = FALSE, store = FALSE, can = rx_rules_ok),
+  abm_global     = list(fun = rk_global, auto = FALSE, store = FALSE, can = rx_global_ok)
 )

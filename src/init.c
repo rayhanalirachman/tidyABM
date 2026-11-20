@@ -84,6 +84,11 @@ SEXP savvy_rs_reduce__impl(SEXP c_arg__op, SEXP c_arg__x, SEXP c_arg__na_rm) {
     return handle_result(res);
 }
 
+SEXP savvy_rs_rx_reason__impl(void) {
+    SEXP res = savvy_rs_rx_reason__ffi();
+    return handle_result(res);
+}
+
 SEXP savvy_rs_sample_int__impl(SEXP c_arg__n, SEXP c_arg__size, SEXP c_arg__replace) {
     SEXP res = savvy_rs_sample_int__ffi(c_arg__n, c_arg__size, c_arg__replace);
     return handle_result(res);
@@ -149,6 +154,21 @@ SEXP savvy_AgentStore_ticks__impl(SEXP self__) {
     return handle_result(res);
 }
 
+SEXP savvy_RxProgram_draws__impl(SEXP self__) {
+    SEXP res = savvy_RxProgram_draws__ffi(self__);
+    return handle_result(res);
+}
+
+SEXP savvy_RxProgram_eval__impl(SEXP self__, SEXP c_arg__inputs, SEXP c_arg__n, SEXP c_arg__out_n, SEXP c_arg__stacked) {
+    SEXP res = savvy_RxProgram_eval__ffi(self__, c_arg__inputs, c_arg__n, c_arg__out_n, c_arg__stacked);
+    return handle_result(res);
+}
+
+SEXP savvy_RxProgram_new__impl(SEXP c_arg__rules, SEXP c_arg__writes) {
+    SEXP res = savvy_RxProgram_new__ffi(c_arg__rules, c_arg__writes);
+    return handle_result(res);
+}
+
 
 static const R_CallMethodDef CallEntries[] = {
     {"savvy_rs_bernoulli__impl", (DL_FUNC) &savvy_rs_bernoulli__impl, 2},
@@ -160,6 +180,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"savvy_rs_noop__impl", (DL_FUNC) &savvy_rs_noop__impl, 0},
     {"savvy_rs_pow__impl", (DL_FUNC) &savvy_rs_pow__impl, 2},
     {"savvy_rs_reduce__impl", (DL_FUNC) &savvy_rs_reduce__impl, 3},
+    {"savvy_rs_rx_reason__impl", (DL_FUNC) &savvy_rs_rx_reason__impl, 0},
     {"savvy_rs_sample_int__impl", (DL_FUNC) &savvy_rs_sample_int__impl, 3},
     {"savvy_rs_test_error__impl", (DL_FUNC) &savvy_rs_test_error__impl, 1},
     {"savvy_rs_test_panic__impl", (DL_FUNC) &savvy_rs_test_panic__impl, 2},
@@ -173,6 +194,9 @@ static const R_CallMethodDef CallEntries[] = {
     {"savvy_AgentStore_snapshot__impl", (DL_FUNC) &savvy_AgentStore_snapshot__impl, 3},
     {"savvy_AgentStore_stats__impl", (DL_FUNC) &savvy_AgentStore_stats__impl, 1},
     {"savvy_AgentStore_ticks__impl", (DL_FUNC) &savvy_AgentStore_ticks__impl, 1},
+    {"savvy_RxProgram_draws__impl", (DL_FUNC) &savvy_RxProgram_draws__impl, 1},
+    {"savvy_RxProgram_eval__impl", (DL_FUNC) &savvy_RxProgram_eval__impl, 5},
+    {"savvy_RxProgram_new__impl", (DL_FUNC) &savvy_RxProgram_new__impl, 2},
     {NULL, NULL, 0}
 };
 

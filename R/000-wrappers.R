@@ -108,6 +108,12 @@ NULL
   .Call(savvy_rs_reduce__impl, `op`, `x`, `na_rm`)
 }
 
+#' Why the last `RxProgram$eval()` returned `NULL`.
+#' @noRd
+`rs_rx_reason` <- function() {
+  .Call(savvy_rs_rx_reason__impl)
+}
+
 #' `sample.int(n, size, replace)` from R's generator (`R_unif_index`).
 #' @noRd
 `rs_sample_int` <- function(`n`, `size`, `replace`) {
@@ -216,5 +222,49 @@ class(`AgentStore`) <- c("tidyABM::AgentStore__bundle", "savvy_tidyABM__sealed")
 #' @export
 `print.tidyABM::AgentStore__bundle` <- function(x, ...) {
   cat('tidyABM::AgentStore\n')
+}
+
+### wrapper functions for RxProgram
+
+`RxProgram_draws` <- function(self) {
+  function() {
+    .Call(savvy_RxProgram_draws__impl, `self`)
+  }
+}
+
+`RxProgram_eval` <- function(self) {
+  function(`inputs`, `n`, `out_n`, `stacked`) {
+    .Call(savvy_RxProgram_eval__impl, `self`, `inputs`, `n`, `out_n`, `stacked`)
+  }
+}
+
+`.savvy_wrap_RxProgram` <- function(ptr) {
+  e <- new.env(parent = emptyenv())
+  e$.ptr <- ptr
+  e$`draws` <- `RxProgram_draws`(ptr)
+  e$`eval` <- `RxProgram_eval`(ptr)
+
+  class(e) <- c("tidyABM::RxProgram", "RxProgram", "savvy_tidyABM__sealed")
+  e
+}
+
+
+#' Compiled rules: one tree per rule, and for each rule the input it overwrites
+#' once evaluated (a global the later rules of an `abm_global()` step read), or
+#' none.
+`RxProgram` <- new.env(parent = emptyenv())
+
+### associated functions for RxProgram
+
+`RxProgram`$`new` <- function(`rules`, `writes`) {
+  .savvy_wrap_RxProgram(.Call(savvy_RxProgram_new__impl, `rules`, `writes`))
+}
+
+
+class(`RxProgram`) <- c("tidyABM::RxProgram__bundle", "savvy_tidyABM__sealed")
+
+#' @export
+`print.tidyABM::RxProgram__bundle` <- function(x, ...) {
+  cat('tidyABM::RxProgram\n')
 }
 

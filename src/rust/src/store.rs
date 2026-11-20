@@ -64,10 +64,10 @@ impl Drop for Kept {
     }
 }
 
-type H = Rc<Kept>;
+pub(crate) type H = Rc<Kept>;
 
 /// Keep `x` alive (main thread; the list insertion allocates, hence `protect`).
-fn keep(x: SEXP) -> savvy::Result<H> {
+pub(crate) fn keep(x: SEXP) -> savvy::Result<H> {
     // SAFETY: main thread (every caller is an entry point); `x` is reachable from
     // an argument of the current `.Call` or already kept, so it is protected.
     let token =
@@ -106,7 +106,7 @@ fn donor(x: SEXP, ty: SexpType, empty: SEXP) -> savvy::Result<Option<H>> {
 
 /// The `CHARSXP`s of character vector `x` (protected by the caller), as a slice
 /// valid while `x` is: an ALTREP vector is materialised, which may allocate.
-fn chars_of<'a>(x: SEXP) -> savvy::Result<&'a [SEXP]> {
+pub(crate) fn chars_of<'a>(x: SEXP) -> savvy::Result<&'a [SEXP]> {
     // SAFETY: main thread; `x` is a protected STRSXP (checked by every caller).
     let n = unsafe { rapi::Rf_xlength(x) } as usize;
     if n == 0 {

@@ -30,7 +30,7 @@ active_kernels <- function(engine) {
     ks <- ks[!sub("^abm_", "", names(ks)) %in% off]
   }
   if (identical(engine, "auto")) ks <- Filter(function(k) isTRUE(k$auto), ks)
-  lapply(ks, `[[`, "fun")
+  ks
 }
 
 #' The run function `abm_run()` calls for one run under `engine`
@@ -40,7 +40,10 @@ active_kernels <- function(engine) {
 #' @noRd
 engine_run_once <- function(engine, steps) {
   kernels <- if (engine != "r") active_kernels(engine)
-  has <- any(vapply(steps, function(s) class(s)[[1]] %in% names(kernels), NA))
+  has <- any(vapply(steps, function(s) {
+    k <- kernels[[class(s)[[1]]]]
+    !is.null(k) && (is.null(k$can) || isTRUE(k$can(s)))
+  }, NA))
   switch(engine,
     r = run_once,
     auto = if (has) function(...) run_once_rust(..., kernels = kernels) else run_once,
@@ -176,9 +179,13 @@ run_once_rust <- function(model, go, ticks, seed, keep, measures, checks = NULL,
 #' the R engine's, so a kernel that misbehaves is caught, not hidden.
 #' @noRd
 rust_step <- function(step, state, store, kernels, replay = TRUE, sync = NULL) {
-  kernel <- kernels[[class(step)[[1]]]]
-  if (is.null(kernel)) return(rust_adapter(step, state, store, sync))
-  if (!is.null(sync) && !sync$ok) {
+  k <- kernels[[class(step)[[1]]]]
+  # no kernel, or one that said this step's shape never compiles
+  if (is.null(k) || isTRUE(.subset2(step, "plan")$rust_no)) {
+    return(rust_adapter(step, state, store, sync))
+  }
+  kernel <- k$fun
+  if (!isFALSE(k$store) && !is.null(sync) && !sync$ok) {
     store$load(state$groups)
     sync$ok <- TRUE
   }
@@ -194,7 +201,11 @@ rust_step <- function(step, state, store, kernels, replay = TRUE, sync = NULL) {
                     error = function(e) NULL)
     if (spoke) NULL else res
   }
-  if (!is.null(out)) return(out)
+  if (!is.null(out)) {
+    # a kernel that left the store aside changed `state$groups` as an R step does
+    if (isFALSE(k$store)) return(rust_synced(out, store, sync))
+    return(out)
+  }
   rng_set(seed)
   rust_adapter(step, state, store, sync)
 }
@@ -210,7 +221,12 @@ rust_step <- function(step, state, store, kernels, replay = TRUE, sync = NULL) {
 #' step in five that difference was the kernel's whole gain.
 #' @noRd
 rust_adapter <- function(step, state, store, sync = NULL) {
-  state <- run_step(step, state)
+  rust_synced(run_step(step, state), store, sync)
+}
+
+# after a step that changed `state$groups` in R: mark the store stale, or under
+# "both" load it and export again at once
+rust_synced <- function(state, store, sync) {
   if (!is.null(sync)) {
     sync$ok <- FALSE
     return(state)

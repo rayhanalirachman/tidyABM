@@ -4,6 +4,7 @@
 //! column store, its snapshots and the stacking of the run's result (`store`); phase
 //! 4 the step kernels (`neighbours`).
 
+pub mod expr;
 pub mod neighbours;
 pub mod reduce;
 pub mod sample;

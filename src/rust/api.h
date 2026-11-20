@@ -7,6 +7,7 @@ SEXP savvy_rs_nb_fold__ffi(SEXP c_arg__mean, SEXP c_arg__x, SEXP c_arg__cols, SE
 SEXP savvy_rs_noop__ffi(void);
 SEXP savvy_rs_pow__ffi(SEXP c_arg__x, SEXP c_arg__y);
 SEXP savvy_rs_reduce__ffi(SEXP c_arg__op, SEXP c_arg__x, SEXP c_arg__na_rm);
+SEXP savvy_rs_rx_reason__ffi(void);
 SEXP savvy_rs_sample_int__ffi(SEXP c_arg__n, SEXP c_arg__size, SEXP c_arg__replace);
 SEXP savvy_rs_test_error__ffi(SEXP c_arg__msg);
 SEXP savvy_rs_test_panic__ffi(SEXP c_arg__msg, SEXP c_arg__worker);
@@ -22,3 +23,8 @@ SEXP savvy_AgentStore_set_col__ffi(SEXP self__, SEXP c_arg__group, SEXP c_arg__n
 SEXP savvy_AgentStore_snapshot__ffi(SEXP self__, SEXP c_arg__tick, SEXP c_arg__keep);
 SEXP savvy_AgentStore_stats__ffi(SEXP self__);
 SEXP savvy_AgentStore_ticks__ffi(SEXP self__);
+
+// methods and associated functions for RxProgram
+SEXP savvy_RxProgram_draws__ffi(SEXP self__);
+SEXP savvy_RxProgram_eval__ffi(SEXP self__, SEXP c_arg__inputs, SEXP c_arg__n, SEXP c_arg__out_n, SEXP c_arg__stacked);
+SEXP savvy_RxProgram_new__ffi(SEXP c_arg__rules, SEXP c_arg__writes);

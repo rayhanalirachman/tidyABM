@@ -1,0 +1,476 @@
+//! The R side of the expression evaluator (migration phase 5): `RxProgram`, a set
+//! of rules compiled by `R/rust-expr.R` and decoded once per run into
+//! `tidyabm_core::expr` trees, evaluated over R's own column vectors (read in
+//! place, never copied in) with results handed back as new R vectors.
+//!
+//! R is reached only through its public API: draws through `rng::with_rng` (R's
+//! generator, main thread), `exp`/`log`/`sqrt` by calling R's own functions back
+//! (so their bits are R's on every platform, D13), sums and means through the
+//! long-double helper. Anything the evaluator cannot do exactly makes `eval`
+//! return `NULL` and the R side runs the step on the R path.
+
+use crate::rapi::{self, LGLSXP, REALSXP, STRSXP, VECSXP};
+use crate::rng::{self, Draw, RRng};
+use crate::store::{self, H};
+use crate::{reduce, run, typed_error};
+use savvy::ffi::SEXP;
+use savvy::{savvy, ListSexp, NullSexp, OwnedListSexp, Sexp};
+use std::borrow::Cow;
+use std::cell::Cell;
+use tidyabm_core::expr::{self as ce, Bin, Decline, Host, Konst, MathFn, Node, Red, Un, Vals};
+
+thread_local! {
+    /// Why the last `eval()` declined, for coverage reports (main thread only).
+    static LAST_DECLINE: Cell<&'static str> = const { Cell::new("") };
+}
+
+/// Compiled rules: one tree per rule, and for each rule the input it overwrites
+/// once evaluated (a global the later rules of an `abm_global()` step read), or
+/// none.
+#[savvy]
+pub struct RxProgram {
+    rules: Vec<Node>,
+    writes: Vec<Option<usize>>,
+    draws: bool,
+    // the IR list: keeps the literal strings' CHARSXPs alive
+    _ir: H,
+}
+
+fn bad(what: &str) -> savvy::Error {
+    typed_error(format!("malformed expression IR: {what}"))
+}
+
+fn decode(x: SEXP) -> savvy::Result<Node> {
+    let l = ListSexp::try_from(Sexp(x)).map_err(|_| bad("node is not a list"))?;
+    let op = match l.get_by_index(0).map(|s| s.into_typed()) {
+        Some(savvy::TypedSexp::String(s)) => s.iter().next().unwrap_or("").to_string(),
+        _ => return Err(bad("node without an operator")),
+    };
+    let arg = |i: usize| -> savvy::Result<Node> {
+        decode(l.get_by_index(i).ok_or_else(|| bad("missing argument"))?.0)
+    };
+    let boxed = |i: usize| arg(i).map(Box::new);
+    let bin = |b: Bin| -> savvy::Result<Node> { Ok(Node::Bin(b, boxed(1)?, boxed(2)?)) };
+    Ok(match op.as_str() {
+        "const" => {
+            let v = l
+                .get_by_index(1)
+                .ok_or_else(|| bad("const without a value"))?
+                .0;
+            // SAFETY: main thread; `v` is an element of the protected IR list.
+            let (t, n) = unsafe { (rapi::TYPEOF(v), rapi::Rf_xlength(v)) };
+            if n != 1 {
+                return Err(bad("const of length != 1"));
+            }
+            Node::Const(match t {
+                REALSXP => {
+                    Konst::Dbl(store::numbers_of::<f64>(v, REALSXP)?.ok_or_else(|| bad("real"))?[0])
+                }
+                rapi::INTSXP => Konst::Int(
+                    store::numbers_of::<i32>(v, rapi::INTSXP)?.ok_or_else(|| bad("int"))?[0],
+                ),
+                LGLSXP => Konst::Lgl(logicals_of(v)?[0]),
+                STRSXP => Konst::Str(store::chars_of(v)?[0] as usize),
+                _ => return Err(bad("const of an unsupported type")),
+            })
+        }
+        "in" => {
+            let k = l.get_by_index(1).ok_or_else(|| bad("input index"))?.0;
+            let k = store::numbers_of::<i32>(k, rapi::INTSXP)?.ok_or_else(|| bad("input index"))?;
+            Node::Input(usize::try_from(k[0]).map_err(|_| bad("negative input"))?)
+        }
+        "n" => Node::N,
+        "runif" => Node::Runif,
+        "neg" => Node::Unary(Un::Neg, boxed(1)?),
+        "!" => Node::Unary(Un::Not, boxed(1)?),
+        "is.na" => Node::Unary(Un::IsNa, boxed(1)?),
+        "+" => bin(Bin::Add)?,
+        "-" => bin(Bin::Sub)?,
+        "*" => bin(Bin::Mul)?,
+        "/" => bin(Bin::Div)?,
+        "<" => bin(Bin::Lt)?,
+        ">" => bin(Bin::Gt)?,
+        "<=" => bin(Bin::Le)?,
+        ">=" => bin(Bin::Ge)?,
+        "==" => bin(Bin::Eq)?,
+        "!=" => bin(Bin::Ne)?,
+        "&" => bin(Bin::And)?,
+        "|" => bin(Bin::Or)?,
+        "if_else" => Node::IfElse(boxed(1)?, boxed(2)?, boxed(3)?),
+        "case_when" => {
+            let pairs = l.get_by_index(1).ok_or_else(|| bad("case_when pairs"))?;
+            let pairs = ListSexp::try_from(pairs).map_err(|_| bad("case_when pairs"))?;
+            let mut out = Vec::with_capacity(pairs.len());
+            for p in pairs.values_iter() {
+                let p = ListSexp::try_from(p).map_err(|_| bad("case_when pair"))?;
+                let get = |i| p.get_by_index(i).ok_or_else(|| bad("case_when pair"));
+                out.push((decode(get(0)?.0)?, decode(get(1)?.0)?));
+            }
+            let def = match l.get_by_index(2) {
+                Some(d) if !d.is_null() => Some(Box::new(decode(d.0)?)),
+                _ => None,
+            };
+            Node::CaseWhen(out, def)
+        }
+        "pmin" | "pmax" => {
+            let args = (1..l.len()).map(arg).collect::<savvy::Result<Vec<_>>>()?;
+            Node::PMinMax(op == "pmax", args)
+        }
+        "exp" => Node::Math(MathFn::Exp, boxed(1)?),
+        "log" => Node::Math(MathFn::Log, boxed(1)?),
+        "sqrt" => Node::Math(MathFn::Sqrt, boxed(1)?),
+        "sum" => Node::Reduce(Red::Sum, boxed(1)?),
+        "mean" => Node::Reduce(Red::Mean, boxed(1)?),
+        other => return Err(bad(&format!("unknown operator `{other}`"))),
+    })
+}
+
+fn draws(n: &Node) -> bool {
+    match n {
+        Node::Runif => true,
+        Node::Const(_) | Node::Input(_) | Node::N => false,
+        Node::Unary(_, x) | Node::Math(_, x) | Node::Reduce(_, x) => draws(x),
+        Node::Bin(_, a, b) => draws(a) || draws(b),
+        Node::IfElse(a, b, c) => draws(a) || draws(b) || draws(c),
+        Node::CaseWhen(p, d) => {
+            p.iter().any(|(c, v)| draws(c) || draws(v)) || d.as_deref().is_some_and(draws)
+        }
+        Node::PMinMax(_, a) => a.iter().any(draws),
+    }
+}
+
+/// The data of a protected logical vector, in place (ALTREP materialised in `protect`).
+fn logicals_of<'a>(x: SEXP) -> savvy::Result<&'a [i32]> {
+    // SAFETY: main thread; `x` is a protected LGLSXP (checked by every caller).
+    let n = unsafe { rapi::Rf_xlength(x) } as usize;
+    if n == 0 {
+        return Ok(&[]);
+    }
+    // SAFETY: as above; DATAPTR_OR_NULL never allocates or raises.
+    let direct = unsafe { rapi::DATAPTR_OR_NULL(x) } as *const i32;
+    if !direct.is_null() {
+        // SAFETY: a logical vector's data is `n` ints, fixed while `x` is protected.
+        return Ok(unsafe { std::slice::from_raw_parts(direct, n) });
+    }
+    // SAFETY: as above; LOGICAL_RO may materialise (allocate), hence `protect`.
+    unsafe {
+        let p = rapi::protect_value(std::ptr::null(), move || rapi::LOGICAL_RO(x))?;
+        Ok(std::slice::from_raw_parts(p, n))
+    }
+}
+
+/// One input as evaluator values, borrowing R's memory; `None` for a type the
+/// evaluator does not take.
+fn vals_of<'a>(x: SEXP, stack: bool) -> savvy::Result<Option<Vals<'a>>> {
+    // SAFETY: main thread; `x` is an element of a protected argument list.
+    let t = unsafe { rapi::TYPEOF(x) };
+    Ok(Some(match t {
+        REALSXP => Vals::Dbl(Cow::Borrowed(store::numbers_of(x, REALSXP)?.unwrap_or(&[]))),
+        rapi::INTSXP => Vals::Int(Cow::Borrowed(
+            store::numbers_of(x, rapi::INTSXP)?.unwrap_or(&[]),
+        )),
+        LGLSXP => Vals::Lgl(Cow::Borrowed(logicals_of(x)?)),
+        STRSXP => {
+            let c = store::chars_of(x)?;
+            // SAFETY: a SEXP is a pointer, the size and alignment of a usize; the
+            // slice is only read, while `x` keeps its CHARSXPs alive.
+            Vals::Str(Cow::Borrowed(unsafe {
+                std::slice::from_raw_parts(c.as_ptr() as *const usize, c.len())
+            }))
+        }
+        VECSXP if stack => return stacked(x),
+        _ => return Ok(None),
+    }))
+}
+
+/// A list of vectors of one type, stacked into one (an `abm_global()` input read
+/// across groups).
+fn stacked<'a>(x: SEXP) -> savvy::Result<Option<Vals<'a>>> {
+    let l = ListSexp::try_from(Sexp(x)).map_err(|_| bad("stacked input"))?;
+    let mut out: Option<Vals<'a>> = None;
+    for part in l.values_iter() {
+        // SAFETY: main thread; `part` is an element of a protected list.
+        if unsafe { rapi::TYPEOF(part.0) } == VECSXP {
+            return Ok(None);
+        }
+        let Some(v) = vals_of(part.0, false)? else {
+            return Ok(None);
+        };
+        out = Some(match (out, v) {
+            (None, v) => owned(v),
+            (Some(Vals::Dbl(mut a)), Vals::Dbl(b)) => {
+                a.to_mut().extend_from_slice(&b);
+                Vals::Dbl(a)
+            }
+            (Some(Vals::Int(mut a)), Vals::Int(b)) => {
+                a.to_mut().extend_from_slice(&b);
+                Vals::Int(a)
+            }
+            (Some(Vals::Lgl(mut a)), Vals::Lgl(b)) => {
+                a.to_mut().extend_from_slice(&b);
+                Vals::Lgl(a)
+            }
+            (Some(Vals::Str(mut a)), Vals::Str(b)) => {
+                a.to_mut().extend_from_slice(&b);
+                Vals::Str(a)
+            }
+            _ => return Ok(None),
+        });
+    }
+    Ok(out)
+}
+
+/// `v` with its data owned, so further parts can be appended.
+fn owned(v: Vals<'_>) -> Vals<'static> {
+    match v {
+        Vals::Dbl(b) => Vals::Dbl(Cow::Owned(b.into_owned())),
+        Vals::Int(b) => Vals::Int(Cow::Owned(b.into_owned())),
+        Vals::Lgl(b) => Vals::Lgl(Cow::Owned(b.into_owned())),
+        Vals::Str(b) => Vals::Str(Cow::Owned(b.into_owned())),
+    }
+}
+
+struct RHost<'r> {
+    rng: Option<&'r mut RRng>,
+    na_real: f64,
+    na_str: usize,
+    /// an R condition caught while calling R back, re-raised after `eval()`
+    err: Option<savvy::Error>,
+}
+
+impl Host for RHost<'_> {
+    fn na_real(&self) -> f64 {
+        self.na_real
+    }
+    fn na_str(&self) -> usize {
+        self.na_str
+    }
+    fn str_ascii(&self, s: usize) -> bool {
+        // SAFETY: `s` is the address of a live CHARSXP (from an input or the IR);
+        // R_CHAR gives its NUL-terminated bytes without allocating.
+        let p = unsafe { rapi::R_CHAR(s as SEXP) };
+        // SAFETY: NUL-terminated, valid while the CHARSXP lives.
+        unsafe { std::ffi::CStr::from_ptr(p) }.to_bytes().is_ascii()
+    }
+    fn runif(&mut self, n: usize) -> Result<Vec<f64>, Decline> {
+        let Some(r) = self.rng.as_deref_mut() else {
+            return Err(Decline("a draw outside the RNG scope"));
+        };
+        let mut v = vec![0.0; n];
+        // R's runif(n) is Rf_runif(0, 1) per element (P2's differential tests)
+        if let Err(e) = r.fill(&mut v, Draw::Rmath2(rapi::Rf_runif, 0.0, 1.0)) {
+            self.err = Some(e);
+            return Err(Decline("an R condition while drawing"));
+        }
+        Ok(v)
+    }
+    fn math(&mut self, f: MathFn, x: &[f64]) -> Result<Vec<f64>, Decline> {
+        let name: &[u8] = match f {
+            MathFn::Exp => b"exp\0",
+            MathFn::Log => b"log\0",
+            MathFn::Sqrt => b"sqrt\0",
+        };
+        match call_math(name, x) {
+            Ok(v) => Ok(v),
+            Err(e) => {
+                self.err = Some(e);
+                Err(Decline("an R condition in exp()/log()/sqrt()"))
+            }
+        }
+    }
+    fn sum(&self, x: &[f64]) -> f64 {
+        reduce::sum(x, false)
+    }
+    fn mean(&self, x: &[f64]) -> f64 {
+        reduce::mean(x)
+    }
+    fn mean_int(&self, x: &[i32]) -> f64 {
+        reduce::mean_int(x)
+    }
+}
+
+/// R's own `exp(x)` (`log`, `sqrt`) over a copy of `x`, its result copied back.
+fn call_math(name: &'static [u8], x: &[f64]) -> savvy::Result<Vec<f64>> {
+    let n = x.len();
+    let mut out = vec![0.0; n];
+    let (xp, op) = (x.as_ptr(), out.as_mut_ptr());
+    // SAFETY: main thread; everything allocated is protected until the result is
+    // copied out; `xp`/`op` describe `x`/`out` (length n); R's exp/log/sqrt of a
+    // double vector returns a double vector of the same length; no panic inside.
+    unsafe {
+        rapi::protect(move || {
+            let v = rapi::Rf_protect(rapi::Rf_allocVector(REALSXP, n as isize));
+            let dst = rapi::REAL_OR_NULL(v) as *mut f64;
+            std::ptr::copy_nonoverlapping(xp, dst, n);
+            let call = rapi::Rf_protect(rapi::Rf_lang2(rapi::Rf_install(name.as_ptr().cast()), v));
+            let res = rapi::Rf_protect(rapi::Rf_eval(call, rapi::R_BaseEnv));
+            if rapi::TYPEOF(res) == REALSXP && rapi::Rf_xlength(res) as usize == n {
+                std::ptr::copy_nonoverlapping(rapi::REAL_RO(res), op, n);
+            }
+            rapi::Rf_unprotect(3);
+        })
+    }?;
+    Ok(out)
+}
+
+/// A result as an R vector of `n` elements (a length-1 value recycled).
+fn to_r(v: &Vals, n: usize) -> savvy::Result<Sexp> {
+    if v.len() != n && v.len() != 1 {
+        return Err(bad("result of the wrong length"));
+    }
+    let pick = |i: usize| if v.len() == 1 { 0 } else { i };
+    let ty = match v {
+        Vals::Dbl(_) => REALSXP,
+        Vals::Int(_) => rapi::INTSXP,
+        Vals::Lgl(_) => LGLSXP,
+        Vals::Str(_) => STRSXP,
+    };
+    // SAFETY: main thread; the new vector is protected while filled and returned
+    // at once (savvy protects what an entry point returns); writes stay in 0..n;
+    // the CHARSXPs set are live (inputs or IR literals); no panic inside.
+    let x = unsafe {
+        let v: *const Vals = v;
+        rapi::protect_value(rapi::R_NilValue, move || {
+            let x = rapi::Rf_protect(rapi::Rf_allocVector(ty, n as isize));
+            match &*v {
+                Vals::Dbl(d) => {
+                    let p = rapi::REAL_OR_NULL(x) as *mut f64;
+                    for i in 0..n {
+                        *p.add(i) = d[pick(i)];
+                    }
+                }
+                Vals::Int(d) | Vals::Lgl(d) => {
+                    let p = rapi::DATAPTR_OR_NULL(x) as *mut i32;
+                    for i in 0..n {
+                        *p.add(i) = d[pick(i)];
+                    }
+                }
+                Vals::Str(d) => {
+                    for i in 0..n {
+                        rapi::SET_STRING_ELT(x, i as isize, d[pick(i)] as SEXP);
+                    }
+                }
+            }
+            rapi::Rf_unprotect(1);
+            x
+        })
+    }?;
+    Ok(Sexp(x))
+}
+
+#[savvy]
+impl RxProgram {
+    /// Decode the IR: `rules` a list of node trees, `writes` (integer, 0-based, -1
+    /// for none) the input each rule's result replaces for the rules after it.
+    fn new(rules: ListSexp, writes: savvy::IntegerSexp) -> savvy::Result<Self> {
+        run(|| {
+            let ir = store::keep(rules.inner())?;
+            let mut out = Vec::with_capacity(rules.len());
+            for r in rules.values_iter() {
+                out.push(decode(r.0)?);
+            }
+            let writes: Vec<Option<usize>> = writes
+                .as_slice()
+                .iter()
+                .map(|&k| usize::try_from(k).ok())
+                .collect();
+            if writes.len() != out.len() {
+                return Err(bad("writes and rules differ in length"));
+            }
+            let draws = out.iter().any(draws);
+            Ok(RxProgram {
+                rules: out,
+                writes,
+                draws,
+                _ir: ir,
+            })
+        })
+    }
+
+    /// Does any rule draw?
+    fn draws(&self) -> savvy::Result<Sexp> {
+        run(|| savvy::OwnedLogicalSexp::try_from_scalar(self.draws).map(Into::into))
+    }
+
+    /// Evaluate every rule, in order, over `n` rows of `inputs`; each result as an
+    /// R vector of `out_n` elements. With `stacked`, an input that is a list of
+    /// vectors is their concatenation (a column read across groups); otherwise a
+    /// list input declines. `NULL` (and the reason kept for `rs_rx_reason()`)
+    /// where R must evaluate the step instead.
+    fn eval(&self, inputs: ListSexp, n: i32, out_n: i32, stacked: bool) -> savvy::Result<Sexp> {
+        run(|| {
+            let n = usize::try_from(n).map_err(|_| bad("negative n"))?;
+            let out_n = usize::try_from(out_n).map_err(|_| bad("negative out_n"))?;
+            let mut ins = Vec::with_capacity(inputs.len());
+            for x in inputs.values_iter() {
+                match vals_of(x.0, stacked)? {
+                    Some(v) => ins.push(v),
+                    None => return declined(Decline("an input of an unsupported type")),
+                }
+            }
+            // SAFETY: reading statics of R's (its NA_real_ and NA_character_).
+            let (na_real, na_str) = unsafe { (rapi::R_NaReal, rapi::R_NaString as usize) };
+            let mut body = |rng: Option<&mut RRng>| -> savvy::Result<Result<Vec<Vals>, Decline>> {
+                let mut h = RHost {
+                    rng,
+                    na_real,
+                    na_str,
+                    err: None,
+                };
+                let mut res = Vec::with_capacity(self.rules.len());
+                for (rule, w) in self.rules.iter().zip(&self.writes) {
+                    match ce::eval(rule, &ins, n, &mut h) {
+                        Ok(v) => {
+                            if let Some(k) = *w {
+                                if k >= ins.len() {
+                                    return Err(bad("write target out of range"));
+                                }
+                                ins[k] = v.clone();
+                            }
+                            res.push(v);
+                        }
+                        Err(d) => {
+                            if let Some(e) = h.err.take() {
+                                return Err(e);
+                            }
+                            return Ok(Err(d));
+                        }
+                    }
+                }
+                Ok(Ok(res))
+            };
+            let res = if self.draws {
+                rng::with_rng(|r| body(Some(r)))?
+            } else {
+                body(None)?
+            };
+            let res = match res {
+                Ok(r) => r,
+                Err(d) => return declined(d),
+            };
+            if res.iter().any(|v| v.len() != out_n && v.len() != 1) {
+                return declined(Decline("a result of the wrong length"));
+            }
+            let mut out = OwnedListSexp::new(res.len(), false)?;
+            for (i, v) in res.iter().enumerate() {
+                out.set_value(i, to_r(v, out_n)?)?;
+            }
+            Ok(out.into())
+        })
+    }
+}
+
+fn declined(d: Decline) -> savvy::Result<Sexp> {
+    LAST_DECLINE.with(|c| c.set(d.0));
+    Ok(NullSexp.into())
+}
+
+/// Why the last `RxProgram$eval()` returned `NULL`.
+/// @noRd
+#[savvy]
+fn rs_rx_reason() -> savvy::Result<Sexp> {
+    run(|| {
+        let r = LAST_DECLINE.with(|c| c.get());
+        savvy::OwnedStringSexp::try_from_scalar(r).map(Into::into)
+    })
+}

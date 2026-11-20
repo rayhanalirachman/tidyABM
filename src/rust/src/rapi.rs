@@ -118,6 +118,16 @@ extern "C" {
     pub fn Rf_eval(e: SEXP, env: SEXP) -> SEXP;
     pub fn R_CHAR(x: SEXP) -> *const std::os::raw::c_char;
     pub fn LOGICAL_RO(x: SEXP) -> *const c_int;
+
+    // the Rust tick loop (full-Rust stage 1): R callbacks and state lists
+    pub static R_GlobalEnv: SEXP;
+    pub static R_BlankString: SEXP;
+    pub fn Rf_cons(car: SEXP, cdr: SEXP) -> SEXP;
+    pub fn Rf_defineVar(sym: SEXP, value: SEXP, env: SEXP);
+    pub fn Rf_lcons(car: SEXP, cdr: SEXP) -> SEXP;
+    pub fn Rf_ScalarInteger(x: c_int) -> SEXP;
+    pub fn SET_VECTOR_ELT(x: SEXP, i: isize, v: SEXP) -> SEXP;
+    pub fn STRING_ELT(x: SEXP, i: isize) -> SEXP;
 }
 
 // src/reduce.c (tidyABM's own C; pure computation, safe on any thread)

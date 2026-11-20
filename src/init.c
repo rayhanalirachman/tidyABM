@@ -64,6 +64,11 @@ SEXP savvy_rs_info__impl(void) {
     return handle_result(res);
 }
 
+SEXP savvy_rs_native_exec__impl(SEXP c_arg__desc, SEXP c_arg__state) {
+    SEXP res = savvy_rs_native_exec__ffi(c_arg__desc, c_arg__state);
+    return handle_result(res);
+}
+
 SEXP savvy_rs_nb_fold__impl(SEXP c_arg__mean, SEXP c_arg__x, SEXP c_arg__cols, SEXP c_arg__cnt) {
     SEXP res = savvy_rs_nb_fold__ffi(c_arg__mean, c_arg__x, c_arg__cols, c_arg__cnt);
     return handle_result(res);
@@ -154,6 +159,21 @@ SEXP savvy_AgentStore_ticks__impl(SEXP self__) {
     return handle_result(res);
 }
 
+SEXP savvy_RunLoop_new__impl(SEXP c_arg__kinds, SEXP c_arg__prep, SEXP c_arg__seg, SEXP c_arg__tick, SEXP c_arg__rng, SEXP c_arg__ctx) {
+    SEXP res = savvy_RunLoop_new__ffi(c_arg__kinds, c_arg__prep, c_arg__seg, c_arg__tick, c_arg__rng, c_arg__ctx);
+    return handle_result(res);
+}
+
+SEXP savvy_RunLoop_run__impl(SEXP self__, SEXP c_arg__state, SEXP c_arg__ticks) {
+    SEXP res = savvy_RunLoop_run__ffi(self__, c_arg__state, c_arg__ticks);
+    return handle_result(res);
+}
+
+SEXP savvy_RunLoop_stats__impl(SEXP self__) {
+    SEXP res = savvy_RunLoop_stats__ffi(self__);
+    return handle_result(res);
+}
+
 SEXP savvy_RxProgram_draws__impl(SEXP self__) {
     SEXP res = savvy_RxProgram_draws__ffi(self__);
     return handle_result(res);
@@ -176,6 +196,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"savvy_rs_draw__impl", (DL_FUNC) &savvy_rs_draw__impl, 4},
     {"savvy_rs_group_sum__impl", (DL_FUNC) &savvy_rs_group_sum__impl, 4},
     {"savvy_rs_info__impl", (DL_FUNC) &savvy_rs_info__impl, 0},
+    {"savvy_rs_native_exec__impl", (DL_FUNC) &savvy_rs_native_exec__impl, 2},
     {"savvy_rs_nb_fold__impl", (DL_FUNC) &savvy_rs_nb_fold__impl, 4},
     {"savvy_rs_noop__impl", (DL_FUNC) &savvy_rs_noop__impl, 0},
     {"savvy_rs_pow__impl", (DL_FUNC) &savvy_rs_pow__impl, 2},
@@ -194,6 +215,9 @@ static const R_CallMethodDef CallEntries[] = {
     {"savvy_AgentStore_snapshot__impl", (DL_FUNC) &savvy_AgentStore_snapshot__impl, 3},
     {"savvy_AgentStore_stats__impl", (DL_FUNC) &savvy_AgentStore_stats__impl, 1},
     {"savvy_AgentStore_ticks__impl", (DL_FUNC) &savvy_AgentStore_ticks__impl, 1},
+    {"savvy_RunLoop_new__impl", (DL_FUNC) &savvy_RunLoop_new__impl, 6},
+    {"savvy_RunLoop_run__impl", (DL_FUNC) &savvy_RunLoop_run__impl, 3},
+    {"savvy_RunLoop_stats__impl", (DL_FUNC) &savvy_RunLoop_stats__impl, 1},
     {"savvy_RxProgram_draws__impl", (DL_FUNC) &savvy_RxProgram_draws__impl, 1},
     {"savvy_RxProgram_eval__impl", (DL_FUNC) &savvy_RxProgram_eval__impl, 5},
     {"savvy_RxProgram_new__impl", (DL_FUNC) &savvy_RxProgram_new__impl, 2},

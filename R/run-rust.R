@@ -36,7 +36,9 @@ active_kernels <- function(engine) {
 #' The run function `abm_run()` calls for one run under `engine`
 #'
 #' "r" never uses the store; "auto" uses it only when a step has an "auto"
-#' kernel; "rust" always uses it; "both" compares the two paths step by step.
+#' kernel; "rust" always uses it; "both" compares the two paths step by step. A
+#' run with a step a native kernel takes (`native` in the registry) has its tick
+#' loop in Rust ([run_once_loop()]); otherwise the R-driven [run_once_rust()].
 #' @noRd
 engine_run_once <- function(engine, steps) {
   kernels <- if (engine != "r") active_kernels(engine)
@@ -44,10 +46,12 @@ engine_run_once <- function(engine, steps) {
     k <- kernels[[class(s)[[1]]]]
     !is.null(k) && (is.null(k$can) || isTRUE(k$can(s)))
   }, NA))
+  native <- has && any(vapply(steps, rl_kind, 0L, kernels = kernels) > 0L)
+  rust_fn <- if (native) run_once_loop else run_once_rust
   switch(engine,
     r = run_once,
-    auto = if (has) function(...) run_once_rust(..., kernels = kernels) else run_once,
-    rust = function(...) run_once_rust(..., kernels = kernels),
+    auto = if (has) function(...) rust_fn(..., kernels = kernels) else run_once,
+    rust = function(...) rust_fn(..., kernels = kernels),
     both = function(...) run_once_rust(..., kernels = kernels, both = TRUE))
 }
 

@@ -3,6 +3,7 @@ SEXP savvy_rs_copy_doubles__ffi(SEXP c_arg__x);
 SEXP savvy_rs_draw__ffi(SEXP c_arg__kind, SEXP c_arg__n, SEXP c_arg__a, SEXP c_arg__b);
 SEXP savvy_rs_group_sum__ffi(SEXP c_arg__x, SEXP c_arg__g, SEXP c_arg__ngroups, SEXP c_arg__na_rm);
 SEXP savvy_rs_info__ffi(void);
+SEXP savvy_rs_native_exec__ffi(SEXP c_arg__desc, SEXP c_arg__state);
 SEXP savvy_rs_nb_fold__ffi(SEXP c_arg__mean, SEXP c_arg__x, SEXP c_arg__cols, SEXP c_arg__cnt);
 SEXP savvy_rs_noop__ffi(void);
 SEXP savvy_rs_pow__ffi(SEXP c_arg__x, SEXP c_arg__y);
@@ -23,6 +24,11 @@ SEXP savvy_AgentStore_set_col__ffi(SEXP self__, SEXP c_arg__group, SEXP c_arg__n
 SEXP savvy_AgentStore_snapshot__ffi(SEXP self__, SEXP c_arg__tick, SEXP c_arg__keep);
 SEXP savvy_AgentStore_stats__ffi(SEXP self__);
 SEXP savvy_AgentStore_ticks__ffi(SEXP self__);
+
+// methods and associated functions for RunLoop
+SEXP savvy_RunLoop_new__ffi(SEXP c_arg__kinds, SEXP c_arg__prep, SEXP c_arg__seg, SEXP c_arg__tick, SEXP c_arg__rng, SEXP c_arg__ctx);
+SEXP savvy_RunLoop_run__ffi(SEXP self__, SEXP c_arg__state, SEXP c_arg__ticks);
+SEXP savvy_RunLoop_stats__ffi(SEXP self__);
 
 // methods and associated functions for RxProgram
 SEXP savvy_RxProgram_draws__ffi(SEXP self__);

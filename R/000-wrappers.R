@@ -75,6 +75,14 @@ NULL
   .Call(savvy_rs_info__impl)
 }
 
+#' Run one native step from `prep`'s descriptor `desc` over `state`: the new
+#' state, or `NULL` where the R path must run it ("both" mode's kernel; the loop
+#' runs the same code).
+#' @noRd
+`rs_native_exec` <- function(`desc`, `state`) {
+  .Call(savvy_rs_native_exec__impl, `desc`, `state`)
+}
+
 #' `abm_neighbours()`'s network fast path: `sum()` (`mean = FALSE`) or `mean()` of
 #' `x` over each agent's neighbours through the R engine's padded index (`cols`,
 #' `cnt` from `nb_index()`), in `nb_fold()`'s order; `NULL` where `nb_fold()` must
@@ -222,6 +230,55 @@ class(`AgentStore`) <- c("tidyABM::AgentStore__bundle", "savvy_tidyABM__sealed")
 #' @export
 `print.tidyABM::AgentStore__bundle` <- function(x, ...) {
   cat('tidyABM::AgentStore\n')
+}
+
+### wrapper functions for RunLoop
+
+`RunLoop_run` <- function(self) {
+  function(`state`, `ticks`) {
+    .Call(savvy_RunLoop_run__impl, `self`, `state`, `ticks`)
+  }
+}
+
+`RunLoop_stats` <- function(self) {
+  function() {
+    .Call(savvy_RunLoop_stats__impl, `self`)
+  }
+}
+
+`.savvy_wrap_RunLoop` <- function(ptr) {
+  e <- new.env(parent = emptyenv())
+  e$.ptr <- ptr
+  e$`run` <- `RunLoop_run`(ptr)
+  e$`stats` <- `RunLoop_stats`(ptr)
+
+  class(e) <- c("tidyABM::RunLoop", "RunLoop", "savvy_tidyABM__sealed")
+  e
+}
+
+
+#' A run driven from Rust. `kinds[i]`: 0 an R step, 1 native `abm_rules`, 2
+#' native `abm_global`, 3 native network `abm_neighbours`. The state is bound as
+#' `st` in `ctx`; callbacks (R closures) read it there: `prep(i)` -> descriptor,
+#' `NULL` or `FALSE`; `seg(i, j, restore)` runs steps `i..j` (1-based) on the R
+#' path, after restoring the saved `.Random.seed` when `restore`, and `tick(done,
+#' next)` the book-keeping after tick `done` (0: none) and before tick `next` (0:
+#' none) -- both bind the new state in `ctx` and return it; `rng()` saves
+#' `.Random.seed`.
+`RunLoop` <- new.env(parent = emptyenv())
+
+### associated functions for RunLoop
+
+`RunLoop`$`new` <- function(`kinds`, `prep`, `seg`, `tick`, `rng`, `ctx`) {
+  .savvy_wrap_RunLoop(.Call(savvy_RunLoop_new__impl, `kinds`, `prep`, `seg`, `tick`, `rng`, `ctx`))
+}
+
+
+class(`RunLoop`) <- c("tidyABM::RunLoop__bundle", "savvy_tidyABM__sealed")
+
+#' @export
+`print.tidyABM::RunLoop__bundle` <- function(x, ...) {
+  cat('tidyABM::RunLoop\n')
 }
 
 ### wrapper functions for RxProgram

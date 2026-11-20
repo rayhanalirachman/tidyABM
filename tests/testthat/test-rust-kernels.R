@@ -49,14 +49,17 @@ test_that("the Rust fold is nb_fold() bit for bit", {
   expect_null(rs_nb_fold(TRUE, 1:144, ix$cols, ix$cnt))     # integers: R's fold
 })
 
-test_that("abm_neighbours() on a network agrees under every engine and uses the kernel", {
+test_that("abm_neighbours() on a network agrees under every engine and runs natively", {
   go <- abm_go(
     abm_neighbours(avg ~ mean(x), tot ~ sum(x * w), cnt ~ sum(on), ks ~ mean(k)),
     abm_rules(x ~ 0.5 * x + 0.5 * avg))
-  calls <- count_folds()
   expect_engines_agree(grid_world(), go, ticks = 4, seed = 2, what = "grid neighbours")
-  # rust and both run it (both twice per step: once is the kernel), 2 double rules x 4 ticks
-  expect_gt(calls$n, 0L)
+  # bare double columns: the Rust loop folds them natively (full-Rust FR4a)
+  bare <- abm_go(abm_neighbours(avg ~ mean(x), tot ~ sum(x)),
+                 abm_rules(x ~ 0.5 * x + 0.5 * avg))
+  expect_engines_agree(grid_world(), bare, ticks = 4, seed = 2, what = "bare grid neighbours")
+  run_in("rust", grid_world(), bare, ticks = 4, seed = 2)
+  expect_identical(.rl_last$stats[1:2], c(8L, 0L))
   expect_engines_agree(grid_world(), go, ticks = 3, seed = 2, record = "all",
                        what = "grid neighbours, every tick recorded")
 })

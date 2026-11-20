@@ -5,8 +5,9 @@
 # cover is left to the R engine with a recorded reason (`rx_coverage()`); a
 # formula it covers can still decline at run time (an integer overflow, `log()` of
 # a negative number, a NaN reaching `pmin()`, ...), and the step then runs on the R
-# path from the state and `.Random.seed` it started from (`rust_step()`'s replay),
-# so whatever R says, it says itself.
+# path from the state and `.Random.seed` it started from (the loop's replay,
+# R/run-loop.R), so whatever R says, it says itself. The compiled steps run
+# natively inside the Rust tick loop (`rl_prep()`, src/rust/src/runloop.rs).
 #
 # Covered (slice 1): literals, columns, globals and length-1 values from the
 # formula's environment; `( )`, unary `-`, `+ - * /`, `< > <= >= == !=`, `& | !`,
@@ -202,7 +203,7 @@ rx_program <- function(step, idx, cols, globals, global_step = FALSE) {
   names <- unique(unlist(lapply(comp, `[[`, "syms")))
   src <- rx_sources(names, cols, globals, envs[[1]])
   if (is.null(src)) return(rx_no("a name found nowhere"))
-  # inputs in the order [rx_inputs()] gathers them: columns, globals, scope values
+  # inputs in the order the native step gathers them: columns, globals, scope values
   o <- order(src)
   names <- names[o]
   src <- src[o]
@@ -220,26 +221,6 @@ rx_program <- function(step, idx, cols, globals, global_step = FALSE) {
        cols = names[src == 1L], globs = names[src == 2L], scope = names[src == 3L])
 }
 
-# what a plan depends on beyond the formulas: the groups' and globals' names.
-# Steps only ever add columns and globals (none removes or renames one), so
-# their counts tell a changed schema; [schema_key()] builds the names and costs
-# a few microseconds on every step
-rx_key <- function(state) c(length(state$globals), lengths(state$groups, use.names = FALSE))
-
-#' The inputs of a program for one group (or a list of groups, stacked by the
-#' evaluator), or `NULL` when one is not a bare vector the evaluator can read
-#' @noRd
-rx_inputs <- function(p, cols, globals) {
-  out <- c(cols, .subset(globals, p$globs),
-           if (length(p$scope)) mget(p$scope, envir = p$env, inherits = TRUE))
-  # bare vectors only (a factor, a Date, names or any attribute changes what R's
-  # operators return); the evaluator declines other types and lengths itself
-  stacked <- length(cols) && is.list(cols[[1]])
-  flat <- if (stacked) c(unlist(cols, recursive = FALSE), out[-seq_along(cols)]) else out
-  if (any(lengths(lapply(flat, attributes)))) return(NULL)
-  out
-}
-
 # a step whose shape never compiles: marked in its plan, so later ticks go to the
 # R engine without trying the kernel
 rx_never <- function(step) {
@@ -253,90 +234,6 @@ rx_declined <- function(step, reason = rs_rx_reason()) {
   p <- .subset2(step, "plan")
   if (!is.null(p)) assign("rx_declined", c(p$rx_declined, reason), envir = p)
   NULL
-}
-
-#' `abm_rules()` with its formulas evaluated in Rust
-#'
-#' The shapes [run_rules()] evaluates over whole groups: no `.by`, no relation,
-#' nothing read of a pairing, and no pairing that splits the rows (a standing
-#' match under `.scope = "match"`). Values are computed group by group, every rule
-#' of a group from the start-of-step columns, then written, as [run_rules()] does;
-#' the groups stay R vectors (the store is not involved).
-#' @noRd
-rk_rules <- function(step, state, store) {
-  if (length(state$relations)) return(NULL)
-  # shapes that never compile, whatever the data: the step goes straight to the
-  # R engine from now on ([rust_step()] reads `rust_no`). A `.cell` write moves
-  # agents ([run_step()] re-derives `.x`/`.y`); a `partner_` target writes
-  # another agent's row.
-  if (!planned(step, "rx_shape", rx_rules_ok(step))) return(rx_never(step))
-  if (!is.null(state$match) && nrow(state$match$match) > 0L &&
-      (step$scope %||% "match") == "match") return(NULL)
-  plan <- planned_for(step, "rx_plan", rx_key(state), {
-    routes <- if (length(state$groups) > 1L) rule_routes(step, state)
-    progs <- lapply(stats::setNames(nm = names(state$groups)), function(nm) {
-      todo <- if (length(state$groups) == 1L) step$rules else routes[[nm]]
-      if (!length(todo)) return(NULL)
-      idx <- which(vapply(step$rules, function(r) any(vapply(todo, identical, NA, r)), NA))
-      rx_program(step, idx, names(state$groups[[nm]]), state$globals)
-    })
-    if (any(vapply(progs, is_rx_no, NA))) NULL else Filter(Negate(is.null), progs)
-  })
-  if (is.null(plan)) return(NULL)
-  applied <- FALSE
-  for (nm in names(plan)) {
-    p <- plan[[nm]]
-    g <- state$groups[[nm]]
-    n <- vctrs::vec_size(g)
-    if (n == 0L) next
-    applied <- TRUE
-    ins <- rx_inputs(p, .subset(g, p$cols), state$globals)
-    vals <- if (!is.null(ins)) p$prog$eval(ins, n, n, FALSE)
-    if (is.null(vals)) return(rx_declined(step, if (is.null(ins)) "an input that is not a bare vector" else rs_rx_reason()))
-    cls <- oldClass(g)
-    g <- unclass(g)
-    for (i in seq_along(vals)) g[[p$targets[[i]]]] <- vals[[i]]
-    oldClass(g) <- cls
-    state$groups[[nm]] <- g
-  }
-  # nobody to apply it to is the R engine's error to raise
-  if (!applied && any(vapply(state$groups, vctrs::vec_size, 0L) > 0L)) return(NULL)
-  state
-}
-
-#' `abm_global()` with its formulas evaluated in Rust
-#'
-#' Without `.by`: each rule over all groups stacked (every column it reads must
-#' be in every group, so nothing is padded), one value per rule, the later rules
-#' seeing the globals the earlier ones wrote, as [run_global()] does.
-#' @noRd
-rk_global <- function(step, state, store) {
-  # one group: the R engine's own evaluation is a plain `eval()` and measured
-  # cheaper than the kernel's set-up (tax: 28 vs 37 us a step)
-  if (!planned(step, "rx_shape", rx_global_ok(step) && length(state$groups) > 1L)) {
-    return(rx_never(step))
-  }
-  groups <- state$groups
-  n <- sum(vapply(groups, vctrs::vec_size, 0L))
-  if (n == 0L) return(NULL)
-  p <- planned_for(step, "rx_plan", rx_key(state), {
-    cols <- Reduce(intersect, lapply(groups, names))
-    p <- rx_program(step, seq_along(step$rules), cols, state$globals, global_step = TRUE)
-    # a column some group lacks is padded with NA by the R engine: not compiled
-    if (!is_rx_no(p)) {
-      everywhere <- model_columns(groups)
-      if (any(p$names %in% setdiff(everywhere, cols))) p <- rx_no("a column some group lacks")
-    }
-    p
-  })
-  if (is_rx_no(p)) return(NULL)
-  cols <- if (length(groups) == 1L) .subset(groups[[1]], p$cols) else
-    lapply(stats::setNames(nm = p$cols), function(nm) lapply(groups, .subset2, nm))
-  ins <- rx_inputs(p, cols, state$globals)
-  vals <- if (!is.null(ins)) p$prog$eval(ins, n, 1L, length(groups) > 1L)
-  if (is.null(vals)) return(rx_declined(step, if (is.null(ins)) "an input that is not a bare vector" else rs_rx_reason()))
-  for (i in seq_along(vals)) state$globals[[p$targets[[i]]]] <- vals[[i]]
-  state
 }
 
 # the parts of a step's shape that never change during a run, for the kernels

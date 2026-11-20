@@ -19,8 +19,10 @@ pure R.
 | `src/rust/tidyabm-core/` | engine code with no R dependency; `cargo test` runs here (`sample.rs`, `reduce.rs`, `store.rs`, `neighbours.rs`, `expr.rs` the evaluator) |
 | `R/rust-blocks.R` | `rust_rng_ok()` (verified `RNGkind()`s) and the R-side wrappers with their R fallbacks |
 | `R/run-rust.R` | the Rust run path: `run_once_rust()`, the step adapter, kernel dispatch and replay (`rust_step()`), "both" mode |
-| `R/rust-kernels.R` | the step kernels (`rk_*`) and their registry `rust_kernels` |
-| `R/rust-expr.R` | the expression compiler (`rx_compile()`), the compiled-rule kernels `rk_rules()` / `rk_global()`, `rx_coverage()` |
+| `R/rust-kernels.R` | the kernel registry `rust_kernels` |
+| `R/rust-expr.R` | the expression compiler (`rx_compile()`, `rx_program()`), `rx_coverage()` |
+| `R/run-loop.R` | the Rust-driven run `run_once_loop()`, native-step compilers `rl_prep_*()`, kernel `rk_native()` |
+| `src/rust/src/runloop.rs` | `RunLoop` (the tick loop, R callbacks), the native executors, `rs_native_exec()` |
 | `src/rust/src/expr.rs` | `RxProgram`: decodes the IR, reads R's columns in place, R callbacks for draws and `exp`/`log`/`sqrt` |
 | `src/rust/Cargo.lock` | pinned crate versions (committed) |
 | `src/rust/vendor.tar.xz`, `vendor-config.toml` | all crates for the offline build (committed) |
@@ -166,8 +168,8 @@ copied into Rust only for a snapshot that may reach the result (lazy copy-in).
 ## Compiled formulas (phase 5)
 
 `abm_rules()` (no `.by`, nothing read of a pairing, no pairing splitting the rows,
-no relation) and `abm_global()` (no `.by`, more than one group) evaluate their
-formulas in Rust when every formula of the step is in the grammar of
+no relation, no value from the formula's environment) and `abm_global()` (no
+`.by`) run natively inside the Rust tick loop (next sections) when every formula of the step is in the grammar of
 `R/rust-expr.R` (see its header and `rx_coverage(go)` for the reason a rule is not).
 How it fits together:
 
@@ -178,14 +180,13 @@ How it fits together:
 * `RxProgram$eval(inputs, n, out_n, stacked)` evaluates the rules in order and
   returns R vectors, or `NULL` with the reason in `rs_rx_reason()`. Rust never
   warns: wherever R would warn, error or give bits Rust cannot reproduce exactly, it
-  returns `NULL` and `rust_step()` replays the step on the R path from the saved
-  state and `.Random.seed`.
+  declines and the loop replays the step on the R path from the saved state and
+  `.Random.seed`. The loop calls `RxProgram::compute()` directly on the state's
+  column vectors (`src/rust/src/runloop.rs`).
 * Typing is R's and vctrs', decided per call from the data (`tidyabm-core/src/expr.rs`).
-* Kernels that work on `state$groups` (not the store) are registered with
-  `store = FALSE`; `rust_step()` then marks the store stale instead of loading it.
-  A step whose formulas can never compile is marked `rust_no` in its plan and goes
-  straight to the adapter afterwards. `can(step)` tells "auto" whether a run has
-  anything a kernel can take.
+* `rl_prep()` returns `FALSE` for a step whose formulas can never compile (it
+  then always runs in R); `can(step)` tells "auto" whether a run has anything a
+  kernel can take.
 
 Adding a function to the grammar: add it to `rx_fns()` and `rx_compile()` (R), to
 `decode()` (`src/rust/src/expr.rs`) and to `Node`/`eval()` in
@@ -195,10 +196,9 @@ Adding a function to the grammar: add it to `rx_fns()` and `rx_compile()` (R), t
 under `TIDYABM_ENGINE=both`. Behaviour comes from R's documentation and
 differential tests only (D13): for example, integer `/` gives R's `NA_real_` for an
 `NA` operand, `pmin(0, -0)` keeps the first, dplyr 1.2's `case_when()` sizes its
-conditions and values apart. Measure with `SAVVY_PROFILE=release`: a kernel step
-costs ~25-30 us of R-side overhead before any evaluation, so a formula R already
-evaluates in a few microseconds is not worth compiling (one-group `abm_global()`
-steps decline for that reason).
+conditions and values apart. Measure with `SAVVY_PROFILE=release`: an R-driven
+kernel step cost ~25-30 us of R-side overhead (phase 5); a native step in the Rust
+loop costs ~5-10 us of overhead plus its evaluation.
 
 ## Vendoring (offline builds)
 
@@ -222,6 +222,40 @@ R CMD build .
 mkdir -p /tmp/empty-cargo-home
 CARGO_HOME=/tmp/empty-cargo-home R CMD check --as-cran --no-manual tidyABM_*.tar.gz
 ```
+
+## The Rust tick loop and native steps (full-Rust stages)
+
+A run with a step that a *native* kernel takes (`native` in `rust_kernels`) runs
+with its tick loop in Rust: `run_once_loop()` (`R/run-loop.R`) builds the state
+and the R callbacks, `RunLoop` (`src/rust/src/runloop.rs`) owns the state list for
+the whole run. Native steps (today `abm_rules`/`abm_global` in the compiled
+grammar and network `abm_neighbours` of bare columns) run without any R code; every
+other step, and each run of consecutive such steps, is one callback (`seg`) into
+the R engine's own `run_step()`. Rules:
+
+* The state stays the R engine's list; columns are R vectors read in place.
+  Native code **never modifies an R object in place**: it commits new vectors into
+  shallow copies of the containers (`with_elt()`, `set_named()`), so any R variable
+  that still holds the old state is untouched.
+* A native step is compiled by an R callback (`rl_prep()`: descriptor, `NULL` = R
+  for this schema, `FALSE` = never) and cached against the schema key
+  `c(length(globals), lengths(groups))` (+ edges and agent count for neighbours).
+* Transactional: evaluate everything, then commit. A decline returns `None`
+  without touching the state; the loop then replays the step on the R path, after
+  restoring the `.Random.seed` saved before any drawing native step.
+* Every R call that can allocate or raise goes through `rapi::protect` (or
+  `build()`, which also keeps the new object before anything else allocates).
+  `getAttrib(x, names)` on a list is the one call made outside it (it neither
+  allocates nor raises there). `ATTRIB()`/`OBJECT()` are not API: attributes are
+  checked with `all_bare()` (copy onto an empty vector, `R_compute_identical`).
+* "both" mode runs the same executor step by step (`rk_native()` ->
+  `rs_native_exec()`) against the R engine; the loop itself is checked by result
+  identity with "r" (tests, oracle, models/). `.rl_last$stats` holds the last
+  loop's counters: native steps run, declined, compiled, R callbacks.
+* Adding a native step kind: an `rl_prep_<kind>()` in `R/run-loop.R`, a `kind`
+  number in the registry (`native =`, with a static `can()`), its executor in
+  `runloop.rs` (`exec()` dispatch), a "both"-mode test via
+  `expect_engines_agree()` and a loop test asserting `.rl_last$stats`.
 
 ## The oracle
 

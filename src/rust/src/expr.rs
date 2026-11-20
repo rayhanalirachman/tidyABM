@@ -161,7 +161,7 @@ fn logicals_of<'a>(x: SEXP) -> savvy::Result<&'a [i32]> {
 
 /// One input as evaluator values, borrowing R's memory; `None` for a type the
 /// evaluator does not take.
-fn vals_of<'a>(x: SEXP, stack: bool) -> savvy::Result<Option<Vals<'a>>> {
+pub(crate) fn vals_of<'a>(x: SEXP, stack: bool) -> savvy::Result<Option<Vals<'a>>> {
     // SAFETY: main thread; `x` is an element of a protected argument list.
     let t = unsafe { rapi::TYPEOF(x) };
     Ok(Some(match t {
@@ -185,7 +185,7 @@ fn vals_of<'a>(x: SEXP, stack: bool) -> savvy::Result<Option<Vals<'a>>> {
 
 /// A list of vectors of one type, stacked into one (an `abm_global()` input read
 /// across groups).
-fn stacked<'a>(x: SEXP) -> savvy::Result<Option<Vals<'a>>> {
+pub(crate) fn stacked<'a>(x: SEXP) -> savvy::Result<Option<Vals<'a>>> {
     let l = ListSexp::try_from(Sexp(x)).map_err(|_| bad("stacked input"))?;
     let mut out: Option<Vals<'a>> = None;
     for part in l.values_iter() {
@@ -221,7 +221,7 @@ fn stacked<'a>(x: SEXP) -> savvy::Result<Option<Vals<'a>>> {
 }
 
 /// `v` with its data owned, so further parts can be appended.
-fn owned(v: Vals<'_>) -> Vals<'static> {
+pub(crate) fn owned(v: Vals<'_>) -> Vals<'static> {
     match v {
         Vals::Dbl(b) => Vals::Dbl(Cow::Owned(b.into_owned())),
         Vals::Int(b) => Vals::Int(Cow::Owned(b.into_owned())),
@@ -314,7 +314,7 @@ fn call_math(name: &'static [u8], x: &[f64]) -> savvy::Result<Vec<f64>> {
 }
 
 /// A result as an R vector of `n` elements (a length-1 value recycled).
-fn to_r(v: &Vals, n: usize) -> savvy::Result<Sexp> {
+pub(crate) fn to_r(v: &Vals, n: usize) -> savvy::Result<Sexp> {
     if v.len() != n && v.len() != 1 {
         return Err(bad("result of the wrong length"));
     }
@@ -408,49 +408,10 @@ impl RxProgram {
                     None => return declined(Decline("an input of an unsupported type")),
                 }
             }
-            // SAFETY: reading statics of R's (its NA_real_ and NA_character_).
-            let (na_real, na_str) = unsafe { (rapi::R_NaReal, rapi::R_NaString as usize) };
-            let mut body = |rng: Option<&mut RRng>| -> savvy::Result<Result<Vec<Vals>, Decline>> {
-                let mut h = RHost {
-                    rng,
-                    na_real,
-                    na_str,
-                    err: None,
-                };
-                let mut res = Vec::with_capacity(self.rules.len());
-                for (rule, w) in self.rules.iter().zip(&self.writes) {
-                    match ce::eval(rule, &ins, n, &mut h) {
-                        Ok(v) => {
-                            if let Some(k) = *w {
-                                if k >= ins.len() {
-                                    return Err(bad("write target out of range"));
-                                }
-                                ins[k] = v.clone();
-                            }
-                            res.push(v);
-                        }
-                        Err(d) => {
-                            if let Some(e) = h.err.take() {
-                                return Err(e);
-                            }
-                            return Ok(Err(d));
-                        }
-                    }
-                }
-                Ok(Ok(res))
-            };
-            let res = if self.draws {
-                rng::with_rng(|r| body(Some(r)))?
-            } else {
-                body(None)?
-            };
-            let res = match res {
+            let res = match self.compute(ins, n, out_n)? {
                 Ok(r) => r,
                 Err(d) => return declined(d),
             };
-            if res.iter().any(|v| v.len() != out_n && v.len() != 1) {
-                return declined(Decline("a result of the wrong length"));
-            }
             let mut out = OwnedListSexp::new(res.len(), false)?;
             for (i, v) in res.iter().enumerate() {
                 out.set_value(i, to_r(v, out_n)?)?;
@@ -460,8 +421,74 @@ impl RxProgram {
     }
 }
 
-fn declined(d: Decline) -> savvy::Result<Sexp> {
+impl RxProgram {
+    /// Does any rule draw?
+    pub(crate) fn draws_any(&self) -> bool {
+        self.draws
+    }
+
+    /// Every rule, in order, over `n` rows of `ins` (the later rules seeing the
+    /// inputs earlier ones overwrite); `Err(Decline)` where R must evaluate the
+    /// step, and also for a result whose length is neither `out_n` nor 1. An R
+    /// condition raised while calling R back is the outer `Err`.
+    pub(crate) fn compute<'a>(
+        &self,
+        mut ins: Vec<Vals<'a>>,
+        n: usize,
+        out_n: usize,
+    ) -> savvy::Result<Result<Vec<Vals<'a>>, Decline>> {
+        // SAFETY: reading statics of R's (its NA_real_ and NA_character_).
+        let (na_real, na_str) = unsafe { (rapi::R_NaReal, rapi::R_NaString as usize) };
+        let mut body = |rng: Option<&mut RRng>| -> savvy::Result<Result<Vec<Vals<'a>>, Decline>> {
+            let mut h = RHost {
+                rng,
+                na_real,
+                na_str,
+                err: None,
+            };
+            let mut res = Vec::with_capacity(self.rules.len());
+            for (rule, w) in self.rules.iter().zip(&self.writes) {
+                match ce::eval(rule, &ins, n, &mut h) {
+                    Ok(v) => {
+                        if let Some(k) = *w {
+                            if k >= ins.len() {
+                                return Err(bad("write target out of range"));
+                            }
+                            ins[k] = v.clone();
+                        }
+                        res.push(v);
+                    }
+                    Err(d) => {
+                        if let Some(e) = h.err.take() {
+                            return Err(e);
+                        }
+                        return Ok(Err(d));
+                    }
+                }
+            }
+            Ok(Ok(res))
+        };
+        let res = if self.draws {
+            rng::with_rng(|r| body(Some(r)))?
+        } else {
+            body(None)?
+        };
+        Ok(match res {
+            Ok(r) if r.iter().any(|v| v.len() != out_n && v.len() != 1) => {
+                Err(Decline("a result of the wrong length"))
+            }
+            other => other,
+        })
+    }
+}
+
+/// Keep `d` as the reason the last evaluation declined (for `rs_rx_reason()`).
+pub(crate) fn note_decline(d: &Decline) {
     LAST_DECLINE.with(|c| c.set(d.0));
+}
+
+fn declined(d: Decline) -> savvy::Result<Sexp> {
+    note_decline(&d);
     Ok(NullSexp.into())
 }
 

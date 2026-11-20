@@ -15,6 +15,7 @@ mod expr;
 mod rapi;
 mod reduce;
 mod rng;
+mod runloop;
 mod store;
 
 use savvy::{

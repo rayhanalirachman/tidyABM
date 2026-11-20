@@ -75,6 +75,19 @@ pub(crate) fn keep(x: SEXP) -> savvy::Result<H> {
     Ok(Rc::new(Kept { sexp: x, token }))
 }
 
+/// A [`Kept`] for `sexp`, already inserted into the preserved list as `token`
+/// (inside the same protected call that made `sexp`, so it was never unprotected).
+pub(crate) fn kept_from(sexp: SEXP, token: SEXP) -> H {
+    Rc::new(Kept { sexp, token })
+}
+
+impl Kept {
+    /// The kept object.
+    pub(crate) fn get(&self) -> SEXP {
+        self.sexp
+    }
+}
+
 /// `x`'s attributes on a new zero-length vector of type `ty`, kept; `None` when
 /// `x` has none (the copy is then `identical()` to the bare `empty`).
 fn donor(x: SEXP, ty: SexpType, empty: SEXP) -> savvy::Result<Option<H>> {

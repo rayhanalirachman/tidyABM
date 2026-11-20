@@ -733,7 +733,10 @@ fn reduce<'a>(r: Red, x: Vals<'a>, h: &dyn Host) -> R<Vals<'a>> {
 mod tests {
     use super::*;
 
-    const NA_REAL: f64 = f64::from_bits(0x7ff0_0000_0000_07a2);
+    // not a const: const f64::from_bits needs Rust 1.83, the MSRV is 1.81
+    fn na_real() -> f64 {
+        f64::from_bits(0x7ff0_0000_0000_07a2)
+    }
 
     struct Plain {
         draws: Vec<f64>,
@@ -741,7 +744,7 @@ mod tests {
 
     impl Host for Plain {
         fn na_real(&self) -> f64 {
-            NA_REAL
+            na_real()
         }
         fn na_str(&self) -> usize {
             0
@@ -811,7 +814,7 @@ mod tests {
         let div = eval(&Node::Bin(Bin::Div, input(0), one), &ins, 2, &mut h).unwrap();
         let Vals::Dbl(d) = div else { panic!() };
         assert_eq!(d[0], i32::MAX as f64);
-        assert_eq!(d[1].to_bits(), NA_REAL.to_bits());
+        assert_eq!(d[1].to_bits(), na_real().to_bits());
     }
 
     #[test]
@@ -834,7 +837,7 @@ mod tests {
         };
         assert_eq!(v[0], 0.0);
         assert_eq!(v[1], 5.0);
-        assert_eq!(v[2].to_bits(), NA_REAL.to_bits());
+        assert_eq!(v[2].to_bits(), na_real().to_bits());
         // a scalar condition with a vector value warns in dplyr: decline
         let bad = Node::CaseWhen(vec![(Node::Const(Konst::Lgl(1)), Node::Input(0))], None);
         assert!(eval(&bad, &ins, 3, &mut h).is_err());

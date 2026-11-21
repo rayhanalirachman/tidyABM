@@ -257,11 +257,18 @@ class(`AgentStore`) <- c("tidyABM::AgentStore__bundle", "savvy_tidyABM__sealed")
   }
 }
 
+`RunLoop_times` <- function(self) {
+  function() {
+    .Call(savvy_RunLoop_times__impl, `self`)
+  }
+}
+
 `.savvy_wrap_RunLoop` <- function(ptr) {
   e <- new.env(parent = emptyenv())
   e$.ptr <- ptr
   e$`run` <- `RunLoop_run`(ptr)
   e$`stats` <- `RunLoop_stats`(ptr)
+  e$`times` <- `RunLoop_times`(ptr)
 
   class(e) <- c("tidyABM::RunLoop", "RunLoop", "savvy_tidyABM__sealed")
   e

@@ -303,7 +303,8 @@ rx_sources <- function(names, cols, globals, env) {
 
 #' A program over some of a step's rules, bound for a group, or a reason
 #' @noRd
-rx_program <- function(step, idx, cols, globals, global_step = FALSE) {
+rx_program <- function(step, idx, cols, globals, global_step = FALSE,
+                       match_names = character()) {
   comp <- rx_rules(step)[idx]
   bad <- Filter(is_rx_no, comp)
   if (length(bad)) return(rx_no(bad[[1]]))
@@ -316,9 +317,17 @@ rx_program <- function(step, idx, cols, globals, global_step = FALSE) {
   if (!rx_heads_ok(heads, scope)) return(rx_no("a function name is masked"))
   if ("runif" %in% heads && !rust_rng_ok()) return(rx_no("an RNG kind the Rust path was not verified under"))
   names <- unique(unlist(lapply(comp, `[[`, "syms")))
-  src <- rx_sources(names, cols, globals, envs[[1]])
-  if (is.null(src)) return(rx_no("a name found nowhere"))
-  # inputs in the order the native step gathers them: columns, globals, scope values
+  # 4: a column a standing match adds (`.partner`, `.role`, `.group_id`,
+  # `partner_<col>`), built by the native step from `state$match`
+  src <- rep(4L, length(names))
+  own <- !names %in% match_names
+  if (any(own)) {
+    s1 <- rx_sources(names[own], cols, globals, envs[[1]])
+    if (is.null(s1)) return(rx_no("a name found nowhere"))
+    src[own] <- s1
+  }
+  # inputs in the order the native step gathers them: columns, globals, scope
+  # values, match columns
   o <- order(src)
   names <- names[o]
   src <- src[o]
@@ -338,7 +347,8 @@ rx_program <- function(step, idx, cols, globals, global_step = FALSE) {
   prog <- rx_new_program(lapply(rules, function(r) rlang::quo_get_expr(r$quo)), names, writes,
                          lapply(comp, function(cp) rx_bind(cp$ir, names)))
   list(prog = prog, names = names, src = src, env = envs[[1]], targets = targets,
-       cols = names[src == 1L], globs = names[src == 2L], scope = names[src == 3L])
+       cols = names[src == 1L], globs = names[src == 2L], scope = names[src == 3L],
+       mcols = names[src == 4L])
 }
 
 # a step whose shape never compiles: marked in its plan, so later ticks go to the
@@ -367,9 +377,20 @@ rx_rules_ok <- function(step) {
 rx_rules_mixed_ok <- function(step) {
   if (!is.null(step$by)) return(rx_by_ok(step))
   is.null(step$by) && any(!vapply(rx_rules(step), is_rx_no, NA)) &&
-    !(step$uses_match %||% reads_match(lapply(step$rules, `[[`, "quo"))) &&
+    (!(step$uses_match %||% reads_match(lapply(step$rules, `[[`, "quo"))) ||
+       !is.null(rx_match_names(step))) &&
     !any(vapply(step$rules, function(r) r$target == ".cell" || startsWith(r$target, "partner_"), NA))
 }
+# The match columns a step's rules read (`.partner`, `.role`, `.group_id`,
+# `partner_<col>`), when every rule compiled (an R-evaluated rule would not see
+# them) and the names are known; `NULL` otherwise (the R path)
+rx_match_names <- function(step) {
+  quos <- lapply(step$rules, `[[`, "quo")
+  reads <- read_vars(quos)
+  if (is.null(reads) || any(vapply(rx_rules(step), is_rx_no, NA))) return(NULL)
+  reads[reads %in% c(".partner", ".role", ".group_id") | startsWith(reads, "partner_")]
+}
+
 # `.by` rules: every rule compiled, one `.by` column, nothing read of a pairing
 rx_by_ok <- function(step) {
   !is.null(step$by) && length(by_columns(step$by)) == 1L &&

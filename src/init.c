@@ -179,6 +179,11 @@ SEXP savvy_RunLoop_stats__impl(SEXP self__) {
     return handle_result(res);
 }
 
+SEXP savvy_RunLoop_times__impl(SEXP self__) {
+    SEXP res = savvy_RunLoop_times__ffi(self__);
+    return handle_result(res);
+}
+
 SEXP savvy_RxProgram_draws__impl(SEXP self__) {
     SEXP res = savvy_RxProgram_draws__ffi(self__);
     return handle_result(res);
@@ -224,6 +229,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"savvy_RunLoop_new__impl", (DL_FUNC) &savvy_RunLoop_new__impl, 7},
     {"savvy_RunLoop_run__impl", (DL_FUNC) &savvy_RunLoop_run__impl, 7},
     {"savvy_RunLoop_stats__impl", (DL_FUNC) &savvy_RunLoop_stats__impl, 1},
+    {"savvy_RunLoop_times__impl", (DL_FUNC) &savvy_RunLoop_times__impl, 1},
     {"savvy_RxProgram_draws__impl", (DL_FUNC) &savvy_RxProgram_draws__impl, 1},
     {"savvy_RxProgram_eval__impl", (DL_FUNC) &savvy_RxProgram_eval__impl, 5},
     {"savvy_RxProgram_new__impl", (DL_FUNC) &savvy_RxProgram_new__impl, 3},

@@ -282,6 +282,22 @@ the R engine's own `run_step()`. Rules:
   pads them, `stacked_pad()`), 6 `.where = <direction>` on a lattice
   (`directional_view()` + `neighbour_aggregate()` over neighbourhoods of one).
   The cross-product `within` (`attribute_view()`) and relations still run in R.
+* Match (kind 7): `random`/`one_of`/`opposite_group`/`network` without `weight`,
+  `cost`, pairwise `among`, with roles (two named conditions that must not
+  draw); `opposite_group` also with a number `.by` (`match_by_opposite()`).
+  `eligible`/`among`/role conditions are one program over the groups stacked;
+  draws (`shuffle()` = `sample.int(n)` without replacement, `sample.int(n, k,
+  TRUE)`, the role coin `runif`) come from R's generator in R's order. The
+  table is built as `new_match()` builds it (`match_table()`). Rules read the
+  standing match natively (`.partner`, `.role`, `.group_id`, `partner_<col>`:
+  input source 4, `match_inputs()`), and a non-elementwise rule under a
+  match-scope match runs once per `.group_id` (`eval_by_key()`'s order).
+* Death (kind 8) and birth (kind 9, `when =` without `attach_via`): conditions
+  and `times`/`cost`/`inherit` as programs over the rows R evaluates them over;
+  rows sliced (`slice_group()`) and offspring appended (`append_rows()`'s
+  `c()`), ids from `state$next_id`. Edge pruning and relations go to R.
+* Descriptor memo (`rl_prep_memo()`): keyed by the whole step without its
+  plan (a match has no rules to tell steps apart by) and the schema.
 * Tick book-keeping (FR9): an unrecorded or recorded tick without a progress bar
   is closed in Rust: globals into `glog`, measures/checks as value-only
   global programs (`rl_tick_step()`, `try_tick()`; a decline or a check that is

@@ -319,6 +319,13 @@ struct GroupPlan {
     ridx: Vec<i32>,
     /// the targets of every rule in `order`
     all_targets: Vec<SEXP>,
+    /// the standing match's columns the program reads (after the scope values)
+    mcols: Vec<SEXP>,
+    /// per rule in `order`: elementwise (else, under a standing match of a
+    /// match-scope step, evaluated once per pair or group, `.group_id`)
+    rew: Vec<bool>,
+    /// a birth step's program: 0 `when`, 1 `times`, 2 `cost`, 3 `inherit`
+    part: u8,
 }
 
 /// The R closures of a step whose rules R and Rust share (`rl_rule_fns()`).
@@ -335,6 +342,12 @@ struct Plan {
     nb1: Option<Nb1Plan>,
     /// `.where` lattice neighbourhoods (kind 6)
     nbw: Option<NbwPlan>,
+    /// `abm_match()` (kind 7)
+    mt: Option<MatchPlan>,
+    /// `abm_death()` (kind 8): `prune_edges`
+    death: Option<bool>,
+    /// `abm_birth()` (kind 9): the `as.integer(round(.t))` program
+    birth: Option<*const RxProgram>,
     /// `.by` rules: the key column's name
     by: Option<SEXP>,
     nb: Option<NbPlan>,
@@ -369,6 +382,21 @@ struct NbwPlan {
     dir: SEXP,
     lattice: SEXP,
     fns: Vec<u8>,
+}
+
+/// An `abm_match()` step: 1 random, 2 one_of, 3 opposite_group; the step's
+/// `size` (as R holds it, for `state$match`), `by` and `.by` columns (names or
+/// none), and whether the program evaluates `eligible` and then `among`.
+struct MatchPlan {
+    pair: i32,
+    size: SEXP,
+    size_n: usize,
+    by: Option<SEXP>,
+    dot_by: Option<SEXP>,
+    eligible: bool,
+    among: bool,
+    /// the two role names (`role = list(a = <cond>, b = <cond>)`), or none
+    roles: Vec<SEXP>,
 }
 
 /// A network `abm_neighbours()` step whose rules are `sum()`/`mean()` of bare
@@ -460,9 +488,17 @@ fn parse_plan(desc: H) -> savvy::Result<Plan> {
         // SAFETY: an external pointer made by savvy for an `RxProgram`, kept alive
         // by the descriptor (and `R/rust-expr.R`'s memo); savvy's own wrappers
         // read it the same way.
-        let prog = unsafe { savvy::get_external_pointer_addr(ptr) }? as *const RxProgram;
-        // SAFETY: as just above; the program is not mutated while borrowed.
-        draws |= unsafe { &*prog }.draws_any();
+        // (`NULL`: a step that compiles nothing, e.g. a match without conditions)
+        let prog = if ptr == rapi_nil() {
+            std::ptr::null()
+        } else {
+            // SAFETY: as just above.
+            unsafe { savvy::get_external_pointer_addr(ptr) }? as *const RxProgram
+        };
+        if !prog.is_null() {
+            // SAFETY: as just above; the program is not mutated while borrowed.
+            draws |= unsafe { &*prog }.draws_any();
+        }
         let name = field(g, b"name")?;
         let scope = store::numbers_of::<i32>(field(g, b"scope")?, INTSXP)?
             .unwrap_or(&[])
@@ -482,7 +518,37 @@ fn parse_plan(desc: H) -> savvy::Result<Plan> {
             Some(i) => chars(elt(g, i))?,
             None => Vec::new(),
         };
+        let mcols = match find_str(g, b"mcols")? {
+            Some(i) => chars(elt(g, i))?,
+            None => Vec::new(),
+        };
+        let rew = match find_str(g, b"rew")? {
+            Some(i) => {
+                let v = elt(g, i);
+                // SAFETY: reading a type tag, then a logical vector of its length.
+                if unsafe { rapi::TYPEOF(v) } == rapi::LGLSXP {
+                    (0..len(v))
+                        .map(|k| unsafe { *rapi::LOGICAL_RO(v).add(k) } == 1)
+                        .collect()
+                } else {
+                    Vec::new()
+                }
+            }
+            None => Vec::new(),
+        };
+        let part = match find_str(g, b"part")? {
+            Some(i) => match chars(elt(g, i))?.first().map(|&c| bytes(c)) {
+                Some(b"times") => 1,
+                Some(b"cost") => 2,
+                Some(b"inherit") => 3,
+                _ => 0,
+            },
+            None => 0,
+        };
         groups.push(GroupPlan {
+            part,
+            rew,
+            mcols,
             order: ints(b"order")?,
             ridx: ints(b"ridx")?,
             all_targets,
@@ -584,6 +650,58 @@ fn parse_plan(desc: H) -> savvy::Result<Plan> {
     } else {
         None
     };
+    let mt = if kind == 7 {
+        let x = field(d, b"mt")?;
+        let int1 = |nm: &[u8]| -> savvy::Result<i32> {
+            store::numbers_of::<i32>(field(x, nm)?, INTSXP)?
+                .and_then(|v| v.first().copied())
+                .ok_or_else(|| bad("match int"))
+        };
+        let lgl1 = |nm: &[u8]| -> savvy::Result<bool> {
+            let v = field(x, nm)?;
+            // SAFETY: reading a type tag, then a logical of length 1.
+            let ok = unsafe { rapi::TYPEOF(v) } == rapi::LGLSXP && len(v) == 1;
+            // SAFETY: as above.
+            Ok(ok && unsafe { *rapi::LOGICAL_RO(v) } == 1)
+        };
+        let name = |nm: &[u8]| -> savvy::Result<Option<SEXP>> {
+            Ok(chars(field(x, nm)?)?.first().copied())
+        };
+        let size_n = int1(b"size")?;
+        Some(MatchPlan {
+            pair: int1(b"pair")?,
+            size: field(x, b"size")?,
+            size_n: usize::try_from(size_n).map_err(|_| bad("match size"))?,
+            by: name(b"by")?,
+            dot_by: name(b"dot_by")?,
+            eligible: lgl1(b"eligible")?,
+            among: lgl1(b"among")?,
+            roles: chars(field(x, b"roles")?)?,
+        })
+    } else {
+        None
+    };
+    // a match draws
+    let draws = draws || mt.is_some();
+    let birth = if kind == 9 {
+        let x = field(d, b"birth")?;
+        let ptr = field(x, b"round")?;
+        // SAFETY: an external pointer made by savvy for an `RxProgram`, kept
+        // alive by the descriptor.
+        Some(unsafe { savvy::get_external_pointer_addr(ptr) }? as *const RxProgram)
+    } else {
+        None
+    };
+    let death = if kind == 8 {
+        let x = field(d, b"death")?;
+        let v = field(x, b"prune")?;
+        // SAFETY: reading a type tag, then a logical of length 1.
+        let ok = unsafe { rapi::TYPEOF(v) } == rapi::LGLSXP && len(v) == 1;
+        // SAFETY: as above.
+        Some(ok && unsafe { *rapi::LOGICAL_RO(v) } == 1)
+    } else {
+        None
+    };
     let by = if kind == 4 {
         Some(
             chars(field(d, b"by")?)?
@@ -598,6 +716,9 @@ fn parse_plan(desc: H) -> savvy::Result<Plan> {
         mixed,
         nb1,
         nbw,
+        mt,
+        death,
+        birth,
         by,
         global: kind == 2,
         nb,
@@ -744,6 +865,131 @@ fn r_value<'a>(x: SEXP, n: usize) -> savvy::Result<Option<Vals<'a>>> {
     expr::vals_of(x, false)
 }
 
+/// The columns `augment_group()` adds to group `g` under the standing match, in
+/// the order of `names` (`.partner`, `.role`, `.group_id`, `partner_<col>`):
+/// each agent's first row of the match table, the partner's columns read from
+/// the groups stacked (`bind_groups()`). `None` (decline) without a standing
+/// match, or for `partner_<col>` of a match that is not of pairs.
+fn match_inputs(
+    st: SEXP,
+    groups: SEXP,
+    g: SEXP,
+    names: &[&[u8]],
+) -> savvy::Result<Option<Vec<Vals<'static>>>> {
+    use std::borrow::Cow;
+    use tidyabm_core::sample::NA_INT;
+    let Some(mi) = find_str(st, b"match")? else {
+        return Ok(None);
+    };
+    let ms = elt(st, mi);
+    if ms == rapi_nil() {
+        return Ok(None);
+    }
+    let (Some(ti), Some(si)) = (find_str(ms, b"match")?, find_str(ms, b"size")?) else {
+        return Ok(None);
+    };
+    let (m, size) = (elt(ms, ti), elt(ms, si));
+    let size = match store::numbers_of::<i32>(size, INTSXP)? {
+        Some(v) if v.len() == 1 => v[0],
+        _ => match store::numbers_of::<f64>(size, rapi::REALSXP)? {
+            Some(v) if v.len() == 1 => v[0] as i32,
+            _ => return Ok(None),
+        },
+    };
+    let col =
+        |nm: &[u8]| -> savvy::Result<Option<SEXP>> { Ok(find_str(m, nm)?.map(|j| elt(m, j))) };
+    let (Some(mid), Some(mpart), Some(mrole), Some(mgid)) = (
+        col(b".id")?,
+        col(b".partner")?,
+        col(b".role")?,
+        col(b".group_id")?,
+    ) else {
+        return Ok(None);
+    };
+    let (Some(mid), Some(mpart), Some(mgid)) = (
+        store::numbers_of::<i32>(mid, INTSXP)?,
+        store::numbers_of::<i32>(mpart, INTSXP)?,
+        store::numbers_of::<i32>(mgid, INTSXP)?,
+    ) else {
+        return Ok(None);
+    };
+    // SAFETY: reading a type tag.
+    if unsafe { rapi::TYPEOF(mrole) } != STRSXP {
+        return Ok(None);
+    }
+    let mrole = store::chars_of(mrole)?;
+    let Some(gi) = find_str(g, b".id")? else {
+        return Ok(None);
+    };
+    let Some(gids) = store::numbers_of::<i32>(elt(g, gi), INTSXP)? else {
+        return Ok(None);
+    };
+    let first = IdIndex::new(mid);
+    let idx: Vec<Option<usize>> = gids.iter().map(|&id| first.get(id)).collect();
+    // SAFETY: reading a static of R's.
+    let na_str = unsafe { rapi::R_NaString } as usize;
+    let partner: Vec<i32> = idx.iter().map(|r| r.map_or(NA_INT, |r| mpart[r])).collect();
+    let mut out = Vec::with_capacity(names.len());
+    // the stacked population, built once if a partner column is read
+    let mut stack: Option<(Vec<usize>, IdIndex)> = None;
+    for &b in names {
+        out.push(match b {
+            b".partner" => Vals::Int(Cow::Owned(partner.clone())),
+            b".group_id" => Vals::Int(Cow::Owned(
+                idx.iter().map(|r| r.map_or(NA_INT, |r| mgid[r])).collect(),
+            )),
+            b".role" => Vals::Str(Cow::Owned(
+                idx.iter()
+                    .map(|r| r.map_or(na_str, |r| mrole[r] as usize))
+                    .collect(),
+            )),
+            _ => {
+                let Some(c) = b.strip_prefix(b"partner_") else {
+                    return Ok(None);
+                };
+                if size != 2 {
+                    return Ok(None);
+                }
+                if stack.is_none() {
+                    let sizes: Vec<usize> = (0..len(groups))
+                        .map(|k| rows(elt(groups, k)).unwrap_or(0))
+                        .collect();
+                    let Some(Vals::Int(all)) = stacked_col_named(groups, b".id", &sizes)? else {
+                        return Ok(None);
+                    };
+                    stack = Some((sizes, IdIndex::new(&all)));
+                }
+                let (sizes, at) = stack.as_ref().ok_or_else(|| bad("stack"))?;
+                let Some(v) = stacked_col_named(groups, c, sizes)? else {
+                    return Ok(None);
+                };
+                // combined[[col]][match(partner, combined$.id)]
+                let rows_p: Vec<Option<usize>> = partner
+                    .iter()
+                    .map(|p| if *p == NA_INT { None } else { at.get(*p) })
+                    .collect();
+                // SAFETY: reading a static of R's.
+                let na_real = unsafe { rapi::R_NaReal };
+                match &v {
+                    Vals::Dbl(x) => Vals::Dbl(Cow::Owned(
+                        rows_p.iter().map(|r| r.map_or(na_real, |r| x[r])).collect(),
+                    )),
+                    Vals::Int(x) => Vals::Int(Cow::Owned(
+                        rows_p.iter().map(|r| r.map_or(NA_INT, |r| x[r])).collect(),
+                    )),
+                    Vals::Lgl(x) => Vals::Lgl(Cow::Owned(
+                        rows_p.iter().map(|r| r.map_or(NA_INT, |r| x[r])).collect(),
+                    )),
+                    Vals::Str(x) => Vals::Str(Cow::Owned(
+                        rows_p.iter().map(|r| r.map_or(na_str, |r| x[r])).collect(),
+                    )),
+                }
+            }
+        });
+    }
+    Ok(Some(out))
+}
+
 /// `abm_rules()` natively (the shapes of slice 1's `rk_rules()`): every group's
 /// rules from the start-of-step columns, then the writes. `None` = declined.
 fn exec_rules(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
@@ -755,7 +1001,7 @@ fn exec_rules(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
     // a standing match with pairs narrows a match-scope step to the agents it
     // placed (`run_rules()`: rows `!is.na(.group_id)`); elementwise rules give
     // the same values over the whole group, others go to R
-    let mut placed: Option<std::collections::HashMap<i32, bool>> = None;
+    let mut placed: Option<(IdIndex, Vec<bool>)> = None;
     if plan.scope_match {
         if let Some(mi) = find_str(st, b"match")? {
             let m = elt(st, mi);
@@ -764,7 +1010,18 @@ fn exec_rules(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
                     return decline("a match without its table");
                 };
                 if rows(mm).unwrap_or(0) > 0 {
-                    if plan.groups.iter().any(|g| !g.ew) {
+                    // a rule that is not elementwise runs once per pair or group
+                    // (below); one R evaluates would need R's grouping: declined
+                    let r_grouped = plan
+                        .groups
+                        .iter()
+                        .any(|g| g.order.iter().zip(&g.rew).any(|(&o, &e)| o < 0 && !e));
+                    if r_grouped
+                        || plan
+                            .groups
+                            .iter()
+                            .any(|g| !g.ew && g.rew.len() != g.order.len())
+                    {
                         return decline("a rule that is not elementwise under a standing match");
                     }
                     let col = |nm: &[u8]| -> savvy::Result<Option<&[i32]>> {
@@ -776,12 +1033,12 @@ fn exec_rules(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
                     let (Some(ids), Some(gid)) = (col(b".id")?, col(b".group_id")?) else {
                         return decline("a match table of another shape");
                     };
-                    let mut map = std::collections::HashMap::with_capacity(ids.len());
-                    for (&id, &g) in ids.iter().zip(gid) {
-                        // match() takes the first row of an id
-                        map.entry(id).or_insert(g != tidyabm_core::sample::NA_INT);
-                    }
-                    placed = Some(map);
+                    // match() takes the first row of an id
+                    let placed_ok: Vec<bool> = gid
+                        .iter()
+                        .map(|&g| g != tidyabm_core::sample::NA_INT)
+                        .collect();
+                    placed = Some((IdIndex::new(ids), placed_ok));
                 }
             }
         }
@@ -822,69 +1079,138 @@ fn exec_rules(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
         if !read_scope(&svals, &gp.scope, &mut xs) {
             return decline("a formula-environment value not found");
         }
-        let Some(ins) = inputs(&xs)? else {
+        let Some(mut ins) = inputs(&xs)? else {
             return decline("an input that is not a bare vector");
         };
+        if !gp.mcols.is_empty() {
+            let mnames: Vec<&[u8]> = gp.mcols.iter().map(|&c| bytes(c)).collect();
+            match match_inputs(st, groups, g, &mnames)? {
+                Some(v) => ins.extend(v),
+                None => return decline("match columns that cannot be built natively"),
+            }
+        }
         // SAFETY: the program is kept alive by the plan's descriptor.
         let prog = unsafe { &*gp.prog };
         // R values of R-evaluated rules, kept while they are read
         let mut held: Vec<H> = Vec::new();
-        let (res, targets): (Vec<Vals>, &[SEXP]) = match &plan.mixed {
-            Some(mx) if gp.order.iter().any(|&o| o < 0) || r_ran => {
-                let multi = i32::from(gp.order.len() > 1);
-                let mut vals = Vec::with_capacity(gp.order.len());
-                for (pos, &o) in gp.order.iter().enumerate() {
-                    if o >= 0 && !r_mode {
-                        let k = o as usize;
-                        let save = r_ran && prog.draws_rule(k);
-                        if save {
-                            call0(mx.rng_save)?;
-                        }
-                        match prog.compute_one(k, &ins, n)? {
-                            Ok(v) => {
-                                vals.push(v);
-                                continue;
-                            }
-                            Err(d) if !r_ran => {
-                                expr::note_decline(&d);
-                                return Ok(None);
-                            }
-                            Err(_) => {
-                                // an R rule has run (its effects stay): this rule
-                                // and the rest are R's, from the stream before it
-                                if save {
-                                    call0(mx.rng_restore)?;
-                                }
-                                r_mode = true;
-                            }
+        // under a standing match, a rule that is not elementwise runs once per
+        // `.group_id` (`run_rules()`'s grouped evaluation, as `eval_by_key()`)
+        let pairs_mode = placed.is_some() && gp.rew.iter().any(|&e| !e);
+        if pairs_mode && plan.mixed.is_some() {
+            return decline("a mixed step under a standing match");
+        }
+        let (res, targets): (Vec<Vals>, &[SEXP]) = if pairs_mode {
+            let Some(gid) = match_inputs(st, groups, g, &[b".group_id"])?.and_then(|mut v| v.pop())
+            else {
+                return decline("no .group_id for a grouped rule");
+            };
+            let Some(loc) = tidyabm_core::expr::group_rows(&gid) else {
+                return decline("a .group_id of another kind");
+            };
+            let (nc, nm, ni) = (gp.cols.len(), gp.mcols.len(), ins.len());
+            let mut vals = Vec::with_capacity(gp.order.len());
+            for (pos, &o) in gp.order.iter().enumerate() {
+                let k = o as usize;
+                if gp.rew[pos] {
+                    match prog.compute_one(k, &ins, n)? {
+                        Ok(v) => vals.push(v),
+                        Err(d) => {
+                            expr::note_decline(&d);
+                            return Ok(None);
                         }
                     }
-                    let gl = find_str(st, b"globals")?.map_or_else(rapi_nil, |i| elt(st, i));
-                    let v = call_rule(mx.rule_fn, g, gl, gp.ridx[pos], multi)?;
-                    r_ran = true;
-                    match r_value(v.get(), n)? {
-                        Some(x) => {
-                            vals.push(x);
-                            held.push(v);
+                    continue;
+                }
+                let mut parts = Vec::with_capacity(loc.len());
+                for rows_g in &loc {
+                    let sliced: Vec<Vals> = ins
+                        .iter()
+                        .enumerate()
+                        .map(|(j, v)| {
+                            if j < nc || j >= ni - nm {
+                                tidyabm_core::expr::take(v, rows_g)
+                            } else {
+                                v.clone()
+                            }
+                        })
+                        .collect();
+                    match prog.compute_one(k, &sliced, rows_g.len())? {
+                        Ok(v) => parts.push(expr::owned(v)),
+                        Err(d) => {
+                            expr::note_decline(&d);
+                            return Ok(None);
                         }
-                        None => return decline("an R-evaluated rule gave another kind of value"),
                     }
                 }
-                (vals, &gp.all_targets)
+                match expr::with_host(|h| tidyabm_core::expr::unchop(parts, &loc, n, h)) {
+                    Ok(v) => vals.push(v),
+                    Err(d) => {
+                        expr::note_decline(&d);
+                        return Ok(None);
+                    }
+                }
             }
-            _ => match prog.compute(ins, n, n)? {
-                Ok(r) => (r, &gp.targets),
-                Err(d) => {
-                    expr::note_decline(&d);
-                    return Ok(None);
+            (vals, &gp.targets)
+        } else {
+            match &plan.mixed {
+                Some(mx) if gp.order.iter().any(|&o| o < 0) || r_ran => {
+                    let multi = i32::from(gp.order.len() > 1);
+                    let mut vals = Vec::with_capacity(gp.order.len());
+                    for (pos, &o) in gp.order.iter().enumerate() {
+                        if o >= 0 && !r_mode {
+                            let k = o as usize;
+                            let save = r_ran && prog.draws_rule(k);
+                            if save {
+                                call0(mx.rng_save)?;
+                            }
+                            match prog.compute_one(k, &ins, n)? {
+                                Ok(v) => {
+                                    vals.push(v);
+                                    continue;
+                                }
+                                Err(d) if !r_ran => {
+                                    expr::note_decline(&d);
+                                    return Ok(None);
+                                }
+                                Err(_) => {
+                                    // an R rule has run (its effects stay): this rule
+                                    // and the rest are R's, from the stream before it
+                                    if save {
+                                        call0(mx.rng_restore)?;
+                                    }
+                                    r_mode = true;
+                                }
+                            }
+                        }
+                        let gl = find_str(st, b"globals")?.map_or_else(rapi_nil, |i| elt(st, i));
+                        let v = call_rule(mx.rule_fn, g, gl, gp.ridx[pos], multi)?;
+                        r_ran = true;
+                        match r_value(v.get(), n)? {
+                            Some(x) => {
+                                vals.push(x);
+                                held.push(v);
+                            }
+                            None => {
+                                return decline("an R-evaluated rule gave another kind of value")
+                            }
+                        }
+                    }
+                    (vals, &gp.all_targets)
                 }
-            },
+                _ => match prog.compute(ins, n, n)? {
+                    Ok(r) => (r, &gp.targets),
+                    Err(d) => {
+                        expr::note_decline(&d);
+                        return Ok(None);
+                    }
+                },
+            }
         };
         let mut out = OwnedListSexp::new(res.len(), false)?;
         // the rows the step writes, when a match narrows it
         let mask: Option<Vec<bool>> = match &placed {
             None => None,
-            Some(map) => {
+            Some((map, ok)) => {
                 let Some(j) = find_str(g, b".id")? else {
                     return decline("a group without ids");
                 };
@@ -893,7 +1219,7 @@ fn exec_rules(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
                 };
                 let m: Vec<bool> = ids
                     .iter()
-                    .map(|id| *map.get(id).unwrap_or(&false))
+                    .map(|&id| map.get(id).is_some_and(|r| ok[r]))
                     .collect();
                 if m.iter().all(|&b| b) {
                     None
@@ -1386,10 +1712,7 @@ fn exec_nbw(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
     };
     let dir = store::numbers_of::<i32>(nb.dir, INTSXP)?.ok_or_else(|| bad("nbw dir"))?;
     let on = bytes(nb.on);
-    let mut at: std::collections::HashMap<i32, usize> = std::collections::HashMap::with_capacity(n);
-    for (j, &id) in ids.iter().enumerate().rev() {
-        at.insert(id, j);
-    }
+    let at = IdIndex::new(&ids);
     let mut pairs: Vec<(usize, usize)> = Vec::new();
     for i in 0..n {
         let wired = grp[i] as SEXP == nb.on || bytes(grp[i] as SEXP) == on;
@@ -1408,7 +1731,7 @@ fn exec_nbw(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
         if nc == NA_INT {
             continue;
         }
-        if let Some(&j) = at.get(&nc) {
+        if let Some(j) = at.get(nc) {
             pairs.push((i, j));
         }
     }
@@ -1580,6 +1903,1223 @@ fn stacked_col_named(
         }
     }
     Ok(None)
+}
+
+/// `x` reordered by `sample(x)` (R's `shuffle()`: a vector of one or none is
+/// left alone): `sample.int(n)` without replacement drawn from R's generator.
+fn shuffle(r: &mut crate::rng::RRng, x: &mut Vec<i32>) -> savvy::Result<()> {
+    if x.len() <= 1 {
+        return Ok(());
+    }
+    let idx = tidyabm_core::sample::sample_int(r, x.len(), x.len(), false)
+        .map_err(|e| bad(&format!("shuffle: {e}")))?;
+    *x = idx.iter().map(|&k| x[k as usize - 1]).collect();
+    Ok(())
+}
+
+/// `new_match(id, partner, role = NA, group_id)`: the tibble `.id`, `.partner`,
+/// `.role`, `.group_id` (`vctrs::new_data_frame(class = c("tbl_df", "tbl"))`).
+fn match_table(id: &[i32], partner: &[i32], role: &[SEXP], gid: &[i32]) -> savvy::Result<H> {
+    let n = id.len();
+    let (ip, pp, gp) = (id.as_ptr(), partner.as_ptr(), gid.as_ptr());
+    let rp = role.as_ptr();
+    let has_role = role.len() == n;
+    // SAFETY: main thread; every vector is protected from its allocation until
+    // it is stored in the protected list; `ip`/`pp`/`gp` point at `n` ints each,
+    // alive for this call; the list is kept before anything else allocates.
+    unsafe {
+        build(move || {
+            let x = rapi::Rf_protect(rapi::Rf_allocVector(VECSXP, 4));
+            for (k, src) in [ip, pp].iter().enumerate() {
+                let v = rapi::Rf_allocVector(INTSXP, n as isize);
+                rapi::SET_VECTOR_ELT(x, k as isize, v);
+                std::ptr::copy_nonoverlapping(*src, rapi::DATAPTR_OR_NULL(v) as *mut i32, n);
+            }
+            let role = rapi::Rf_allocVector(STRSXP, n as isize);
+            rapi::SET_VECTOR_ELT(x, 2, role);
+            for i in 0..n {
+                let r = if has_role {
+                    *rp.add(i)
+                } else {
+                    rapi::R_NaString
+                };
+                rapi::SET_STRING_ELT(role, i as isize, r);
+            }
+            let g = rapi::Rf_allocVector(INTSXP, n as isize);
+            rapi::SET_VECTOR_ELT(x, 3, g);
+            std::ptr::copy_nonoverlapping(gp, rapi::DATAPTR_OR_NULL(g) as *mut i32, n);
+            let nm = rapi::Rf_protect(rapi::Rf_allocVector(STRSXP, 4));
+            for (k, s) in [c".id", c".partner", c".role", c".group_id"]
+                .iter()
+                .enumerate()
+            {
+                rapi::SET_STRING_ELT(nm, k as isize, rapi::Rf_mkChar(s.as_ptr()));
+            }
+            rapi::Rf_setAttrib(x, rapi::R_NamesSymbol, nm);
+            let rn = rapi::Rf_protect(rapi::Rf_allocVector(INTSXP, 2));
+            let rp = rapi::DATAPTR_OR_NULL(rn) as *mut i32;
+            *rp = tidyabm_core::sample::NA_INT;
+            *rp.add(1) = -(n as i32);
+            rapi::Rf_setAttrib(x, rapi::Rf_install(c"row.names".as_ptr()), rn);
+            let cl = rapi::Rf_protect(rapi::Rf_allocVector(STRSXP, 3));
+            for (k, s) in [c"tbl_df", c"tbl", c"data.frame"].iter().enumerate() {
+                rapi::SET_STRING_ELT(cl, k as isize, rapi::Rf_mkChar(s.as_ptr()));
+            }
+            rapi::Rf_setAttrib(x, rapi::Rf_install(c"class".as_ptr()), cl);
+            rapi::Rf_unprotect(4);
+            x
+        })
+    }
+}
+
+/// A logical program result as `eval_condition()` makes it: recycled, `NA`
+/// (and only `NA`) false. `None` for anything not logical.
+fn condition(v: &Vals, n: usize) -> Option<Vec<bool>> {
+    let Vals::Lgl(x) = v else { return None };
+    if x.len() != 1 && x.len() != n {
+        return None;
+    }
+    Some(
+        (0..n)
+            .map(|i| x[if x.len() == 1 { 0 } else { i }] == 1)
+            .collect(),
+    )
+}
+
+/// The sorted values of a side column that `sort(unique())` orders the same in
+/// every locale: numbers, logicals, and strings of lowercase ASCII letters only.
+#[derive(Clone, Copy, PartialEq)]
+enum Side {
+    I(i32),
+    D(f64),
+    S(usize),
+}
+
+fn side_at(v: &Vals, i: usize) -> Option<Side> {
+    use tidyabm_core::sample::NA_INT;
+    match v {
+        Vals::Int(x) | Vals::Lgl(x) => (x[i] != NA_INT).then_some(Side::I(x[i])),
+        Vals::Dbl(x) => (!x[i].is_nan()).then_some(Side::D(x[i])),
+        Vals::Str(x) => {
+            // SAFETY: reading a static of R's.
+            (x[i] != unsafe { rapi::R_NaString } as usize).then_some(Side::S(x[i]))
+        }
+    }
+}
+
+/// Two distinct side values in `sort()` order, or `None` (decline) where the
+/// order could depend on the locale or the values are not two.
+fn two_sides(vals: &[Side]) -> Option<Option<(Side, Side)>> {
+    let mut u: Vec<Side> = Vec::new();
+    for &v in vals {
+        let same = |a: &Side| match (a, v) {
+            (Side::D(p), Side::D(q)) => *p == q,
+            (p, q) => *p == q,
+        };
+        if !u.iter().any(same) {
+            u.push(v);
+        }
+    }
+    if u.len() > 2 {
+        return None;
+    }
+    if u.len() < 2 {
+        return Some(None);
+    }
+    let key = |s: &Side| -> Option<Vec<u8>> {
+        match s {
+            Side::S(c) => {
+                let b = bytes(*c as SEXP);
+                b.iter().all(|c| c.is_ascii_lowercase()).then(|| b.to_vec())
+            }
+            _ => Some(Vec::new()),
+        }
+    };
+    let (a, b) = (u[0], u[1]);
+    let a_first = match (a, b) {
+        (Side::I(p), Side::I(q)) => p < q,
+        (Side::D(p), Side::D(q)) => p < q,
+        (Side::S(_), Side::S(_)) => key(&a)? < key(&b)?,
+        _ => return None,
+    };
+    Some(Some(if a_first { (a, b) } else { (b, a) }))
+}
+
+/// `abm_match()` natively (`run_match()`'s random, one_of and opposite_group
+/// modes without roles, and [match_by_opposite()]): `eligible`/`among` over the
+/// groups stacked, then the same draws in the same order from R's generator;
+/// `state$match <- list(match = <table>, size = <size>)`.
+fn exec_match(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
+    use tidyabm_core::sample::NA_INT;
+    let mt = plan.mt.as_ref().ok_or_else(|| bad("no match"))?;
+    let gp = plan.groups.first().ok_or_else(|| bad("no program"))?;
+    if let Some(ri) = find_str(st, b"relations")? {
+        if len(elt(st, ri)) > 0 {
+            return decline("a relation");
+        }
+    }
+    let gi = find_str(st, b"groups")?.ok_or_else(|| bad("no groups"))?;
+    let groups = elt(st, gi);
+    let ng = len(groups);
+    let mut sizes = Vec::with_capacity(ng);
+    for k in 0..ng {
+        match rows(elt(groups, k)) {
+            Some(r) => sizes.push(r),
+            None => return decline("a group without columns"),
+        }
+    }
+    let n: usize = sizes.iter().sum();
+    let Some(Vals::Int(ids)) = stacked_col_named(groups, b".id", &sizes)? else {
+        return decline("ids that are not integers");
+    };
+    // the conditions over the agents
+    let mut elig = vec![true; n];
+    let mut among = vec![true; n];
+    let mut role_c: Option<(Vec<bool>, Vec<bool>)> = None;
+    if (mt.eligible || mt.among || !mt.roles.is_empty()) && n > 0 {
+        if gp.prog.is_null() {
+            return Err(bad("conditions without a program"));
+        }
+        let mut ins: Vec<Vals> = Vec::with_capacity(gp.cols.len() + gp.globs.len());
+        for &c in &gp.cols {
+            match stacked_pad(groups, c, &sizes)? {
+                Some(v) => ins.push(v),
+                None => return decline("a column of another kind"),
+            }
+        }
+        let mut xs = Vec::new();
+        if !read_globals(st, &gp.globs, &mut xs)? {
+            return decline("a global not found");
+        }
+        let Some(svals) = scope_values(plan)? else {
+            return decline("a formula-environment value that cannot be read");
+        };
+        if !read_scope(&svals, &gp.scope, &mut xs) {
+            return decline("a formula-environment value not found");
+        }
+        let Some(more) = inputs(&xs)? else {
+            return decline("a global or scope value of an unsupported type");
+        };
+        ins.extend(more);
+        // SAFETY: the program is kept alive by the plan's descriptor.
+        let prog = unsafe { &*gp.prog };
+        let res = match prog.compute(ins, n, n)? {
+            Ok(r) => r,
+            Err(d) => {
+                expr::note_decline(&d);
+                return Ok(None);
+            }
+        };
+        let mut k = 0;
+        if mt.eligible {
+            let Some(c) = condition(&res[k], n) else {
+                return decline("an eligible condition that is not logical");
+            };
+            elig = c;
+            k += 1;
+        }
+        if mt.among {
+            let Some(c) = condition(&res[k], n) else {
+                return decline("an among condition that is not logical");
+            };
+            among = c;
+            k += 1;
+        }
+        if mt.roles.len() == 2 {
+            let (Some(a), Some(b)) = (condition(&res[k], n), condition(&res[k + 1], n)) else {
+                return decline("a role condition that is not logical");
+            };
+            role_c = Some((a, b));
+        }
+    }
+    let col = |nm: Option<SEXP>| -> savvy::Result<Option<Vals<'static>>> {
+        match nm {
+            Some(c) => stacked_pad(groups, c, &sizes),
+            None => Ok(None),
+        }
+    };
+    let by = col(mt.by)?;
+    let dot_by = col(mt.dot_by)?;
+    if (mt.by.is_some() && by.is_none()) || (mt.dot_by.is_some() && dot_by.is_none()) {
+        return decline("a by column of another kind");
+    }
+    let pool: Vec<i32> = (0..n).filter(|&i| elig[i]).map(|i| ids[i]).collect();
+    let mut out_id: Vec<i32> = Vec::new();
+    let mut out_partner: Vec<i32> = Vec::new();
+    let mut out_gid: Vec<i32> = Vec::new();
+    let mut out_role: Vec<SEXP> = Vec::new();
+    // agent row by id (`match(ids, agents$.id)`), for roles and the network mode
+    let row_of = if !mt.roles.is_empty() || mt.pair == 4 {
+        IdIndex::new(&ids)
+    } else {
+        IdIndex::new(&[])
+    };
+    let pair2 =
+        |a: &[i32], b: &[i32], off: i32, id: &mut Vec<i32>, pt: &mut Vec<i32>, g: &mut Vec<i32>| {
+            id.extend_from_slice(a);
+            id.extend_from_slice(b);
+            pt.extend_from_slice(b);
+            pt.extend_from_slice(a);
+            for half in 0..2 {
+                let _ = half;
+                g.extend((1..=a.len() as i32).map(|k| k + off));
+            }
+        };
+    let res: savvy::Result<Option<()>> = crate::rng::with_rng(|r| {
+        match mt.pair {
+            1 => {
+                let mut p = pool.clone();
+                shuffle(r, &mut p)?;
+                let size = mt.size_n;
+                let full = p.len() / size;
+                p.truncate(full * size);
+                if size == 2 {
+                    let a: Vec<i32> = p.iter().step_by(2).copied().collect();
+                    let b: Vec<i32> = p.iter().skip(1).step_by(2).copied().collect();
+                    match &role_c {
+                        None => pair2(&a, &b, 0, &mut out_id, &mut out_partner, &mut out_gid),
+                        Some(rc) => {
+                            let (ka, kb, ra, rb) = assign_roles(r, rc, &mt.roles, &a, &b, &row_of)?;
+                            pair2(&ka, &kb, 0, &mut out_id, &mut out_partner, &mut out_gid);
+                            out_role.extend(ra);
+                            out_role.extend(rb);
+                        }
+                    }
+                } else {
+                    out_partner = vec![NA_INT; p.len()];
+                    out_gid = (0..p.len()).map(|i| (i / size) as i32 + 1).collect();
+                    out_id = p;
+                }
+            }
+            2 => {
+                let cands: Vec<i32> = (0..n).filter(|&i| among[i]).map(|i| ids[i]).collect();
+                if pool.is_empty() || cands.is_empty() {
+                    return Ok(Some(()));
+                }
+                let mut p = pool.clone();
+                if cands.len() <= 1 {
+                    p.retain(|x| !cands.contains(x));
+                }
+                if p.is_empty() {
+                    return Ok(Some(()));
+                }
+                let dn = cands.len() as f64;
+                let draw_k = |r: &mut crate::rng::RRng, k: usize| -> Vec<i32> {
+                    (0..k)
+                        .map(|_| cands[tidyabm_core::sample::RDraws::unif_index(r, dn) as usize])
+                        .collect()
+                };
+                let mut draw = draw_k(r, p.len());
+                loop {
+                    let clash: Vec<usize> = (0..p.len()).filter(|&i| draw[i] == p[i]).collect();
+                    if clash.is_empty() {
+                        break;
+                    }
+                    let re = draw_k(r, clash.len());
+                    for (j, &i) in clash.iter().enumerate() {
+                        draw[i] = re[j];
+                    }
+                }
+                match &role_c {
+                    None => {
+                        out_gid = (1..=p.len() as i32).collect();
+                        out_partner = draw;
+                        out_id = p;
+                    }
+                    Some(rc) => {
+                        let (ka, kb, ra, _) = assign_roles(r, rc, &mt.roles, &p, &draw, &row_of)?;
+                        out_gid = (1..=ka.len() as i32).collect();
+                        out_partner = kb;
+                        out_id = ka;
+                        out_role = ra;
+                    }
+                }
+            }
+            4 => {
+                // match_network(): each eligible agent's edge partners, the edge
+                // list read both ways round and shuffled, the first per agent
+                let Some(ei) = find_str(st, b"edges")? else {
+                    return Ok(Some(()));
+                };
+                let e = elt(st, ei);
+                if e == rapi_nil() || rows(e).unwrap_or(0) == 0 {
+                    return Ok(Some(()));
+                }
+                let ecol = |nm: &[u8]| -> savvy::Result<Option<&[i32]>> {
+                    match find_str(e, nm)? {
+                        Some(j) => store::numbers_of::<i32>(elt(e, j), INTSXP),
+                        None => Ok(None),
+                    }
+                };
+                let (Some(from), Some(to)) = (ecol(b"from")?, ecol(b"to")?) else {
+                    return Ok(None);
+                };
+                let inpool = IdIndex::new(&pool);
+                let mut id: Vec<i32> = from.iter().chain(to.iter()).copied().collect();
+                let mut nbr: Vec<i32> = to.iter().chain(from.iter()).copied().collect();
+                let keep: Vec<bool> = (0..id.len())
+                    .map(|i| inpool.get(id[i]).is_some() && row_of.get(nbr[i]).is_some())
+                    .collect();
+                id = id
+                    .iter()
+                    .zip(&keep)
+                    .filter(|(_, &k)| k)
+                    .map(|(&v, _)| v)
+                    .collect();
+                nbr = nbr
+                    .iter()
+                    .zip(&keep)
+                    .filter(|(_, &k)| k)
+                    .map(|(&v, _)| v)
+                    .collect();
+                if id.is_empty() {
+                    return Ok(Some(()));
+                }
+                let o = tidyabm_core::sample::sample_int(r, id.len(), id.len(), false)
+                    .map_err(|e| bad(&format!("network match: {e}")))?;
+                let mut seen = std::collections::HashSet::new();
+                for &k in &o {
+                    let (a, b) = (id[k as usize - 1], nbr[k as usize - 1]);
+                    if seen.insert(a) {
+                        out_id.push(a);
+                        out_partner.push(b);
+                    }
+                }
+                out_gid = (1..=out_id.len() as i32).collect();
+            }
+            _ => {
+                let side = by.as_ref().ok_or_else(|| bad("no side"))?;
+                match &dot_by {
+                    None => {
+                        // match_opposite(): the sides among the agents taking part
+                        let take: Vec<usize> = (0..n).filter(|&i| elig[i]).collect();
+                        let vals: Vec<Side> =
+                            take.iter().filter_map(|&i| side_at(side, i)).collect();
+                        let Some(two) = two_sides(&vals) else {
+                            return Ok(None);
+                        };
+                        let Some((v1, v2)) = two else {
+                            return Ok(Some(()));
+                        };
+                        let pick = |v: Side| -> Vec<i32> {
+                            take.iter()
+                                .filter(|&&i| side_at(side, i).is_some_and(|s| same_side(s, v)))
+                                .map(|&i| ids[i])
+                                .collect()
+                        };
+                        let (mut g1, mut g2) = (pick(v1), pick(v2));
+                        shuffle(r, &mut g1)?;
+                        shuffle(r, &mut g2)?;
+                        let k = g1.len().min(g2.len());
+                        match &role_c {
+                            None => pair2(
+                                &g1[..k],
+                                &g2[..k],
+                                0,
+                                &mut out_id,
+                                &mut out_partner,
+                                &mut out_gid,
+                            ),
+                            Some(rc) => {
+                                let (ka, kb, ra, rb) =
+                                    assign_roles(r, rc, &mt.roles, &g1[..k], &g2[..k], &row_of)?;
+                                pair2(&ka, &kb, 0, &mut out_id, &mut out_partner, &mut out_gid);
+                                out_role.extend(ra);
+                                out_role.extend(rb);
+                            }
+                        }
+                    }
+                    Some(key) => {
+                        // match_by_opposite(): partitions by a number key, in key order
+                        let keys: Vec<Option<f64>> = (0..n)
+                            .map(|i| match key {
+                                Vals::Int(x) => (x[i] != NA_INT).then_some(f64::from(x[i])),
+                                Vals::Dbl(x) => (!x[i].is_nan()).then_some(x[i]),
+                                _ => None,
+                            })
+                            .collect();
+                        if !matches!(key, Vals::Int(_) | Vals::Dbl(_)) {
+                            return Ok(None);
+                        }
+                        let rows: Vec<usize> = (0..n)
+                            .filter(|&i| elig[i] && keys[i].is_some() && side_at(side, i).is_some())
+                            .collect();
+                        let mut parts: Vec<(f64, Vec<usize>)> = Vec::new();
+                        let mut at: std::collections::HashMap<u64, usize> =
+                            std::collections::HashMap::new();
+                        for &i in &rows {
+                            let kv = keys[i].unwrap_or(0.0);
+                            let b = if kv == 0.0 { 0 } else { kv.to_bits() };
+                            let p = *at.entry(b).or_insert_with(|| {
+                                parts.push((kv, Vec::new()));
+                                parts.len() - 1
+                            });
+                            parts[p].1.push(i);
+                        }
+                        let mut todo: Vec<(f64, Vec<usize>, Side, Side)> = Vec::new();
+                        for (kv, loc) in parts {
+                            let vals: Vec<Side> =
+                                loc.iter().filter_map(|&i| side_at(side, i)).collect();
+                            let Some(two) = two_sides(&vals) else {
+                                return Ok(None);
+                            };
+                            if let Some((v1, v2)) = two {
+                                todo.push((kv, loc, v1, v2));
+                            }
+                        }
+                        todo.sort_by(|a, b| {
+                            a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal)
+                        });
+                        let mut off = 0i32;
+                        for (_, loc, v1, v2) in todo {
+                            let pick = |v: Side| -> Vec<i32> {
+                                loc.iter()
+                                    .filter(|&&i| side_at(side, i).is_some_and(|s| same_side(s, v)))
+                                    .map(|&i| ids[i])
+                                    .collect()
+                            };
+                            let (mut g1, mut g2) = (pick(v1), pick(v2));
+                            shuffle(r, &mut g1)?;
+                            shuffle(r, &mut g2)?;
+                            let k = g1.len().min(g2.len());
+                            pair2(
+                                &g1[..k],
+                                &g2[..k],
+                                off,
+                                &mut out_id,
+                                &mut out_partner,
+                                &mut out_gid,
+                            );
+                            off += k as i32;
+                        }
+                    }
+                }
+            }
+        }
+        Ok(Some(()))
+    });
+    if res?.is_none() {
+        return decline("sides that are not two plain values");
+    }
+    let tbl = match_table(&out_id, &out_partner, &out_role, &out_gid)?;
+    // list(match = <table>, size = <size>)
+    let tp = tbl.get();
+    let size = mt.size;
+    // SAFETY: main thread; `tp` is kept by `tbl`, `size` by the descriptor; the
+    // list and its names are protected while built, then kept.
+    let m = unsafe {
+        build(move || {
+            let l = rapi::Rf_protect(rapi::Rf_allocVector(VECSXP, 2));
+            rapi::SET_VECTOR_ELT(l, 0, tp);
+            rapi::SET_VECTOR_ELT(l, 1, size);
+            let nm = rapi::Rf_protect(rapi::Rf_allocVector(STRSXP, 2));
+            rapi::SET_STRING_ELT(nm, 0, rapi::Rf_mkChar(c"match".as_ptr()));
+            rapi::SET_STRING_ELT(nm, 1, rapi::Rf_mkChar(c"size".as_ptr()));
+            rapi::Rf_setAttrib(l, rapi::R_NamesSymbol, nm);
+            rapi::Rf_unprotect(2);
+            l
+        })
+    }?;
+    // SAFETY: as above (the name's CHARSXP is kept while used).
+    let key = unsafe { build(|| rapi::Rf_mkChar(c"match".as_ptr())) }?;
+    Ok(Some(set_named(st, key.get(), m.get())?))
+}
+
+/// [assign_roles()] for pairs `(a[i], b[i])`: `a` takes the first role where
+/// its first condition and `b`'s second hold, else the second role where the
+/// reverse holds (a pair where both do flips a fair coin, `runif(n) < 0.5`,
+/// drawn for those pairs in order); pairs where neither holds are dropped.
+/// Returns the kept `a`, `b` and their roles.
+#[allow(clippy::type_complexity)]
+fn assign_roles(
+    r: &mut crate::rng::RRng,
+    rc: &(Vec<bool>, Vec<bool>),
+    names: &[SEXP],
+    a: &[i32],
+    b: &[i32],
+    row_of: &IdIndex,
+) -> savvy::Result<(Vec<i32>, Vec<i32>, Vec<SEXP>, Vec<SEXP>)> {
+    let at = |id: &i32| row_of.get(*id).ok_or_else(|| bad("role: unknown id"));
+    let (c1, c2) = rc;
+    let mut ab = Vec::with_capacity(a.len());
+    let mut ba = Vec::with_capacity(a.len());
+    for (x, y) in a.iter().zip(b) {
+        let (i, j) = (at(x)?, at(y)?);
+        ab.push(c1[i] && c2[j]);
+        ba.push(c1[j] && c2[i]);
+    }
+    let both: Vec<usize> = (0..a.len()).filter(|&k| ab[k] && ba[k]).collect();
+    if !both.is_empty() {
+        let mut u = vec![0.0; both.len()];
+        r.fill(&mut u, crate::rng::Draw::Rmath2(rapi::Rf_runif, 0.0, 1.0))?;
+        for (q, &k) in both.iter().enumerate() {
+            if u[q] < 0.5 {
+                ab[k] = false;
+            }
+        }
+    }
+    let (mut ka, mut kb, mut ra, mut rb) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
+    for k in 0..a.len() {
+        let (x, y) = if ab[k] {
+            (names[0], names[1])
+        } else if ba[k] {
+            (names[1], names[0])
+        } else {
+            continue;
+        };
+        ka.push(a[k]);
+        kb.push(b[k]);
+        ra.push(x);
+        rb.push(y);
+    }
+    Ok((ka, kb, ra, rb))
+}
+
+/// Group `g` without the rows where `drop` holds (`vctrs::vec_slice(g, !drop)`):
+/// each column sliced, the frame's attributes kept with compact row names.
+/// `None` (decline) for a column that is not a bare atomic or list vector.
+fn slice_group(g: SEXP, drop: &[bool]) -> savvy::Result<Option<H>> {
+    let k = len(g);
+    let cols: Vec<SEXP> = (0..k).map(|j| elt(g, j)).collect();
+    if !all_bare(&cols)? {
+        return Ok(None);
+    }
+    for &c in &cols {
+        // SAFETY: reading a type tag.
+        let t = unsafe { rapi::TYPEOF(c) };
+        if !matches!(t, rapi::LGLSXP | INTSXP | rapi::REALSXP | STRSXP | VECSXP)
+            || len(c) != drop.len()
+        {
+            return Ok(None);
+        }
+    }
+    let keep: Vec<usize> = (0..drop.len()).filter(|&i| !drop[i]).collect();
+    let m = keep.len();
+    let (kp, cp) = (keep.as_ptr(), cols.as_ptr());
+    // SAFETY: main thread; the new frame is protected while filled, each new
+    // column stored into it as soon as it is allocated; `kp` (m indices, each
+    // below the column length) and `cp` (k columns, protected by `g`) are alive
+    // for this call; the frame is kept before anything else allocates.
+    unsafe {
+        build(move || {
+            let y = rapi::Rf_protect(rapi::Rf_allocVector(VECSXP, k as isize));
+            for j in 0..k {
+                let c = *cp.add(j);
+                let t = rapi::TYPEOF(c);
+                let v = rapi::Rf_allocVector(t, m as isize);
+                rapi::SET_VECTOR_ELT(y, j as isize, v);
+                match t {
+                    rapi::REALSXP => {
+                        let (src, dst) = (rapi::REAL_RO(c), rapi::DATAPTR_OR_NULL(v) as *mut f64);
+                        for i in 0..m {
+                            *dst.add(i) = *src.add(*kp.add(i));
+                        }
+                    }
+                    rapi::LGLSXP | INTSXP => {
+                        let src = if t == INTSXP {
+                            rapi::INTEGER_RO(c)
+                        } else {
+                            rapi::LOGICAL_RO(c)
+                        };
+                        let dst = rapi::DATAPTR_OR_NULL(v) as *mut i32;
+                        for i in 0..m {
+                            *dst.add(i) = *src.add(*kp.add(i));
+                        }
+                    }
+                    STRSXP => {
+                        for i in 0..m {
+                            rapi::SET_STRING_ELT(
+                                v,
+                                i as isize,
+                                rapi::STRING_ELT(c, *kp.add(i) as isize),
+                            );
+                        }
+                    }
+                    _ => {
+                        for i in 0..m {
+                            rapi::SET_VECTOR_ELT(
+                                v,
+                                i as isize,
+                                rapi::VECTOR_ELT(c, *kp.add(i) as isize),
+                            );
+                        }
+                    }
+                }
+            }
+            rapi::SHALLOW_DUPLICATE_ATTRIB(y, g);
+            let rn = rapi::Rf_protect(rapi::Rf_allocVector(INTSXP, 2));
+            let rp = rapi::DATAPTR_OR_NULL(rn) as *mut i32;
+            *rp = tidyabm_core::sample::NA_INT;
+            *rp.add(1) = -(m as i32);
+            rapi::Rf_setAttrib(y, rapi::Rf_install(c"row.names".as_ptr()), rn);
+            rapi::Rf_unprotect(2);
+            y
+        })
+    }
+    .map(Some)
+}
+
+/// `abm_death(when =)` natively ([run_death()]): the condition over each group it
+/// applies to (with the standing match's columns where read), the rows where it
+/// holds removed. Edges that would need pruning, and relations, go to R.
+fn exec_death(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
+    let prune = plan.death.unwrap_or(true);
+    if let Some(ri) = find_str(st, b"relations")? {
+        if len(elt(st, ri)) > 0 {
+            return decline("a relation");
+        }
+    }
+    let Some(svals) = scope_values(plan)? else {
+        return decline("a formula-environment value that cannot be read");
+    };
+    let gi = find_str(st, b"groups")?.ok_or_else(|| bad("no groups"))?;
+    let groups = elt(st, gi);
+    let gnames = names_of(groups)?;
+    let mut new_groups: Vec<(usize, H)> = Vec::new();
+    let mut removed: Vec<i32> = Vec::new();
+    for gp in &plan.groups {
+        let Some(k) = find(gnames, gp.name) else {
+            return decline("a group not found");
+        };
+        let g = elt(groups, k);
+        let Some(n) = rows(g) else {
+            return decline("a group without columns");
+        };
+        if n == 0 {
+            continue;
+        }
+        let cn = names_of(g)?;
+        let mut xs = Vec::with_capacity(gp.cols.len() + gp.globs.len());
+        for &c in &gp.cols {
+            let Some(j) = find(cn, c) else {
+                return decline("a column not found");
+            };
+            xs.push(elt(g, j));
+        }
+        if !read_globals(st, &gp.globs, &mut xs)? {
+            return decline("a global not found");
+        }
+        if !read_scope(&svals, &gp.scope, &mut xs) {
+            return decline("a formula-environment value not found");
+        }
+        let Some(mut ins) = inputs(&xs)? else {
+            return decline("an input that is not a bare vector");
+        };
+        if !gp.mcols.is_empty() {
+            let mnames: Vec<&[u8]> = gp.mcols.iter().map(|&c| bytes(c)).collect();
+            match match_inputs(st, groups, g, &mnames)? {
+                Some(v) => ins.extend(v),
+                None => return decline("match columns that cannot be built natively"),
+            }
+        }
+        // SAFETY: the program is kept alive by the plan's descriptor.
+        let prog = unsafe { &*gp.prog };
+        let res = match prog.compute(ins, n, n)? {
+            Ok(r) => r,
+            Err(d) => {
+                expr::note_decline(&d);
+                return Ok(None);
+            }
+        };
+        let Some(dead) = condition(&res[0], n) else {
+            return decline("a condition that is not logical");
+        };
+        if !dead.iter().any(|&d| d) {
+            continue;
+        }
+        let Some(ii) = find_str(g, b".id")? else {
+            return decline("a group without ids");
+        };
+        let Some(ids) = store::numbers_of::<i32>(elt(g, ii), INTSXP)? else {
+            return decline("ids that are not integers");
+        };
+        removed.extend(ids.iter().zip(&dead).filter(|(_, &d)| d).map(|(&id, _)| id));
+        match slice_group(g, &dead)? {
+            Some(h) => new_groups.push((k, h)),
+            None => return decline("a column that cannot be sliced natively"),
+        }
+    }
+    let mut cur_st: Option<H> = None;
+    // edges: `edge_max` kept as R keeps it; edges that would lose a row go to R
+    if !removed.is_empty() && prune {
+        if let Some(ei) = find_str(st, b"edges")? {
+            let e = elt(st, ei);
+            let from = find_str(e, b"from")?.map(|j| elt(e, j));
+            if let Some(fr) = from.filter(|&f| len(f) > 0) {
+                let to = find_str(e, b"to")?
+                    .map(|j| elt(e, j))
+                    .ok_or_else(|| bad("edges without to"))?;
+                let (Some(fv), Some(tv)) = (
+                    store::numbers_of::<i32>(fr, INTSXP)?,
+                    store::numbers_of::<i32>(to, INTSXP)?,
+                ) else {
+                    return decline("edges that are not integers");
+                };
+                if fv.contains(&tidyabm_core::sample::NA_INT)
+                    || tv.contains(&tidyabm_core::sample::NA_INT)
+                {
+                    return decline("edges with NA");
+                }
+                let reuse = match find_str(st, b"edge_max")? {
+                    Some(mi) => {
+                        let em = elt(st, mi);
+                        find_str(em, b"edges")?.map(|j| elt(em, j)) == Some(e)
+                    }
+                    None => false,
+                };
+                let mx = if reuse {
+                    let em = elt(
+                        st,
+                        find_str(st, b"edge_max")?.ok_or_else(|| bad("edge_max"))?,
+                    );
+                    match find_str(em, b"max")?.map(|j| elt(em, j)) {
+                        Some(v) => match store::numbers_of::<i32>(v, INTSXP)? {
+                            Some(x) if x.len() == 1 => x[0],
+                            _ => return decline("an edge_max of another kind"),
+                        },
+                        None => return decline("an edge_max without max"),
+                    }
+                } else {
+                    let mx = fv
+                        .iter()
+                        .chain(tv.iter())
+                        .copied()
+                        .max()
+                        .unwrap_or(i32::MIN);
+                    // state$edge_max <- list(edges = <edges>, max = <max>)
+                    // SAFETY: main thread; `e` is protected by the state; the
+                    // list, its names and the scalar are protected while built.
+                    let em = unsafe {
+                        build(move || {
+                            let l = rapi::Rf_protect(rapi::Rf_allocVector(VECSXP, 2));
+                            rapi::SET_VECTOR_ELT(l, 0, e);
+                            rapi::SET_VECTOR_ELT(l, 1, rapi::Rf_ScalarInteger(mx));
+                            let nm = rapi::Rf_protect(rapi::Rf_allocVector(STRSXP, 2));
+                            rapi::SET_STRING_ELT(nm, 0, rapi::Rf_mkChar(c"edges".as_ptr()));
+                            rapi::SET_STRING_ELT(nm, 1, rapi::Rf_mkChar(c"max".as_ptr()));
+                            rapi::Rf_setAttrib(l, rapi::R_NamesSymbol, nm);
+                            rapi::Rf_unprotect(2);
+                            l
+                        })
+                    }?;
+                    // SAFETY: as above.
+                    let key = unsafe { build(|| rapi::Rf_mkChar(c"edge_max".as_ptr())) }?;
+                    cur_st = Some(set_named(st, key.get(), em.get())?);
+                    mx
+                };
+                if removed.iter().copied().min().unwrap_or(i32::MAX) <= mx {
+                    return decline("dead agents that are edge endpoints");
+                }
+            }
+        }
+    }
+    // commit
+    let base_st = cur_st.as_ref().map_or(st, |h| h.get());
+    let mut gs: Option<H> = None;
+    for (k, h) in &new_groups {
+        let cur = gs.as_ref().map_or(groups, |x| x.get());
+        // SAFETY: reading a static of R's (unused name: `k` is in range).
+        gs = Some(with_elt(cur, *k, h.get(), unsafe { rapi::R_BlankString })?);
+    }
+    let mut out = match &gs {
+        // SAFETY: as above.
+        Some(g) => with_elt(base_st, gi, g.get(), unsafe { rapi::R_BlankString })?,
+        None => keep(base_st)?,
+    };
+    // `state$relations <- prune_relations(NULL, ...)`: a NULL element is dropped
+    if let Some(ri) = find_str(out.get(), b"relations")? {
+        if elt(out.get(), ri) == rapi_nil() {
+            out = without(out.get(), b"relations")?;
+        }
+    }
+    Ok(Some(out))
+}
+
+/// A group program's inputs over rows `rows` of group `g` (all rows: `None`):
+/// its columns (and the standing match's) sliced, then globals and scope values
+/// whole. `None` (decline) where R would see something else.
+fn entry_inputs<'a>(
+    st: SEXP,
+    groups: SEXP,
+    g: SEXP,
+    gp: &GroupPlan,
+    svals: &Option<H>,
+    rows: Option<&[usize]>,
+) -> savvy::Result<Option<Vec<Vals<'a>>>> {
+    let cn = names_of(g)?;
+    let mut xs = Vec::with_capacity(gp.cols.len() + gp.globs.len());
+    for &c in &gp.cols {
+        let Some(j) = find(cn, c) else {
+            return Ok(None);
+        };
+        xs.push(elt(g, j));
+    }
+    let nc = xs.len();
+    if !read_globals(st, &gp.globs, &mut xs)? || !read_scope(svals, &gp.scope, &mut xs) {
+        return Ok(None);
+    }
+    let Some(mut ins) = inputs(&xs)? else {
+        return Ok(None);
+    };
+    if !gp.mcols.is_empty() {
+        let mnames: Vec<&[u8]> = gp.mcols.iter().map(|&c| bytes(c)).collect();
+        match match_inputs(st, groups, g, &mnames)? {
+            Some(v) => ins.extend(v),
+            None => return Ok(None),
+        }
+    }
+    if let Some(r) = rows {
+        let nm = gp.mcols.len();
+        let ni = ins.len();
+        ins = ins
+            .into_iter()
+            .enumerate()
+            .map(|(j, v)| {
+                if j < nc || j >= ni - nm {
+                    tidyabm_core::expr::take(&v, r)
+                } else {
+                    v
+                }
+            })
+            .collect();
+    }
+    Ok(Some(ins))
+}
+
+/// `x` (length 1 or `n`) as `n` values.
+fn recycle<'a>(x: Vals<'a>, n: usize) -> Vals<'a> {
+    if x.len() == 1 && n != 1 {
+        tidyabm_core::expr::take(&x, &vec![0; n])
+    } else {
+        x
+    }
+}
+
+fn rank(v: &Vals) -> u8 {
+    match v {
+        Vals::Lgl(_) => 0,
+        Vals::Int(_) => 1,
+        Vals::Dbl(_) => 2,
+        Vals::Str(_) => 3,
+    }
+}
+
+/// `abm_birth(when =)` natively ([birth_by_condition()], no `attach_via`): per
+/// group the parents (`when`), their offspring counts (`times`, through R's own
+/// `as.integer(round())`), the parents' `cost` and the offspring's `inherit`,
+/// each evaluated in R's order over the rows R evaluates it over; offspring
+/// appended with new ids from `state$next_id`.
+fn exec_birth(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
+    use std::borrow::Cow;
+    use tidyabm_core::sample::NA_INT;
+    let round_prog = plan.birth.ok_or_else(|| bad("no birth"))?;
+    if let Some(ri) = find_str(st, b"relations")? {
+        if len(elt(st, ri)) > 0 {
+            return decline("a relation");
+        }
+    }
+    let Some(svals) = scope_values(plan)? else {
+        return decline("a formula-environment value that cannot be read");
+    };
+    let gi = find_str(st, b"groups")?.ok_or_else(|| bad("no groups"))?;
+    let groups = elt(st, gi);
+    let gnames = names_of(groups)?;
+    let Some(ni) = find_str(st, b"next_id")? else {
+        return decline("no next_id");
+    };
+    let mut next_id = match store::numbers_of::<i32>(elt(st, ni), INTSXP)? {
+        Some(v) if v.len() == 1 && v[0] != NA_INT => v[0],
+        _ => return decline("a next_id that is not one integer"),
+    };
+    let start_id = next_id;
+    let mut new_groups: Vec<(usize, H)> = Vec::new();
+    let mut k0 = 0;
+    while k0 < plan.groups.len() {
+        // this group's programs: when, then times / cost / inherit
+        let name = plan.groups[k0].name;
+        let mut k1 = k0;
+        while k1 < plan.groups.len() && plan.groups[k1].name == name {
+            k1 += 1;
+        }
+        let entries = &plan.groups[k0..k1];
+        k0 = k1;
+        let part = |p: u8| entries.iter().find(|e| e.part == p);
+        let Some(k) = find(gnames, name) else {
+            return decline("a group not found");
+        };
+        let g = elt(groups, k);
+        let Some(n) = rows(g) else {
+            return decline("a group without columns");
+        };
+        if n == 0 {
+            continue;
+        }
+        let eval = |gp: &GroupPlan,
+                    rows: Option<&[usize]>,
+                    m: usize|
+         -> savvy::Result<Option<Vec<Vals<'static>>>> {
+            if gp.prog.is_null() {
+                // a part that does not fit this group, reached: R's error
+                expr::note_decline(&Decline("a birth formula that does not fit the group"));
+                return Ok(None);
+            }
+            let Some(ins) = entry_inputs(st, groups, g, gp, &svals, rows)? else {
+                return Ok(None);
+            };
+            // SAFETY: the program is kept alive by the plan's descriptor.
+            let prog = unsafe { &*gp.prog };
+            match prog.compute(ins, m, m)? {
+                Ok(r) => Ok(Some(
+                    r.into_iter().map(|v| expr::owned(recycle(v, m))).collect(),
+                )),
+                Err(d) => {
+                    expr::note_decline(&d);
+                    Ok(None)
+                }
+            }
+        };
+        let w = part(0).ok_or_else(|| bad("birth without when"))?;
+        let Some(wv) = eval(w, None, n)? else {
+            return Ok(None);
+        };
+        let Some(parents) = condition(&wv[0], n) else {
+            return decline("a condition that is not logical");
+        };
+        let prows: Vec<usize> = (0..n).filter(|&i| parents[i]).collect();
+        if prows.is_empty() {
+            continue;
+        }
+        let m = prows.len();
+        let reps: Vec<usize> = match part(1) {
+            None => vec![1; m],
+            Some(t) => {
+                let Some(tv) = eval(t, Some(&prows), m)? else {
+                    return Ok(None);
+                };
+                let v = tv.into_iter().next().ok_or_else(|| bad("times"))?;
+                if !matches!(v, Vals::Int(_) | Vals::Dbl(_)) {
+                    return decline("times that are not numbers");
+                }
+                // SAFETY: kept alive by the descriptor.
+                let rp = unsafe { &*round_prog };
+                let r = match rp.compute(vec![v], m, m)? {
+                    Ok(mut r) => r.remove(0),
+                    Err(d) => {
+                        expr::note_decline(&d);
+                        return Ok(None);
+                    }
+                };
+                let Vals::Int(r) = recycle(r, m) else {
+                    return decline("counts that are not integers");
+                };
+                r.iter()
+                    .map(|&c| if c == NA_INT || c < 0 { 0 } else { c as usize })
+                    .collect()
+            }
+        };
+        let total: usize = reps.iter().sum();
+        if total == 0 {
+            continue;
+        }
+        let kid_rows: Vec<usize> = prows
+            .iter()
+            .zip(&reps)
+            .flat_map(|(&r, &c)| std::iter::repeat(r).take(c))
+            .collect();
+        // the group's columns (bare atomic only: R appends them with `c()`)
+        let cn: Vec<SEXP> = names_of(g)?.to_vec();
+        let cols: Vec<SEXP> = (0..len(g)).map(|j| elt(g, j)).collect();
+        if !all_bare(&cols)? {
+            return decline("a column with attributes");
+        }
+        let mut gcols: Vec<Vals> = Vec::with_capacity(cols.len());
+        for &c in &cols {
+            match expr::vals_of(c, false)? {
+                Some(v) if v.len() == n => gcols.push(expr::owned(v)),
+                _ => return decline("a column that is not a bare atomic vector"),
+            }
+        }
+        let mut kcols: Vec<Vals> = gcols
+            .iter()
+            .map(|v| tidyabm_core::expr::take(v, &kid_rows))
+            .collect();
+        let idj = cn
+            .iter()
+            .position(|&c| bytes(c) == b".id")
+            .ok_or_else(|| bad("no .id"))?;
+        if !matches!(gcols[idj], Vals::Int(_)) {
+            return decline("ids that are not integers");
+        }
+        let Some(last) = next_id.checked_add(total as i32) else {
+            return decline("ids past the integer range");
+        };
+        kcols[idj] = Vals::Int(Cow::Owned((next_id..last).collect()));
+        next_id = last;
+        // cost: over the parents, written to the parents and given to each offspring
+        if let Some(c) = part(2) {
+            let Some(vals) = eval(c, Some(&prows), m)? else {
+                return Ok(None);
+            };
+            for (r, v) in vals.into_iter().enumerate() {
+                let Some(j) = find(&cn, c.targets[r]) else {
+                    return decline("a cost target that is not a column");
+                };
+                if rank(&v) < rank(&gcols[j]) || (rank(&v) == 3) != (rank(&gcols[j]) == 3) {
+                    return decline("a cost of another type than its column");
+                }
+                let mut mask = vec![false; n];
+                for &p in &prows {
+                    mask[p] = true;
+                }
+                // replace(g[[target]], parents, val): the parents' rows in order
+                let mut full_rows = vec![0usize; n];
+                for (q, &p) in prows.iter().enumerate() {
+                    full_rows[p] = q;
+                }
+                let spread = tidyabm_core::expr::take(&v, &full_rows);
+                let newcol = match expr::with_host(|h| {
+                    tidyabm_core::expr::keep_old(spread, Some(&gcols[j]), &mask, h)
+                }) {
+                    Ok(x) => expr::owned(x),
+                    Err(d) => {
+                        expr::note_decline(&d);
+                        return Ok(None);
+                    }
+                };
+                gcols[j] = newcol;
+                let per_kid: Vec<usize> = (0..m)
+                    .flat_map(|q| std::iter::repeat(q).take(reps[q]))
+                    .collect();
+                kcols[j] = tidyabm_core::expr::take(&v, &per_kid);
+            }
+        }
+        // inherit: over one row per offspring (the group as it was), to the offspring
+        if let Some(ih) = part(3) {
+            let Some(vals) = eval(ih, Some(&kid_rows), total)? else {
+                return Ok(None);
+            };
+            for (r, v) in vals.into_iter().enumerate() {
+                let Some(j) = find(&cn, ih.targets[r]) else {
+                    return decline("an inherit target that is not a column");
+                };
+                kcols[j] = v;
+            }
+        }
+        // appended column by column (`append_rows()`'s `c()`), same types only
+        if gcols.iter().zip(&kcols).any(|(a, b)| rank(a) != rank(b)) {
+            return decline("offspring columns of another type");
+        }
+        let all_n = n + total;
+        let mut out = OwnedListSexp::new(cols.len(), false)?;
+        for (j, (a, b)) in gcols.iter().zip(&kcols).enumerate() {
+            let both: Vals = match (a, b) {
+                (Vals::Lgl(x), Vals::Lgl(y)) => Vals::Lgl(Cow::Owned([&x[..], &y[..]].concat())),
+                (Vals::Int(x), Vals::Int(y)) => Vals::Int(Cow::Owned([&x[..], &y[..]].concat())),
+                (Vals::Dbl(x), Vals::Dbl(y)) => Vals::Dbl(Cow::Owned([&x[..], &y[..]].concat())),
+                (Vals::Str(x), Vals::Str(y)) => Vals::Str(Cow::Owned([&x[..], &y[..]].concat())),
+                _ => return Err(bad("append types")),
+            };
+            out.set_value(j, expr::to_r(&both, all_n)?)?;
+        }
+        let o = out.inner();
+        let cnp = cn.as_ptr();
+        let ncol = cn.len();
+        // SAFETY: main thread; `o` is protected by `out`, `cnp` points at the
+        // group's names (CHARSXPs kept by `g`); the frame, its names, row names
+        // and class are protected while built; the frame is kept before
+        // anything else allocates.
+        let frame = unsafe {
+            build(move || {
+                let y = rapi::Rf_protect(rapi::Rf_allocVector(VECSXP, ncol as isize));
+                for j in 0..ncol {
+                    rapi::SET_VECTOR_ELT(y, j as isize, rapi::VECTOR_ELT(o, j as isize));
+                }
+                let nm = rapi::Rf_protect(rapi::Rf_allocVector(STRSXP, ncol as isize));
+                for j in 0..ncol {
+                    rapi::SET_STRING_ELT(nm, j as isize, *cnp.add(j));
+                }
+                rapi::Rf_setAttrib(y, rapi::R_NamesSymbol, nm);
+                let rn = rapi::Rf_protect(rapi::Rf_allocVector(INTSXP, 2));
+                let rp = rapi::DATAPTR_OR_NULL(rn) as *mut i32;
+                *rp = NA_INT;
+                *rp.add(1) = -(all_n as i32);
+                rapi::Rf_setAttrib(y, rapi::Rf_install(c"row.names".as_ptr()), rn);
+                let cl = rapi::Rf_protect(rapi::Rf_allocVector(STRSXP, 3));
+                for (q, s) in [c"tbl_df", c"tbl", c"data.frame"].iter().enumerate() {
+                    rapi::SET_STRING_ELT(cl, q as isize, rapi::Rf_mkChar(s.as_ptr()));
+                }
+                rapi::Rf_setAttrib(y, rapi::Rf_install(c"class".as_ptr()), cl);
+                rapi::Rf_unprotect(4);
+                y
+            })
+        }?;
+        new_groups.push((k, frame));
+    }
+    if next_id == start_id {
+        return Ok(Some(keep(st)?));
+    }
+    // commit: the groups, then `state$next_id`
+    let mut gs: Option<H> = None;
+    for (k, h) in &new_groups {
+        let cur = gs.as_ref().map_or(groups, |x| x.get());
+        // SAFETY: reading a static of R's (unused name: `k` is in range).
+        gs = Some(with_elt(cur, *k, h.get(), unsafe { rapi::R_BlankString })?);
+    }
+    let gsv = gs.ok_or_else(|| bad("births without groups"))?;
+    // SAFETY: as above.
+    let s1 = with_elt(st, gi, gsv.get(), unsafe { rapi::R_BlankString })?;
+    // SAFETY: main thread; the scalar is kept before anything else allocates.
+    let nid = unsafe { build(move || rapi::Rf_ScalarInteger(next_id)) }?;
+    let s1g = s1.get();
+    let ni2 = find_str(s1g, b"next_id")?.ok_or_else(|| bad("next_id"))?;
+    // SAFETY: as above (unused name: `ni2` is in range).
+    Ok(Some(with_elt(s1g, ni2, nid.get(), unsafe {
+        rapi::R_BlankString
+    })?))
+}
+
+/// The first position of each id (`match(id, ids)`): a direct table when the
+/// ids are small positive numbers (agent ids are), else a hash map.
+enum IdIndex {
+    Dense(Vec<u32>),
+    Map(std::collections::HashMap<i32, usize>),
+}
+
+impl IdIndex {
+    fn new(ids: &[i32]) -> IdIndex {
+        let max = ids.iter().copied().max().unwrap_or(0);
+        let min = ids.iter().copied().min().unwrap_or(1);
+        if min >= 1 && (max as usize) <= 4 * ids.len() + 1024 {
+            let mut t = vec![u32::MAX; max as usize + 1];
+            for (i, &id) in ids.iter().enumerate().rev() {
+                t[id as usize] = i as u32;
+            }
+            IdIndex::Dense(t)
+        } else {
+            let mut m = std::collections::HashMap::with_capacity(ids.len());
+            for (i, &id) in ids.iter().enumerate().rev() {
+                m.insert(id, i);
+            }
+            IdIndex::Map(m)
+        }
+    }
+    fn get(&self, id: i32) -> Option<usize> {
+        match self {
+            IdIndex::Dense(t) => usize::try_from(id)
+                .ok()
+                .and_then(|k| t.get(k))
+                .filter(|&&v| v != u32::MAX)
+                .map(|&v| v as usize),
+            IdIndex::Map(m) => m.get(&id).copied(),
+        }
+    }
+}
+
+fn same_side(a: Side, b: Side) -> bool {
+    match (a, b) {
+        (Side::D(p), Side::D(q)) => p == q,
+        (p, q) => p == q,
+    }
 }
 
 /// `abm_rules(.by = )` natively ([run_rules_by()]): the groups stacked, each rule
@@ -1953,7 +3493,13 @@ fn exec(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
     if let Some(nb) = &plan.nb {
         return exec_nb(plan, nb, st);
     }
-    if plan.nbw.is_some() {
+    if plan.birth.is_some() {
+        exec_birth(plan, st)
+    } else if plan.death.is_some() {
+        exec_death(plan, st)
+    } else if plan.mt.is_some() {
+        exec_match(plan, st)
+    } else if plan.nbw.is_some() {
         exec_nbw(plan, st)
     } else if plan.nb1.is_some() {
         exec_nb1(plan, st)
@@ -2200,6 +3746,12 @@ pub struct RunLoop {
     /// `mprep(k)`: the measures (1) / checks (2) program for the schema
     mprep: H,
     mslots: Vec<Slot>,
+    /// time spent per step (native attempt or its R callback), in microseconds,
+    /// for profiling (`RunLoop$times()`)
+    times: Vec<f64>,
+    /// record `times` (environment variable `TIDYABM_RUST_TIMING` set): the
+    /// clock reads cost ~0.5 us per tick, measurable on short models
+    timing: bool,
 }
 
 impl RunLoop {
@@ -2361,6 +3913,8 @@ impl RunLoop {
                 declines: vec![0; n_steps],
                 mprep: keep(mprep.0)?,
                 mslots: vec![Slot::Fresh, Slot::Fresh],
+                times: vec![0.0; n_steps],
+                timing: std::env::var_os("TIDYABM_RUST_TIMING").is_some(),
             })
         })
     }
@@ -2413,10 +3967,14 @@ impl RunLoop {
             for t in 1..=ticks {
                 let mut i = 0;
                 while i < n {
+                    let t0 = self.timing.then(std::time::Instant::now);
                     if self.native_now(i) {
                         if let Some(next) = self.try_native(i, st)? {
                             self.put(next.get())?;
                             st = next.get();
+                            if let Some(t0) = t0 {
+                                self.times[i] += t0.elapsed().as_secs_f64() * 1e6;
+                            }
                             i += 1;
                             continue;
                         }
@@ -2426,6 +3984,9 @@ impl RunLoop {
                         self.stats[3] += 1;
                         st = self
                             .call_state(seg, &[i as i32 + 1, i as i32 + 1, i32::from(restore)])?;
+                        if let Some(t0) = t0 {
+                            self.times[i] += t0.elapsed().as_secs_f64() * 1e6;
+                        }
                         i += 1;
                         continue;
                     }
@@ -2435,6 +3996,10 @@ impl RunLoop {
                     }
                     self.stats[3] += 1;
                     st = self.call_state(seg, &[i as i32 + 1, j as i32 + 1, 0])?;
+                    // a run of R steps is booked on its first step
+                    if let Some(t0) = t0 {
+                        self.times[i] += t0.elapsed().as_secs_f64() * 1e6;
+                    }
                     i = j + 1;
                 }
                 let next = if t < ticks { t + 1 } else { 0 };
@@ -2488,6 +4053,11 @@ impl RunLoop {
             }
             Ok(Sexp(st))
         })
+    }
+
+    /// Microseconds spent per step (a run of R steps booked on its first).
+    fn times(&self) -> savvy::Result<Sexp> {
+        run(|| savvy::OwnedRealSexp::try_from_slice(&self.times).map(Into::into))
     }
 
     /// Native steps run, declined, compiled, and R callbacks for steps.

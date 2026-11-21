@@ -168,6 +168,19 @@ test_that("native steps keep every new R object protected (gctorture)", {
                           checks = list(ok = ~all(x > -1e9))), error = identity)
   gctorture(FALSE)
   expect_identical(got3, ref3)
+  # FR5/FR6: native match (with roles), rules reading the match, death, birth
+  mb <- abm_setup(agents = list(a = abm_agents(n = 7, e = ~runif(n, 1, 5), s = ~sample(c("u", "v"), n, TRUE)),
+                                b = abm_agents(n = 3, e = 2, s = "u")), seed = 3)
+  go4 <- abm_go(abm_match(pair = "random", role = list(g = e > 2, r = TRUE)),
+                abm_rules(e ~ e + coalesce(partner_e, 0) / 10, k ~ sum(e)),
+                abm_match(pair = "opposite_group", by = s),
+                abm_birth(when = e > 3, times = 1, cost = e ~ e / 2, inherit = e ~ e + 0.1),
+                abm_death(when = e < 1.5))
+  ref4 <- run_in("r", mb, go4, ticks = 2, seed = 3)
+  gctorture(TRUE)
+  got4 <- tryCatch(run_in("rust", mb, go4, ticks = 2, seed = 3), error = identity)
+  gctorture(FALSE)
+  expect_identical(got4, ref4)
 })
 
 test_that("FR9b: measures and checks compiled natively give R's tables and errors", {

@@ -241,3 +241,141 @@ test_that("FR4b: `.where` lattice neighbours are native and exact", {
                 abm_neighbours(north_food ~ sum(food), .where = "north"))
   expect_native_agree(g, go2, ".where grid with movers", ticks = 5)
 })
+
+test_that("FR5: abm_match() random, one_of and opposite_group are native, same draws", {
+  m <- abm_setup(agents = list(
+    a = abm_agents(n = 23, x = ~runif(n), s = ~sample(c("left", "right"), n, TRUE),
+                   cell = ~sample(c(1L, 2L, 3L, NA), n, TRUE)),
+    b = abm_agents(n = 9, x = ~runif(n), s = "left", cell = ~sample(1:3, n, TRUE))), seed = 3)
+  lim <- 0.2
+  cases <- list(
+    random   = abm_match(pair = "random"),
+    random4  = abm_match(pair = "random", size = 4, eligible = x > lim),
+    one_of   = abm_match(pair = "one_of", eligible = x > 0.5),
+    one_of_a = abm_match(pair = "one_of", among = s == "left"),
+    one_of_1 = abm_match(pair = "one_of", among = x > 0.99),
+    opp      = abm_match(pair = "opposite_group", by = s),
+    opp_by   = abm_match(pair = "opposite_group", by = s, .by = cell, eligible = x > 0.1),
+    opp_grp  = abm_match(pair = "opposite_group", by = .group)
+  )
+  for (nm in names(cases)) {
+    go <- abm_go(cases[[nm]], abm_rules(x ~ x * 0.99, .scope = "population"))
+    got <- expect_native_agree(m, go, paste("match", nm), ticks = 4)
+    expect(got$stats[[1]] == 8L && got$stats[[4]] == 0L,
+           paste("match", nm, "not fully native:", paste(got$stats, collapse = " ")))
+  }
+  # a side with three values errors in R: declined, R's error
+  three <- abm_setup(agents = abm_agents(n = 9, k = ~rep(1:3, 3)))
+  go <- abm_go(abm_match(pair = "opposite_group", by = k), abm_rules(k ~ k + 0L))
+  err <- function(e) conditionMessage(tryCatch(run_in(e, three, go, ticks = 1, seed = 1),
+                                               error = identity))
+  expect_identical(err("rust"), err("r"))
+})
+
+test_that("FR5: rules reading the standing match (partner_<col>, .partner, ...) are native", {
+  m <- abm_setup(agents = list(
+    a = abm_agents(n = 21, x = ~runif(n), st = ~sample(c("C", "D"), n, TRUE), pay = 0),
+    b = abm_agents(n = 6, x = ~runif(n), pay = 1)), seed = 5)
+  cases <- list(
+    pd = abm_go(abm_match(pair = "random"),
+                abm_rules(pay ~ pay + if_else(coalesce(partner_st, "C") == "C", 3, 0),
+                          x ~ if_else(abs(x - partner_x) > 0.05, (x + partner_x) / 2, x))),
+    ids = abm_go(abm_match(pair = "one_of", eligible = x > 0.3),
+                 abm_rules(pay ~ pay + coalesce(.partner, 0L) / 100, w ~ is.na(.partner))),
+    pop = abm_go(abm_match(pair = "random"),
+                 abm_rules(x ~ x + coalesce(partner_x, 0) / 10, .scope = "population")),
+    grp = abm_go(abm_match(pair = "random", size = 3),
+                 abm_rules(g ~ coalesce(.group_id, 0L), r ~ is.na(.role))),
+    none = abm_go(abm_match(pair = "random", eligible = x < 0),
+                  abm_rules(y ~ coalesce(partner_x, -1)))
+  )
+  for (nm in names(cases)) {
+    got <- expect_native_agree(m, cases[[nm]], paste("match rules", nm), ticks = 4)
+    expect(got$stats[[2]] == 0L && got$stats[[4]] == 0L,
+           paste("match rules", nm, "not fully native:", paste(got$stats, collapse = " ")))
+  }
+})
+
+test_that("FR5: roles and network matching are native, same draws", {
+  m <- abm_setup(agents = abm_agents(n = 25, money = ~sample(0:3, n, TRUE), x = ~runif(n),
+                                     s = ~sample(c("p", "q"), n, TRUE)),
+                 network = abm_network(type = "poisson", degree = 2), seed = 9)
+  cases <- list(
+    giver = abm_match(pair = "random", role = list(giver = money > 0, receiver = TRUE)),
+    coin  = abm_match(pair = "random", role = list(speaker = TRUE, hearer = TRUE)),
+    one   = abm_match(pair = "one_of", role = list(a = x > 0.5, b = TRUE)),
+    opp   = abm_match(pair = "opposite_group", by = s, role = list(u = money > 1, v = money < 2)),
+    net   = abm_match(pair = "network"),
+    net_e = abm_match(pair = "network", eligible = runif(n()) < 0.4)
+  )
+  for (nm in names(cases)) {
+    go <- abm_go(cases[[nm]], abm_rules(money ~ money + if_else(coalesce(.role, "") == "giver", -1L, 0L),
+                                        x ~ coalesce(partner_x, x)))
+    got <- expect_native_agree(m, go, paste("match", nm), ticks = 4)
+    expect(got$stats[[2]] == 0L && got$stats[[4]] == 0L,
+           paste("match", nm, "not fully native:", paste(got$stats, collapse = " ")))
+  }
+})
+
+test_that("FR5: grouped rules under a standing match run per pair or group, natively", {
+  m <- abm_setup(agents = list(a = abm_agents(n = 22, c = ~sample(0:1, n, TRUE), pay = 0, x = ~runif(n)),
+                               b = abm_agents(n = 7, c = 1L, pay = 0, x = ~runif(n))), seed = 2)
+  cases <- list(
+    pg = abm_go(abm_match(pair = "random", size = 4),
+                abm_rules(pay ~ pay + 1.6 * sum(c) / n() - c, k ~ n())),
+    draw = abm_go(abm_match(pair = "random"),
+                  abm_rules(x ~ x + runif(n()), y ~ mean(x) + partner_x)),
+    opp = abm_go(abm_match(pair = "opposite_group", by = c),
+                 abm_rules(pay ~ pay + sum(x) - x, z ~ max(x)))
+  )
+  for (nm in names(cases)) {
+    got <- expect_native_agree(m, cases[[nm]], paste("grouped", nm), ticks = 4)
+    expect(got$stats[[2]] == 0L && got$stats[[4]] == 0L,
+           paste("grouped", nm, "not fully native:", paste(got$stats, collapse = " ")))
+  }
+})
+
+test_that("FR6: abm_death() is native, also under a match and on a network", {
+  m <- abm_setup(agents = list(a = abm_agents(n = 30, e = ~runif(n), s = ~sample(c("u", "v"), n, TRUE),
+                                              l = ~lapply(seq_len(n), function(i) i)),
+                               b = abm_agents(n = 8, e = ~runif(n))), seed = 4)
+  cases <- list(
+    plain = abm_go(abm_rules(e ~ e - 0.1), abm_death(when = e < 0.2)),
+    draws = abm_go(abm_death(when = runif(n()) < 0.1), abm_rules(e ~ e * 1.01)),
+    group = abm_go(abm_death(when = s == "u" & e < 0.5), abm_rules(e ~ e + 0.01)),
+    match = abm_go(abm_match(pair = "random"), abm_death(when = !is.na(.partner) & partner_e > 0.9),
+                   abm_rules(e ~ e * 0.99))
+  )
+  for (nm in names(cases)) {
+    got <- expect_native_agree(m, cases[[nm]], paste("death", nm), ticks = 5)
+    expect(got$stats[[2]] == 0L && got$stats[[4]] == 0L,
+           paste("death", nm, "not fully native:", paste(got$stats, collapse = " ")))
+  }
+  # on a network: dead agents born after the wiring are past every endpoint
+  net <- abm_setup(agents = abm_agents(n = 30, e = ~runif(n)),
+                   network = abm_network(type = "ring", degree = 2), seed = 1)
+  expect_native_agree(net, abm_go(abm_death(when = e < 0.3), abm_rules(e ~ e + 0.05)),
+                      "death with edges", ticks = 3, native = FALSE)
+})
+
+test_that("FR6: abm_birth(when =) with times, cost and inherit is native", {
+  m <- abm_setup(agents = list(a = abm_agents(n = 20, e = ~runif(n, 1, 5), k = ~sample(0:2, n, TRUE),
+                                              s = ~sample(c("u", "v"), n, TRUE)),
+                               b = abm_agents(n = 6, e = ~runif(n, 1, 5), k = 1L, s = "u")), seed = 6)
+  cases <- list(
+    plain  = abm_go(abm_birth(when = e > 4), abm_rules(e ~ e - 0.5)),
+    cost   = abm_go(abm_birth(when = .group == "b" & runif(n()) < 0.3, cost = e ~ e / 2),
+                    abm_rules(e ~ e + 0.3)),
+    times  = abm_go(abm_birth(when = e > 3.5, times = k + 0.5, cost = e ~ e - 1,
+                              inherit = list(e ~ e / 2 + runif(n()), s ~ if_else(runif(n()) < 0.5, "u", s))),
+                    abm_rules(e ~ e + 0.2), abm_death(when = e < 1)),
+    match  = abm_go(abm_match(pair = "random"),
+                    abm_birth(when = !is.na(.partner) & partner_e > 4, cost = e ~ e * 0.9),
+                    abm_rules(e ~ e + 0.1))
+  )
+  for (nm in names(cases)) {
+    got <- expect_native_agree(m, cases[[nm]], paste("birth", nm), ticks = 4)
+    expect(got$stats[[2]] == 0L && got$stats[[4]] == 0L,
+           paste("birth", nm, "not fully native:", paste(got$stats, collapse = " ")))
+  }
+})

@@ -379,3 +379,57 @@ test_that("FR6: abm_birth(when =) with times, cost and inherit is native", {
            paste("birth", nm, "not fully native:", paste(got$stats, collapse = " ")))
   }
 })
+
+test_that("FR7: abm_move() to a random (empty) neighbour is native, same draws", {
+  mk <- function(torus) abm_setup(agents = list(
+    patches = abm_agents(food = ~runif(n)),
+    sheep = abm_agents(n = 14, e = ~runif(n)), wolves = abm_agents(n = 4, e = 1)),
+    network = abm_network(type = "grid", dims = c(6, 5), on = "patches", torus = torus,
+                          diagonals = torus), seed = 3)
+  cases <- list(
+    torus  = list(mk(TRUE), abm_move(along = "patches", to = "random_neighbour", who = c("sheep", "wolves"))),
+    edge   = list(mk(FALSE), abm_move(along = "patches", to = "random_neighbour")),
+    empty  = list(mk(FALSE), abm_move(along = "patches", to = "random_empty_neighbour", who = "sheep")),
+    avoid  = list(mk(TRUE), abm_move(along = "patches", avoid_occupied = TRUE)),
+    net    = list(mk(TRUE), abm_move(along = "network", who = "wolves"))
+  )
+  for (nm in names(cases)) {
+    go <- abm_go(cases[[nm]][[2]], abm_rules(e ~ e * 0.99))
+    got <- expect_native_agree(cases[[nm]][[1]], go, paste("move", nm), ticks = 5)
+    expect(got$stats[[2]] == 0L && got$stats[[4]] == 0L,
+           paste("move", nm, "not fully native:", paste(got$stats, collapse = " ")))
+  }
+})
+
+test_that("FR7: abm_tell(to = <id>) is native for every resolve it takes", {
+  w <- abm_setup(agents = list(
+    patches = abm_agents(grass = ~runif(n) < 0.6, countdown = ~sample(0:5, n, TRUE), heat = 0),
+    sheep = abm_agents(n = 25, e = ~runif(n), k = ~sample(1:3, n, TRUE))),
+    network = abm_network(type = "grid", dims = c(4, 4), on = "patches", torus = TRUE), seed = 2)
+  regrow <- 7L
+  cases <- list(
+    last  = abm_tell(grass ~ FALSE, countdown ~ regrow, to = .cell, when = .group == "sheep"),
+    first = abm_tell(heat ~ e, to = .cell, when = .group == "sheep", .resolve = "first"),
+    sum   = abm_tell(heat ~ e * 2, to = .cell, when = .group == "sheep" & e > 0.3, .resolve = "sum"),
+    sumi  = abm_tell(heat ~ k, to = .cell, when = .group == "sheep", .resolve = "sum"),
+    mean  = abm_tell(heat ~ e, to = .cell, when = .group == "sheep", .resolve = "mean")
+  )
+  for (nm in names(cases)) {
+    go <- abm_go(abm_move(along = "patches", who = "sheep"), cases[[nm]],
+                 abm_rules(e ~ e + runif(n()) / 10, .scope = "population"))
+    got <- expect_native_agree(w, go, paste("tell", nm), ticks = 4)
+    expect(got$stats[[2]] == 0L && got$stats[[4]] == 0L,
+           paste("tell", nm, "not fully native:", paste(got$stats, collapse = " ")))
+  }
+  # to a partner, under a match
+  m <- abm_setup(agents = abm_agents(n = 20, x = ~runif(n), got = 0), seed = 1)
+  go <- abm_go(abm_match(pair = "one_of"), abm_tell(got ~ x, to = .partner, .resolve = "sum"),
+               abm_rules(x ~ x * 0.9 + got / 100))
+  got <- expect_native_agree(m, go, "tell partner", ticks = 4)
+  expect(got$stats[[4]] == 0L, paste("tell partner not fully native:", paste(got$stats, collapse = " ")))
+  # two messages to one agent with .resolve = "error": R's error
+  e1 <- abm_go(abm_tell(got ~ x, to = 1L, .resolve = "error"), abm_rules(x ~ x))
+  err <- function(e) conditionMessage(tryCatch(run_in(e, m, e1, ticks = 1, seed = 1),
+                                               error = identity))
+  expect_identical(err("rust"), err("r"))
+})

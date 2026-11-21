@@ -230,6 +230,8 @@ rl_kind <- function(step, kernels) {
   if (inherits(step, "abm_match")) return(7L)
   if (inherits(step, "abm_death")) return(8L)
   if (inherits(step, "abm_birth")) return(9L)
+  if (inherits(step, "abm_move")) return(10L)
+  if (inherits(step, "abm_tell")) return(11L)
   as.integer(k$native)
 }
 
@@ -242,6 +244,8 @@ rl_prep <- function(step, state, slot = NULL) {
          abm_match = rl_prep_memo(step, state, slot, rl_prep_match),
          abm_death = rl_prep_memo(step, state, slot, rl_prep_death),
          abm_birth = rl_prep_memo(step, state, slot, rl_prep_birth),
+         abm_move = rl_prep_memo(step, state, slot, rl_prep_move),
+         abm_tell = rl_prep_memo(step, state, slot, rl_prep_tell),
          abm_global = rl_prep_memo(step, state, slot, rl_prep_global),
          abm_neighbours = rl_prep_neighbours(step, state, slot),
          rl_prep_memo(step, state, slot, rl_prep_rules))
@@ -793,6 +797,66 @@ rl_prep_birth <- function(step, state) {
   round_prog <- planned(step, "rx_round", RxProgram$new(nb$irs, -1L, nb$fns))
   rl_scope_bind(list(kind = 9L, scope_match = FALSE, groups = groups,
                      birth = list(round = round_prog$.ptr)), envs)
+}
+
+# FR7: `abm_move()` to a random (or random empty) adjacent cell on the lattice
+# ([run_move()]'s `range = 1` shapes), then `sync_cell_coords()`
+rl_move_ok <- function(step) {
+  step$mode %in% c("random_neighbour", "random_empty_neighbour") &&
+    identical(step$range, 1L) && !isTRUE(step$axes_only)
+}
+rl_prep_move <- function(step, state) {
+  if (!planned(step, "rx_move", rl_move_ok(step))) return(FALSE)
+  lat <- state$lattice
+  if (is.null(lat) || !(identical(step$along, lat$on) || identical(step$along, "network"))) {
+    return(NULL)
+  }
+  with_cell <- names(state$groups)[vapply(state$groups, function(g) ".cell" %in% names(g), NA)]
+  who <- step$who %||% with_cell
+  # an unknown group, or one not on the lattice, is R's error
+  if (!length(who) || !all(who %in% with_cell)) return(NULL)
+  if (!is.list(lat$nb) || !is.null(lat$x) && !is.atomic(lat$x)) return(NULL)
+  list(kind = 10L, scope_match = FALSE, groups = list(),
+       mv = list(who = who, avoid = isTRUE(step$avoid_occupied), lattice = lat,
+                 nb = lat$nb, x = lat$x, y = lat$y %||% NULL,
+                 ncell = as.integer(lat$ncell)))
+}
+
+# FR7: `abm_tell(to = <id expression>)` natively ([run_tell()] without `.order`,
+# `"neighbours"`, list recipients, `.resolve = "collect"`/`"max"`/`"min"`): `when`,
+# `to` and each message compiled over the groups stacked, read in that order
+rl_tell_ok <- function(step) {
+  if (!identical(step$to, "id") || !is.null(step$order) ||
+      !step$resolve %in% c("last", "first", "sum", "mean", "error")) return(FALSE)
+  if (any(vapply(step$rules, function(r) r$target %in% c(".cell", "partner_.cell", ".id"), NA))) {
+    return(FALSE)
+  }
+  quos <- c(list(step$when, step$to_quo), lapply(step$rules, `[[`, "quo"))
+  all(vapply(Filter(Negate(is.null), quos), function(q) {
+    !is_rx_no(rx_compile_memo(rlang::quo_get_expr(q)))
+  }, NA))
+}
+rl_prep_tell <- function(step, state) {
+  if (!planned(step, "rx_tell", rl_tell_ok(step))) return(FALSE)
+  if (length(state$relations)) return(NULL)
+  quos <- c(if (!is.null(step$when)) list(step$when), list(step$to_quo),
+            lapply(step$rules, `[[`, "quo"))
+  fake <- planned(step, "rx_tell_fake", rl_fake_rules(lapply(quos, function(q) {
+    list(target = ".tell", quo = q)
+  })))
+  mnames <- if (planned(step, "uses_match", reads_match(quos))) {
+    rx_match_names(fake) %||% return(NULL)
+  } else character()
+  if (any(startsWith(mnames, "partner_"))) return(NULL)
+  p <- rx_program(fake, seq_along(quos), model_columns(state$groups), state$globals,
+                  match_names = mnames)
+  if (is_rx_no(p)) return(NULL)
+  rl_scope_bind(list(kind = 11L, scope_match = FALSE,
+                     groups = list(list(name = "", prog = p$prog$.ptr, cols = p$cols,
+                                        globs = p$globs, targets = vapply(step$rules, `[[`, "", "target"),
+                                        scope = p$scope, ew = FALSE, mcols = p$mcols)),
+                     tell = list(when = !is.null(step$when), resolve = step$resolve)),
+                if (length(p$scope)) list(p$env))
 }
 
 # the network neighbour shapes the loop folds natively: every rule `sum()` or

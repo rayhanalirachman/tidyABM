@@ -296,6 +296,19 @@ the R engine's own `run_step()`. Rules:
   and `times`/`cost`/`inherit` as programs over the rows R evaluates them over;
   rows sliced (`slice_group()`) and offspring appended (`append_rows()`'s
   `c()`), ids from `state$next_id`. Edge pruning and relations go to R.
+* Move (kind 10): `to = "random_neighbour"` / `"random_empty_neighbour"` (or
+  `avoid_occupied`), `range = 1`, on the lattice (`along` its group or
+  `"network"`): `run_move()`'s mover order (`sample.int(n)`), batch draw or
+  per-mover draws, occupancy counts, then `sync_cell_coords()` (`.x`/`.y` from
+  the lattice; a bad `.cell` is R's error). Direction, `range > 1`, `axes_only`,
+  uphill/downhill: R.
+* Tell (kind 11): `to = <id expression>` with `.resolve` last/first/sum/mean
+  (error is R's), no `.order`; `when`, `to` and the messages one program over
+  the groups stacked; writes in vctrs' common type (`replace_at()`). `to =
+  "neighbours"`, list recipients, `collect`/`max`/`min`, `partner_` reads: R.
+* `find_str()` compares names byte by byte against R's buffer (`same_bytes()`):
+  every step looks the state's elements up by name, and `strlen()` on each name
+  first was measurable on short models.
 * Descriptor memo (`rl_prep_memo()`): keyed by the whole step without its
   plan (a match has no rules to tell steps apart by) and the schema.
 * Tick book-keeping (FR9): an unrecorded or recorded tick without a progress bar

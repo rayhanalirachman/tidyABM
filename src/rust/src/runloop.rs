@@ -25,7 +25,7 @@
 use crate::expr::{self, RxProgram};
 use crate::rapi::{self, INTSXP, STRSXP, VECSXP};
 use crate::store::{self, keep, kept_from, H};
-use crate::{run, typed_error};
+use crate::{reduce, run, typed_error};
 use savvy::ffi::SEXP;
 use savvy::protect::insert_to_preserved_list;
 use savvy::{savvy, IntegerSexp, LogicalSexp, NullSexp, OwnedListSexp, Sexp};
@@ -155,12 +155,30 @@ fn find(names: &[SEXP], want: SEXP) -> Option<usize> {
     if !w.is_ascii() {
         return None;
     }
-    names.iter().position(|&c| bytes(c) == w)
+    names.iter().position(|&c| same_bytes(c, w))
 }
 
 /// Where the element named `want` (ASCII) is in list `x`.
 fn find_str(x: SEXP, want: &[u8]) -> savvy::Result<Option<usize>> {
-    Ok(names_of(x)?.iter().position(|&c| bytes(c) == want))
+    Ok(names_of(x)?.iter().position(|&c| same_bytes(c, want)))
+}
+
+/// Does `CHARSXP` `c` hold exactly `want`? Byte by byte against R's buffer, no
+/// `strlen()` first: most names differ in their first byte (this runs for
+/// every state lookup of every step).
+fn same_bytes(c: SEXP, want: &[u8]) -> bool {
+    // SAFETY: `c` is a live CHARSXP; R_CHAR gives its NUL-terminated bytes,
+    // read only up to the first difference or `want.len()` (a NUL in R's
+    // buffer stops the comparison before reading past it).
+    unsafe {
+        let p = rapi::R_CHAR(c) as *const u8;
+        for (k, &w) in want.iter().enumerate() {
+            if *p.add(k) != w {
+                return false;
+            }
+        }
+        *p.add(want.len()) == 0
+    }
 }
 
 /// Is every one of `xs` free of attributes? (`ATTRIB()` is not API: each one's
@@ -348,6 +366,11 @@ struct Plan {
     death: Option<bool>,
     /// `abm_birth()` (kind 9): the `as.integer(round(.t))` program
     birth: Option<*const RxProgram>,
+    /// `abm_move()` (kind 10)
+    mv: Option<MovePlan>,
+    /// `abm_tell()` (kind 11): `when` given, and `.resolve` (0 last, 1 first,
+    /// 2 sum, 3 mean, 4 error)
+    tell: Option<(bool, u8)>,
     /// `.by` rules: the key column's name
     by: Option<SEXP>,
     nb: Option<NbPlan>,
@@ -397,6 +420,18 @@ struct MatchPlan {
     among: bool,
     /// the two role names (`role = list(a = <cond>, b = <cond>)`), or none
     roles: Vec<SEXP>,
+}
+
+/// An `abm_move()` step to a random (empty) adjacent cell: the moving groups,
+/// whether occupied cells are avoided, and the lattice's adjacency and coordinates.
+struct MovePlan {
+    who: Vec<SEXP>,
+    avoid: bool,
+    lattice: SEXP,
+    nb: SEXP,
+    x: SEXP,
+    y: SEXP,
+    ncell: i32,
 }
 
 /// A network `abm_neighbours()` step whose rules are `sum()`/`mean()` of bare
@@ -683,6 +718,49 @@ fn parse_plan(desc: H) -> savvy::Result<Plan> {
     };
     // a match draws
     let draws = draws || mt.is_some();
+    let mv = if kind == 10 {
+        let x = field(d, b"mv")?;
+        let av = field(x, b"avoid")?;
+        // SAFETY: reading a type tag, then a logical of length 1.
+        let lg = unsafe { rapi::TYPEOF(av) } == rapi::LGLSXP && len(av) == 1;
+        // SAFETY: as above.
+        let avoid = lg && unsafe { *rapi::LOGICAL_RO(av) } == 1;
+        let ncell = store::numbers_of::<i32>(field(x, b"ncell")?, INTSXP)?
+            .and_then(|v| v.first().copied())
+            .ok_or_else(|| bad("move ncell"))?;
+        let y = find_str(x, b"y")?.map_or_else(rapi_nil, |i| elt(x, i));
+        Some(MovePlan {
+            who: chars(field(x, b"who")?)?,
+            avoid,
+            lattice: field(x, b"lattice")?,
+            nb: field(x, b"nb")?,
+            x: field(x, b"x")?,
+            y,
+            ncell,
+        })
+    } else {
+        None
+    };
+    let draws = draws || mv.is_some();
+    let tell = if kind == 11 {
+        let x = field(d, b"tell")?;
+        let w = field(x, b"when")?;
+        // SAFETY: reading a type tag, then a logical of length 1.
+        let lg = unsafe { rapi::TYPEOF(w) } == rapi::LGLSXP && len(w) == 1;
+        // SAFETY: as above.
+        let when = lg && unsafe { *rapi::LOGICAL_RO(w) } == 1;
+        let res = match chars(field(x, b"resolve")?)?.first().map(|&c| bytes(c)) {
+            Some(b"last") => 0,
+            Some(b"first") => 1,
+            Some(b"sum") => 2,
+            Some(b"mean") => 3,
+            Some(b"error") => 4,
+            _ => return Err(bad("tell resolve")),
+        };
+        Some((when, res))
+    } else {
+        None
+    };
     let birth = if kind == 9 {
         let x = field(d, b"birth")?;
         let ptr = field(x, b"round")?;
@@ -713,6 +791,8 @@ fn parse_plan(desc: H) -> savvy::Result<Plan> {
         None
     };
     Ok(Plan {
+        tell,
+        mv,
         mixed,
         nb1,
         nbw,
@@ -876,6 +956,22 @@ fn match_inputs(
     g: SEXP,
     names: &[&[u8]],
 ) -> savvy::Result<Option<Vec<Vals<'static>>>> {
+    let Some(gi) = find_str(g, b".id")? else {
+        return Ok(None);
+    };
+    let Some(gids) = store::numbers_of::<i32>(elt(g, gi), INTSXP)? else {
+        return Ok(None);
+    };
+    match_inputs_ids(st, groups, gids, names)
+}
+
+/// [`match_inputs`] for the agents with ids `gids`.
+fn match_inputs_ids(
+    st: SEXP,
+    groups: SEXP,
+    gids: &[i32],
+    names: &[&[u8]],
+) -> savvy::Result<Option<Vec<Vals<'static>>>> {
     use std::borrow::Cow;
     use tidyabm_core::sample::NA_INT;
     let Some(mi) = find_str(st, b"match")? else {
@@ -918,12 +1014,6 @@ fn match_inputs(
         return Ok(None);
     }
     let mrole = store::chars_of(mrole)?;
-    let Some(gi) = find_str(g, b".id")? else {
-        return Ok(None);
-    };
-    let Some(gids) = store::numbers_of::<i32>(elt(g, gi), INTSXP)? else {
-        return Ok(None);
-    };
     let first = IdIndex::new(mid);
     let idx: Vec<Option<usize>> = gids.iter().map(|&id| first.get(id)).collect();
     // SAFETY: reading a static of R's.
@@ -3115,6 +3205,495 @@ impl IdIndex {
     }
 }
 
+/// `lat$x[cell]` (or `lat$y`) as a new R vector of `xy`'s type (integer or double).
+fn coords(xy: SEXP, cell: &[i32]) -> savvy::Result<Option<Vals<'static>>> {
+    use std::borrow::Cow;
+    let rows: Vec<usize> = cell.iter().map(|&c| c as usize - 1).collect();
+    Ok(match expr::vals_of(xy, false)? {
+        Some(Vals::Int(v)) => Some(Vals::Int(Cow::Owned(rows.iter().map(|&r| v[r]).collect()))),
+        Some(Vals::Dbl(v)) => Some(Vals::Dbl(Cow::Owned(rows.iter().map(|&r| v[r]).collect()))),
+        _ => None,
+    })
+}
+
+/// `abm_move(to = "random_neighbour" / "random_empty_neighbour")` natively
+/// ([run_move()], `range = 1`): the movers of every moving group in one random
+/// order (`sample.int(n)`), each drawing one of its cell's neighbours (the batch
+/// draw `sample.int(k, n, TRUE)` when nothing can stop it and every cell has `k`
+/// neighbours, else one `sample.int(length(cand), 1)` per mover, skipping occupied
+/// cells when asked); then `.cell` written and `sync_cell_coords()`'s `.x`/`.y`.
+fn exec_move(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
+    use tidyabm_core::sample::NA_INT;
+    let mv = plan.mv.as_ref().ok_or_else(|| bad("no move"))?;
+    match find_str(st, b"lattice")? {
+        Some(li) if elt(st, li) == mv.lattice => {}
+        _ => return decline("the lattice changed"),
+    }
+    let gi = find_str(st, b"groups")?.ok_or_else(|| bad("no groups"))?;
+    let groups = elt(st, gi);
+    let gnames = names_of(groups)?;
+    // the moving groups' cells
+    let mut ks = Vec::with_capacity(mv.who.len());
+    let mut cells: Vec<Vec<i32>> = Vec::with_capacity(mv.who.len());
+    for &w in &mv.who {
+        let Some(k) = find(gnames, w) else {
+            return decline("a moving group not found");
+        };
+        let g = elt(groups, k);
+        let Some(j) = find_str(g, b".cell")? else {
+            return decline("a moving group without .cell");
+        };
+        match store::numbers_of::<i32>(elt(g, j), INTSXP)? {
+            Some(v) => cells.push(v.to_vec()),
+            None => return decline("a .cell that is not integer"),
+        }
+        ks.push(k);
+    }
+    let sizes: Vec<usize> = cells.iter().map(Vec::len).collect();
+    let n_movers: usize = sizes.iter().sum();
+    if n_movers == 0 {
+        return Ok(Some(keep(st)?));
+    }
+    // the adjacency: one integer vector (or NULL) per cell
+    let n_nb = len(mv.nb);
+    let nb_at = |c: i32| -> savvy::Result<Option<&[i32]>> {
+        if c < 1 || c as usize > n_nb {
+            return Ok(Some(&[]));
+        }
+        let v = elt(mv.nb, c as usize - 1);
+        if v == rapi_nil() {
+            return Ok(Some(&[]));
+        }
+        store::numbers_of::<i32>(v, INTSXP)
+    };
+    // (group, row) of every mover, the groups stacked
+    let mut owner: Vec<(usize, usize)> = Vec::with_capacity(n_movers);
+    for (gk, &sz) in sizes.iter().enumerate() {
+        owner.extend((0..sz).map(|r| (gk, r)));
+    }
+    let res: savvy::Result<Option<()>> = crate::rng::with_rng(|r| {
+        let ord: Vec<usize> = if n_movers > 1 {
+            tidyabm_core::sample::sample_int(r, n_movers, n_movers, false)
+                .map_err(|e| bad(&format!("move order: {e}")))?
+                .iter()
+                .map(|&k| k as usize - 1)
+                .collect()
+        } else {
+            vec![0]
+        };
+        if !mv.avoid {
+            // the batch draw, when every mover stands on a cell with k > 1 neighbours
+            let here: Vec<i32> = ord.iter().map(|&m| cells[owner[m].0][owner[m].1]).collect();
+            let ok_here = here
+                .iter()
+                .all(|&c| c != NA_INT && c >= 1 && c as usize <= n_nb);
+            if ok_here {
+                let mut cand: Vec<&[i32]> = Vec::with_capacity(n_movers);
+                for &c in &here {
+                    match nb_at(c)? {
+                        Some(v) => cand.push(v),
+                        None => return Ok(None),
+                    }
+                }
+                let k = cand[0].len();
+                if k > 1 && cand.iter().all(|c| c.len() == k && !c.contains(&NA_INT)) {
+                    for (q, &m) in ord.iter().enumerate() {
+                        let j = tidyabm_core::sample::RDraws::unif_index(r, k as f64) as usize;
+                        cells[owner[m].0][owner[m].1] = cand[q][j];
+                    }
+                    return Ok(Some(()));
+                }
+            }
+        }
+        // one mover at a time
+        let mut occupied: Vec<i32> = Vec::new();
+        if mv.avoid {
+            let mx = cells
+                .iter()
+                .flatten()
+                .filter(|&&c| c != NA_INT)
+                .copied()
+                .max()
+                .unwrap_or(0)
+                .max(0);
+            occupied = vec![0; n_nb.max(mx as usize)];
+            for &c in cells.iter().flatten() {
+                if c != NA_INT {
+                    if c < 1 {
+                        return Ok(None);
+                    }
+                    occupied[c as usize - 1] += 1;
+                }
+            }
+        }
+        let taken =
+            |occ: &Vec<i32>, i: i32| i >= 1 && (i as usize) <= occ.len() && occ[i as usize - 1] > 0;
+        for &m in &ord {
+            let (gk, rw) = owner[m];
+            let here = cells[gk][rw];
+            if here == NA_INT {
+                continue;
+            }
+            let Some(all) = nb_at(here)? else {
+                return Ok(None);
+            };
+            let mut cand: Vec<i32> = all.iter().copied().filter(|&c| c != NA_INT).collect();
+            if mv.avoid {
+                cand.retain(|&c| c == here || !taken(&occupied, c));
+            }
+            if cand.is_empty() {
+                continue;
+            }
+            let target = if cand.len() == 1 {
+                cand[0]
+            } else {
+                cand[tidyabm_core::sample::RDraws::unif_index(r, cand.len() as f64) as usize]
+            };
+            if mv.avoid && target != here {
+                if here < 1
+                    || target < 1
+                    || here as usize > occupied.len()
+                    || target as usize > occupied.len()
+                {
+                    return Ok(None);
+                }
+                occupied[here as usize - 1] -= 1;
+                occupied[target as usize - 1] += 1;
+            }
+            cells[gk][rw] = target;
+        }
+        Ok(Some(()))
+    });
+    if res?.is_none() {
+        return decline("an adjacency of another kind");
+    }
+    // `.cell` of the movers, then `sync_cell_coords()` over every group on the
+    // lattice: whole cells in 1..ncell, `.x`/`.y` from the lattice
+    let mut cur: Option<H> = None;
+    for k in 0..len(groups) {
+        let gs = cur.as_ref().map_or(groups, |h| h.get());
+        let g = elt(gs, k);
+        let moved = ks.iter().position(|&q| q == k);
+        let Some(j) = find_str(g, b".cell")? else {
+            continue;
+        };
+        if rows(g).unwrap_or(0) == 0 {
+            if let Some(p) = moved {
+                // an empty mover still gets its (empty) integer .cell
+                let _ = p;
+            }
+            continue;
+        }
+        let cell: Vec<i32> = match moved {
+            Some(p) => cells[p].clone(),
+            None => match store::numbers_of::<i32>(elt(g, j), INTSXP)? {
+                Some(v) => v.to_vec(),
+                None => return decline("a .cell that is not integer"),
+            },
+        };
+        if cell.iter().any(|&c| c == NA_INT || c < 1 || c > mv.ncell) {
+            return decline("a .cell that is not a cell (R's error)");
+        }
+        let (Some(x), y) = (
+            coords(mv.x, &cell)?,
+            if mv.y == rapi_nil() {
+                None
+            } else {
+                coords(mv.y, &cell)?
+            },
+        ) else {
+            return decline("coordinates of another kind");
+        };
+        if mv.y != rapi_nil() && y.is_none() {
+            return decline("coordinates of another kind");
+        }
+        let n = cell.len();
+        let mut hold = OwnedListSexp::new(3, false)?;
+        let mut base = g;
+        let mut g_h: Option<H> = None;
+        let cname = names_of(g)?[j];
+        if moved.is_some() {
+            hold.set_value(
+                0,
+                expr::to_r(&Vals::Int(std::borrow::Cow::Owned(cell.clone())), n)?,
+            )?;
+            g_h = Some(set_named(base, cname, elt(hold.inner(), 0))?);
+            base = g_h.as_ref().map_or(g, |h| h.get());
+        }
+        // SAFETY: as above (the names' CHARSXPs are kept while used).
+        let xn = unsafe { build(|| rapi::Rf_mkChar(c".x".as_ptr())) }?;
+        hold.set_value(1, expr::to_r(&x, n)?)?;
+        let g2 = set_named(base, xn.get(), elt(hold.inner(), 1))?;
+        let g3 = match &y {
+            Some(yv) => {
+                // SAFETY: as above.
+                let yn = unsafe { build(|| rapi::Rf_mkChar(c".y".as_ptr())) }?;
+                hold.set_value(2, expr::to_r(yv, n)?)?;
+                set_named(g2.get(), yn.get(), elt(hold.inner(), 2))?
+            }
+            None => g2,
+        };
+        drop(g_h);
+        // SAFETY: reading a static of R's (unused name: `k` is in range).
+        cur = Some(with_elt(gs, k, g3.get(), unsafe { rapi::R_BlankString })?);
+    }
+    match cur {
+        // SAFETY: as above.
+        Some(gs) => Ok(Some(with_elt(st, gi, gs.get(), unsafe {
+            rapi::R_BlankString
+        })?)),
+        None => Ok(Some(keep(st)?)),
+    }
+}
+
+/// `abm_tell(to = <id>)` natively ([run_tell()]): `when`, `to` and the messages
+/// over the groups stacked; each sender's message to its recipient, several to
+/// one resolved (`last`, `first`, `sum`, `mean`; `error` is R's), written into
+/// the recipients' existing columns in vctrs' common type (`replace_at()`).
+fn exec_tell(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
+    use std::borrow::Cow;
+    use tidyabm_core::sample::NA_INT;
+    let (has_when, resolve) = plan.tell.ok_or_else(|| bad("no tell"))?;
+    let gp = plan.groups.first().ok_or_else(|| bad("no program"))?;
+    if let Some(ri) = find_str(st, b"relations")? {
+        if len(elt(st, ri)) > 0 {
+            return decline("a relation");
+        }
+    }
+    let gi = find_str(st, b"groups")?.ok_or_else(|| bad("no groups"))?;
+    let groups = elt(st, gi);
+    let ng = len(groups);
+    let mut sizes = Vec::with_capacity(ng);
+    for k in 0..ng {
+        match rows(elt(groups, k)) {
+            Some(r) => sizes.push(r),
+            None => return decline("a group without columns"),
+        }
+    }
+    let n: usize = sizes.iter().sum();
+    if n == 0 {
+        return Ok(Some(keep(st)?));
+    }
+    let Some(Vals::Int(ids)) = stacked_col_named(groups, b".id", &sizes)? else {
+        return decline("ids that are not integers");
+    };
+    let mut ins: Vec<Vals> = Vec::with_capacity(gp.cols.len() + gp.globs.len());
+    for &c in &gp.cols {
+        match stacked_pad(groups, c, &sizes)? {
+            Some(v) => ins.push(v),
+            None => return decline("a column of another kind"),
+        }
+    }
+    let mut xs = Vec::new();
+    if !read_globals(st, &gp.globs, &mut xs)? {
+        return decline("a global not found");
+    }
+    let Some(svals) = scope_values(plan)? else {
+        return decline("a formula-environment value that cannot be read");
+    };
+    if !read_scope(&svals, &gp.scope, &mut xs) {
+        return decline("a formula-environment value not found");
+    }
+    let Some(more) = inputs(&xs)? else {
+        return decline("a global or scope value of an unsupported type");
+    };
+    ins.extend(more);
+    if !gp.mcols.is_empty() {
+        let mnames: Vec<&[u8]> = gp.mcols.iter().map(|&c| bytes(c)).collect();
+        match match_inputs_ids(st, groups, &ids, &mnames)? {
+            Some(v) => ins.extend(v),
+            None => return decline("match columns that cannot be built natively"),
+        }
+    }
+    // SAFETY: the program is kept alive by the plan's descriptor.
+    let prog = unsafe { &*gp.prog };
+    let res = match prog.compute(ins, n, n)? {
+        Ok(r) => r,
+        Err(d) => {
+            expr::note_decline(&d);
+            return Ok(None);
+        }
+    };
+    let mut k = 0;
+    let speaks: Vec<bool> = if has_when {
+        k = 1;
+        match condition(&res[0], n) {
+            Some(c) => c,
+            None => return decline("a when that is not logical"),
+        }
+    } else {
+        vec![true; n]
+    };
+    if !speaks.iter().any(|&b| b) {
+        return Ok(Some(keep(st)?));
+    }
+    let tgt = recycle(res[k].clone(), n);
+    k += 1;
+    let Vals::Int(tgt) = tgt else {
+        return decline("recipients that are not integer ids");
+    };
+    let senders: Vec<usize> = (0..n).filter(|&i| speaks[i] && tgt[i] != NA_INT).collect();
+    let recipient: Vec<i32> = senders.iter().map(|&i| tgt[i]).collect();
+    let at_id = IdIndex::new(&ids);
+    let mut recipient_row = Vec::with_capacity(recipient.len());
+    for &r in &recipient {
+        match at_id.get(r) {
+            Some(row) => recipient_row.push(row),
+            None => return decline("a recipient that does not exist (R's error)"),
+        }
+    }
+    if senders.is_empty() {
+        return Ok(Some(keep(st)?));
+    }
+    // recipients in order of first mention, and each one's messages
+    let rmax = recipient.iter().copied().max().unwrap_or(0).max(0) as usize;
+    let mut slot = vec![u32::MAX; rmax + 1];
+    let mut first: Vec<usize> = Vec::new();
+    let mut members: Vec<Vec<usize>> = Vec::new();
+    for (q, &r) in recipient.iter().enumerate() {
+        if r < 0 {
+            return decline("a negative recipient");
+        }
+        let s = &mut slot[r as usize];
+        if *s == u32::MAX {
+            *s = first.len() as u32;
+            first.push(q);
+            members.push(Vec::new());
+        }
+        members[*s as usize].push(q);
+    }
+    let dup = first.len() < recipient.len();
+    if dup && resolve == 4 {
+        return decline("several messages to one agent (R's error)");
+    }
+    let at: Vec<usize> = if dup {
+        first.iter().map(|&q| recipient_row[q]).collect()
+    } else {
+        recipient_row.clone()
+    };
+    // SAFETY: reading a static of R's.
+    let na_real = unsafe { rapi::R_NaReal };
+    let mut msgs: Vec<Vals> = Vec::with_capacity(gp.targets.len());
+    for v in res.into_iter().skip(k) {
+        let v = recycle(v, n);
+        let sent = tidyabm_core::expr::take(&v, &senders);
+        let msg = if !dup {
+            sent
+        } else {
+            match resolve {
+                1 => tidyabm_core::expr::take(&sent, &first),
+                0 => {
+                    let last: Vec<usize> =
+                        members.iter().map(|m| *m.last().unwrap_or(&0)).collect();
+                    tidyabm_core::expr::take(&sent, &last)
+                }
+                2 | 3 => {
+                    let out: Vec<f64> = match &sent {
+                        Vals::Dbl(x) => members
+                            .iter()
+                            .map(|m| {
+                                let part: Vec<f64> = m.iter().map(|&q| x[q]).collect();
+                                if resolve == 2 {
+                                    reduce::sum(&part, false)
+                                } else {
+                                    reduce::mean(&part)
+                                }
+                            })
+                            .collect(),
+                        Vals::Int(x) | Vals::Lgl(x) => {
+                            let mut o = Vec::with_capacity(members.len());
+                            for m in &members {
+                                let part: Vec<i32> = m.iter().map(|&q| x[q]).collect();
+                                o.push(if resolve == 2 {
+                                    match tidyabm_core::reduce::sum_int(&part, false) {
+                                        Some(NA_INT) => na_real,
+                                        Some(s) => f64::from(s),
+                                        None => {
+                                            return decline(
+                                                "an integer sum that overflows (R warns)",
+                                            )
+                                        }
+                                    }
+                                } else if part.contains(&NA_INT) {
+                                    na_real
+                                } else {
+                                    reduce::mean_int(&part)
+                                });
+                            }
+                            o
+                        }
+                        Vals::Str(_) => return decline("sum()/mean() of strings"),
+                    };
+                    Vals::Dbl(Cow::Owned(out))
+                }
+                _ => return Err(bad("tell resolve")),
+            }
+        };
+        msgs.push(msg);
+    }
+    // write: rule by rule, group by group
+    let ends: Vec<usize> = sizes
+        .iter()
+        .scan(0, |a, &x| {
+            *a += x;
+            Some(*a)
+        })
+        .collect();
+    let mut cur: Option<H> = None;
+    for (r, msg) in msgs.iter().enumerate() {
+        let t = gp.targets[r];
+        for (j, &end) in ends.iter().enumerate() {
+            let start = if j == 0 { 0 } else { ends[j - 1] };
+            let sel: Vec<usize> = (0..at.len())
+                .filter(|&q| at[q] >= start && at[q] < end)
+                .collect();
+            if sel.is_empty() {
+                continue;
+            }
+            let gs = cur.as_ref().map_or(groups, |h| h.get());
+            let g = elt(gs, j);
+            let Some(cj) = find(names_of(g)?, t) else {
+                return decline("a recipient group without the column (R's error)");
+            };
+            let col = elt(g, cj);
+            if !all_bare(&[col])? {
+                return decline("a target column with attributes");
+            }
+            let Some(old) = expr::vals_of(col, false)? else {
+                return decline("a target column of another type");
+            };
+            let sz = sizes[j];
+            let mut mask = vec![false; sz];
+            let mut spread_rows = vec![0usize; sz];
+            for &q in &sel {
+                mask[at[q] - start] = true;
+                spread_rows[at[q] - start] = q;
+            }
+            let spread = tidyabm_core::expr::take(msg, &spread_rows);
+            // replace_at(): vctrs' common type, then the rows written
+            let new = match expr::assign_rows(Some(old), &spread, &mask)? {
+                Ok(v) => v,
+                Err(d) => {
+                    expr::note_decline(&d);
+                    return Ok(None);
+                }
+            };
+            let mut hold = OwnedListSexp::new(1, false)?;
+            hold.set_value(0, expr::to_r(&new, sz)?)?;
+            let g2 = set_named(g, t, elt(hold.inner(), 0))?;
+            // SAFETY: reading a static of R's (unused name: `j` is in range).
+            cur = Some(with_elt(gs, j, g2.get(), unsafe { rapi::R_BlankString })?);
+        }
+    }
+    match cur {
+        // SAFETY: as above.
+        Some(gs) => Ok(Some(with_elt(st, gi, gs.get(), unsafe {
+            rapi::R_BlankString
+        })?)),
+        None => Ok(Some(keep(st)?)),
+    }
+}
+
 fn same_side(a: Side, b: Side) -> bool {
     match (a, b) {
         (Side::D(p), Side::D(q)) => p == q,
@@ -3493,7 +4072,11 @@ fn exec(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
     if let Some(nb) = &plan.nb {
         return exec_nb(plan, nb, st);
     }
-    if plan.birth.is_some() {
+    if plan.tell.is_some() {
+        exec_tell(plan, st)
+    } else if plan.mv.is_some() {
+        exec_move(plan, st)
+    } else if plan.birth.is_some() {
         exec_birth(plan, st)
     } else if plan.death.is_some() {
         exec_death(plan, st)

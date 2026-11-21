@@ -21,6 +21,10 @@ rust_kernels <- list(
                         can = function(step) rl_nb_ok(step) || rl_nb_within_ok(step) ||
                           rl_nb_where_ok(step),
                         native = 3L),
+  abm_tell       = list(fun = rk_native, auto = FALSE, store = FALSE, can = rl_tell_ok,
+                        native = 11L),
+  abm_move       = list(fun = rk_native, auto = FALSE, store = FALSE, can = rl_move_ok,
+                        native = 10L),
   abm_birth      = list(fun = rk_native, auto = FALSE, store = FALSE, can = rl_birth_ok,
                         native = 9L),
   abm_death      = list(fun = rk_native, auto = FALSE, store = FALSE, can = rl_death_ok,

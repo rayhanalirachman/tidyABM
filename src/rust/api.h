@@ -10,6 +10,7 @@ SEXP savvy_rs_pow__ffi(SEXP c_arg__x, SEXP c_arg__y);
 SEXP savvy_rs_reduce__ffi(SEXP c_arg__op, SEXP c_arg__x, SEXP c_arg__na_rm);
 SEXP savvy_rs_rx_reason__ffi(void);
 SEXP savvy_rs_sample_int__ffi(SEXP c_arg__n, SEXP c_arg__size, SEXP c_arg__replace);
+SEXP savvy_rs_stack_ticks__ffi(SEXP c_arg__pieces, SEXP c_arg__ticks);
 SEXP savvy_rs_test_error__ffi(SEXP c_arg__msg);
 SEXP savvy_rs_test_panic__ffi(SEXP c_arg__msg, SEXP c_arg__worker);
 SEXP savvy_rs_test_rng_fail__ffi(SEXP c_arg__n, SEXP c_arg__how);
@@ -26,8 +27,8 @@ SEXP savvy_AgentStore_stats__ffi(SEXP self__);
 SEXP savvy_AgentStore_ticks__ffi(SEXP self__);
 
 // methods and associated functions for RunLoop
-SEXP savvy_RunLoop_new__ffi(SEXP c_arg__kinds, SEXP c_arg__prep, SEXP c_arg__seg, SEXP c_arg__tick, SEXP c_arg__rng, SEXP c_arg__ctx);
-SEXP savvy_RunLoop_run__ffi(SEXP self__, SEXP c_arg__state, SEXP c_arg__ticks, SEXP c_arg__need, SEXP c_arg__glog);
+SEXP savvy_RunLoop_new__ffi(SEXP c_arg__kinds, SEXP c_arg__prep, SEXP c_arg__seg, SEXP c_arg__tick, SEXP c_arg__rng, SEXP c_arg__ctx, SEXP c_arg__mprep);
+SEXP savvy_RunLoop_run__ffi(SEXP self__, SEXP c_arg__state, SEXP c_arg__ticks, SEXP c_arg__need, SEXP c_arg__has, SEXP c_arg__keep_t, SEXP c_arg__logs);
 SEXP savvy_RunLoop_stats__ffi(SEXP self__);
 
 // methods and associated functions for RxProgram

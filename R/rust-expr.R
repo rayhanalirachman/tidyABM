@@ -330,7 +330,7 @@ rx_program <- function(step, idx, cols, globals, global_step = FALSE) {
     w <- match(targets, names) - 1L
     w[is.na(w) | !(src[w + 1L] %in% 1L)] <- -1L
     as.integer(w)
-  } else if (global_step) {
+  } else if (isTRUE(global_step)) {
     w <- match(targets, names) - 1L
     w[is.na(w) | (src[w + 1L] %in% 1L)] <- -1L
     as.integer(w)

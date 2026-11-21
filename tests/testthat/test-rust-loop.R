@@ -146,4 +146,45 @@ test_that("native steps keep every new R object protected (gctorture)", {
   got <- tryCatch(run_in("rust", m, go, ticks = 2, seed = 3), error = identity)
   gctorture(FALSE)
   expect_identical(got, ref)
+  # FR4b: `within` lookups and `.where` neighbours (their own commit paths)
+  wm <- abm_setup(agents = list(patches = abm_agents(grass = ~runif(n) < 0.5, food = ~runif(n)),
+                               sheep = abm_agents(n = 4, e = 1)),
+                 network = abm_network(type = "grid", dims = c(3, 3), on = "patches"), seed = 2)
+  go2 <- abm_go(abm_move(along = "patches", to = "random_neighbour", who = "sheep"),
+                abm_neighbours(here ~ any(grass), f ~ sum(food), c ~ n(),
+                               within = .group == "patches" & .id == own_.cell),
+                abm_neighbours(nf ~ sum(food), .where = "north"))
+  ref2 <- run_in("r", wm, go2, ticks = 2, seed = 3)
+  gctorture(TRUE)
+  got2 <- tryCatch(run_in("rust", wm, go2, ticks = 2, seed = 3), error = identity)
+  gctorture(FALSE)
+  expect_identical(got2, ref2)
+  # FR9b: native measures/checks and the stacked recorded ticks
+  ms <- list(mx = ~max(x), s = ~sum(x))
+  ref3 <- run_in("r", m, go, ticks = 2, seed = 3, record = "all", measures = ms,
+                 checks = list(ok = ~all(x > -1e9)))
+  gctorture(TRUE)
+  got3 <- tryCatch(run_in("rust", m, go, ticks = 2, seed = 3, record = "all", measures = ms,
+                          checks = list(ok = ~all(x > -1e9))), error = identity)
+  gctorture(FALSE)
+  expect_identical(got3, ref3)
+})
+
+test_that("FR9b: measures and checks compiled natively give R's tables and errors", {
+  m <- abm_setup(agents = list(a = abm_agents(n = 20, x = ~runif(n)), b = abm_agents(n = 5, x = 1)),
+                 globals = list(tot = 0), seed = 3)
+  go <- abm_go(abm_rules(x ~ x * 1.1), abm_global(tot ~ sum(x)))
+  ms <- list(mx = ~max(x), tot = ~tot * 2, n = ~n(), q = ~quantile(x, 0.5))
+  ck <- list(pos = ~all(x > 0), small = ~tot < 1e6)
+  for (rec in list("final", "globals", 3L)) {
+    expect_engines_agree(m, go, ticks = 8, seed = 1, record = rec, measures = ms, checks = ck,
+                         what = paste("FR9b", rec))
+  }
+  fails <- list(late = ~tot < 30)
+  err <- function(e) tryCatch(run_in(e, m, go, ticks = 20, seed = 1, record = "final",
+                                     checks = fails), error = identity)
+  a <- err("rust"); b <- err("r")
+  expect_identical(conditionMessage(a), conditionMessage(b))
+  expect_identical(class(a), class(b))
+  expect_identical(a$tick, b$tick)
 })

@@ -128,6 +128,17 @@ NULL
   .Call(savvy_rs_sample_int__impl, `n`, `size`, `replace`)
 }
 
+#' The recorded ticks stacked (FR9b): `pieces[[k]]` is the `state$groups` of tick
+#' `ticks[k]`; the result is the columns `rl_population()` builds from R's own
+#' snapshots (`tick`, `.id`, `.group`, then every other column in order of first
+#' appearance; a column a group lacks is `NA` there), as a named list, or `NULL`
+#' when a column is not a bare logical/integer/double/character vector of one type
+#' throughout (R then stacks the snapshots itself).
+#' @noRd
+`rs_stack_ticks` <- function(`pieces`, `ticks`) {
+  .Call(savvy_rs_stack_ticks__impl, `pieces`, `ticks`)
+}
+
 #' Return a typed Rust error (test helper for the error path).
 #' @noRd
 `rs_test_error` <- function(`msg`) {
@@ -235,8 +246,8 @@ class(`AgentStore`) <- c("tidyABM::AgentStore__bundle", "savvy_tidyABM__sealed")
 ### wrapper functions for RunLoop
 
 `RunLoop_run` <- function(self) {
-  function(`state`, `ticks`, `need`, `glog`) {
-    .Call(savvy_RunLoop_run__impl, `self`, `state`, `ticks`, `need`, `glog`)
+  function(`state`, `ticks`, `need`, `has`, `keep_t`, `logs`) {
+    .Call(savvy_RunLoop_run__impl, `self`, `state`, `ticks`, `need`, `has`, `keep_t`, `logs`)
   }
 }
 
@@ -269,8 +280,8 @@ class(`AgentStore`) <- c("tidyABM::AgentStore__bundle", "savvy_tidyABM__sealed")
 
 ### associated functions for RunLoop
 
-`RunLoop`$`new` <- function(`kinds`, `prep`, `seg`, `tick`, `rng`, `ctx`) {
-  .savvy_wrap_RunLoop(.Call(savvy_RunLoop_new__impl, `kinds`, `prep`, `seg`, `tick`, `rng`, `ctx`))
+`RunLoop`$`new` <- function(`kinds`, `prep`, `seg`, `tick`, `rng`, `ctx`, `mprep`) {
+  .savvy_wrap_RunLoop(.Call(savvy_RunLoop_new__impl, `kinds`, `prep`, `seg`, `tick`, `rng`, `ctx`, `mprep`))
 }
 
 

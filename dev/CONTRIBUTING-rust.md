@@ -275,6 +275,21 @@ the R engine's own `run_step()`. Rules:
   `rs_native_exec()`) against the R engine; the loop itself is checked by result
   identity with "r" (tests, oracle, models/). `.rl_last$stats` holds the last
   loop's counters: native steps run, declined, compiled, R callbacks.
+* Neighbour kinds: 3 network `sum`/`mean` of compiled elementwise arguments
+  (`neighbour_fast()`'s shapes; descriptor also keyed by edges and agent
+  count), 5 `within = <col> == own_<col> [& rest]` with one candidate each
+  (`nb_one()`'s shapes, Wolf-Sheep's lookup; columns stacked as `vec_rbind()`
+  pads them, `stacked_pad()`), 6 `.where = <direction>` on a lattice
+  (`directional_view()` + `neighbour_aggregate()` over neighbourhoods of one).
+  The cross-product `within` (`attribute_view()`) and relations still run in R.
+* Tick book-keeping (FR9): an unrecorded or recorded tick without a progress bar
+  is closed in Rust: globals into `glog`, measures/checks as value-only
+  global programs (`rl_tick_step()`, `try_tick()`; a decline or a check that is
+  not `TRUE` closes the tick through the R callback, which raises R's error),
+  a recorded tick's `state$groups` into `slog` (zero copy), stacked once after
+  the run by `rs_stack_ticks()` (bare columns of one type throughout; else R's
+  `snapshot()` + `bind_rows()`). The logs are written only by Rust: the R
+  callback must not assign into them (that would copy the list R reads back).
 * A run with no step the loop takes natively runs on the R engine under "rust"
   and "auto" (the store adapter only added conversion cost); "both" still
   exercises the store. A step that declines 8 times in a row stays on R until

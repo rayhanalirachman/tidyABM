@@ -198,3 +198,46 @@ test_that("`.by` rules run natively in group_by() order, later rules reading ear
   s <- abm_setup(agents = abm_agents(n = 20, x = ~runif(n), g = ~sample(c("p", "q"), n, TRUE)))
   expect_native_agree(s, abm_go(abm_rules(x ~ mean(x), .by = g)), ".by string", native = FALSE)
 })
+
+test_that("FR4b: network folds of compiled arguments and `within` lookups are native", {
+  m <- abm_setup(agents = abm_agents(n = 40, state = ~sample(c("S", "I", "R"), n, TRUE),
+                                     x = ~runif(n), k = ~sample(0:3, n, TRUE)),
+                 network = abm_network(type = "poisson", degree = 3),
+                 globals = list(cut = 0.4), seed = 7)
+  lim <- 2L
+  go <- abm_go(abm_neighbours(inf ~ sum(state == "I"), hi ~ mean(x > cut),
+                              big ~ sum(k * lim + x), one ~ mean(cut)),
+               abm_rules(state ~ if_else(inf > 0 & runif(n()) < 0.3, "I", state)))
+  expect_native_agree(m, go, "network fold of expressions", ticks = 5)
+  # within = .id == own_.cell (Wolf-Sheep's lookup), over groups some of which
+  # lack the columns, with a rest condition, any/all/sum/n
+  w <- abm_setup(agents = list(
+    patches = abm_agents(grass = ~runif(n) < 0.5, food = ~runif(n), cnt = ~sample(0:2, n, TRUE)),
+    sheep = abm_agents(n = 15, energy = ~runif(n, 1, 5)),
+    wolves = abm_agents(n = 5, energy = 2)),
+    network = abm_network(type = "grid", dims = c(6, 6), on = "patches"), seed = 4)
+  go2 <- abm_go(
+    abm_move(along = "patches", to = "random_neighbour", who = c("sheep", "wolves")),
+    abm_neighbours(here ~ any(grass), here_all ~ all(!grass), f ~ sum(food), c ~ sum(cnt),
+                   g ~ sum(grass), nn ~ n(),
+                   within = .group == "patches" & .id == own_.cell),
+    abm_rules(energy ~ energy + if_else(coalesce(here, FALSE), 1, -1)))
+  expect_native_agree(w, go2, "within lookup", ticks = 5)
+})
+
+test_that("FR4b: `.where` lattice neighbours are native and exact", {
+  ca <- abm_setup(agents = abm_agents(s = ~as.integer(seq_len(n) %% 3 == 0), x = ~runif(n)),
+                  network = abm_network(type = "line", dims = 31, torus = FALSE),
+                  globals = list(rule = as.integer(intToBits(90L))[1:8]))
+  go <- abm_go(abm_neighbours(s_l ~ sum(s), m_l ~ mean(x), b_l ~ any(s > 0), .where = "west"),
+               abm_neighbours(s_r ~ sum(s), d_r ~ sum(x - own_x), a_r ~ all(s == own_s),
+                              c_r ~ n(), mi_r ~ mean(s), .where = "east"),
+               abm_rules(s ~ rule[4 * coalesce(s_l, 0L) + 2 * s + coalesce(s_r, 0L) + 1]))
+  expect_native_agree(ca, go, ".where line", ticks = 6)
+  g <- abm_setup(agents = list(patches = abm_agents(food = ~runif(n)),
+                               ants = abm_agents(n = 12, carry = 0)),
+                 network = abm_network(type = "grid", dims = c(5, 5), on = "patches"), seed = 2)
+  go2 <- abm_go(abm_move(along = "patches", to = "random_neighbour", who = "ants"),
+                abm_neighbours(north_food ~ sum(food), .where = "north"))
+  expect_native_agree(g, go2, ".where grid with movers", ticks = 5)
+})

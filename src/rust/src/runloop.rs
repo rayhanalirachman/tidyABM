@@ -331,6 +331,10 @@ struct Mixed {
 /// A native step compiled by `prep` (`R/run-loop.R`, `rl_prep()`).
 struct Plan {
     global: bool,
+    /// `within` neighbourhoods of one candidate each (kind 5)
+    nb1: Option<Nb1Plan>,
+    /// `.where` lattice neighbourhoods (kind 6)
+    nbw: Option<NbwPlan>,
     /// `.by` rules: the key column's name
     by: Option<SEXP>,
     nb: Option<NbPlan>,
@@ -344,13 +348,35 @@ struct Plan {
     _desc: H,
 }
 
+/// A `within = <col> == own_<col> [& rest]` step whose candidates are distinct
+/// ([nb_one()]): the program evaluates the rest (if any) then each rule's argument.
+struct Nb1Plan {
+    focal: SEXP,
+    cand: SEXP,
+    cand_is_id: bool,
+    rest: bool,
+    /// per rule: 0 `any`, 1 `all`, 2 `sum`, 3 `n`
+    fns: Vec<u8>,
+    /// per rule: a bare `n()` (an agent without a candidate counts 0)
+    counts: Vec<bool>,
+}
+
+/// A `.where = <direction>` step: the lattice's wired group, its neighbour
+/// table for the direction (cell id -> cell id, `NA` at an edge), the lattice
+/// it came from, and per rule 0 `any`, 1 `all`, 2 `sum`, 3 `n`, 4 `mean`.
+struct NbwPlan {
+    on: SEXP,
+    dir: SEXP,
+    lattice: SEXP,
+    fns: Vec<u8>,
+}
+
 /// A network `abm_neighbours()` step whose rules are `sum()`/`mean()` of bare
 /// double columns (the shapes P4's `rk_neighbours()` folded in Rust), with the
 /// neighbour index and `state$nb_cache` that R builds for these edges and this
 /// many agents.
 struct NbPlan {
     mean: Vec<bool>,
-    args: Vec<SEXP>,
     targets: Vec<SEXP>,
     cols: Vec<SEXP>,
     cnt: SEXP,
@@ -382,7 +408,6 @@ fn parse_nb(nb: SEXP) -> savvy::Result<NbPlan> {
         .ok_or_else(|| bad("nb n"))?;
     let plan = NbPlan {
         mean,
-        args: chars(field(nb, b"args")?)?,
         targets: chars(field(nb, b"targets")?)?,
         cols,
         cnt: field(nb, b"cnt")?,
@@ -394,7 +419,7 @@ fn parse_nb(nb: SEXP) -> savvy::Result<NbPlan> {
         edges: field(nb, b"edges")?,
         n: usize::try_from(n).map_err(|_| bad("nb n"))?,
     };
-    if plan.args.len() != k || plan.targets.len() != k {
+    if plan.targets.len() != k {
         return Err(bad("nb rules"));
     }
     Ok(plan)
@@ -489,6 +514,76 @@ fn parse_plan(desc: H) -> savvy::Result<Plan> {
     };
     // an R-evaluated rule may draw
     let draws = draws || mixed.is_some();
+    let nb1 = if kind == 5 {
+        let x = field(d, b"nb1")?;
+        let one = |nm: &[u8]| -> savvy::Result<SEXP> {
+            chars(field(x, nm)?)?
+                .first()
+                .copied()
+                .ok_or_else(|| bad("nb1"))
+        };
+        let lgl = |nm: &[u8]| -> savvy::Result<Vec<bool>> {
+            let v = field(x, nm)?;
+            // SAFETY: reading a type tag.
+            if unsafe { rapi::TYPEOF(v) } != rapi::LGLSXP {
+                return Err(bad("nb1 logical"));
+            }
+            // SAFETY: a protected logical vector of `len(v)` elements.
+            Ok((0..len(v))
+                .map(|i| unsafe { *rapi::LOGICAL_RO(v).add(i) } == 1)
+                .collect())
+        };
+        let cand = one(b"cand")?;
+        let fns = chars(field(x, b"fns")?)?
+            .iter()
+            .map(|&c| match bytes(c) {
+                b"any" => Ok(0),
+                b"all" => Ok(1),
+                b"sum" => Ok(2),
+                b"n" => Ok(3),
+                _ => Err(bad("nb1 fn")),
+            })
+            .collect::<savvy::Result<Vec<u8>>>()?;
+        let counts = lgl(b"counts")?;
+        if counts.len() != fns.len() {
+            return Err(bad("nb1 rules"));
+        }
+        Some(Nb1Plan {
+            focal: one(b"focal")?,
+            cand,
+            cand_is_id: bytes(cand) == b".id",
+            rest: lgl(b"rest")?.first().copied().unwrap_or(false),
+            fns,
+            counts,
+        })
+    } else {
+        None
+    };
+    let nbw = if kind == 6 {
+        let x = field(d, b"nbw")?;
+        let fns = chars(field(x, b"fns")?)?
+            .iter()
+            .map(|&c| match bytes(c) {
+                b"any" => Ok(0),
+                b"all" => Ok(1),
+                b"sum" => Ok(2),
+                b"n" => Ok(3),
+                b"mean" => Ok(4),
+                _ => Err(bad("nbw fn")),
+            })
+            .collect::<savvy::Result<Vec<u8>>>()?;
+        Some(NbwPlan {
+            on: chars(field(x, b"on")?)?
+                .first()
+                .copied()
+                .ok_or_else(|| bad("nbw on"))?,
+            dir: field(x, b"dir")?,
+            lattice: field(x, b"lattice")?,
+            fns,
+        })
+    } else {
+        None
+    };
     let by = if kind == 4 {
         Some(
             chars(field(d, b"by")?)?
@@ -501,6 +596,8 @@ fn parse_plan(desc: H) -> savvy::Result<Plan> {
     };
     Ok(Plan {
         mixed,
+        nb1,
+        nbw,
         by,
         global: kind == 2,
         nb,
@@ -864,7 +961,7 @@ fn exec_rules(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
 
 /// `abm_global()` natively (slice 1's `rk_global()`, also for one group): each
 /// rule over all groups stacked, the later rules seeing the earlier writes.
-fn exec_global(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
+fn exec_global(plan: &Plan, st: SEXP, values_only: bool) -> savvy::Result<Option<H>> {
     let gp = plan.groups.first().ok_or_else(|| bad("no program"))?;
     let gi = find_str(st, b"groups")?.ok_or_else(|| bad("no groups"))?;
     let li = find_str(st, b"globals")?.ok_or_else(|| bad("no globals"))?;
@@ -944,6 +1041,10 @@ fn exec_global(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
     for (i, v) in res.iter().enumerate() {
         out.set_value(i, expr::to_r(v, 1)?)?;
     }
+    if values_only {
+        // measures and checks (FR9b): the values, nothing committed
+        return Ok(Some(keep(out.inner())?));
+    }
     let mut cur: Option<H> = None;
     for (i, &t) in gp.targets.iter().enumerate() {
         let base = cur.as_ref().map_or(gl, |h| h.get());
@@ -981,6 +1082,504 @@ fn stacked_col<'a>(groups: SEXP, name: SEXP) -> savvy::Result<Option<Vals<'a>>> 
         l.set_value(k, Sexp(p))?;
     }
     expr::stacked(l.inner())
+}
+
+/// Column `name` of every group stacked as `vctrs::vec_rbind()` stacks it: `NA`
+/// for a group that lacks it. `None` (decline) when no group has it, the groups
+/// hold it in different types, or a column has attributes.
+fn stacked_pad(groups: SEXP, name: SEXP, sizes: &[usize]) -> savvy::Result<Option<Vals<'static>>> {
+    use std::borrow::Cow;
+    let ng = len(groups);
+    let mut parts: Vec<Option<SEXP>> = Vec::with_capacity(ng);
+    for k in 0..ng {
+        let g = elt(groups, k);
+        parts.push(find(names_of(g)?, name).map(|j| elt(g, j)));
+    }
+    let present: Vec<SEXP> = parts.iter().flatten().copied().collect();
+    if present.is_empty() || !all_bare(&present)? {
+        return Ok(None);
+    }
+    // SAFETY: reading type tags.
+    let t = unsafe { rapi::TYPEOF(present[0]) };
+    // SAFETY: as above.
+    if present.iter().any(|&p| unsafe { rapi::TYPEOF(p) } != t) {
+        return Ok(None);
+    }
+    // SAFETY: reading statics of R's (its NA_real_ and NA_character_).
+    let (na_real, na_str) = unsafe { (rapi::R_NaReal, rapi::R_NaString as usize) };
+    let mut out: Option<Vals<'static>> = None;
+    for (k, p) in parts.iter().enumerate() {
+        let v: Vals<'static> = match p {
+            Some(x) => match expr::vals_of(*x, false)? {
+                Some(v) => expr::owned(v),
+                None => return Ok(None),
+            },
+            None => match t {
+                rapi::LGLSXP => Vals::Lgl(Cow::Owned(vec![tidyabm_core::sample::NA_INT; sizes[k]])),
+                INTSXP => Vals::Int(Cow::Owned(vec![tidyabm_core::sample::NA_INT; sizes[k]])),
+                rapi::REALSXP => Vals::Dbl(Cow::Owned(vec![na_real; sizes[k]])),
+                STRSXP => Vals::Str(Cow::Owned(vec![na_str; sizes[k]])),
+                _ => return Ok(None),
+            },
+        };
+        out = Some(match (out, v) {
+            (None, v) => v,
+            (Some(Vals::Lgl(mut a)), Vals::Lgl(b)) => {
+                a.to_mut().extend_from_slice(&b);
+                Vals::Lgl(a)
+            }
+            (Some(Vals::Int(mut a)), Vals::Int(b)) => {
+                a.to_mut().extend_from_slice(&b);
+                Vals::Int(a)
+            }
+            (Some(Vals::Dbl(mut a)), Vals::Dbl(b)) => {
+                a.to_mut().extend_from_slice(&b);
+                Vals::Dbl(a)
+            }
+            (Some(Vals::Str(mut a)), Vals::Str(b)) => {
+                a.to_mut().extend_from_slice(&b);
+                Vals::Str(a)
+            }
+            _ => return Ok(None),
+        });
+    }
+    Ok(out)
+}
+
+/// `abm_neighbours(within = <col> == own_<col> [& rest])` natively, as
+/// [nb_one()] answers it: each focal agent's one candidate (its `<col>` matched
+/// against the candidates' distinct values), kept where the rest holds there,
+/// and each rule's argument read off at that candidate; written to every group,
+/// `NA` (`0` for a bare `n()`) for an agent without one.
+fn exec_nb1(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
+    use std::borrow::Cow;
+    use tidyabm_core::sample::NA_INT;
+    let nb = plan.nb1.as_ref().ok_or_else(|| bad("no nb1"))?;
+    let gp = plan.groups.first().ok_or_else(|| bad("no program"))?;
+    if let Some(ri) = find_str(st, b"relations")? {
+        if len(elt(st, ri)) > 0 {
+            return decline("a relation");
+        }
+    }
+    let gi = find_str(st, b"groups")?.ok_or_else(|| bad("no groups"))?;
+    let groups = elt(st, gi);
+    let ng = len(groups);
+    let mut sizes = Vec::with_capacity(ng);
+    for k in 0..ng {
+        match rows(elt(groups, k)) {
+            Some(r) => sizes.push(r),
+            None => return decline("a group without columns"),
+        }
+    }
+    let n: usize = sizes.iter().sum();
+    if n == 0 {
+        return Ok(Some(keep(st)?));
+    }
+    let (Some(Vals::Int(focal)), Some(Vals::Int(cand))) = (
+        stacked_pad(groups, nb.focal, &sizes)?,
+        stacked_pad(groups, nb.cand, &sizes)?,
+    ) else {
+        return decline("join columns that are not integers");
+    };
+    // match(focal, cand): the first candidate of a value (NA matches NA, as in
+    // match()); candidates other than `.id` must be distinct
+    let mut at: std::collections::HashMap<i32, usize> = std::collections::HashMap::with_capacity(n);
+    for (j, &c) in cand.iter().enumerate() {
+        if at.insert(c, j).is_some() && !nb.cand_is_id && c != NA_INT {
+            return decline("candidates that are not distinct");
+        }
+    }
+    // keep the first of a repeated value (match() semantics)
+    for (j, &c) in cand.iter().enumerate().rev() {
+        at.insert(c, j);
+    }
+    let mut ins: Vec<Vals> = Vec::with_capacity(gp.cols.len());
+    for &c in &gp.cols {
+        match stacked_pad(groups, c, &sizes)? {
+            Some(v) => ins.push(v),
+            None => return decline("a column of another kind"),
+        }
+    }
+    // SAFETY: the program is kept alive by the plan's descriptor.
+    let prog = unsafe { &*gp.prog };
+    let res = match prog.compute(ins, n, n)? {
+        Ok(r) => r,
+        Err(d) => {
+            expr::note_decline(&d);
+            return Ok(None);
+        }
+    };
+    let pick = |v: &Vals, i: usize| -> usize {
+        if v.len() == 1 {
+            0
+        } else {
+            i
+        }
+    };
+    // the focal rows with a candidate (where the rest holds there), in row order
+    let mut pairs: Vec<(usize, usize)> = Vec::new();
+    for (i, f) in focal.iter().enumerate() {
+        if let Some(&j) = at.get(f) {
+            pairs.push((i, j));
+        }
+    }
+    let mut next = 0;
+    if nb.rest {
+        let Vals::Lgl(k) = &res[0] else {
+            return decline("a `within` condition that is not logical");
+        };
+        pairs.retain(|&(_, j)| k[pick(&res[0], j)] == 1);
+        next = 1;
+    }
+    if pairs.is_empty() {
+        return decline("nobody with a candidate");
+    }
+    // per rule: the value at each focal row (`None` = no candidate)
+    let mut slot = vec![usize::MAX; n];
+    for (p, &(i, _)) in pairs.iter().enumerate() {
+        slot[i] = p;
+    }
+    let mut outs: Vec<Vals> = Vec::with_capacity(nb.fns.len());
+    for (r, &f) in nb.fns.iter().enumerate() {
+        let v = match f {
+            3 => Vals::Int(Cow::Owned(vec![1; pairs.len()])),
+            _ => {
+                let x = &res[next];
+                next += 1;
+                match (f, x) {
+                    (0 | 1, Vals::Lgl(a)) => Vals::Lgl(Cow::Owned(
+                        pairs.iter().map(|&(_, j)| a[pick(x, j)]).collect(),
+                    )),
+                    (0 | 1, _) => return decline("any()/all() of a value that is not logical"),
+                    (_, Vals::Dbl(a)) => Vals::Dbl(Cow::Owned(
+                        pairs.iter().map(|&(_, j)| 0.0 + a[pick(x, j)]).collect(),
+                    )),
+                    (_, Vals::Int(a) | Vals::Lgl(a)) => Vals::Int(Cow::Owned(
+                        pairs.iter().map(|&(_, j)| a[pick(x, j)]).collect(),
+                    )),
+                    _ => return decline("sum() of strings"),
+                }
+            }
+        };
+        let _ = r;
+        outs.push(v);
+    }
+    // SAFETY: reading a static of R's (its NA_real_).
+    let na_real = unsafe { rapi::R_NaReal };
+    let mut cur: Option<H> = None;
+    for (r, v) in outs.iter().enumerate() {
+        let t = gp.targets[r];
+        let miss_zero = nb.counts[r];
+        let mut start = 0;
+        for (g, &sz) in sizes.iter().enumerate() {
+            let rows_g = start..start + sz;
+            start += sz;
+            if sz == 0 {
+                continue;
+            }
+            let col = match v {
+                Vals::Lgl(a) => Vals::Lgl(Cow::Owned(
+                    rows_g
+                        .map(|i| {
+                            if slot[i] == usize::MAX {
+                                NA_INT
+                            } else {
+                                a[slot[i]]
+                            }
+                        })
+                        .collect(),
+                )),
+                Vals::Int(a) => Vals::Int(Cow::Owned(
+                    rows_g
+                        .map(|i| match slot[i] {
+                            usize::MAX if miss_zero => 0,
+                            usize::MAX => NA_INT,
+                            p => a[p],
+                        })
+                        .collect(),
+                )),
+                Vals::Dbl(a) => Vals::Dbl(Cow::Owned(
+                    rows_g
+                        .map(|i| {
+                            if slot[i] == usize::MAX {
+                                na_real
+                            } else {
+                                a[slot[i]]
+                            }
+                        })
+                        .collect(),
+                )),
+                Vals::Str(_) => return Err(bad("a string neighbour value")),
+            };
+            let gs = cur.as_ref().map_or(groups, |h| h.get());
+            let base = elt(gs, g);
+            // the holder exists before the new column (`to_r()` returns it
+            // unprotected)
+            let mut hold = OwnedListSexp::new(1, false)?;
+            hold.set_value(0, expr::to_r(&col, sz)?)?;
+            let g2 = set_named(base, t, elt(hold.inner(), 0))?;
+            // SAFETY: reading a static of R's (unused name: `g` is in range).
+            cur = Some(with_elt(gs, g, g2.get(), unsafe { rapi::R_BlankString })?);
+        }
+    }
+    match cur {
+        // SAFETY: as above.
+        Some(gs) => Ok(Some(with_elt(st, gi, gs.get(), unsafe {
+            rapi::R_BlankString
+        })?)),
+        None => Ok(Some(keep(st)?)),
+    }
+}
+
+/// `abm_neighbours(.where = )` natively ([directional_view()] then
+/// [neighbour_aggregate()] over neighbourhoods of one): a wired cell's own id,
+/// else a mover's `.cell`, looked up in the direction's table, the candidate
+/// the agent with that id; each rule's argument evaluated over the (focal,
+/// candidate) pairs, `own_<col>` from the focal agent; `NA` for an agent
+/// without a neighbour there.
+fn exec_nbw(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
+    use std::borrow::Cow;
+    use tidyabm_core::sample::NA_INT;
+    let nb = plan.nbw.as_ref().ok_or_else(|| bad("no nbw"))?;
+    let gp = plan.groups.first().ok_or_else(|| bad("no program"))?;
+    if let Some(ri) = find_str(st, b"relations")? {
+        if len(elt(st, ri)) > 0 {
+            return decline("a relation");
+        }
+    }
+    match find_str(st, b"lattice")? {
+        Some(li) if elt(st, li) == nb.lattice => {}
+        _ => return decline("the lattice changed"),
+    }
+    let gi = find_str(st, b"groups")?.ok_or_else(|| bad("no groups"))?;
+    let groups = elt(st, gi);
+    let ng = len(groups);
+    let mut sizes = Vec::with_capacity(ng);
+    for k in 0..ng {
+        match rows(elt(groups, k)) {
+            Some(r) => sizes.push(r),
+            None => return decline("a group without columns"),
+        }
+    }
+    let n: usize = sizes.iter().sum();
+    if n == 0 {
+        return Ok(Some(keep(st)?));
+    }
+    let id_name = names_of(elt(groups, 0))?
+        .first()
+        .copied()
+        .ok_or_else(|| bad("no .id"))?;
+    let (Some(Vals::Int(ids)), Some(Vals::Str(grp))) = (
+        stacked_pad(groups, id_name, &sizes)?,
+        stacked_col_named(groups, b".group", &sizes)?,
+    ) else {
+        return decline("ids or groups of another kind");
+    };
+    if bytes(id_name) != b".id" {
+        return decline("a group whose first column is not .id");
+    }
+    let cell = stacked_col_named(groups, b".cell", &sizes)?;
+    let cell: Option<Cow<[i32]>> = match cell {
+        None => None,
+        Some(Vals::Int(c)) => Some(c),
+        Some(_) => return decline("a .cell that is not integer"),
+    };
+    let dir = store::numbers_of::<i32>(nb.dir, INTSXP)?.ok_or_else(|| bad("nbw dir"))?;
+    let on = bytes(nb.on);
+    let mut at: std::collections::HashMap<i32, usize> = std::collections::HashMap::with_capacity(n);
+    for (j, &id) in ids.iter().enumerate().rev() {
+        at.insert(id, j);
+    }
+    let mut pairs: Vec<(usize, usize)> = Vec::new();
+    for i in 0..n {
+        let wired = grp[i] as SEXP == nb.on || bytes(grp[i] as SEXP) == on;
+        let fc = if wired {
+            ids[i]
+        } else {
+            cell.as_ref().map_or(NA_INT, |c| c[i])
+        };
+        if fc == NA_INT || fc < 1 || fc as usize > dir.len() {
+            if fc != NA_INT && (fc < 1 || fc as usize > dir.len()) {
+                return decline("a cell outside the lattice");
+            }
+            continue;
+        }
+        let nc = dir[fc as usize - 1];
+        if nc == NA_INT {
+            continue;
+        }
+        if let Some(&j) = at.get(&nc) {
+            pairs.push((i, j));
+        }
+    }
+    let m = pairs.len();
+    if m == 0 {
+        return decline("nobody with a neighbour there");
+    }
+    // inputs over the pairs: a column from the candidate, `own_<col>` from the
+    // focal agent; then globals and formula-environment values (one value each)
+    let mut ins: Vec<Vals> = Vec::with_capacity(gp.cols.len() + gp.globs.len());
+    for &c in &gp.cols {
+        let b = bytes(c);
+        let (name, own) = match b.strip_prefix(b"own_") {
+            Some(rest) => (rest, true),
+            None => (b, false),
+        };
+        let Some(v) = stacked_col_named(groups, name, &sizes)? else {
+            return decline("a column of another kind");
+        };
+        let rows: Vec<usize> = pairs
+            .iter()
+            .map(|&(i, j)| if own { i } else { j })
+            .collect();
+        ins.push(tidyabm_core::expr::take(&v, &rows));
+    }
+    let mut xs = Vec::new();
+    if !read_globals(st, &gp.globs, &mut xs)? {
+        return decline("a global not found");
+    }
+    let Some(svals) = scope_values(plan)? else {
+        return decline("a formula-environment value that cannot be read");
+    };
+    if !read_scope(&svals, &gp.scope, &mut xs) {
+        return decline("a formula-environment value not found");
+    }
+    let Some(more) = inputs(&xs)? else {
+        return decline("a global or scope value of an unsupported type");
+    };
+    if more.iter().any(|v| v.len() != 1) {
+        return decline("a global or scope value of more than one element");
+    }
+    ins.extend(more);
+    // SAFETY: the program is kept alive by the plan's descriptor.
+    let prog = unsafe { &*gp.prog };
+    let res = match prog.compute(ins, m, m)? {
+        Ok(r) => r,
+        Err(d) => {
+            expr::note_decline(&d);
+            return Ok(None);
+        }
+    };
+    // SAFETY: reading a static of R's (its NA_real_).
+    let na_real = unsafe { rapi::R_NaReal };
+    let at_ = |v: &Vals, p: usize| if v.len() == 1 { 0 } else { p };
+    let mut next = 0;
+    let mut outs: Vec<Vals> = Vec::with_capacity(nb.fns.len());
+    for &f in &nb.fns {
+        if f == 3 {
+            outs.push(Vals::Int(Cow::Owned(vec![1; m])));
+            continue;
+        }
+        let x = &res[next];
+        next += 1;
+        outs.push(match (f, x) {
+            (0 | 1, Vals::Lgl(a)) => Vals::Lgl(Cow::Owned((0..m).map(|p| a[at_(x, p)]).collect())),
+            (0 | 1, _) => return decline("any()/all() of a value that is not logical"),
+            (_, Vals::Dbl(a)) => {
+                Vals::Dbl(Cow::Owned((0..m).map(|p| 0.0 + a[at_(x, p)]).collect()))
+            }
+            (2, Vals::Int(a) | Vals::Lgl(a)) => {
+                Vals::Int(Cow::Owned((0..m).map(|p| a[at_(x, p)]).collect()))
+            }
+            (_, Vals::Int(a) | Vals::Lgl(a)) => Vals::Dbl(Cow::Owned(
+                (0..m)
+                    .map(|p| {
+                        let v = a[at_(x, p)];
+                        if v == NA_INT {
+                            na_real
+                        } else {
+                            f64::from(v)
+                        }
+                    })
+                    .collect(),
+            )),
+            _ => return decline("sum()/mean() of strings"),
+        });
+    }
+    let mut slot = vec![usize::MAX; n];
+    for (p, &(i, _)) in pairs.iter().enumerate() {
+        slot[i] = p;
+    }
+    let mut cur: Option<H> = None;
+    for (r, v) in outs.iter().enumerate() {
+        let t = gp.targets[r];
+        let mut start = 0;
+        for (g, &sz) in sizes.iter().enumerate() {
+            let rows_g = start..start + sz;
+            start += sz;
+            if sz == 0 {
+                continue;
+            }
+            let col = match v {
+                Vals::Lgl(a) => Vals::Lgl(Cow::Owned(
+                    rows_g
+                        .map(|i| {
+                            if slot[i] == usize::MAX {
+                                NA_INT
+                            } else {
+                                a[slot[i]]
+                            }
+                        })
+                        .collect(),
+                )),
+                Vals::Int(a) => Vals::Int(Cow::Owned(
+                    rows_g
+                        .map(|i| {
+                            if slot[i] == usize::MAX {
+                                NA_INT
+                            } else {
+                                a[slot[i]]
+                            }
+                        })
+                        .collect(),
+                )),
+                Vals::Dbl(a) => Vals::Dbl(Cow::Owned(
+                    rows_g
+                        .map(|i| {
+                            if slot[i] == usize::MAX {
+                                na_real
+                            } else {
+                                a[slot[i]]
+                            }
+                        })
+                        .collect(),
+                )),
+                Vals::Str(_) => return Err(bad("a string neighbour value")),
+            };
+            let gs = cur.as_ref().map_or(groups, |h| h.get());
+            let base = elt(gs, g);
+            // the holder exists before the new column (`to_r()` returns it
+            // unprotected)
+            let mut hold = OwnedListSexp::new(1, false)?;
+            hold.set_value(0, expr::to_r(&col, sz)?)?;
+            let g2 = set_named(base, t, elt(hold.inner(), 0))?;
+            // SAFETY: reading a static of R's (unused name: `g` is in range).
+            cur = Some(with_elt(gs, g, g2.get(), unsafe { rapi::R_BlankString })?);
+        }
+    }
+    match cur {
+        // SAFETY: as above.
+        Some(gs) => Ok(Some(with_elt(st, gi, gs.get(), unsafe {
+            rapi::R_BlankString
+        })?)),
+        None => Ok(Some(keep(st)?)),
+    }
+}
+
+/// [`stacked_pad`] of the column named `name` (ASCII); `None` when no group
+/// has it (or as `stacked_pad` declines).
+fn stacked_col_named(
+    groups: SEXP,
+    name: &[u8],
+    sizes: &[usize],
+) -> savvy::Result<Option<Vals<'static>>> {
+    for k in 0..len(groups) {
+        let g = elt(groups, k);
+        if let Some(c) = names_of(g)?.iter().copied().find(|&c| bytes(c) == name) {
+            return stacked_pad(groups, c, sizes);
+        }
+    }
+    Ok(None)
 }
 
 /// `abm_rules(.by = )` natively ([run_rules_by()]): the groups stacked, each rule
@@ -1213,7 +1812,7 @@ fn ids_are_rows<'a>(groups: SEXP) -> savvy::Result<RowIds<'a>> {
 /// each rule's column stacked over the groups, folded over each agent's
 /// neighbours in `nb_fold()`'s order, written to every group (by `.id` when
 /// there are several), and `state$nb_cache` set as R sets it.
-fn exec_nb(nb: &NbPlan, st: SEXP) -> savvy::Result<Option<H>> {
+fn exec_nb(plan: &Plan, nb: &NbPlan, st: SEXP) -> savvy::Result<Option<H>> {
     // SAFETY: reading a static of R's.
     let nil = unsafe { rapi::R_NilValue };
     if let Some(ri) = find_str(st, b"relations")? {
@@ -1246,29 +1845,52 @@ fn exec_nb(nb: &NbPlan, st: SEXP) -> savvy::Result<Option<H>> {
     let cnt = store::numbers_of::<i32>(nb.cnt, INTSXP)?.ok_or_else(|| bad("nb counts"))?;
     // SAFETY: reading a static of R's (its NA_real_, not a Rust constant).
     let na = unsafe { rapi::R_NaReal };
-    let mut vals: Vec<Vals> = Vec::with_capacity(nb.args.len());
-    for (r, &a) in nb.args.iter().enumerate() {
-        let mut parts = Vec::with_capacity(ng);
-        for k in 0..ng {
-            let g = elt(groups, k);
-            let Some(j) = find(names_of(g)?, a) else {
-                return decline("a column some group lacks");
-            };
-            parts.push(elt(g, j));
+    // each rule's argument over the agents (columns stacked, one-value globals
+    // and formula-environment values), as `neighbour_fast()` evaluates it
+    let gp = plan.groups.first().ok_or_else(|| bad("no program"))?;
+    let mut ins: Vec<Vals> = Vec::with_capacity(gp.cols.len() + gp.globs.len());
+    for &c in &gp.cols {
+        match stacked_col(groups, c)? {
+            Some(v) => ins.push(v),
+            None => return decline("a column of another kind"),
         }
-        if !all_bare(&parts)? {
-            return decline("an input that is not a bare vector");
+    }
+    let mut xs = Vec::new();
+    if !read_globals(st, &gp.globs, &mut xs)? {
+        return decline("a global not found");
+    }
+    let Some(svals) = scope_values(plan)? else {
+        return decline("a formula-environment value that cannot be read");
+    };
+    if !read_scope(&svals, &gp.scope, &mut xs) {
+        return decline("a formula-environment value not found");
+    }
+    let Some(more) = inputs(&xs)? else {
+        return decline("a global or scope value of an unsupported type");
+    };
+    if more.iter().any(|v| v.len() != 1) {
+        return decline("a global or scope value of more than one element");
+    }
+    ins.extend(more);
+    // SAFETY: the program is kept alive by the plan's descriptor.
+    let prog = unsafe { &*gp.prog };
+    let res = match prog.compute(ins, n, n)? {
+        Ok(r) => r,
+        Err(d) => {
+            expr::note_decline(&d);
+            return Ok(None);
         }
-        // the column stacked: double, or integer/logical (`nb_fold_int()`)
-        let x = if ng == 1 {
-            expr::vals_of(parts[0], false)?
+    };
+    let _ = ng;
+    let mut vals: Vec<Vals> = Vec::with_capacity(res.len());
+    for (r, x) in res.into_iter().enumerate() {
+        // a one-value argument stands for every agent (`rep(x, n)`)
+        let x = if x.len() == 1 && n != 1 {
+            tidyabm_core::expr::take(&x, &vec![0; n])
         } else {
-            let mut l = OwnedListSexp::new(ng, false)?;
-            for (k, &p) in parts.iter().enumerate() {
-                l.set_value(k, Sexp(p))?;
-            }
-            expr::stacked(l.inner())?
+            x
         };
+        let x = Some(x);
         let folded = match x {
             Some(Vals::Dbl(x)) => tidyabm_core::neighbours::nb_fold(nb.mean[r], &x, &cols, cnt, na)
                 .map(|v| Vals::Dbl(std::borrow::Cow::Owned(v))),
@@ -1329,15 +1951,194 @@ fn exec_nb(nb: &NbPlan, st: SEXP) -> savvy::Result<Option<H>> {
 
 fn exec(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
     if let Some(nb) = &plan.nb {
-        return exec_nb(nb, st);
+        return exec_nb(plan, nb, st);
     }
-    if plan.by.is_some() {
+    if plan.nbw.is_some() {
+        exec_nbw(plan, st)
+    } else if plan.nb1.is_some() {
+        exec_nb1(plan, st)
+    } else if plan.by.is_some() {
         exec_by(plan, st)
     } else if plan.global {
-        exec_global(plan, st)
+        exec_global(plan, st, false)
     } else {
         exec_rules(plan, st)
     }
+}
+
+/// The recorded ticks stacked (FR9b): `pieces[[k]]` is the `state$groups` of tick
+/// `ticks[k]`; the result is the columns `rl_population()` builds from R's own
+/// snapshots (`tick`, `.id`, `.group`, then every other column in order of first
+/// appearance; a column a group lacks is `NA` there), as a named list, or `NULL`
+/// when a column is not a bare logical/integer/double/character vector of one type
+/// throughout (R then stacks the snapshots itself).
+/// @noRd
+#[savvy]
+fn rs_stack_ticks(pieces: Sexp, ticks: IntegerSexp) -> savvy::Result<Sexp> {
+    run(|| match stack_ticks(pieces.0, ticks.as_slice())? {
+        Some(h) => Ok(Sexp(h.get())),
+        None => Ok(NullSexp.into()),
+    })
+}
+
+fn stack_ticks(pieces: SEXP, ticks: &[i32]) -> savvy::Result<Option<H>> {
+    use tidyabm_core::sample::NA_INT;
+    // SAFETY: reading a type tag.
+    if unsafe { rapi::TYPEOF(pieces) } != VECSXP || len(pieces) != ticks.len() {
+        return Ok(None);
+    }
+    // pass 1: the columns (first appearance), their types, the row count
+    let mut names: Vec<SEXP> = Vec::new();
+    let mut types: Vec<rapi::SexpType> = Vec::new();
+    let mut total = 0usize;
+    for p in 0..len(pieces) {
+        let gs = elt(pieces, p);
+        // SAFETY: reading a type tag.
+        if unsafe { rapi::TYPEOF(gs) } != VECSXP {
+            return Ok(None);
+        }
+        for k in 0..len(gs) {
+            let g = elt(gs, k);
+            let Some(r) = rows(g) else { return Ok(None) };
+            total += r;
+            let cols: Vec<SEXP> = (0..len(g)).map(|j| elt(g, j)).collect();
+            if !all_bare(&cols)? {
+                return Ok(None);
+            }
+            for (j, &nm) in names_of(g)?.iter().enumerate() {
+                // SAFETY: reading a type tag.
+                let t = unsafe { rapi::TYPEOF(cols[j]) };
+                if !matches!(t, rapi::LGLSXP | INTSXP | rapi::REALSXP | STRSXP) || len(cols[j]) != r
+                {
+                    return Ok(None);
+                }
+                match find(&names, nm) {
+                    Some(c) if types[c] != t => return Ok(None),
+                    Some(_) => {}
+                    None => {
+                        if !bytes(nm).is_ascii() || bytes(nm) == b"tick" {
+                            return Ok(None);
+                        }
+                        names.push(nm);
+                        types.push(t);
+                    }
+                }
+            }
+        }
+    }
+    let pos = |b: &[u8]| names.iter().position(|&c| bytes(c) == b);
+    let (Some(id), Some(grp)) = (pos(b".id"), pos(b".group")) else {
+        return Ok(None);
+    };
+    let mut order: Vec<usize> = vec![id, grp];
+    order.extend((0..names.len()).filter(|&c| c != id && c != grp));
+    let k = order.len() + 1;
+    let mut out = OwnedListSexp::new(k, true)?;
+    // SAFETY: reading statics of R's.
+    let (na_real, na_str) = unsafe { (rapi::R_NaReal, rapi::R_NaString) };
+    // the tick column
+    let tcol = {
+        // SAFETY: main thread; the new vector is stored into `out` (protected)
+        // before anything else allocates.
+        let x = unsafe {
+            rapi::protect_value(rapi::R_NilValue, move || {
+                rapi::Rf_allocVector(INTSXP, total as isize)
+            })
+        }?;
+        out.set_value(0, Sexp(x))?;
+        x
+    };
+    out.set_name(0, "tick")?;
+    {
+        // SAFETY: an integer vector of `total` elements, protected by `out`.
+        let dst = unsafe { rapi::DATAPTR_OR_NULL(tcol) } as *mut i32;
+        let mut at = 0usize;
+        for (p, &tk) in ticks.iter().enumerate() {
+            let gs = elt(pieces, p);
+            for g in 0..len(gs) {
+                let r = rows(elt(gs, g)).unwrap_or(0);
+                for _ in 0..r {
+                    // SAFETY: `at < total` (pass 1 counted these rows).
+                    unsafe { *dst.add(at) = tk };
+                    at += 1;
+                }
+            }
+        }
+    }
+    for (slot, &c) in order.iter().enumerate() {
+        let (nm, t) = (names[c], types[c]);
+        // SAFETY: main thread; stored into `out` before anything else allocates.
+        let x = unsafe {
+            rapi::protect_value(rapi::R_NilValue, move || {
+                rapi::Rf_allocVector(t, total as isize)
+            })
+        }?;
+        out.set_value(slot + 1, Sexp(x))?;
+        let name = std::str::from_utf8(bytes(nm)).map_err(|_| bad("column name"))?;
+        out.set_name(slot + 1, name)?;
+        let mut at = 0usize;
+        for p in 0..len(pieces) {
+            let gs = elt(pieces, p);
+            for gk in 0..len(gs) {
+                let g = elt(gs, gk);
+                let r = rows(g).unwrap_or(0);
+                let src = find(names_of(g)?, nm).map(|j| elt(g, j));
+                // SAFETY (all arms): `x` has `total` elements of type `t`, `src`
+                // (when present) `r` of the same type; `at + r <= total`.
+                unsafe {
+                    match t {
+                        rapi::REALSXP => {
+                            let d = rapi::DATAPTR_OR_NULL(x) as *mut f64;
+                            match src.and_then(|s| {
+                                store::numbers_of::<f64>(s, rapi::REALSXP).ok().flatten()
+                            }) {
+                                Some(v) => std::ptr::copy_nonoverlapping(v.as_ptr(), d.add(at), r),
+                                None => (0..r).for_each(|i| *d.add(at + i) = na_real),
+                            }
+                        }
+                        rapi::LGLSXP | INTSXP => {
+                            let d = rapi::DATAPTR_OR_NULL(x) as *mut i32;
+                            let v =
+                                match src {
+                                    Some(s) if t == INTSXP => {
+                                        store::numbers_of::<i32>(s, INTSXP).ok().flatten()
+                                    }
+                                    Some(s) => {
+                                        expr::vals_of(s, false).ok().flatten().and_then(|v| match v
+                                        {
+                                            Vals::Lgl(l) => match l {
+                                                std::borrow::Cow::Borrowed(b) => Some(b),
+                                                std::borrow::Cow::Owned(_) => None,
+                                            },
+                                            _ => None,
+                                        })
+                                    }
+                                    None => None,
+                                };
+                            match v {
+                                Some(v) => std::ptr::copy_nonoverlapping(v.as_ptr(), d.add(at), r),
+                                None if src.is_none() => {
+                                    (0..r).for_each(|i| *d.add(at + i) = NA_INT)
+                                }
+                                None => return Err(bad("unreadable logical column")),
+                            }
+                        }
+                        _ => match src {
+                            Some(s) => {
+                                for (i, &ch) in store::chars_of(s)?.iter().enumerate() {
+                                    rapi::SET_STRING_ELT(x, (at + i) as isize, ch);
+                                }
+                            }
+                            None => (0..r)
+                                .for_each(|i| rapi::SET_STRING_ELT(x, (at + i) as isize, na_str)),
+                        },
+                    }
+                }
+                at += r;
+            }
+        }
+    }
+    Ok(Some(keep(out.inner())?))
 }
 
 /// Run one native step from `prep`'s descriptor `desc` over `state`: the new
@@ -1396,6 +2197,9 @@ pub struct RunLoop {
     saved: bool,
     /// consecutive run-time declines per step (reset by a native success)
     declines: Vec<u32>,
+    /// `mprep(k)`: the measures (1) / checks (2) program for the schema
+    mprep: H,
+    mslots: Vec<Slot>,
 }
 
 impl RunLoop {
@@ -1472,6 +2276,54 @@ impl RunLoop {
         Ok(out)
     }
 
+    /// The measures (`k = 0`) or checks (`k = 1`) of the state natively: a list
+    /// of their values, or `None` (not native for this schema, or declined).
+    fn try_tick(&mut self, k: usize, st: SEXP) -> savvy::Result<Option<H>> {
+        let Some(key) = schema_key(st)? else {
+            return Ok(None);
+        };
+        let stale = match &self.mslots[k] {
+            Slot::Never => return Ok(None),
+            Slot::Fresh => true,
+            Slot::Skip(kk) | Slot::Ready(kk, _) => *kk != key,
+        };
+        if stale {
+            let d = call_r(&self.mprep, &[k as i32 + 1])?;
+            // SAFETY: reading a type tag.
+            let t = unsafe { rapi::TYPEOF(d.get()) };
+            self.mslots[k] = if t == rapi::LGLSXP {
+                Slot::Never
+            } else if t == VECSXP {
+                Slot::Ready(key, Box::new(parse_plan(d)?))
+            } else {
+                Slot::Skip(key)
+            };
+        }
+        let Slot::Ready(_, plan) = &self.mslots[k] else {
+            return Ok(None);
+        };
+        exec_global(plan, st, true)
+    }
+
+    /// A recorded tick's groups into `slog` (the run's own list; stacked after
+    /// the run). The R tick callback leaves them to this, so the list is only
+    /// ever written here.
+    fn log_groups(&self, keep_t: &[bool], slog: &Sexp, t: i32, st: SEXP) -> savvy::Result<()> {
+        let t = t as usize;
+        // SAFETY: reading a type tag.
+        if keep_t.get(t) != Some(&true)
+            || unsafe { rapi::TYPEOF(slog.0) } != VECSXP
+            || t >= len(slog.0)
+        {
+            return Ok(());
+        }
+        let gs = find_str(st, b"groups")?.map_or_else(rapi_nil, |i| elt(st, i));
+        // SAFETY: main thread; `slog` is the run's own log list (no other R value
+        // aliases it), `t` is in range, `gs` is protected by the state.
+        unsafe { rapi::SET_VECTOR_ELT(slog.0, t as isize, gs) };
+        Ok(())
+    }
+
     fn native_now(&self, i: usize) -> bool {
         self.kinds[i] != 0 && !matches!(self.slots[i], Slot::Never)
     }
@@ -1486,6 +2338,7 @@ impl RunLoop {
         tick: Sexp,
         rng: Sexp,
         ctx: Sexp,
+        mprep: Sexp,
     ) -> savvy::Result<Self> {
         run(|| {
             // SAFETY: main thread; installing a symbol may allocate, hence protect.
@@ -1506,6 +2359,8 @@ impl RunLoop {
                 stats: [0; 4],
                 saved: false,
                 declines: vec![0; n_steps],
+                mprep: keep(mprep.0)?,
+                mslots: vec![Slot::Fresh, Slot::Fresh],
             })
         })
     }
@@ -1516,9 +2371,21 @@ impl RunLoop {
         state: Sexp,
         ticks: i32,
         need: LogicalSexp,
-        glog: Sexp,
+        has: LogicalSexp,
+        keep_t: LogicalSexp,
+        logs: Sexp,
     ) -> savvy::Result<Sexp> {
         run(|| {
+            // `logs`: the run's globals, measures and recorded-groups lists
+            let lg = |k: usize| -> SEXP {
+                // SAFETY: reading a type tag; `logs` is protected by savvy.
+                if unsafe { rapi::TYPEOF(logs.0) } == VECSXP && len(logs.0) == 3 {
+                    elt(logs.0, k)
+                } else {
+                    rapi_nil()
+                }
+            };
+            let (glog, mlog, slog) = (Sexp(lg(0)), Sexp(lg(1)), Sexp(lg(2)));
             let n = self.kinds.len();
             // the ticks whose book-keeping needs R (a snapshot, measures, checks,
             // progress); the others log their globals into `glog` here
@@ -1526,7 +2393,20 @@ impl RunLoop {
             // SAFETY: reading a type tag.
             let glog_ok = unsafe { rapi::TYPEOF(glog.0) } == VECSXP
                 && len(glog.0) == ticks as usize + 1
+                // SAFETY: reading a type tag.
+                && unsafe { rapi::TYPEOF(mlog.0) } == VECSXP
+                && len(mlog.0) == ticks as usize + 1
                 && need.len() == ticks as usize + 1;
+            let has: Vec<bool> = has.iter().collect();
+            // the recorded ticks: their `state$groups` go into `slog` (stacked
+            // after the run, `rs_stack_ticks()`)
+            let keep_t: Vec<bool> = keep_t.iter().collect();
+            // SAFETY: reading a type tag.
+            let glog_ok = glog_ok
+                && keep_t.len() == ticks as usize + 1
+                && unsafe { rapi::TYPEOF(slog.0) } == VECSXP
+                && len(slog.0) == ticks as usize + 1;
+            let (has_m, has_c) = (has.first() == Some(&true), has.get(1) == Some(&true));
             self.put(state.0)?;
             let (seg, tick) = (self.seg.get(), self.tick.get());
             let mut st = self.call_state(tick, &[0, i32::from(ticks > 0)])?;
@@ -1560,7 +2440,37 @@ impl RunLoop {
                 let next = if t < ticks { t + 1 } else { 0 };
                 if !glog_ok || need[t as usize] {
                     st = self.call_state(tick, &[t, next])?;
+                    self.log_groups(&keep_t, &slog, t, st)?;
                     continue;
+                }
+                // FR9b: measures and checks natively; anything else (a decline,
+                // a check that is not TRUE) closes the tick through R, which
+                // computes them itself and raises what it raises
+                let mvals = if has_m { self.try_tick(0, st)? } else { None };
+                let mut native = !has_m || mvals.is_some();
+                if native && has_c {
+                    native = match self.try_tick(1, st)? {
+                        Some(c) => (0..len(c.get())).all(|i| {
+                            let v = elt(c.get(), i);
+                            // SAFETY: reading a type tag, then a logical of length 1.
+                            let lgl = unsafe { rapi::TYPEOF(v) } == rapi::LGLSXP;
+                            // SAFETY: a logical vector of length 1.
+                            lgl && len(v) == 1 && unsafe { *rapi::LOGICAL_RO(v) } == 1
+                        }),
+                        None => false,
+                    };
+                }
+                if !native {
+                    st = self.call_state(tick, &[t, next])?;
+                    self.log_groups(&keep_t, &slog, t, st)?;
+                    continue;
+                }
+                self.log_groups(&keep_t, &slog, t, st)?;
+                if let Some(m) = &mvals {
+                    // SAFETY: main thread; `mlog` is the run's own log list (no
+                    // other R value aliases it), `t <= ticks` is in range, `m` is
+                    // kept.
+                    unsafe { rapi::SET_VECTOR_ELT(mlog.0, t as isize, m.get()) };
                 }
                 // FR9: `global_log[[t + 1]]`'s globals, then `st$match <- NULL;
                 // st$tick <- next` (as the R callback does)

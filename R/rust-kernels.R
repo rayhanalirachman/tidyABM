@@ -17,7 +17,9 @@
 #' ([run_once_loop()]); `fun` is then the same native executor, for "both" mode.
 #' @noRd
 rust_kernels <- list(
-  abm_neighbours = list(fun = rk_native, auto = FALSE, store = FALSE, can = rl_nb_ok,
+  abm_neighbours = list(fun = rk_native, auto = FALSE, store = FALSE,
+                        can = function(step) rl_nb_ok(step) || rl_nb_within_ok(step) ||
+                          rl_nb_where_ok(step),
                         native = 3L),
   abm_rules      = list(fun = rk_native, auto = FALSE, store = FALSE, can = rx_rules_mixed_ok,
                         native = 1L),

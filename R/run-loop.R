@@ -286,6 +286,10 @@ rl_kind <- function(step, kernels) {
   if (inherits(step, "abm_tell")) return(11L)
   if (inherits(step, "abm_sequential")) return(12L)
   if (inherits(step, "abm_global") && !is.null(step$by)) return(13L)
+  if (inherits(step, "abm_neighbours") && is.null(step$within) && is.null(step$where) &&
+      isTRUE(planned(step, "rl_nbshapes", rl_nb_shapes(step))[[1]]$fn %in% c("any", "all"))) {
+    return(15L)
+  }
   as.integer(k$native)
 }
 
@@ -750,7 +754,7 @@ rl_prep_nb_where <- function(step, state) {
 
 # [rl_prep_neighbours()]'s argument program: `list(prog_g, envs)` or `NULL`
 rl_nb_program <- function(step, state) {
-  shapes <- planned(step, "shapes", lapply(step$rules, function(r) nb_fast_shape(r$quo)))
+  shapes <- planned(step, "rl_nbshapes", rl_nb_shapes(step))
   # the arguments compiled over the agents: names that are columns of every
   # group, else one value (a global or from the formulas' environment), as
   # [nb_fast_scalars()] requires; a column some group lacks (NA padding): R
@@ -782,14 +786,17 @@ rl_nb_program <- function(step, state) {
 # `.by`: [match_by_opposite()]), no roles; `eligible`/`among` compiled over the
 # groups stacked as [bind_groups()] stacks them
 rl_match_shape <- function(step) {
-  if (!step$pair %in% c("random", "one_of", "opposite_group", "network") ||
+  if (!step$pair %in% c("random", "one_of", "opposite_group", "network", "nearest") ||
       !is.null(step$weight) || !is.null(step$cost)) return(NULL)
+  # `nearest` on one coordinate (FR13): the distances are exact there; several
+  # go through BLAS, whose summation order R does not pin down
+  if (step$pair == "nearest" && (!is.null(step$role) || mentions_pair(step$among))) return(NULL)
   if (step$pair == "network" && (!identical(step$from, "neighbour") || !is.null(step$role))) {
     return(NULL)
   }
-  if (!step$pair %in% "one_of" && !is.null(step$among)) return(NULL)
+  if (!step$pair %in% c("one_of", "nearest") && !is.null(step$among)) return(NULL)
   if (!is.null(step$dot_by) && (step$pair != "opposite_group" || !is.null(step$role))) return(NULL)
-  by <- if (step$pair == "opposite_group") {
+  by <- if (step$pair %in% c("opposite_group", "nearest")) {
     e <- rlang::quo_get_expr(step$by)
     if (!rlang::is_symbol(e)) return(NULL)
     rlang::as_string(e)
@@ -856,7 +863,7 @@ rl_prep_match <- function(step, state) {
   }
   rl_scope_bind(list(kind = 7L, scope_match = FALSE, groups = list(prog_g),
                      mt = list(pair = match(step$pair, c("random", "one_of", "opposite_group",
-                                                         "network")),
+                                                         "network", "nearest")),
                                roles = sh$roles %||% character(),
                                size = step$size, by = sh$by %||% character(),
                                dot_by = sh$dot_by %||% character(),
@@ -988,8 +995,14 @@ rl_prep_birth <- function(step, state) {
 # FR7: `abm_move()` to a random (or random empty) adjacent cell on the lattice
 # ([run_move()]'s `range = 1` shapes), then `sync_cell_coords()`
 rl_move_ok <- function(step) {
-  step$mode %in% c("random_neighbour", "random_empty_neighbour") &&
-    identical(step$range, 1L) && !isTRUE(step$axes_only)
+  if (isTRUE(step$axes_only)) return(FALSE)
+  if (identical(step$mode, "direction")) {
+    # FR13: a compiled heading that does not draw (it is evaluated after the
+    # movers' order is drawn)
+    cp <- rx_compile_memo(rlang::quo_get_expr(step$direction))
+    return(!is_rx_no(cp) && !any(c("runif", "rnorm", "sample") %in% cp$heads))
+  }
+  step$mode %in% c("random_neighbour", "random_empty_neighbour") && identical(step$range, 1L)
 }
 rl_prep_move <- function(step, state) {
   if (!planned(step, "rx_move", rl_move_ok(step))) return(FALSE)
@@ -1002,10 +1015,27 @@ rl_prep_move <- function(step, state) {
   # an unknown group, or one not on the lattice, is R's error
   if (!length(who) || !all(who %in% with_cell)) return(NULL)
   if (!is.list(lat$nb) || !is.null(lat$x) && !is.atomic(lat$x)) return(NULL)
-  list(kind = 10L, scope_match = FALSE, groups = list(),
+  groups <- list()
+  envs <- list()
+  dir <- NULL
+  if (identical(step$mode, "direction")) {
+    dir <- lat$dir_nb
+    if (!is.list(dir) || is.null(names(dir))) return(NULL)
+    fake <- planned(step, "rx_move_dir",
+                    rl_fake_rules(list(list(target = ".heading", quo = step$direction))))
+    for (nm in who) {
+      p <- rx_program(fake, 1L, names(state$groups[[nm]]), state$globals)
+      if (is_rx_no(p)) return(NULL)
+      if (length(p$scope)) envs <- c(envs, list(p$env))
+      groups[[length(groups) + 1L]] <- list(name = nm, prog = p$prog$.ptr, cols = p$cols,
+                                            globs = p$globs, targets = character(),
+                                            scope = p$scope, ew = FALSE, mcols = character())
+    }
+  }
+  rl_scope_bind(list(kind = 10L, scope_match = FALSE, groups = groups,
        mv = list(who = who, avoid = isTRUE(step$avoid_occupied), lattice = lat,
                  nb = lat$nb, x = lat$x, y = lat$y %||% NULL,
-                 ncell = as.integer(lat$ncell)))
+                 ncell = as.integer(lat$ncell), dir = dir)), envs)
 }
 
 # FR7: `abm_tell(to = <id expression>)` natively ([run_tell()] without `.order`,
@@ -1106,10 +1136,57 @@ rl_prep_seq <- function(step, state) {
 # the network neighbour shapes the loop folds natively: every rule `sum()` or
 # `mean()` of a compiled elementwise argument ([neighbour_fast()]'s shapes), no
 # lattice direction, no `within`
+# FR13: network `any()`/`all()` ([network_view()] then [neighbour_aggregate()]):
+# compiled per schema only (its own loop kind, 15, so the slot is not keyed by
+# the edges); the native step reads the neighbour table from `state$nb_cache`
+# when it is the current edges' (else R builds it, as it would)
+rl_prep_nb_anyall <- function(step, state) {
+  shapes <- planned(step, "rl_nbshapes", rl_nb_shapes(step))
+  if (length(state$relations)) return(NULL)
+  pg <- rl_nb_program(step, state)
+  if (is.null(pg)) return(NULL)
+  rl_scope_bind(list(kind = 3L, scope_match = FALSE, groups = list(pg$prog_g),
+       nb = list(mean = rep(FALSE, length(shapes)),
+                 anyall = match(vapply(shapes, `[[`, "", "fn"), c("any", "all"), 0L),
+                 narm = vapply(shapes, function(s) isTRUE(s$narm), NA),
+                 targets = vapply(step$rules, `[[`, "", "target"), cols = list(),
+                 cnt = integer(), cache = NULL, cache_name = "nb_cache", edges = NULL,
+                 n = 0L)),
+    if (length(pg$prog_g$scope)) list(pg$envs[[1]]))
+}
+
 rl_nb_ok <- function(step) {
-  is.null(step$where) && is.null(step$within) &&
-    all(vapply(planned(step, "shapes", lapply(step$rules, function(r) nb_fast_shape(r$quo))),
-               function(s) !is.null(s) && !is_rx_no(rx_compile_memo(s$arg)), NA))
+  is.null(step$where) && is.null(step$within) && !is.null(planned(step, "rl_nbshapes", rl_nb_shapes(step)))
+}
+
+# Each rule's shape for the network fold: every rule `sum()`/`mean()`
+# ([neighbour_fast()]'s shapes), or every rule `any()`/`all()` of an
+# elementwise argument over the candidate (FR13: [network_view()] then
+# [neighbour_aggregate()], where the order of the rows does not matter);
+# `NULL` for anything else or a mix (R then folds them all through `rowsum()`)
+rl_nb_shapes <- function(step) {
+  fast <- lapply(step$rules, function(r) nb_fast_shape(r$quo))
+  ok <- function(sh) all(vapply(sh, function(s) !is.null(s) && !is_rx_no(rx_compile_memo(s$arg)), NA))
+  if (ok(fast)) return(fast)
+  aa <- lapply(step$rules, function(r) {
+    e <- rlang::quo_get_expr(r$quo)
+    if (!rlang::is_call(e) || !rlang::is_symbol(e[[1]]) ||
+        !rlang::as_string(e[[1]]) %in% c("any", "all")) return(NULL)
+    args <- as.list(e)[-1]
+    nms <- names(args) %||% rep("", length(args))
+    narm <- FALSE
+    if (length(args) == 2L && nms[[2]] == "na.rm" && rlang::is_bool(args[[2]])) {
+      narm <- args[[2]]
+      args <- args[1]
+      nms <- nms[1]
+    }
+    if (length(args) != 1L || nzchar(nms[[1]]) || !is_elementwise(args[[1]])) return(NULL)
+    vars <- all.vars(args[[1]])
+    if (any(startsWith(vars, "own_")) || ".of" %in% vars) return(NULL)
+    list(fn = rlang::as_string(e[[1]]), arg = args[[1]], narm = narm)
+  })
+  if (ok(aa)) return(aa)
+  NULL
 }
 
 # [run_neighbours()]'s set-up and [neighbour_fast()]'s index for these edges and
@@ -1121,9 +1198,12 @@ rl_prep_neighbours <- function(step, state, slot = NULL) {
   }
   if (!is.null(step$where)) return(rl_prep_nb_where(step, state))
   if (!planned(step, "rx_nbshape", rl_nb_ok(step))) return(FALSE)
+  if (planned(step, "rl_nbshapes", rl_nb_shapes(step))[[1]]$fn %in% c("any", "all")) {
+    return(rl_prep_memo(step, state, slot, rl_prep_nb_anyall))
+  }
   if (is.null(state$edges) || length(state$relations) || !is.null(state$stale_draws) ||
       length(drawn_names(state$edges))) return(NULL)
-  shapes <- planned(step, "shapes", lapply(step$rules, function(r) nb_fast_shape(r$quo)))
+  shapes <- planned(step, "rl_nbshapes", rl_nb_shapes(step))
   # the arguments' program depends on the step and the names only: kept per
   # step position for the session, like a rules descriptor (the neighbour index
   # below is per run)

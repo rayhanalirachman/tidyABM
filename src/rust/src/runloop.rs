@@ -448,6 +448,8 @@ struct MovePlan {
     x: SEXP,
     y: SEXP,
     ncell: i32,
+    /// `direction =` (FR13): the lattice's `dir_nb` (or `NULL`)
+    dir: SEXP,
 }
 
 /// A network `abm_neighbours()` step whose rules are `sum()`/`mean()` of bare
@@ -456,6 +458,9 @@ struct MovePlan {
 /// many agents.
 struct NbPlan {
     mean: Vec<bool>,
+    /// per rule 0 `sum`/`mean`, 1 `any`, 2 `all` (FR13), and `na.rm`
+    anyall: Vec<i32>,
+    narm: Vec<bool>,
     targets: Vec<SEXP>,
     cols: Vec<SEXP>,
     cnt: SEXP,
@@ -485,7 +490,32 @@ fn parse_nb(nb: SEXP) -> savvy::Result<NbPlan> {
     let n = store::numbers_of::<i32>(field(nb, b"n")?, INTSXP)?
         .and_then(|v| v.first().copied())
         .ok_or_else(|| bad("nb n"))?;
+    let anyall = match find_str(nb, b"anyall")? {
+        Some(i) => store::numbers_of::<i32>(elt(nb, i), INTSXP)?
+            .unwrap_or(&[])
+            .to_vec(),
+        None => vec![0; k],
+    };
+    let narm = match find_str(nb, b"narm")? {
+        Some(i) => {
+            let v = elt(nb, i);
+            // SAFETY: reading a type tag, then a logical vector of its length.
+            if unsafe { rapi::TYPEOF(v) } != rapi::LGLSXP {
+                return Err(bad("nb narm"));
+            }
+            // SAFETY: as above.
+            (0..len(v))
+                .map(|j| unsafe { *rapi::LOGICAL_RO(v).add(j) } == 1)
+                .collect()
+        }
+        None => vec![false; k],
+    };
+    if anyall.len() != k || narm.len() != k {
+        return Err(bad("nb any/all"));
+    }
     let plan = NbPlan {
+        anyall,
+        narm,
         mean,
         targets: chars(field(nb, b"targets")?)?,
         cols,
@@ -755,6 +785,7 @@ fn parse_plan(desc: H) -> savvy::Result<Plan> {
             x: field(x, b"x")?,
             y,
             ncell,
+            dir: find_str(x, b"dir")?.map_or_else(rapi_nil, |i| elt(x, i)),
         })
     } else {
         None
@@ -2427,6 +2458,56 @@ fn exec_match(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
                     }
                 }
             }
+            5 => {
+                // match_nearest() on one coordinate: per chooser, the candidate
+                // with the least `(a^2 + b^2) - 2 * (a * b)` (itself excluded),
+                // the first of ties (`max.col(-d, "first")`); a chooser whose
+                // distances are none finite sits out
+                let Some(xy) = by.as_ref() else {
+                    return Ok(Some(()));
+                };
+                // SAFETY: reading a static of R's.
+                let na = unsafe { rapi::R_NaReal };
+                let x: Vec<f64> = match xy {
+                    Vals::Dbl(v) => v.to_vec(),
+                    Vals::Int(v) | Vals::Lgl(v) => v
+                        .iter()
+                        .map(|&e| if e == NA_INT { na } else { f64::from(e) })
+                        .collect(),
+                    Vals::Str(_) => return Ok(None),
+                };
+                let subs: Vec<usize> = (0..n).filter(|&i| elig[i]).collect();
+                let cands: Vec<usize> = (0..n).filter(|&i| among[i]).collect();
+                if subs.is_empty() || cands.is_empty() {
+                    return Ok(Some(()));
+                }
+                // a missing coordinate makes max.col() answer NA: R's path
+                if subs.iter().chain(&cands).any(|&i| x[i].is_nan()) {
+                    return Ok(None);
+                }
+                for &s in &subs {
+                    let a = x[s];
+                    let mut best: Option<(f64, usize)> = None;
+                    for &c in &cands {
+                        let b = x[c];
+                        let d = if ids[s] == ids[c] {
+                            f64::INFINITY
+                        } else {
+                            (a * a + b * b) - 2.0 * (a * b)
+                        };
+                        if best.map_or(true, |(m, _)| d < m) {
+                            best = Some((d, c));
+                        }
+                    }
+                    if let Some((m, c)) = best {
+                        if m.is_finite() {
+                            out_id.push(ids[s]);
+                            out_partner.push(ids[c]);
+                        }
+                    }
+                }
+                out_gid = (1..=out_id.len() as i32).collect();
+            }
             4 => {
                 // match_network(): each eligible agent's edge partners, the edge
                 // list read both ways round and shuffled, the first per agent
@@ -3393,6 +3474,91 @@ fn exec_move(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
         }
         store::numbers_of::<i32>(v, INTSXP)
     };
+    // `direction =`: each mover's side of the lattice (`heading_names()`), as an
+    // index into `dir_nb`, `None` for `NA`
+    let mut heading: Vec<Vec<Option<usize>>> = Vec::new();
+    let mut dir_vecs: Vec<&[i32]> = Vec::new();
+    if mv.dir != rapi_nil() {
+        let dn: Vec<&[u8]> = names_of(mv.dir)?.iter().map(|&c| bytes(c)).collect();
+        for k in 0..len(mv.dir) {
+            match store::numbers_of::<i32>(elt(mv.dir, k), INTSXP)? {
+                Some(v) => dir_vecs.push(v),
+                None => return decline("a direction table that is not integer"),
+            }
+        }
+        let Some(svals) = scope_values(plan)? else {
+            return decline("a formula-environment value that cannot be read");
+        };
+        let compass: [&[u8]; 4] = [b"north", b"east", b"south", b"west"];
+        for (p, &k) in ks.iter().enumerate() {
+            let g = elt(groups, k);
+            let gp = plan
+                .groups
+                .iter()
+                .find(|e| e.name == mv.who[p])
+                .ok_or_else(|| bad("no heading program"))?;
+            let ng = sizes[p];
+            let Some(ins) = entry_inputs(st, groups, g, gp, &svals, None)? else {
+                return Ok(None);
+            };
+            // SAFETY: the program is kept alive by the plan's descriptor.
+            let prog = unsafe { &*gp.prog };
+            let v = match prog.compute(ins, ng, ng)? {
+                Ok(mut r) => recycle(r.remove(0), ng),
+                Err(d) => {
+                    expr::note_decline(&d);
+                    return Ok(None);
+                }
+            };
+            let mut hs: Vec<Option<usize>> = Vec::with_capacity(ng);
+            for i in 0..ng {
+                let name: Option<Vec<u8>> = match &v {
+                    Vals::Str(x) => {
+                        // SAFETY: reading a static of R's.
+                        if x[i] == unsafe { rapi::R_NaString } as usize {
+                            None
+                        } else {
+                            let b = bytes(x[i] as SEXP);
+                            if !b.is_ascii() {
+                                return decline("a non-ASCII heading");
+                            }
+                            Some(b.to_ascii_lowercase())
+                        }
+                    }
+                    _ => {
+                        // as.integer(round(as.numeric(v))) %% 4
+                        let d = match &v {
+                            Vals::Dbl(x) => x[i],
+                            Vals::Int(x) | Vals::Lgl(x) => {
+                                if x[i] == NA_INT {
+                                    f64::NAN
+                                } else {
+                                    f64::from(x[i])
+                                }
+                            }
+                            Vals::Str(_) => unreachable!("strings above"),
+                        };
+                        let r = d.round_ties_even();
+                        if r.is_nan() || !(-2147483647.0..=2147483647.0).contains(&r) {
+                            None
+                        } else {
+                            Some(compass[(r as i64).rem_euclid(4) as usize].to_vec())
+                        }
+                    }
+                };
+                hs.push(match name {
+                    None => None,
+                    Some(nm) => match dn.iter().position(|&d| d == &nm[..]) {
+                        Some(q) => Some(q),
+                        None => {
+                            return decline("a heading the lattice has no side for (R's error)")
+                        }
+                    },
+                });
+            }
+            heading.push(hs);
+        }
+    }
     // (group, row) of every mover, the groups stacked
     let mut owner: Vec<(usize, usize)> = Vec::with_capacity(n_movers);
     for (gk, &sz) in sizes.iter().enumerate() {
@@ -3408,6 +3574,63 @@ fn exec_move(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
         } else {
             vec![0]
         };
+        if !heading.is_empty() {
+            let mut occupied: Vec<i32> = Vec::new();
+            if mv.avoid {
+                let mx = cells
+                    .iter()
+                    .flatten()
+                    .filter(|&&c| c != NA_INT)
+                    .copied()
+                    .max()
+                    .unwrap_or(0)
+                    .max(0);
+                occupied = vec![0; n_nb.max(mx as usize)];
+                for &c in cells.iter().flatten() {
+                    if c != NA_INT {
+                        if c < 1 {
+                            return Ok(None);
+                        }
+                        occupied[c as usize - 1] += 1;
+                    }
+                }
+            }
+            for &m in &ord {
+                let (gk, rw) = owner[m];
+                let here = cells[gk][rw];
+                if here == NA_INT {
+                    continue;
+                }
+                let Some(d) = heading[gk][rw] else { continue };
+                let tbl = dir_vecs[d];
+                if here < 1 {
+                    return Ok(None);
+                }
+                // dir_nb[[d]][here] past its end is NA: the mover stays
+                if here as usize > tbl.len() {
+                    continue;
+                }
+                let target = tbl[here as usize - 1];
+                if target == NA_INT {
+                    continue;
+                }
+                if mv.avoid {
+                    if target < 1
+                        || target as usize > occupied.len()
+                        || here as usize > occupied.len()
+                    {
+                        return Ok(None);
+                    }
+                    if target != here && occupied[target as usize - 1] > 0 {
+                        continue;
+                    }
+                    occupied[here as usize - 1] -= 1;
+                    occupied[target as usize - 1] += 1;
+                }
+                cells[gk][rw] = target;
+            }
+            return Ok(Some(()));
+        }
         if !mv.avoid {
             // the batch draw, when every mover stands on a cell with k > 1 neighbours
             let here: Vec<i32> = ord.iter().map(|&m| cells[owner[m].0][owner[m].1]).collect();
@@ -5384,6 +5607,251 @@ fn exec_cross(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
     }
 }
 
+/// Network `any()`/`all()` natively ([network_view()] then
+/// [neighbour_aggregate()]): each agent's neighbours read from
+/// `state$nb_cache$nb` when the cache is the current edges' (else R builds
+/// it); `NA` for an agent with none. The cache is left as it is, as R leaves a
+/// current one.
+fn exec_nb_anyall(plan: &Plan, nb: &NbPlan, st: SEXP) -> savvy::Result<Option<H>> {
+    use tidyabm_core::sample::NA_INT;
+    // SAFETY: reading a static of R's.
+    let nil = unsafe { rapi::R_NilValue };
+    if let Some(ri) = find_str(st, b"relations")? {
+        if len(elt(st, ri)) > 0 {
+            return decline("a relation");
+        }
+    }
+    if let Some(si) = find_str(st, b"stale_draws")? {
+        if elt(st, si) != nil {
+            return decline("stale draws");
+        }
+    }
+    let Some(e) = find_str(st, b"edges")?.map(|i| elt(st, i)) else {
+        return decline("no network (R's error)");
+    };
+    if e == nil || len(e) != 2 {
+        return decline("edges with columns besides from and to");
+    }
+    let en = names_of(e)?;
+    if bytes(en[0]) != b"from" || bytes(en[1]) != b"to" {
+        return decline("edges with columns besides from and to");
+    }
+    // `if (!identical(state$nb_cache$edges, state$edges))` the cache is rebuilt:
+    // `list(edges = <edges>, nb = neighbour_table(<edges>))`
+    let mut cached: Option<SEXP> = None;
+    if let Some(i) = find_str(st, b"nb_cache")? {
+        let c = elt(st, i);
+        if c != nil {
+            cached = find_str(c, b"edges")?.map(|j| elt(c, j));
+        }
+    }
+    let current = match cached {
+        Some(ce) if ce == e => true,
+        Some(ce) => {
+            // SAFETY: main thread; both are protected by the state.
+            let same =
+                unsafe { rapi::protect_value(0, move || rapi::R_compute_identical(ce, e, 16)) }?;
+            same != 0
+        }
+        None => false,
+    };
+    let (Some(ef), Some(et)) = (
+        store::numbers_of::<i32>(elt(e, 0), INTSXP)?,
+        store::numbers_of::<i32>(elt(e, 1), INTSXP)?,
+    ) else {
+        return decline("edges that are not integers");
+    };
+    if !all_bare(&[elt(e, 0), elt(e, 1)])? {
+        return decline("edges with attributes");
+    }
+    // neighbour_table(): every edge read both ways round
+    let focal: Vec<i32> = [ef, et].concat();
+    let nbr: Vec<i32> = [et, ef].concat();
+    let gi = find_str(st, b"groups")?.ok_or_else(|| bad("no groups"))?;
+    let groups = elt(st, gi);
+    let Some((n, ids)) = ids_are_rows(groups)? else {
+        return decline("ids that are not the row numbers");
+    };
+    if n == 0 {
+        return Ok(Some(keep(st)?));
+    }
+    let gp = plan.groups.first().ok_or_else(|| bad("no program"))?;
+    let mut ins: Vec<Vals> = Vec::with_capacity(gp.cols.len() + gp.globs.len());
+    for &c in &gp.cols {
+        match stacked_col(groups, c)? {
+            Some(v) => ins.push(v),
+            None => return decline("a column of another kind"),
+        }
+    }
+    let mut xs = Vec::new();
+    if !read_globals(st, &gp.globs, &mut xs)? {
+        return decline("a global not found");
+    }
+    let Some(svals) = scope_values(plan)? else {
+        return decline("a formula-environment value that cannot be read");
+    };
+    if !read_scope(&svals, &gp.scope, &mut xs) {
+        return decline("a formula-environment value not found");
+    }
+    let Some(more) = inputs(&xs)? else {
+        return decline("a global or scope value of an unsupported type");
+    };
+    if more.iter().any(|v| v.len() != 1) {
+        return decline("a global or scope value of more than one element");
+    }
+    ins.extend(more);
+    // SAFETY: the program is kept alive by the plan's descriptor.
+    let prog = unsafe { &*gp.prog };
+    let res = match prog.compute(ins, n, n)? {
+        Ok(r) => r,
+        Err(d) => {
+            expr::note_decline(&d);
+            return Ok(None);
+        }
+    };
+    // the view's rows: both endpoints among the agents (ids are the rows)
+    let rows: Vec<(usize, usize)> = focal
+        .iter()
+        .zip(&nbr)
+        .filter(|(&f, &b)| f >= 1 && (f as usize) <= n && b >= 1 && (b as usize) <= n)
+        .map(|(&f, &b)| (f as usize - 1, b as usize - 1))
+        .collect();
+    let mut vals: Vec<Vals> = Vec::with_capacity(res.len());
+    for (r, x) in res.into_iter().enumerate() {
+        let x = recycle(x, n);
+        let Vals::Lgl(x) = &x else {
+            return decline("any()/all() of other than logicals");
+        };
+        let want = if nb.anyall[r] == 1 { 1 } else { 0 };
+        let mut seen = vec![false; n];
+        let mut hit = vec![false; n];
+        let mut na = vec![false; n];
+        for &(f, b) in &rows {
+            seen[f] = true;
+            hit[f] |= x[b] == want;
+            na[f] |= x[b] == NA_INT;
+        }
+        let out: Vec<i32> = (0..n)
+            .map(|i| {
+                if !seen[i] || (!nb.narm[r] && !hit[i] && na[i]) {
+                    NA_INT
+                } else {
+                    i32::from(if want == 1 { hit[i] } else { !hit[i] })
+                }
+            })
+            .collect();
+        vals.push(Vals::Lgl(std::borrow::Cow::Owned(out)));
+    }
+    let mut cur: Option<H> = None;
+    for (k, gids) in ids.iter().enumerate() {
+        if gids.is_empty() {
+            continue;
+        }
+        let gs = cur.as_ref().map_or(groups, |h| h.get());
+        let mut g: Option<H> = None;
+        for (r, &t) in nb.targets.iter().enumerate() {
+            let Vals::Lgl(d) = &vals[r] else {
+                return Err(bad("an any/all value"));
+            };
+            let v = Vals::Lgl(std::borrow::Cow::Owned(
+                gids.iter().map(|&id| d[id as usize - 1]).collect(),
+            ));
+            let mut hold = OwnedListSexp::new(1, false)?;
+            hold.set_value(0, expr::to_r(&v, gids.len())?)?;
+            let base = g.as_ref().map_or_else(|| elt(gs, k), |h| h.get());
+            g = Some(set_named(base, t, elt(hold.inner(), 0))?);
+        }
+        if let Some(g) = g {
+            // SAFETY: reading a static of R's (unused name: `k` is in range).
+            cur = Some(with_elt(gs, k, g.get(), unsafe { rapi::R_BlankString })?);
+        }
+    }
+    let st2 = match &cur {
+        // SAFETY: as above.
+        Some(gs) => with_elt(st, gi, gs.get(), unsafe { rapi::R_BlankString })?,
+        None => keep(st)?,
+    };
+    if current {
+        return Ok(Some(st2));
+    }
+    let cache = nb_cache_of(e, &focal, &nbr, ef.len())?;
+    // SAFETY: making the CHARSXP may allocate; kept at once.
+    let key = unsafe { build(|| rapi::Rf_mkChar(c"nb_cache".as_ptr())) }?;
+    Ok(Some(set_named(st2.get(), key.get(), cache.get())?))
+}
+
+/// `list(edges = e, nb = neighbour_table(e))`: the table `.id`, `.neighbour`
+/// (every edge both ways round), `.edge` and `.forward`, or just the first two
+/// for no edges, as `tibble::new_tibble()` makes it.
+fn nb_cache_of(e: SEXP, focal: &[i32], nbr: &[i32], m: usize) -> savvy::Result<H> {
+    use std::borrow::Cow;
+    let n2 = focal.len();
+    let ncol = if m == 0 { 2 } else { 4 };
+    let mut hold = OwnedListSexp::new(ncol, false)?;
+    hold.set_value(0, expr::to_r(&Vals::Int(Cow::Borrowed(focal)), n2)?)?;
+    hold.set_value(1, expr::to_r(&Vals::Int(Cow::Borrowed(nbr)), n2)?)?;
+    if m > 0 {
+        let edge: Vec<i32> = (1..=m as i32).chain(1..=m as i32).collect();
+        let fwd: Vec<i32> = std::iter::repeat(1)
+            .take(m)
+            .chain(std::iter::repeat(0).take(m))
+            .collect();
+        hold.set_value(2, expr::to_r(&Vals::Int(Cow::Owned(edge)), n2)?)?;
+        hold.set_value(3, expr::to_r(&Vals::Lgl(Cow::Owned(fwd)), n2)?)?;
+    }
+    let names: [&std::ffi::CStr; 4] = [c".id", c".neighbour", c".edge", c".forward"];
+    let tbl = tbl_frame_named(hold.inner(), &names[..ncol], n2)?;
+    let tp = tbl.get();
+    if n2 == 0 {
+        // a tibble of no rows has the row names `integer(0)`
+        // SAFETY: main thread; `tp` is kept by `tbl`; the new vector is
+        // protected until set.
+        unsafe {
+            rapi::protect(move || {
+                let rn = rapi::Rf_protect(rapi::Rf_allocVector(INTSXP, 0));
+                rapi::Rf_setAttrib(tp, rapi::Rf_install(c"row.names".as_ptr()), rn);
+                rapi::Rf_unprotect(1);
+            })
+        }?;
+    }
+    // SAFETY: main thread; `e` is protected by the state, `tp` by `tbl`; the
+    // list and its names are protected while built.
+    unsafe {
+        build(move || {
+            let l = rapi::Rf_protect(rapi::Rf_allocVector(VECSXP, 2));
+            rapi::SET_VECTOR_ELT(l, 0, e);
+            rapi::SET_VECTOR_ELT(l, 1, tp);
+            let nm = rapi::Rf_protect(rapi::Rf_allocVector(STRSXP, 2));
+            rapi::SET_STRING_ELT(nm, 0, rapi::Rf_mkChar(c"edges".as_ptr()));
+            rapi::SET_STRING_ELT(nm, 1, rapi::Rf_mkChar(c"nb".as_ptr()));
+            rapi::Rf_setAttrib(l, rapi::R_NamesSymbol, nm);
+            rapi::Rf_unprotect(2);
+            l
+        })
+    }
+}
+
+/// [`tbl_frame`] with the names given as C strings.
+fn tbl_frame_named(o: SEXP, names: &[&std::ffi::CStr], n: usize) -> savvy::Result<H> {
+    let ncol = names.len();
+    let np: Vec<*const std::ffi::c_char> = names.iter().map(|c| c.as_ptr()).collect();
+    let npp = np.as_ptr();
+    // SAFETY: main thread; the names vector is protected while filled and kept
+    // before the frame is built; `npp` points at `ncol` NUL-terminated strings.
+    let nm = unsafe {
+        build(move || {
+            let v = rapi::Rf_protect(rapi::Rf_allocVector(STRSXP, ncol as isize));
+            for j in 0..ncol {
+                rapi::SET_STRING_ELT(v, j as isize, rapi::Rf_mkChar(*npp.add(j)));
+            }
+            rapi::Rf_unprotect(1);
+            v
+        })
+    }?;
+    let cn: Vec<SEXP> = store::chars_of(nm.get())?.to_vec();
+    tbl_frame(o, &cn, n)
+}
+
 fn same_side(a: Side, b: Side) -> bool {
     match (a, b) {
         (Side::D(p), Side::D(q)) => p == q,
@@ -5622,6 +6090,9 @@ fn ids_are_rows<'a>(groups: SEXP) -> savvy::Result<RowIds<'a>> {
 /// neighbours in `nb_fold()`'s order, written to every group (by `.id` when
 /// there are several), and `state$nb_cache` set as R sets it.
 fn exec_nb(plan: &Plan, nb: &NbPlan, st: SEXP) -> savvy::Result<Option<H>> {
+    if nb.anyall.iter().any(|&a| a != 0) {
+        return exec_nb_anyall(plan, nb, st);
+    }
     // SAFETY: reading a static of R's.
     let nil = unsafe { rapi::R_NilValue };
     if let Some(ri) = find_str(st, b"relations")? {
@@ -5733,7 +6204,10 @@ fn exec_nb(plan: &Plan, nb: &NbPlan, st: SEXP) -> savvy::Result<Option<H>> {
                 Vals::Dbl(d) => Vals::Dbl(std::borrow::Cow::Owned(
                     gids.iter().map(|id| d[pick(id)]).collect(),
                 )),
-                Vals::Int(d) | Vals::Lgl(d) => Vals::Int(std::borrow::Cow::Owned(
+                Vals::Int(d) => Vals::Int(std::borrow::Cow::Owned(
+                    gids.iter().map(|id| d[pick(id)]).collect(),
+                )),
+                Vals::Lgl(d) => Vals::Lgl(std::borrow::Cow::Owned(
                     gids.iter().map(|id| d[pick(id)]).collect(),
                 )),
                 Vals::Str(_) => return Err(bad("a string fold")),

@@ -347,6 +347,20 @@ the R engine's own `run_step()`. Rules:
   kept rows: `neighbour_aggregate()`'s shapes on logicals/integers (doubles go to
   R: `rowsum()`'s accumulation is not pinned down on x86), any other formula as
   `summarise()` evaluates it. `abs()` is native (FR12).
+* Match `nearest` on one coordinate (FR13, pair code 5): `(a^2 + b^2) -
+  2 * (a * b)` per chooser and candidate, exact for one column, the first of
+  ties; several coordinates stay R (BLAS summation order). Network neighbours
+  where every rule is `any()`/`all()` of an elementwise argument over the
+  candidate (`exec_nb_anyall()`, loop kind 15 so the slot is not keyed by the
+  edges): the neighbours read off the edges both ways round; `state$nb_cache`
+  rebuilt natively as `list(edges, nb = neighbour_table(edges))` whenever R
+  would (`identical()` of the cached edges, `R_compute_identical`), else left
+  as it is; a mix with `sum`/`mean` stays R (`rowsum()`). The step plan key is
+  `rl_nbshapes` (the R engine's `neighbour_fast()` owns `shapes`).
+* Moves along a heading (FR13): `direction =` compiled per moving group (no
+  draws: it is evaluated after the movers' order is drawn), `heading_names()`
+  natively (strings lowered, numbers `round()`ed half to even, `%% 4`), then
+  `dir_nb` per mover in the drawn order, occupancy as R counts it.
 * `pkg::f` heads (`dplyr::case_when()`, `stats::runif()`) compile as `f` when
   they are the very function the IR takes for `f` (`rx_ns_head()`); their
   scope is not checked (the call names its function).

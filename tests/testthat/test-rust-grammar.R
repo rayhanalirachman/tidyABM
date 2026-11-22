@@ -602,3 +602,66 @@ test_that("the cross-product within is native and bit-identical to R", {
     expect_native_agree(m, abm_go(st), "cross declined", ticks = 2, native = FALSE)
   }
 })
+
+test_that("match nearest on one coordinate and network any()/all() are native", {
+  m <- abm_setup(agents = list(
+    buyers = abm_agents(n = 30, x = ~runif(n), k = ~sample(1:5, n, TRUE), customers = 0),
+    shops = abm_agents(n = 5, x = ~runif(n), k = ~sample(1:5, n, TRUE), customers = 0)), seed = 1)
+  cases <- list(
+    shops = abm_go(abm_match(pair = "nearest", by = x, eligible = .group == "buyers",
+                             among = .group == "shops"),
+                   abm_tell(customers ~ 1, to = .partner, when = .group == "buyers", .resolve = "sum"),
+                   abm_rules(x ~ x + runif(n()) * 0.01)),
+    ties  = abm_go(abm_match(pair = "nearest", by = k), abm_rules(customers ~ coalesce(partner_x, 0))))
+  for (nm in names(cases)) {
+    got <- expect_native_agree(m, cases[[nm]], paste("nearest", nm), ticks = 4)
+    expect(got$stats[[2]] == 0L && got$stats[[4]] == 0L,
+           paste("nearest", nm, "not fully native:", paste(got$stats, collapse = " ")))
+  }
+  f <- abm_setup(agents = abm_agents(state = ~sample(c("tree", "empty", "burning"), n, TRUE,
+                                                     c(0.6, 0.38, 0.02)),
+                                     b = ~sample(c(TRUE, FALSE, NA), n, TRUE)),
+                 network = abm_network(type = "grid", dims = c(15, 15), diagonals = FALSE), seed = 1)
+  go <- abm_go(abm_neighbours(hot ~ any(state == "burning"), a2 ~ all(b),
+                              a3 ~ all(b, na.rm = TRUE), a4 ~ any(b)),
+               abm_rules(state ~ case_when(state == "burning" ~ "burnt",
+                                           state == "tree" & hot ~ "burning", TRUE ~ state)))
+  got <- expect_native_agree(f, go, "network any/all", ticks = 5)
+  expect(got$stats[[2]] == 0L && got$stats[[4]] == 0L,
+         paste("network any/all not fully native:", paste(got$stats, collapse = " ")))
+  # a network that starts empty and grows: the neighbour table is rebuilt
+  # whenever the edges change, as R rebuilds it
+  t0 <- abm_setup(agents = abm_agents(n = 12, on = ~runif(n) < 0.3),
+                  network = abm_network(type = "empty"), seed = 2)
+  go <- abm_go(abm_neighbours(near ~ any(on)), abm_match(pair = "random"), abm_link(),
+               abm_rules(on ~ on | coalesce(near, FALSE)))
+  expect_native_agree(t0, go, "network any/all growing", ticks = 5)
+})
+
+test_that("abm_move(direction =) is native and bit-identical to R", {
+  ant <- abm_setup(agents = list(patches = abm_agents(white = TRUE),
+                                 ant = abm_agents(n = 3, heading = ~sample(0:3, n, TRUE), at = 113L)),
+                   network = abm_network(type = "grid", dims = c(15, 15), on = "patches", torus = TRUE),
+                   seed = 1)
+  cases <- list(
+    langton = abm_go(abm_neighbours(here_white ~ all(white), within = .id == own_.cell),
+                     abm_rules(heading ~ (heading + if_else(here_white, 1L, 3L)) %% 4L,
+                               .scope = "population"),
+                     abm_tell(white ~ !here_white, to = .cell),
+                     abm_move(along = "patches", who = "ant", direction = heading)),
+    strings = abm_go(abm_move(along = "patches", who = "ant", avoid_occupied = TRUE,
+                              direction = c("North", "east", "SOUTH")[(heading %% 3L) + 1L]),
+                     abm_rules(heading ~ heading + 1L, .scope = "population")),
+    halves  = abm_go(abm_move(along = "patches", who = "ant", direction = heading + 0.5),
+                     abm_rules(heading ~ heading - 1L, .scope = "population")))
+  for (nm in names(cases)) {
+    got <- expect_native_agree(ant, cases[[nm]], paste("direction", nm), ticks = 8)
+    expect(got$stats[[2]] == 0L && got$stats[[4]] == 0L,
+           paste("direction", nm, "not fully native:", paste(got$stats, collapse = " ")))
+  }
+  # a heading the lattice has no side for: R's error
+  e1 <- abm_go(abm_move(along = "patches", who = "ant", direction = "up"))
+  err <- function(e) conditionMessage(tryCatch(run_in(e, ant, e1, ticks = 1, seed = 1),
+                                               error = identity))
+  expect_identical(err("rust"), err("r"))
+})

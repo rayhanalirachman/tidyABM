@@ -243,6 +243,21 @@ test_that("native steps keep every new R object protected (gctorture)", {
   got10 <- tryCatch(run_in("rust", m, go10, ticks = 2, seed = 3), error = identity)
   gctorture(FALSE)
   expect_identical(got10, ref10)
+  # FR13: match nearest; network any()/all()
+  go11 <- abm_go(abm_match(pair = "nearest", by = x), abm_rules(s ~ coalesce(partner_x, 0)),
+                 abm_neighbours(h ~ any(x > 0.5), a ~ all(k > 1L)))
+  ref11 <- run_in("r", m, go11, ticks = 2, seed = 3)
+  gctorture(TRUE)
+  got11 <- tryCatch(run_in("rust", m, go11, ticks = 2, seed = 3), error = identity)
+  gctorture(FALSE)
+  expect_identical(got11, ref11)
+  # FR13: moves along a heading
+  go12 <- abm_go(abm_move(along = "patches", who = "sheep", direction = 1L, avoid_occupied = TRUE))
+  ref12 <- run_in("r", mt, go12, ticks = 2, seed = 3)
+  gctorture(TRUE)
+  got12 <- tryCatch(run_in("rust", mt, go12, ticks = 2, seed = 3), error = identity)
+  gctorture(FALSE)
+  expect_identical(got12, ref12)
 })
 
 test_that("FR9b: measures and checks compiled natively give R's tables and errors", {

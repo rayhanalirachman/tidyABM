@@ -508,3 +508,41 @@ test_that("FR8: abm_sequential() is native and bit-identical to R", {
     expect_identical(err("rust"), err("r"))
   }
 })
+
+test_that("pkg::f naming a compiled function compiles as f", {
+  expect_false(is_rx_no(rx_compile(quote(dplyr::case_when(stats::runif(n()) < 0.5 ~ !b, TRUE ~ b)))))
+  # not the function the IR takes: R
+  expect_true(is_rx_no(rx_compile(quote(base::`%in%`(s, "a")))))
+  m <- abm_setup(agents = abm_agents(n = 30, b = ~runif(n) < 0.5, e = 0.3), seed = 1)
+  go <- abm_go(abm_match(pair = "one_of"),
+               abm_rules(b ~ dplyr::case_when(runif(n()) < e ~ !b,
+                                              stats::runif(n()) < 0.4 ~ partner_b,
+                                              TRUE ~ b)))
+  got <- expect_native_agree(m, go, "pkg::f", ticks = 4)
+  expect(got$stats[[2]] == 0L && got$stats[[4]] == 0L,
+         paste("pkg::f not fully native:", paste(got$stats, collapse = " ")))
+})
+
+test_that("abm_global(.by = <name>) is native and bit-identical to R", {
+  j <- 1:3
+  m <- abm_setup(agents = abm_agents(n = 40, task = ~sample(0:3, n, TRUE)),
+                 globals = list(s = stats::setNames(rep(0, 3), 1:3), w = stats::setNames(rep(5, 3), 1:3),
+                                keys = c("a", "b")), seed = 1)
+  cases <- list(
+    named   = abm_global(s ~ max(0, s + 1 - 3 * sum(task == .key) / n()), .by = j),
+    fresh   = abm_global(u2 ~ sum(task == .key) * 1L, .by = j),
+    promote = abm_global(w ~ sum(task >= .key), w ~ w + 0.5, .by = j),
+    strings = abm_global(v ~ .key, .by = keys),
+    draws   = abm_global(s ~ s + runif(1), .by = j)
+  )
+  for (nm in names(cases)) {
+    go <- abm_go(cases[[nm]], abm_rules(task ~ sample(0:3, n(), TRUE)))
+    got <- expect_native_agree(m, go, paste("global .by", nm), ticks = 4)
+    expect(got$stats[[2]] == 0L, paste("global .by", nm, "declined:", paste(got$stats, collapse = " ")))
+  }
+  # a value of several elements: R's error
+  e1 <- abm_go(abm_global(s ~ task, .by = j))
+  err <- function(e) conditionMessage(tryCatch(run_in(e, m, e1, ticks = 1, seed = 1),
+                                               error = identity))
+  expect_identical(err("rust"), err("r"))
+})

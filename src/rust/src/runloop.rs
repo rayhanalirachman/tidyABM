@@ -377,6 +377,9 @@ struct Plan {
     tell: Option<(bool, u8)>,
     /// `abm_sequential()` (kind 12): `.order` given
     seq: Option<bool>,
+    /// `abm_global(.by = <name>)` (kind 13): the keys' name, from a global (2)
+    /// or the formula's environment (3)
+    gby: Option<(SEXP, i32)>,
     /// `.by` rules: the key column's name
     by: Option<SEXP>,
     nb: Option<NbPlan>,
@@ -779,6 +782,19 @@ fn parse_plan(desc: H) -> savvy::Result<Plan> {
     } else {
         None
     };
+    let gby = if kind == 13 {
+        let x = field(d, b"gby")?;
+        let by = chars(field(x, b"by")?)?
+            .first()
+            .copied()
+            .ok_or_else(|| bad("gby by"))?;
+        let src = store::numbers_of::<i32>(field(x, b"src")?, INTSXP)?
+            .and_then(|v| v.first().copied())
+            .ok_or_else(|| bad("gby src"))?;
+        Some((by, src))
+    } else {
+        None
+    };
     // a sequential step without `.order` shuffles its agents
     let draws = draws || seq == Some(false);
     let birth = if kind == 9 {
@@ -811,6 +827,7 @@ fn parse_plan(desc: H) -> savvy::Result<Plan> {
         None
     };
     Ok(Plan {
+        gby,
         seq,
         tell,
         mv,
@@ -4291,6 +4308,345 @@ fn exec_seq(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
     }
 }
 
+/// Does `x` carry no attribute but (possibly) names? (`all_bare()` on a copy of
+/// its attributes without the names.)
+fn names_only(x: SEXP) -> savvy::Result<bool> {
+    // SAFETY: main thread; `x` is protected by the caller; the new vectors are
+    // protected while compared.
+    let bare = unsafe {
+        rapi::protect_value(0, move || {
+            let t = rapi::TYPEOF(x);
+            let a = rapi::Rf_protect(rapi::Rf_allocVector(t, 0));
+            rapi::SHALLOW_DUPLICATE_ATTRIB(a, x);
+            rapi::Rf_setAttrib(a, rapi::R_NamesSymbol, rapi::R_NilValue);
+            let b = rapi::Rf_protect(rapi::Rf_allocVector(t, 0));
+            let same = rapi::R_compute_identical(a, b, 16);
+            rapi::Rf_unprotect(2);
+            same
+        })
+    }?;
+    Ok(bare != 0)
+}
+
+/// The value at `i` of `v`, as a vector of one.
+fn one_at(v: &Vals, i: usize) -> Vals<'static> {
+    tidyabm_core::expr::take(v, &[i])
+}
+
+/// `abm_global(.by = <name>)` natively ([run_global_by()]): rule by rule, key
+/// by key, the rule's program over the groups stacked with the target bound to
+/// the key's current value (`NA` for a key the global does not name) and
+/// `.key` to the key; the values gathered into a named vector as `out[[key]] <-
+/// val` gathers them (types promoted as `[[<-` promotes them). Keys must be
+/// integers or strings (`as.character()` of a double is R's formatting).
+fn exec_global_by(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
+    use std::borrow::Cow;
+    use tidyabm_core::sample::NA_INT;
+    let (by, by_src) = plan.gby.ok_or_else(|| bad("no gby"))?;
+    if let Some(ri) = find_str(st, b"relations")? {
+        if len(elt(st, ri)) > 0 {
+            return decline("a relation");
+        }
+    }
+    let gi = find_str(st, b"groups")?.ok_or_else(|| bad("no groups"))?;
+    let li = find_str(st, b"globals")?.ok_or_else(|| bad("no globals"))?;
+    let groups = elt(st, gi);
+    let gl0 = elt(st, li);
+    // SAFETY: reading a type tag.
+    if unsafe { rapi::TYPEOF(gl0) } != VECSXP {
+        return decline("globals that are not a list");
+    }
+    let ng = len(groups);
+    let mut n = 0;
+    for k in 0..ng {
+        match rows(elt(groups, k)) {
+            Some(r) => n += r,
+            None => return decline("a group without columns"),
+        }
+    }
+    if n == 0 {
+        return decline("no agents");
+    }
+    let Some(svals) = scope_values(plan)? else {
+        return decline("a formula-environment value that cannot be read");
+    };
+    // the keys
+    let keys_sexp = if by_src == 2 {
+        let Some(j) = find(names_of(gl0)?, by) else {
+            return decline("the keys' global not found");
+        };
+        elt(gl0, j)
+    } else {
+        let holder = plan
+            .groups
+            .iter()
+            .find(|g| g.part == 4)
+            .ok_or_else(|| bad("gby scope"))?;
+        let mut xs = Vec::new();
+        if !read_scope(&svals, &holder.scope, &mut xs) || xs.len() != 1 {
+            return decline("the keys' value not found");
+        }
+        xs[0]
+    };
+    if !all_bare(&[keys_sexp])? {
+        return decline("keys with attributes");
+    }
+    let keys = match expr::vals_of(keys_sexp, false)? {
+        Some(v @ Vals::Int(_)) | Some(v @ Vals::Str(_)) => expr::owned(v),
+        _ => return decline("keys that are not integers or strings"),
+    };
+    // SAFETY: reading a static of R's.
+    let na_str = unsafe { rapi::R_NaString } as usize;
+    let n_keys = keys.len();
+    if n_keys == 0 {
+        return decline("no keys (R's error)");
+    }
+    // each key as a CHARSXP (`as.character(k)`), held in a list
+    let mut key_chr = OwnedListSexp::new(1, false)?;
+    {
+        // `as.character()` of each integer key, made before entering R
+        let digits: Vec<std::ffi::CString> = match &keys {
+            Vals::Int(x) => x
+                .iter()
+                .map(|v| std::ffi::CString::new(v.to_string()).unwrap_or_default())
+                .collect(),
+            _ => Vec::new(),
+        };
+        let strs: Vec<usize> = match &keys {
+            Vals::Str(x) => x.to_vec(),
+            _ => Vec::new(),
+        };
+        let ints: Vec<i32> = match &keys {
+            Vals::Int(x) => x.to_vec(),
+            _ => Vec::new(),
+        };
+        let (dp, sp, ip) = (digits.as_ptr(), strs.as_ptr(), ints.as_ptr());
+        let is_str = !strs.is_empty();
+        // SAFETY: main thread; the new string vector is protected while filled
+        // and stored at once into `key_chr`; `dp`/`sp`/`ip` point at `n_keys`
+        // elements of vectors alive across the call; mkChar of ASCII digits.
+        let v = unsafe {
+            rapi::protect_value(rapi::R_NilValue, move || {
+                let out = rapi::Rf_protect(rapi::Rf_allocVector(STRSXP, n_keys as isize));
+                for i in 0..n_keys {
+                    let c = if is_str {
+                        *sp.add(i) as SEXP
+                    } else if *ip.add(i) != NA_INT {
+                        rapi::Rf_mkChar((*dp.add(i)).as_ptr())
+                    } else {
+                        rapi::R_NaString
+                    };
+                    rapi::SET_STRING_ELT(out, i as isize, c);
+                }
+                rapi::Rf_unprotect(1);
+                out
+            })
+        }?;
+        key_chr.set_value(0, Sexp(v))?;
+    }
+    let kc: Vec<SEXP> = store::chars_of(elt(key_chr.inner(), 0))?.to_vec();
+    if kc.iter().any(|&c| c as usize == na_str) {
+        return decline("an NA key");
+    }
+    let mut gl: Option<H> = None;
+    for gp in plan.groups.iter().filter(|g| g.part != 4) {
+        let glv = gl.as_ref().map_or(gl0, |h| h.get());
+        let target = *gp.targets.first().ok_or_else(|| bad("gby target"))?;
+        let gnames = names_of(glv)?;
+        let current = find(gnames, target).map(|j| elt(glv, j));
+        // the current value: its values and names
+        let mut cur_vals: Option<Vals<'static>> = None;
+        let mut cur_names: Option<Vec<SEXP>> = None;
+        if let Some(c) = current {
+            if c != rapi_nil() {
+                if !names_only(c)? {
+                    return decline("a target with attributes");
+                }
+                let Some(v) = expr::vals_of(c, false)? else {
+                    return decline("a target of another type");
+                };
+                // SAFETY: reading an attribute of a protected vector.
+                let nm = unsafe { rapi::Rf_getAttrib(c, rapi::R_NamesSymbol) };
+                // SAFETY: reading a type tag.
+                if unsafe { rapi::TYPEOF(nm) } == STRSXP {
+                    cur_names = Some(store::chars_of(nm)?.to_vec());
+                } else if v.len() > 1 {
+                    return decline("a target of several unnamed values (R's error)");
+                }
+                cur_vals = Some(expr::owned(v));
+            }
+        }
+        // the inputs that do not depend on the key
+        let mut base: Vec<Vals> = Vec::new();
+        for &c in &gp.cols {
+            match stacked_col(groups, c)? {
+                Some(v) => base.push(v),
+                None => return decline("a column of another kind"),
+            }
+        }
+        let mut xs = Vec::new();
+        if !read_globals_in(glv, &gp.globs, &mut xs)? {
+            return decline("a global not found");
+        }
+        if !read_scope(&svals, &gp.scope, &mut xs) {
+            return decline("a formula-environment value not found");
+        }
+        let Some(more) = inputs(&xs)? else {
+            return decline("a global or scope value of an unsupported type");
+        };
+        base.extend(more);
+        // SAFETY: the program is kept alive by the plan's descriptor.
+        let prog = unsafe { &*gp.prog };
+        let same = |a: SEXP, b: SEXP| a == b || bytes(a) == bytes(b);
+        let mut out: Option<(Vals<'static>, Vec<SEXP>)> = match (&cur_vals, &cur_names) {
+            (Some(v), Some(nm)) => Some((v.clone(), nm.clone())),
+            _ => None,
+        };
+        for (q, &kq) in kc.iter().enumerate() {
+            let here: Vals = match (&cur_vals, &cur_names) {
+                (Some(v), Some(nm)) => match nm.iter().position(|&c| same(c, kq)) {
+                    Some(p) => one_at(v, p),
+                    None => Vals::Lgl(Cow::Owned(vec![NA_INT])),
+                },
+                (Some(v), None) if v.len() == 1 => v.clone(),
+                _ => Vals::Lgl(Cow::Owned(vec![NA_INT])),
+            };
+            let mut ins = base.clone();
+            for &m in &gp.mcols {
+                ins.push(if bytes(m) == b".key" {
+                    one_at(&keys, q)
+                } else {
+                    here.clone()
+                });
+            }
+            let val = match prog.compute(ins, n, 1)? {
+                Ok(mut r) if r.len() == 1 && r[0].len() == 1 => expr::owned(r.remove(0)),
+                Ok(_) => return decline("a value of other than one element (R's error)"),
+                Err(d) => {
+                    expr::note_decline(&d);
+                    return Ok(None);
+                }
+            };
+            out = Some(match out {
+                None => (val, vec![kq]),
+                Some((v, mut nm)) => {
+                    let Some(v) = gby_assign(v, &val, nm.iter().position(|&c| same(c, kq))) else {
+                        return decline("values of types `[[<-` cannot join natively");
+                    };
+                    if v.len() > nm.len() {
+                        nm.push(kq);
+                    }
+                    (v, nm)
+                }
+            });
+        }
+        let (vals, nm) = out.ok_or_else(|| bad("gby no keys"))?;
+        let k = vals.len();
+        let mut hold = OwnedListSexp::new(2, false)?;
+        hold.set_value(0, expr::to_r(&vals, k)?)?;
+        {
+            let (np, nl) = (nm.as_ptr(), nm.len());
+            // SAFETY: main thread; the new string vector is protected while
+            // filled and stored at once in `hold`; `np` points at `nl` live
+            // CHARSXPs (the keys' list or the global's names).
+            let names = unsafe {
+                rapi::protect_value(rapi::R_NilValue, move || {
+                    let out = rapi::Rf_protect(rapi::Rf_allocVector(STRSXP, nl as isize));
+                    for i in 0..nl {
+                        rapi::SET_STRING_ELT(out, i as isize, *np.add(i));
+                    }
+                    rapi::Rf_unprotect(1);
+                    out
+                })
+            }?;
+            hold.set_value(1, Sexp(names))?;
+        }
+        let (v, names) = (elt(hold.inner(), 0), elt(hold.inner(), 1));
+        // SAFETY: main thread; both are protected by `hold`; setting the names
+        // attribute of a fresh vector of the same length.
+        unsafe {
+            rapi::protect(move || {
+                rapi::Rf_setAttrib(v, rapi::R_NamesSymbol, names);
+            })
+        }?;
+        gl = Some(set_named(glv, target, v)?);
+    }
+    match gl {
+        // SAFETY: reading a static of R's.
+        Some(g) => Ok(Some(with_elt(st, li, g.get(), unsafe {
+            rapi::R_BlankString
+        })?)),
+        None => Ok(Some(keep(st)?)),
+    }
+}
+
+/// `out[[i]] <- val` (`i` `None`: appended) on a vector of one type: both
+/// promoted to the higher of logical < integer < double; strings only with
+/// strings. `None` where that is not how `[[<-` would combine them natively.
+fn gby_assign(out: Vals<'static>, val: &Vals, i: Option<usize>) -> Option<Vals<'static>> {
+    use std::borrow::Cow;
+    use tidyabm_core::sample::NA_INT;
+    // SAFETY: reading a static of R's.
+    let na = unsafe { rapi::R_NaReal };
+    let rank = |v: &Vals| match v {
+        Vals::Lgl(_) => 0,
+        Vals::Int(_) => 1,
+        Vals::Dbl(_) => 2,
+        Vals::Str(_) => 3,
+    };
+    let (ro, rv) = (rank(&out), rank(val));
+    if (ro == 3) != (rv == 3) {
+        return None;
+    }
+    let to_dbl = |v: &[i32]| -> Vec<f64> {
+        v.iter()
+            .map(|&x| if x == NA_INT { na } else { f64::from(x) })
+            .collect()
+    };
+    let r = ro.max(rv);
+    let mut o: Vals<'static> = match (&out, r) {
+        (Vals::Lgl(x), 1) => Vals::Int(Cow::Owned(x.to_vec())),
+        (Vals::Lgl(x) | Vals::Int(x), 2) => Vals::Dbl(Cow::Owned(to_dbl(x))),
+        _ => out,
+    };
+    let v: Vals = match (val, r) {
+        (Vals::Lgl(x), 1) => Vals::Int(Cow::Owned(x.to_vec())),
+        (Vals::Lgl(x) | Vals::Int(x), 2) => Vals::Dbl(Cow::Owned(to_dbl(x))),
+        _ => val.clone(),
+    };
+    match (&mut o, &v) {
+        (Vals::Lgl(a), Vals::Lgl(b)) | (Vals::Int(a), Vals::Int(b)) => match i {
+            Some(i) => a.to_mut()[i] = b[0],
+            None => a.to_mut().push(b[0]),
+        },
+        (Vals::Dbl(a), Vals::Dbl(b)) => match i {
+            Some(i) => a.to_mut()[i] = b[0],
+            None => a.to_mut().push(b[0]),
+        },
+        (Vals::Str(a), Vals::Str(b)) => match i {
+            Some(i) => a.to_mut()[i] = b[0],
+            None => a.to_mut().push(b[0]),
+        },
+        _ => return None,
+    }
+    Some(o)
+}
+
+/// [`read_globals`] from a globals list itself.
+fn read_globals_in(gl: SEXP, globs: &[SEXP], ins: &mut Vec<SEXP>) -> savvy::Result<bool> {
+    if globs.is_empty() {
+        return Ok(true);
+    }
+    let names = names_of(gl)?;
+    for &g in globs {
+        let Some(j) = find(names, g) else {
+            return Ok(false);
+        };
+        ins.push(elt(gl, j));
+    }
+    Ok(true)
+}
+
 fn same_side(a: Side, b: Side) -> bool {
     match (a, b) {
         (Side::D(p), Side::D(q)) => p == q,
@@ -4669,7 +5025,9 @@ fn exec(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
     if let Some(nb) = &plan.nb {
         return exec_nb(plan, nb, st);
     }
-    if plan.seq.is_some() {
+    if plan.gby.is_some() {
+        exec_global_by(plan, st)
+    } else if plan.seq.is_some() {
         exec_seq(plan, st)
     } else if plan.tell.is_some() {
         exec_tell(plan, st)
@@ -4934,6 +5292,13 @@ pub struct RunLoop {
     /// record `times` (environment variable `TIDYABM_RUST_TIMING` set): the
     /// clock reads cost ~0.5 us per tick, measurable on short models
     timing: bool,
+    /// `abm_repeat()` blocks (kind -1 begin, `-(2 + 2 max + has_until)` end):
+    /// `until(k)` the block's condition after a pass, each end's begin, the
+    /// passes made and the match standing when the block began
+    until: H,
+    begin_of: Vec<usize>,
+    passes: Vec<i64>,
+    stash: Vec<Option<H>>,
 }
 
 impl RunLoop {
@@ -5058,6 +5423,48 @@ impl RunLoop {
         Ok(())
     }
 
+    /// Block end `i`'s `until` on `st`: natively (a value-only program
+    /// compiled per schema in `slots[i]`) when it gives one logical, else from
+    /// the R callback ([repeat_until()], which raises R's errors).
+    fn until_met(&mut self, i: usize, st: SEXP) -> savvy::Result<bool> {
+        let one_true = |x: SEXP| -> Option<bool> {
+            // SAFETY: reading a type tag, then a logical of length 1.
+            (unsafe { rapi::TYPEOF(x) } == rapi::LGLSXP && len(x) == 1)
+                .then(|| unsafe { *rapi::LOGICAL_RO(x) } == 1)
+        };
+        if let Some(key) = schema_key(st)? {
+            let stale = match &self.slots[i] {
+                Slot::Never => false,
+                Slot::Fresh => true,
+                Slot::Skip(k) | Slot::Ready(k, _) => *k != key,
+            };
+            if stale {
+                let d = call_r(&self.prep, &[i as i32 + 1])?;
+                // SAFETY: reading a type tag.
+                let t = unsafe { rapi::TYPEOF(d.get()) };
+                self.slots[i] = if t == rapi::LGLSXP {
+                    Slot::Never
+                } else if t == VECSXP {
+                    Slot::Ready(key, Box::new(parse_plan(d)?))
+                } else {
+                    Slot::Skip(key)
+                };
+            }
+            if let Slot::Ready(_, plan) = &self.slots[i] {
+                if let Some(v) = exec_global(plan, st, true)? {
+                    if len(v.get()) == 1 {
+                        // (`NA` is not met: `isTRUE()`)
+                        if let Some(b) = one_true(elt(v.get(), 0)) {
+                            return Ok(b);
+                        }
+                    }
+                }
+            }
+        }
+        let r = call_r(&self.until, &[i as i32 + 1])?;
+        Ok(one_true(r.get()) == Some(true))
+    }
+
     fn native_now(&self, i: usize) -> bool {
         self.kinds[i] != 0 && !matches!(self.slots[i], Slot::Never)
     }
@@ -5065,6 +5472,8 @@ impl RunLoop {
 
 #[savvy]
 impl RunLoop {
+    // the R callbacks of a run, one argument each
+    #[allow(clippy::too_many_arguments)]
     fn new(
         kinds: IntegerSexp,
         prep: Sexp,
@@ -5073,6 +5482,7 @@ impl RunLoop {
         rng: Sexp,
         ctx: Sexp,
         mprep: Sexp,
+        until: Sexp,
     ) -> savvy::Result<Self> {
         run(|| {
             // SAFETY: main thread; installing a symbol may allocate, hence protect.
@@ -5081,7 +5491,26 @@ impl RunLoop {
             }?;
             let kinds = kinds.as_slice().to_vec();
             let n_steps = kinds.len();
+            // each block end's begin (blocks nest)
+            let mut begin_of = vec![0; n_steps];
+            let mut open = Vec::new();
+            for (i, &k) in kinds.iter().enumerate() {
+                if k == -1 {
+                    open.push(i);
+                } else if k < -1 {
+                    begin_of[i] = open
+                        .pop()
+                        .ok_or_else(|| bad("a block end without a begin"))?;
+                }
+            }
+            if !open.is_empty() {
+                return Err(bad("a block begin without an end"));
+            }
             Ok(RunLoop {
+                until: keep(until.0)?,
+                begin_of,
+                passes: vec![0; n_steps],
+                stash: (0..n_steps).map(|_| None).collect(),
                 slots: kinds.iter().map(|_| Slot::Fresh).collect(),
                 kinds,
                 prep: keep(prep.0)?,
@@ -5149,6 +5578,45 @@ impl RunLoop {
             for t in 1..=ticks {
                 let mut i = 0;
                 while i < n {
+                    let k = self.kinds[i];
+                    if k == -1 {
+                        // [run_repeat()]: the match standing when the block begins
+                        self.stash[i] = match find_str(st, b"match")? {
+                            Some(mi) if elt(st, mi) != rapi_nil() => Some(keep(elt(st, mi))?),
+                            _ => None,
+                        };
+                        self.passes[i] = 0;
+                        i += 1;
+                        continue;
+                    }
+                    if k < -1 {
+                        let b = self.begin_of[i];
+                        let v = -i64::from(k) - 2;
+                        self.passes[b] += 1;
+                        // `until` is asked after every pass, the last one too
+                        let mut stop = self.passes[b] >= v / 2;
+                        if v % 2 == 1 && self.until_met(i, st)? {
+                            stop = true;
+                        }
+                        if !stop {
+                            i = b + 1;
+                            continue;
+                        }
+                        // `state$match <- outer_match`
+                        let s2 = match self.stash[b].take() {
+                            None => without(st, b"match")?,
+                            Some(m) => {
+                                // SAFETY: making the CHARSXP may allocate; kept at once.
+                                let nm =
+                                    unsafe { build(move || rapi::Rf_mkChar(c"match".as_ptr())) }?;
+                                set_named(st, nm.get(), m.get())?
+                            }
+                        };
+                        self.put(s2.get())?;
+                        st = s2.get();
+                        i += 1;
+                        continue;
+                    }
                     let t0 = self.timing.then(std::time::Instant::now);
                     if self.native_now(i) {
                         if let Some(next) = self.try_native(i, st)? {

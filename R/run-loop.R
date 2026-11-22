@@ -46,8 +46,12 @@ run_once_loop <- function(model, go, ticks, seed, keep, measures, checks = NULL,
   if (!is.null(measure_log)) measure_log[[1]] <- measure_row(measures, state, 0L)
   if (length(checks)) check_row(checks, state, 0L)
 
-  steps <- plan_steps(go$steps)
-  kinds <- vapply(steps, rl_kind, 0L, kernels = kernels)
+  # `abm_repeat()` blocks flattened: the loop runs their steps itself (FR11)
+  flat <- rl_flatten(plan_steps(go$steps))
+  steps <- flat$steps
+  top_at <- flat$at
+  kinds <- flat$kinds
+  kinds[kinds == 0L] <- vapply(steps[kinds == 0L], rl_kind, 0L, kernels = kernels)
   measure_reads <- read_vars(measures)
   check_reads <- read_vars(checks)
   measure_plan <- new.env(parent = emptyenv())
@@ -96,6 +100,14 @@ run_once_loop <- function(model, go, ticks, seed, keep, measures, checks = NULL,
     st
   }
   prep <- function(i) rl_prep(steps[[i]], ctx$st, i)
+  # a block's `until` after a pass ([repeat_until()]), on the state as it is
+  until <- function(k) {
+    at <<- k
+    frame <<- ctx
+    out <- repeat_until(steps[[k]], ctx$st)
+    at <<- 0L
+    out
+  }
   # measures (1) and checks (2) compiled as value-only global programs (FR9b)
   tick_steps <- list(rl_tick_step(measures), rl_tick_step(checks))
   mprep <- function(k) rl_prep_tick(tick_steps[[k]], ctx$st)
@@ -104,7 +116,7 @@ run_once_loop <- function(model, go, ticks, seed, keep, measures, checks = NULL,
     NULL
   }
 
-  lp <- RunLoop$new(kinds, prep, seg, tick, rng, ctx, mprep)
+  lp <- RunLoop$new(kinds, prep, seg, tick, rng, ctx, mprep, until)
   # the ticks whose book-keeping needs R; the loop logs the others' globals into
   # `glog` itself (FR9) and they are turned into rows below
   # (measures and checks too, when they compile; a tick whose native ones
@@ -118,7 +130,9 @@ run_once_loop <- function(model, go, ticks, seed, keep, measures, checks = NULL,
     # a fault in the Rust loop itself: classed as rust_call() does
     if (startsWith(conditionMessage(e), "tidyABM-rust-")) rust_call(stop(e))
     if (at == 0L || inherits(e, "tidyABM_error")) return()
-    rethrow_step_error(e, steps[[at]], get("st", envir = frame), at)
+    # a step inside a block is reported as [run_repeat()] reports it
+    rethrow_step_error(e, steps[[at]], get("st", envir = frame),
+                       if (is.na(top_at[[at]])) NULL else top_at[[at]])
   })
   .rl_last$stats <- lp$stats()
   if (nzchar(Sys.getenv("TIDYABM_RUST_TIMING"))) .rl_last$times <- lp$times()
@@ -149,6 +163,36 @@ run_once_loop <- function(model, go, ticks, seed, keep, measures, checks = NULL,
   )
 }
 
+# The steps with every `abm_repeat()` block flattened: the block's steps between
+# a begin marker (kind -1) and an end marker (kind -(2 + 2 * max + has_until)),
+# both the repeat step itself; `at` the go block position of a top-level step
+# (`NA` inside a block), `kinds` 0 for an ordinary step. A block whose `max` the
+# encoding cannot hold stays one R step.
+rl_flatten <- function(steps, top = TRUE) {
+  if (top && !any(vapply(steps, inherits, NA, "abm_repeat"))) {
+    return(list(steps = steps, at = seq_along(steps), kinds = integer(length(steps))))
+  }
+  out <- list()
+  at <- integer()
+  kinds <- integer()
+  for (i in seq_along(steps)) {
+    s <- steps[[i]]
+    pos <- if (top) i else NA_integer_
+    if (inherits(s, "abm_repeat") && s$max <= 1e8) {
+      inner <- rl_flatten(s$steps, top = FALSE)
+      out <- c(out, list(s), inner$steps, list(s))
+      at <- c(at, pos, inner$at, pos)
+      kinds <- c(kinds, -1L, inner$kinds,
+                 -(2L + 2L * as.integer(s$max) + as.integer(!is.null(s$until))))
+    } else {
+      out <- c(out, list(s))
+      at <- c(at, pos)
+      kinds <- c(kinds, 0L)
+    }
+  }
+  list(steps = out, at = at, kinds = kinds)
+}
+
 # measures or checks as an `abm_global()`-like step the loop compiles into a
 # value-only program; `NULL` when there are none
 rl_tick_step <- function(quos) {
@@ -156,6 +200,14 @@ rl_tick_step <- function(quos) {
   structure(list(rules = lapply(names(quos), function(nm) list(target = nm, quo = quos[[nm]])),
                  by = NULL, plan = new.env(parent = emptyenv())),
             class = c("abm_global", "abm_step"))
+}
+
+# a block's `until` as a value-only program ([repeat_until()]'s stacked
+# columns and globals; anything the program does not take, a match column for
+# one, leaves it to the R callback)
+rl_prep_until <- function(step, state) {
+  if (is.null(step$until)) return(FALSE)
+  rl_prep_tick(rl_tick_step(list(until = step$until)), state)
 }
 
 # a measure/check program for this schema: `FALSE` never (none, or a formula
@@ -233,6 +285,7 @@ rl_kind <- function(step, kernels) {
   if (inherits(step, "abm_move")) return(10L)
   if (inherits(step, "abm_tell")) return(11L)
   if (inherits(step, "abm_sequential")) return(12L)
+  if (inherits(step, "abm_global") && !is.null(step$by)) return(13L)
   as.integer(k$native)
 }
 
@@ -248,7 +301,9 @@ rl_prep <- function(step, state, slot = NULL) {
          abm_move = rl_prep_memo(step, state, slot, rl_prep_move),
          abm_tell = rl_prep_memo(step, state, slot, rl_prep_tell),
          abm_sequential = rl_prep_memo(step, state, slot, rl_prep_seq),
-         abm_global = rl_prep_memo(step, state, slot, rl_prep_global),
+         abm_repeat = rl_prep_memo(step, state, slot, rl_prep_until),
+         abm_global = rl_prep_memo(step, state, slot,
+                                   if (is.null(step$by)) rl_prep_global else rl_prep_global_by),
          abm_neighbours = rl_prep_neighbours(step, state, slot),
          rl_prep_memo(step, state, slot, rl_prep_rules))
 }
@@ -462,6 +517,46 @@ rl_prep_rules_by <- function(step, state) {
                                         globs = p$globs, targets = p$targets, scope = p$scope,
                                         ew = FALSE))),
                 if (length(p$scope)) list(p$env))
+}
+
+# FR11: `abm_global(.by = <name>)` natively ([run_global_by()]) when the keys
+# are a global or a formula-environment value (not a column): per rule one
+# program over the groups stacked, evaluated per key with the target bound to
+# the key's current value and `.key` to the key (input source 4)
+rl_global_by_ok <- function(step) {
+  !is.null(step$by) && rlang::is_symbol(rlang::quo_get_expr(step$by)) &&
+    !any(vapply(rx_rules(step), is_rx_no, NA))
+}
+rl_prep_global_by <- function(step, state) {
+  if (!planned(step, "rx_gbyshape", rl_global_by_ok(step))) return(FALSE)
+  groups <- state$groups
+  cols <- Reduce(intersect, lapply(groups, names))
+  all_cols <- model_columns(groups)
+  by <- rlang::as_string(rlang::quo_get_expr(step$by))
+  benv <- rlang::quo_get_env(step$by)
+  # keys from a column (sorted, merged with the global's names): R
+  if (by %in% all_cols || ".key" %in% all_cols) return(NULL)
+  by_src <- if (by %in% names(state$globals)) 2L else if (exists(by, envir = benv)) 3L
+            else return(NULL)
+  out <- list()
+  envs <- list()
+  for (i in seq_along(step$rules)) {
+    r <- step$rules[[i]]
+    if (r$target %in% all_cols) return(NULL)
+    p <- rx_program(step, i, cols, state$globals, match_names = c(r$target, ".key"))
+    if (is_rx_no(p) || any(p$names %in% setdiff(all_cols, cols))) return(NULL)
+    if (length(p$scope)) envs <- c(envs, list(p$env))
+    out[[i]] <- list(name = "", prog = p$prog$.ptr, cols = p$cols, globs = p$globs,
+                     targets = r$target, scope = p$scope, ew = FALSE, mcols = p$mcols)
+  }
+  if (by_src == 3L) {
+    envs <- c(envs, list(benv))
+    out[[length(out) + 1L]] <- list(name = "", part = "order", prog = NULL,
+                                    cols = character(), globs = character(),
+                                    targets = character(), scope = by, ew = FALSE)
+  }
+  rl_scope_bind(list(kind = 13L, scope_match = FALSE, groups = out,
+                     gby = list(by = by, src = by_src)), envs)
 }
 
 # one program over every group stacked

@@ -287,8 +287,8 @@ class(`AgentStore`) <- c("tidyABM::AgentStore__bundle", "savvy_tidyABM__sealed")
 
 ### associated functions for RunLoop
 
-`RunLoop`$`new` <- function(`kinds`, `prep`, `seg`, `tick`, `rng`, `ctx`, `mprep`) {
-  .savvy_wrap_RunLoop(.Call(savvy_RunLoop_new__impl, `kinds`, `prep`, `seg`, `tick`, `rng`, `ctx`, `mprep`))
+`RunLoop`$`new` <- function(`kinds`, `prep`, `seg`, `tick`, `rng`, `ctx`, `mprep`, `until`) {
+  .savvy_wrap_RunLoop(.Call(savvy_RunLoop_new__impl, `kinds`, `prep`, `seg`, `tick`, `rng`, `ctx`, `mprep`, `until`))
 }
 
 

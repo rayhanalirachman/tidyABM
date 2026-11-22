@@ -42,6 +42,9 @@ active_kernels <- function(engine) {
 #' @noRd
 engine_run_once <- function(engine, steps) {
   kernels <- if (engine != "r") active_kernels(engine)
+  # the steps inside `abm_repeat()` blocks count: the loop runs them itself
+  leaves <- rl_flatten(steps)
+  steps <- leaves$steps[leaves$kinds == 0L]
   has <- any(vapply(steps, function(s) {
     k <- kernels[[class(s)[[1]]]]
     !is.null(k) && (is.null(k$can) || isTRUE(k$can(s)))

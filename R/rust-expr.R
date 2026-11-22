@@ -101,11 +101,15 @@ rx_compile <- function(expr) {
       syms <<- c(syms, nm)
       return(list("sym", nm))
     }
+    # `pkg::f` that is the very function the IR takes (FR11: model 42's
+    # `dplyr::case_when()`): compiled as `f`, whatever `f` finds in the scope
+    ns <- is.call(e) && rx_ns_head(e[[1]])
+    if (ns) e[[1]] <- e[[1]][[3]]
     if (!is.call(e) || !is.symbol(e[[1]])) no("not a plain function call")
     fn <- as.character(e[[1]])
     args <- as.list(e)[-1]
     nms <- names(args) %||% rep("", length(args))
-    heads <<- c(heads, fn)
+    if (!ns) heads <<- c(heads, fn)
     if (fn == "n" && !length(args)) return(list("n"))
     if (!fn %in% names(rx_fns())) no(paste0("`", fn, "()` is not compiled yet"))
     if (fn %in% c("if_else", "case_when") && !rx_dplyr_ok()) {
@@ -152,6 +156,17 @@ rx_compile <- function(expr) {
   }
   tryCatch(list(ir = walk(expr), syms = unique(syms), heads = unique(heads)),
            rx_stop = function(e) rx_no(conditionMessage(e)))
+}
+
+# Is `h` a `pkg::f` call naming the function the IR takes for `f`?
+rx_ns_head <- function(h) {
+  if (!(is.call(h) && identical(h[[1]], as.name("::")) && length(h) == 3L &&
+        is.symbol(h[[2]]) && is.symbol(h[[3]]))) return(FALSE)
+  nm <- as.character(h[[3]])
+  fns <- rx_fns()
+  if (!nm %in% names(fns)) return(FALSE)
+  f <- tryCatch(getExportedValue(as.character(h[[2]]), nm), error = function(err) NULL)
+  identical(f, fns[[nm]])
 }
 
 # FR3's constructs, compiled apart from [rx_compile()] so their byte code is only
@@ -440,7 +455,8 @@ rx_coverage <- function(go) {
         next
       }
       if (!cls %in% c("abm_rules", "abm_global")) next
-      shape <- if (!is.null(s$by) && cls == "abm_global") "`.by` is not compiled yet"
+      shape <- if (!is.null(s$by) && cls == "abm_global" &&
+                   !rlang::is_symbol(rlang::quo_get_expr(s$by))) "`.by` other than a name"
       for (r in s$rules) {
         cp <- rx_compile(rlang::quo_get_expr(r$quo))
         why <- shape %||% if (is_rx_no(cp)) unclass(cp) else ""

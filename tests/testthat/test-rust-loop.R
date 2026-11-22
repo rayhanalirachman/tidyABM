@@ -208,6 +208,24 @@ test_that("native steps keep every new R object protected (gctorture)", {
   got6 <- tryCatch(run_in("rust", ms, go6, ticks = 2, seed = 3), error = identity)
   gctorture(FALSE)
   expect_identical(got6, ref6)
+  # FR11: a repeat block (match restored on leaving it, native `until`)
+  go7 <- abm_go(abm_repeat(abm_match(pair = "random"), abm_rules(x ~ x + 0.1),
+                           abm_global(t ~ sum(x)), until = t > 20, max = 3))
+  ref7 <- run_in("r", m, go7, ticks = 2, seed = 3)
+  gctorture(TRUE)
+  got7 <- tryCatch(run_in("rust", m, go7, ticks = 2, seed = 3), error = identity)
+  gctorture(FALSE)
+  expect_identical(got7, ref7)
+  # FR11: a global `.by` (the named vector it builds)
+  ky <- 1:2
+  go8 <- abm_go(abm_global(s ~ sum(k == .key) + 0.5, .by = ky), abm_global(v ~ .key, .by = ky))
+  m8 <- m
+  m8$globals$s <- stats::setNames(c(0, 0), 1:2)
+  ref8 <- run_in("r", m8, go8, ticks = 2, seed = 3)
+  gctorture(TRUE)
+  got8 <- tryCatch(run_in("rust", m8, go8, ticks = 2, seed = 3), error = identity)
+  gctorture(FALSE)
+  expect_identical(got8, ref8)
 })
 
 test_that("FR9b: measures and checks compiled natively give R's tables and errors", {
@@ -227,4 +245,43 @@ test_that("FR9b: measures and checks compiled natively give R's tables and error
   expect_identical(conditionMessage(a), conditionMessage(b))
   expect_identical(class(a), class(b))
   expect_identical(a$tick, b$tick)
+})
+
+test_that("abm_repeat() blocks run inside the loop, natively where their steps are", {
+  m <- abm_setup(agents = abm_agents(n = 30, x = ~runif(n), k = 0L), globals = list(tot = 0),
+                 seed = 2)
+  cases <- list(
+    until   = abm_go(abm_repeat(abm_rules(x ~ x * 0.9 + runif(n()) * 0.1),
+                                abm_global(tot ~ sum(x)), until = tot < 10, max = 20),
+                     abm_rules(k ~ k + 1L)),
+    no_until = abm_go(abm_repeat(abm_rules(x ~ x + 1), max = 3)),
+    # a match made inside the block does not escape it; `until` reads the
+    # standing match (the R callback)
+    match   = abm_go(abm_match(pair = "random"),
+                     abm_repeat(abm_match(pair = "random"),
+                                abm_rules(x ~ x + coalesce(partner_x, 0) / 10),
+                                until = any(x > 3), max = 5),
+                     abm_rules(x ~ x + coalesce(partner_x, 0))),
+    nested  = abm_go(abm_repeat(abm_repeat(abm_rules(x ~ x + 0.1), until = mean(x) > 1, max = 4),
+                                abm_global(tot ~ tot + 1), until = tot > 6, max = 3)),
+    # an R step inside the block
+    r_step  = abm_go(abm_repeat(abm_rules(x ~ vapply(x, function(v) v + 1, 0)),
+                                abm_global(tot ~ sum(x)), until = tot > 100, max = 9))
+  )
+  for (nm in names(cases)) {
+    expect_engines_agree(m, cases[[nm]], ticks = 4, seed = 1, what = paste("repeat", nm))
+    expect(.rl_last$stats[[1]] > 0, paste("repeat", nm, "ran no native step"))
+  }
+  # errors: `until` of the wrong shape, a missing name in `until`, in a step of
+  # the block, in a nested block's `until`
+  bad <- list(abm_go(abm_repeat(abm_rules(x ~ x + 1), until = x > 2, max = 3)),
+              abm_go(abm_repeat(abm_rules(x ~ x + 1), until = nope > 2, max = 3)),
+              abm_go(abm_rules(x ~ x), abm_repeat(abm_rules(x ~ x + nope), max = 3)),
+              abm_go(abm_repeat(abm_repeat(abm_rules(x ~ x), until = nope > 1, max = 2), max = 2)))
+  for (go in bad) {
+    err <- function(e) tryCatch(run_in(e, m, go, ticks = 2, seed = 1), error = identity)
+    a <- err("rust"); b <- err("r")
+    expect_identical(conditionMessage(a), conditionMessage(b))
+    expect_identical(class(a), class(b))
+  }
 })

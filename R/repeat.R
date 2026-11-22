@@ -80,32 +80,38 @@ run_repeat <- function(step, state) {
   for (i in seq_len(step$max)) {
     for (s in step$steps) state <- run_step_reporting(s, state)
     if (is.null(step$until)) next
-    # a phase inside a tick usually runs on a standing match, and its stopping
-    # condition is about the pairing ("until nobody's bid is still under their
-    # partner's ask"), so `until` sees `.role` and `partner_<col>` as a rule does
-    combined <- bind_groups(state$groups)
-    combined <- augment_group(combined, state$match, combined, state$relations)
-    quo <- rlang::quo_set_env(
-      step$until,
-      rlang::new_environment(state$globals,
-                             parent = rlang::quo_get_env(step$until))
-    )
-    val <- dplyr::pull(dplyr::reframe(combined, .abm_value = !!quo),
-                       ".abm_value")
-    if (length(val) != 1L || !is.logical(val)) {
-      abm_abort(
-        c("{.arg until} must collapse to a single {.code TRUE} or {.code FALSE}.",
-          "x" = "{.code {deparse1(rlang::quo_get_expr(step$until))}} returned {length(val)} value{?s} of type {.cls {class(val)[[1]]}}."),
-        class = "tidyABM_bad_until"
-      )
-    }
-    if (isTRUE(val)) break
+    if (repeat_until(step, state)) break
   }
   state$match <- outer_match
   state
 }
 
-#' @export
+#' Has a pass of `step` met its `until`? (Also asked by the Rust tick loop, which
+#' runs the block's steps itself.)
+#' @noRd
+repeat_until <- function(step, state) {
+  # a phase inside a tick usually runs on a standing match, and its stopping
+  # condition is about the pairing ("until nobody's bid is still under their
+  # partner's ask"), so `until` sees `.role` and `partner_<col>` as a rule does
+  combined <- bind_groups(state$groups)
+  combined <- augment_group(combined, state$match, combined, state$relations)
+  quo <- rlang::quo_set_env(
+    step$until,
+    rlang::new_environment(state$globals,
+                           parent = rlang::quo_get_env(step$until))
+  )
+  val <- dplyr::pull(dplyr::reframe(combined, .abm_value = !!quo),
+                     ".abm_value")
+  if (length(val) != 1L || !is.logical(val)) {
+    abm_abort(
+      c("{.arg until} must collapse to a single {.code TRUE} or {.code FALSE}.",
+        "x" = "{.code {deparse1(rlang::quo_get_expr(step$until))}} returned {length(val)} value{?s} of type {.cls {class(val)[[1]]}}."),
+      class = "tidyABM_bad_until"
+    )
+  }
+  isTRUE(val)
+}
+
 print.abm_repeat <- function(x, ...) {
   cli::cli_text("{.cls abm_repeat} {length(x$steps)} step{?s}, at most {x$max} pass{?es}")
   if (!is.null(x$until)) {

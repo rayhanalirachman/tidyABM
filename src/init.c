@@ -164,8 +164,8 @@ SEXP savvy_AgentStore_ticks__impl(SEXP self__) {
     return handle_result(res);
 }
 
-SEXP savvy_RunLoop_new__impl(SEXP c_arg__kinds, SEXP c_arg__prep, SEXP c_arg__seg, SEXP c_arg__tick, SEXP c_arg__rng, SEXP c_arg__ctx, SEXP c_arg__mprep) {
-    SEXP res = savvy_RunLoop_new__ffi(c_arg__kinds, c_arg__prep, c_arg__seg, c_arg__tick, c_arg__rng, c_arg__ctx, c_arg__mprep);
+SEXP savvy_RunLoop_new__impl(SEXP c_arg__kinds, SEXP c_arg__prep, SEXP c_arg__seg, SEXP c_arg__tick, SEXP c_arg__rng, SEXP c_arg__ctx, SEXP c_arg__mprep, SEXP c_arg__until) {
+    SEXP res = savvy_RunLoop_new__ffi(c_arg__kinds, c_arg__prep, c_arg__seg, c_arg__tick, c_arg__rng, c_arg__ctx, c_arg__mprep, c_arg__until);
     return handle_result(res);
 }
 
@@ -226,7 +226,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"savvy_AgentStore_snapshot__impl", (DL_FUNC) &savvy_AgentStore_snapshot__impl, 3},
     {"savvy_AgentStore_stats__impl", (DL_FUNC) &savvy_AgentStore_stats__impl, 1},
     {"savvy_AgentStore_ticks__impl", (DL_FUNC) &savvy_AgentStore_ticks__impl, 1},
-    {"savvy_RunLoop_new__impl", (DL_FUNC) &savvy_RunLoop_new__impl, 7},
+    {"savvy_RunLoop_new__impl", (DL_FUNC) &savvy_RunLoop_new__impl, 8},
     {"savvy_RunLoop_run__impl", (DL_FUNC) &savvy_RunLoop_run__impl, 7},
     {"savvy_RunLoop_stats__impl", (DL_FUNC) &savvy_RunLoop_stats__impl, 1},
     {"savvy_RunLoop_times__impl", (DL_FUNC) &savvy_RunLoop_times__impl, 1},

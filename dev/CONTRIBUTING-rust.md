@@ -320,6 +320,25 @@ the R engine's own `run_step()`. Rules:
   or `.order` compiled over the groups stacked, stable, `NA` dropped (`-0` ties
   `0`, as `order()`'s radix sort). Partner reads are live (`NA` logical with no
   partner or a partner group without the column).
+* Repeat blocks (FR11): `rl_flatten()` puts an `abm_repeat()`'s steps into the
+  loop's step list between a begin marker (kind -1) and an end marker (kind
+  `-(2 + 2 max + has_until)`), both the repeat step; the loop jumps back from
+  the end until `max` passes or `until` holds. `until` is a value-only program
+  per schema in the end's slot when it compiles (`rl_prep_until()`), else the R
+  callback `until(k)` ([repeat_until()], which raises R's errors). The match
+  standing at the begin is restored at the end (`state$match <- outer_match`:
+  removed when there was none). Errors in a block's steps are reported as
+  `run_repeat()` reports them (`top_at` is `NA` inside a block).
+  `engine_run_once()` counts the steps inside blocks.
+* Global `.by` (kind 13, `exec_global_by()`): keys from a global or a
+  formula-environment value (a key column, sorted and merged with the global's
+  names, is R's), integers or strings; per rule one program over the groups
+  stacked, the target and `.key` bound per key as input source 4; the named
+  vector built as `out[[key]] <- val` builds it (`gby_assign()`: logical <
+  integer < double promotion, strings only with strings).
+* `pkg::f` heads (`dplyr::case_when()`, `stats::runif()`) compile as `f` when
+  they are the very function the IR takes for `f` (`rx_ns_head()`); their
+  scope is not checked (the call names its function).
 * Parallel reps (FR10): forks (`mclapply()`) on Unix; on Windows (or with
   `options(tidyABM.psock = TRUE)`, for tests) a PSOCK pool per sweep
   (`run_psock()`) set up with the caller's attached packages, `tidyABM.*`

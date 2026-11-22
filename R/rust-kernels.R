@@ -35,6 +35,7 @@ rust_kernels <- list(
                         native = 7L),
   abm_rules      = list(fun = rk_native, auto = FALSE, store = FALSE, can = rx_rules_mixed_ok,
                         native = 1L),
-  abm_global     = list(fun = rk_native, auto = FALSE, store = FALSE, can = rx_global_ok,
+  abm_global     = list(fun = rk_native, auto = FALSE, store = FALSE,
+                        can = function(step) rx_global_ok(step) || rl_global_by_ok(step),
                         native = 2L)
 )

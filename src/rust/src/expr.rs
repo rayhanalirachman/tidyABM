@@ -151,6 +151,7 @@ fn decode(x: SEXP) -> savvy::Result<Node> {
         "rnorm_ab1" => Node::Draw1(true, boxed(1)?, boxed(2)?),
         "as_int" => Node::Cast(true, boxed(1)?),
         "as_dbl" => Node::Cast(false, boxed(1)?),
+        "abs" => Node::Abs(boxed(1)?),
         other => return Err(bad(&format!("unknown operator `{other}`"))),
     })
 }
@@ -163,7 +164,8 @@ fn draws(n: &Node) -> bool {
         | Node::Math(_, x)
         | Node::Reduce(_, x)
         | Node::ReduceNaRm(_, x)
-        | Node::Cast(_, x) => draws(x),
+        | Node::Cast(_, x)
+        | Node::Abs(x) => draws(x),
         Node::Bin(_, a, b) | Node::In(a, b) | Node::Index(a, b) => draws(a) || draws(b),
         Node::Call(_, a) | Node::Coalesce(a) => a.iter().any(draws),
         Node::IfElse(a, b, c) | Node::If(a, b, c) => draws(a) || draws(b) || draws(c),

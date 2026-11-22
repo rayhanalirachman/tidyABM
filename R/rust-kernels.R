@@ -18,7 +18,7 @@
 #' @noRd
 rust_kernels <- list(
   abm_neighbours = list(fun = rk_native, auto = FALSE, store = FALSE,
-                        can = function(step) rl_nb_ok(step) || rl_nb_within_ok(step) ||
+                        can = function(step) rl_nb_ok(step) || rl_nb_within_ok(step) || rl_nb_cross_ok(step) ||
                           rl_nb_where_ok(step),
                         native = 3L),
   abm_sequential = list(fun = rk_native, auto = FALSE, store = FALSE, can = rl_seq_ok,

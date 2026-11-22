@@ -546,3 +546,59 @@ test_that("abm_global(.by = <name>) is native and bit-identical to R", {
                                                error = identity))
   expect_identical(err("rust"), err("r"))
 })
+
+test_that("abm_birth(attach_via =), abm_birth(n =) and deaths on a network are native", {
+  m <- abm_setup(agents = abm_agents(n = 40, tag = ~sample(c("red", "blue"), n, TRUE),
+                                     c = ~runif(n) < 0.5, e = ~runif(n)),
+                 network = abm_network(type = "random", degree = 4), seed = 1)
+  rt <- list(tag ~ sample(c("red", "blue"), n(), replace = TRUE),
+             c ~ sample(c(TRUE, FALSE), n(), replace = TRUE))
+  cases <- list(
+    parent  = abm_birth(when = runif(n()) < 0.05, links = 4,
+                        attach_via = abm_match(pair = "network", from = "parent")),
+    random  = abm_birth(when = runif(n()) < 0.05, times = 2, links = 3,
+                        attach_via = abm_match(pair = "network")),
+    count   = abm_birth(n = 5, links = 4, inherit = rt, attach_via = abm_match(pair = "network")),
+    cost    = abm_birth(n = 3, cost = list(e ~ 0.5), inherit = rt)
+  )
+  for (nm in names(cases)) {
+    go <- abm_go(cases[[nm]], abm_death(when = runif(n()) < 0.05))
+    got <- expect_native_agree(m, go, paste("birth", nm), ticks = 5)
+    expect(got$stats[[2]] == 0L && got$stats[[4]] == 0L,
+           paste("birth", nm, "not fully native:", paste(got$stats, collapse = " ")))
+  }
+  # from = "parent" with `n =` and no network: R's errors
+  for (go in list(abm_go(abm_birth(n = 2, attach_via = abm_match(pair = "network", from = "parent"))),
+                  abm_go(abm_birth(when = TRUE, attach_via = abm_match(pair = "network"))))) {
+    m0 <- if (length(go$steps[[1]]$when)) abm_setup(agents = abm_agents(n = 3, e = 1)) else m
+    err <- function(e) conditionMessage(tryCatch(run_in(e, m0, go, ticks = 1, seed = 1),
+                                                 error = identity))
+    expect_identical(err("rust"), err("r"))
+  }
+})
+
+test_that("the cross-product within is native and bit-identical to R", {
+  m <- abm_setup(agents = list(
+    people = abm_agents(n = 50, x = ~runif(n), y = ~runif(n), active = ~runif(n) < 0.3,
+                        k = ~sample(c(1L, 2L, NA), n, TRUE)),
+    cops = abm_agents(n = 8, x = ~runif(n), y = ~runif(n))), seed = 1)
+  v <- 0.2
+  cases <- list(
+    rebellion = abm_neighbours(C ~ sum(.group == "cops"), A ~ 1 + sum(.group == "people" & active),
+                               K ~ n(), within = .id != own_.id & abs(x - own_x) <= v &
+                                 abs(y - own_y) <= v),
+    shapes    = abm_neighbours(p ~ mean(x > 0.5), an ~ any(active), al ~ all(active, na.rm = TRUE),
+                               s ~ sum(k, na.rm = TRUE), d ~ max(y) - min(y),
+                               within = abs(x - own_x) < 0.1)
+  )
+  for (nm in names(cases)) {
+    go <- abm_go(cases[[nm]], abm_rules(x ~ pmin(1, pmax(0, x + runif(n()) * 0.1 - 0.05))))
+    got <- expect_native_agree(m, go, paste("cross", nm), ticks = 4)
+    expect(got$stats[[2]] == 0L, paste("cross", nm, "declined:", paste(got$stats, collapse = " ")))
+  }
+  # a mean of doubles (rowsum()'s sums) and an NA in a sum: left to R
+  for (st in list(abm_neighbours(mx ~ mean(x), within = abs(x - own_x) < 0.1),
+                  abm_neighbours(s ~ sum(k), within = abs(x - own_x) < 0.1))) {
+    expect_native_agree(m, abm_go(st), "cross declined", ticks = 2, native = FALSE)
+  }
+})

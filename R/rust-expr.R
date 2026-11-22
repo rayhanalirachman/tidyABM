@@ -222,6 +222,7 @@ rx_walk_fr3 <- function(fn, e, args, nms, walk, no, add_head) {
     }
     return(list("constv", do.call(base::c, args)))
   }
+  if (fn == "abs" && length(args) == 1L) return(list("abs", walk(args[[1]])))
   if (fn %in% c("as.numeric", "as.double", "as.integer") && length(args) == 1L) {
     # numbers coerced natively (FR8): no R call per evaluation
     return(list(if (fn == "as.integer") "as_int" else "as_dbl", walk(args[[1]])))

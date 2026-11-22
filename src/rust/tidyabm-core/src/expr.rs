@@ -150,6 +150,8 @@ pub enum Node {
     Draw1(bool, Box<Node>, Box<Node>),
     /// `as.integer(x)` (`true`) / `as.numeric(x)`, `as.double(x)` of numbers (FR8)
     Cast(bool, Box<Node>),
+    /// base `abs(x)` of numbers: logicals and integers as integers (FR12)
+    Abs(Box<Node>),
 }
 
 /// What the evaluator needs from R.
@@ -391,7 +393,9 @@ pub fn eval<'a>(node: &Node, inputs: &[Vals<'a>], n: usize, h: &mut dyn Host) ->
             let i = eval(i, inputs, n, h)?;
             index(x, &i, h)
         }
-        Node::If(..) | Node::Draw1(..) | Node::Cast(..) => eval_fr8(node, inputs, n, h),
+        Node::If(..) | Node::Draw1(..) | Node::Cast(..) | Node::Abs(..) => {
+            eval_fr8(node, inputs, n, h)
+        }
     }
 }
 
@@ -417,6 +421,16 @@ fn eval_fr8<'a>(node: &Node, inputs: &[Vals<'a>], n: usize, h: &mut dyn Host) ->
             Ok(Vals::Dbl(Cow::Owned(v)))
         }
         Node::Cast(to_int, x) => cast_num(*to_int, eval(x, inputs, n, h)?, h),
+        Node::Abs(x) => Ok(match eval(x, inputs, n, h)? {
+            // NA_integer_ is i32::MIN, so no integer overflows
+            Vals::Int(v) | Vals::Lgl(v) => Vals::Int(Cow::Owned(
+                v.iter()
+                    .map(|&e| if e == NA_INT { e } else { e.abs() })
+                    .collect(),
+            )),
+            Vals::Dbl(v) => Vals::Dbl(Cow::Owned(v.iter().map(|e| e.abs()).collect())),
+            Vals::Str(_) => return Err(Decline("abs() of strings")),
+        }),
         _ => Err(Decline("not an FR8 node")),
     }
 }

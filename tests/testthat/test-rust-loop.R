@@ -226,6 +226,23 @@ test_that("native steps keep every new R object protected (gctorture)", {
   got8 <- tryCatch(run_in("rust", m8, go8, ticks = 2, seed = 3), error = identity)
   gctorture(FALSE)
   expect_identical(got8, ref8)
+  # FR12: births attached to the network, births by count, deaths that drop edges
+  go9 <- abm_go(abm_birth(when = x > 0.5, links = 2,
+                          attach_via = abm_match(pair = "network", from = "parent")),
+                abm_birth(n = 2, inherit = list(k ~ 1L), attach_via = abm_match(pair = "network")),
+                abm_death(when = x < 0.3))
+  ref9 <- run_in("r", m, go9, ticks = 2, seed = 3)
+  gctorture(TRUE)
+  got9 <- tryCatch(run_in("rust", m, go9, ticks = 2, seed = 3), error = identity)
+  gctorture(FALSE)
+  expect_identical(got9, ref9)
+  # FR12: the cross-product within
+  go10 <- abm_go(abm_neighbours(c ~ sum(k > 1L), s ~ 1 + sum(x > 0.2), within = abs(x - own_x) < 0.3))
+  ref10 <- run_in("r", m, go10, ticks = 2, seed = 3)
+  gctorture(TRUE)
+  got10 <- tryCatch(run_in("rust", m, go10, ticks = 2, seed = 3), error = identity)
+  gctorture(FALSE)
+  expect_identical(got10, ref10)
 })
 
 test_that("FR9b: measures and checks compiled natively give R's tables and errors", {

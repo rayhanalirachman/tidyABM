@@ -593,6 +593,75 @@ rl_nb1_shape <- function(step) {
 }
 rl_nb_within_ok <- function(step) !is.null(rl_nb1_shape(step))
 
+# FR12: the cross product ([attribute_view()]): `within` over every (focal,
+# candidate) pair, compiled over the candidates with the focal agent's `own_`
+# columns as values, one focal agent at a time; each rule either an aggregate
+# [neighbour_aggregate()] takes (`sum`/`mean`/`any`/`all` of an elementwise
+# argument, or a bare `n()`) or any other formula evaluated over the agent's
+# neighbours (the `summarise()` path). Not a join (`<col> == own_<col>`), no
+# draws, no `n()` in `within` (it counts the pairs), no `.of`.
+rl_nb_cross_shape <- function(step) {
+  if (!is.null(step$where) || is.null(step$within)) return(NULL)
+  we <- rlang::quo_get_expr(step$within)
+  if (!is.null(equijoin_key(we))) return(NULL)
+  shapes <- lapply(step$rules, function(r) {
+    e <- rlang::quo_get_expr(r$quo)
+    if (is_bare_count(r$quo)) return(list(fn = "n"))
+    if (rlang::is_call(e) && rlang::is_symbol(e[[1]]) &&
+        rlang::as_string(e[[1]]) %in% c("sum", "mean", "any", "all")) {
+      args <- as.list(e)[-1]
+      nms <- names(args) %||% rep("", length(args))
+      narm <- FALSE
+      if (length(args) == 2L && nms[[2]] == "na.rm" && rlang::is_bool(args[[2]])) {
+        narm <- args[[2]]
+        args <- args[1]
+        nms <- nms[1]
+      }
+      if (length(args) == 1L && !nzchar(nms[[1]]) && is_elementwise(args[[1]])) {
+        return(list(fn = rlang::as_string(e[[1]]), narm = narm, expr = args[[1]]))
+      }
+    }
+    list(fn = "expr", expr = e)
+  })
+  exprs <- c(list(we), lapply(Filter(function(s) s$fn != "n", shapes), `[[`, "expr"))
+  comp <- lapply(exprs, rx_compile_memo)
+  if (any(vapply(comp, is_rx_no, NA))) return(NULL)
+  heads <- unique(unlist(lapply(comp, `[[`, "heads")))
+  syms <- unique(unlist(lapply(comp, `[[`, "syms")))
+  if (any(c("runif", "rnorm", "sample") %in% heads) || "n" %in% comp[[1]]$heads ||
+      ".of" %in% syms) return(NULL)
+  envs <- lapply(c(list(step$within), lapply(step$rules, `[[`, "quo")), rlang::quo_get_env)
+  if (!all(vapply(envs, identical, NA, envs[[1]]))) return(NULL)
+  list(shapes = shapes, exprs = exprs, comp = comp)
+}
+rl_nb_cross_ok <- function(step) !is.null(rl_nb_cross_shape(step))
+
+rl_prep_nb_cross <- function(step, state) {
+  sh <- planned(step, "rx_nbx", rl_nb_cross_shape(step))
+  if (is.null(sh)) return(FALSE)
+  if (length(state$relations)) return(NULL)
+  cols <- model_columns(state$groups)
+  names <- unique(unlist(lapply(sh$comp, `[[`, "syms")))
+  own <- startsWith(names, "own_") & sub("^own_", "", names) %in% cols
+  src <- ifelse(names %in% cols | own, 1L, ifelse(names %in% names(state$globals), 2L, 3L))
+  env <- rlang::quo_get_env(step$within)
+  for (nm in names[src == 3L]) if (!exists(nm, envir = env)) return(NULL)
+  if (!rx_heads_ok(unique(unlist(lapply(sh$comp, `[[`, "heads"))),
+                   abm_eval_env(step$within, state$globals))) return(NULL)
+  o <- order(src)
+  names <- names[o]
+  src <- src[o]
+  prog <- rx_new_program(sh$exprs, names, rep(-1L, length(sh$exprs)),
+                         lapply(sh$comp, function(cp) rx_bind(cp$ir, names)))
+  rl_scope_bind(list(kind = 14L, scope_match = FALSE,
+       groups = list(list(name = "", prog = prog$.ptr, cols = names[src == 1L],
+                          globs = names[src == 2L], targets = vapply(step$rules, `[[`, "", "target"),
+                          scope = names[src == 3L], ew = FALSE)),
+       cross = list(fns = vapply(sh$shapes, `[[`, "", "fn"),
+                    narm = vapply(sh$shapes, function(s) isTRUE(s$narm), NA))),
+    if (any(src == 3L)) list(env))
+}
+
 rl_prep_nb_within <- function(step, state) {
   sh <- planned(step, "rx_nb1", rl_nb1_shape(step))
   if (is.null(sh)) return(FALSE)
@@ -828,7 +897,7 @@ rl_prep_death <- function(step, state) {
                      death = list(prune = isTRUE(step$prune_edges))), envs)
 }
 
-# FR6: `abm_birth(when =)` natively, without `attach_via`: per group it applies
+# FR6: `abm_birth(when =)` natively (FR12: with `attach_via`): per group it applies
 # to, programs for `when` (over the group), `times` and `cost` (over the
 # parents) and `inherit` (over one row per offspring)
 rl_fake_rules <- function(rules) {
@@ -836,15 +905,28 @@ rl_fake_rules <- function(rules) {
             class = c("abm_rules", "abm_step"))
 }
 rl_birth_parts <- function(step) {
-  list(when = rl_fake_rules(list(list(target = ".parent", quo = step$when))),
+  list(when = if (!is.null(step$when)) rl_fake_rules(list(list(target = ".parent", quo = step$when))),
        times = if (!is.null(step$times)) rl_fake_rules(list(list(target = ".times", quo = step$times))),
        cost = if (length(step$cost)) rl_fake_rules(step$cost),
        inherit = if (length(step$inherit)) rl_fake_rules(step$inherit))
 }
 rl_birth_ok <- function(step) {
-  if (is.null(step$when) || !is.null(step$attach_via)) return(FALSE)
+  # `attach_via` from a parent or to random agents (FR12); `random_edge` grows
+  # the edges while it draws from them: R
+  if (identical(step$attach_via$from, "random_edge")) return(FALSE)
   targets <- vapply(c(step$cost, step$inherit), `[[`, "", "target")
   if (any(targets %in% c(".cell", "partner_.cell", ".id", ".group"))) return(FALSE)
+  if (is.null(step$when)) {
+    # `n =` ([birth_by_count()], FR12): each rule over the template as the rules
+    # before it left it, with the newborns' ids; natively when no rule reads an
+    # id, a group or an earlier target. `from = "parent"` is R's error there.
+    if (identical(step$attach_via$from, "parent")) return(FALSE)
+    rules <- c(step$cost, step$inherit)
+    for (i in seq_along(rules)) {
+      v <- all.vars(rlang::quo_get_expr(rules[[i]]$quo))
+      if (any(v %in% c(".id", ".group", targets[seq_len(i - 1L)]))) return(FALSE)
+    }
+  }
   quos <- c(list(step$when, step$times), lapply(c(step$cost, step$inherit), `[[`, "quo"))
   all(vapply(Filter(Negate(is.null), quos), function(q) {
     !is_rx_no(rx_compile_memo(rlang::quo_get_expr(q)))
@@ -862,10 +944,11 @@ rl_prep_birth <- function(step, state) {
   } else character()
   pcols <- sub("^partner_", "", mnames[startsWith(mnames, "partner_")])
   if (!all(pcols %in% model_columns(state$groups))) return(NULL)
-  applies <- condition_routes(step, state)
+  applies <- if (is.null(step$when)) names(state$groups)[1L]
+             else names(state$groups)[condition_routes(step, state)]
   groups <- list()
   envs <- list()
-  for (nm in names(state$groups)[applies]) {
+  for (nm in applies) {
     cols <- names(state$groups[[nm]])
     for (part in names(parts)) {
       f <- parts[[part]]
@@ -893,7 +976,13 @@ rl_prep_birth <- function(step, state) {
   nb <- rx_number_calls(list(rx_bind(rnd$ir, ".t")))
   round_prog <- planned(step, "rx_round", RxProgram$new(nb$irs, -1L, nb$fns))
   rl_scope_bind(list(kind = 9L, scope_match = FALSE, groups = groups,
-                     birth = list(round = round_prog$.ptr)), envs)
+                     birth = list(round = round_prog$.ptr,
+                                  attach = if (is.null(step$attach_via)) 0L
+                                           else if (identical(step$attach_via$from, "parent")) 1L
+                                           else 2L,
+                                  links = as.integer(step$links %||% 1L),
+                                  count = if (is.null(step$when)) as.integer(step$n) else -1L)),
+                envs)
 }
 
 # FR7: `abm_move()` to a random (or random empty) adjacent cell on the lattice
@@ -1026,7 +1115,10 @@ rl_nb_ok <- function(step) {
 # [run_neighbours()]'s set-up and [neighbour_fast()]'s index for these edges and
 # this population, as R would leave them in `state$nb_cache`
 rl_prep_neighbours <- function(step, state, slot = NULL) {
-  if (!is.null(step$within)) return(rl_prep_memo(step, state, slot, rl_prep_nb_within))
+  if (!is.null(step$within)) {
+    return(rl_prep_memo(step, state, slot, if (rl_nb_within_ok(step)) rl_prep_nb_within
+                                           else rl_prep_nb_cross))
+  }
   if (!is.null(step$where)) return(rl_prep_nb_where(step, state))
   if (!planned(step, "rx_nbshape", rl_nb_ok(step))) return(FALSE)
   if (is.null(state$edges) || length(state$relations) || !is.null(state$stale_draws) ||

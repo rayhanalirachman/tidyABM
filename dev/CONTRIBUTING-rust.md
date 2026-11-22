@@ -336,6 +336,17 @@ the R engine's own `run_step()`. Rules:
   stacked, the target and `.key` bound per key as input source 4; the named
   vector built as `out[[key]] <- val` builds it (`gby_assign()`: logical <
   integer < double promotion, strings only with strings).
+* Births (FR12): `attach_via` from a parent or to random agents
+  (`attach_draws()`, after every group's births, one RNG scope; edges of
+  `from`/`to` only, extended as `vec_rbind()` does); `n =` (`exec_birth_count()`:
+  templates drawn from the first group, rules over the template rows when none
+  reads an id, a group or an earlier target). Deaths drop the dead's edges
+  (`slice_tibble()`). `random_edge` stays R.
+* Cross-product `within` (kind 14, `exec_cross()`): per focal agent, `within`
+  over all candidates (`own_` columns as one value), then each rule over the
+  kept rows: `neighbour_aggregate()`'s shapes on logicals/integers (doubles go to
+  R: `rowsum()`'s accumulation is not pinned down on x86), any other formula as
+  `summarise()` evaluates it. `abs()` is native (FR12).
 * `pkg::f` heads (`dplyr::case_when()`, `stats::runif()`) compile as `f` when
   they are the very function the IR takes for `f` (`rx_ns_head()`); their
   scope is not checked (the call names its function).

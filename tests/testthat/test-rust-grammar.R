@@ -433,3 +433,78 @@ test_that("FR7: abm_tell(to = <id>) is native for every resolve it takes", {
                                                error = identity))
   expect_identical(err("rust"), err("r"))
 })
+
+test_that("FR8: abm_sequential() is native and bit-identical to R", {
+  m <- abm_setup(agents = abm_agents(
+    n = 40, w = ~runif(n, -1, 1), k = ~sample(1:5, n, TRUE), q = 0,
+    key = ~c(NA, -0, 0, 0, sample(c(1, 2, 2.5), n - 4, TRUE)),
+    s = ~sample(c("a", "b"), n, TRUE), f = FALSE),
+    globals = list(pool = 3, cnt = 0L, last = NA_character_), seed = 3)
+  cases <- list(
+    # a later rule and the next agent read what was written; a global cascade
+    cascade = abm_sequential(q ~ if_else(w < 0 & pool > 0, pmin(-w, pool), 0),
+                             pool ~ pool - q, w ~ w + q),
+    # base if() (lazy: draws only on the branch taken), runif(1), rnorm(1, a, b)
+    draws   = abm_sequential(f ~ runif(1) < 0.5,
+                             w ~ if (f) w + runif(1, 0, 0.1) else rnorm(1, w, 0.01),
+                             q ~ as.numeric(f) + as.integer(k > 2)),
+    # writes cast to the column's type (integer into a double column, logical
+    # into an integer one); a global that changes type; strings
+    casts   = abm_sequential(q ~ k, k ~ f, cnt ~ cnt + 1L, pool ~ cnt * 0.5,
+                             last ~ s, s ~ if (f) NA else last),
+    # .order: ties (-0 and 0) in place, NA sits out
+    ordered = abm_sequential(cnt ~ cnt + 1L, q ~ cnt, .order = key),
+    by_draw = abm_sequential(q ~ q + 1, pool ~ pool + q, .order = runif(n()))
+  )
+  for (nm in names(cases)) {
+    go <- abm_go(cases[[nm]], abm_rules(f ~ !f, w ~ w * 0.9))
+    got <- expect_native_agree(m, go, paste("seq", nm), ticks = 4)
+    expect(got$stats[[2]] == 0L && got$stats[[4]] == 0L,
+           paste("seq", nm, "not fully native:", paste(got$stats, collapse = " ")))
+  }
+  # two groups, each with the rules its columns route to it
+  two <- abm_setup(agents = list(
+    buyers = abm_agents(n = 8, v = ~runif(n), bid = 0),
+    sellers = abm_agents(n = 8, c = ~runif(n), ask = 0)),
+    globals = list(best = -Inf, who = NA_integer_), seed = 4)
+  go <- abm_go(abm_sequential(bid ~ runif(1, 0, v), best ~ if (bid > best) bid else best,
+                              who ~ if (bid >= best) .id else who,
+                              ask ~ runif(1, c, 1), best ~ if (ask < best) ask * 0.5 else best))
+  got <- expect_native_agree(two, go, "seq two groups", ticks = 4)
+  expect(got$stats[[4]] == 0L, paste("seq two groups not native:", paste(got$stats, collapse = " ")))
+  # a standing match: partner reads and writes, live within the queue
+  shop <- abm_setup(agents = list(
+    hh = abm_agents(n = 12, cash = ~runif(n, 1, 5), want = ~runif(n, 1, 3), got = 0),
+    firm = abm_agents(n = 3, inv = ~runif(n, 2, 6), price = ~runif(n, 0.5, 1.5), sold = 0)),
+    seed = 6)
+  go <- abm_go(
+    abm_match(pair = "one_of", eligible = .group == "hh", among = .group == "firm"),
+    abm_sequential(got ~ pmin(want, cash / partner_price, partner_inv),
+                   cash ~ cash - got * partner_price,
+                   partner_inv ~ partner_inv - got,
+                   partner_sold ~ partner_sold + got * partner_price),
+    abm_rules(inv ~ inv + 1, .scope = "population"))
+  got <- expect_native_agree(shop, go, "seq partner", ticks = 4)
+  expect(got$stats[[2]] == 0L, paste("seq partner declined:", paste(got$stats, collapse = " ")))
+  # pairs within one group, roles read
+  pairs <- abm_setup(agents = abm_agents(n = 11, x = ~runif(n), y = 0), seed = 7)
+  go <- abm_go(abm_match(pair = "random", role = list(a = TRUE, b = TRUE)),
+               abm_sequential(y ~ if_else(.role == "a", partner_x, -partner_x),
+                              partner_x ~ partner_x + 0.1, x ~ coalesce(x * 0.5, 0)))
+  expect_native_agree(pairs, go, "seq pairs", ticks = 4)
+  # declined at run time (a write that would change a column's type), compiled
+  # nowhere (a new column)
+  for (nm in c("widen", "newcol")) {
+    st <- switch(nm, widen = abm_sequential(k ~ k + 0.5), newcol = abm_sequential(z ~ w * 2))
+    expect_native_agree(m, abm_go(st, abm_rules(f ~ !f)), paste("seq", nm), ticks = 2,
+                        native = FALSE)
+  }
+  # R's errors: two values, `if` without `else` (NULL), an NA condition
+  for (st in list(abm_sequential(q ~ c(w, w)), abm_sequential(q ~ if (f) 1),
+                  abm_sequential(q ~ if (NA) 1 else 2))) {
+    e1 <- abm_go(st)
+    err <- function(e) conditionMessage(tryCatch(run_in(e, m, e1, ticks = 1, seed = 1),
+                                                 error = identity))
+    expect_identical(err("rust"), err("r"))
+  }
+})

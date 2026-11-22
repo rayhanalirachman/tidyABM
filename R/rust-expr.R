@@ -18,9 +18,11 @@
 # dplyr's `coalesce()`, `%in%` (the engine's `in_rowwise()` with an atomic
 # table), `sample(x, size, replace = TRUE)`, `runif(n(), a, b)`, `rnorm(n(), a,
 # b)`, `x[i]` (positive indices), and the base functions in `rx_call_spec`
-# (`^`, `abs`, `round`, `cumsum`, `min`/`max`, `%%`, `as.integer`, ...), which R
-# itself computes over the evaluated arguments. Every function name must find the
-# standard function from the formula's scope.
+# (`^`, `abs`, `round`, `cumsum`, `min`/`max`, `%%`, ...), which R itself computes
+# over the evaluated arguments. FR8: base `if (c) t else f` (lazy, one condition
+# value), `runif(1, a, b)` / `rnorm(1, a, b)` (one draw), and `as.integer()` /
+# `as.numeric()` / `as.double()` of numbers, computed natively. Every function name
+# must find the standard function from the formula's scope.
 
 # The functions the IR takes, and what each name must find
 rx_fns <- function() {
@@ -34,7 +36,9 @@ rx_fns <- function() {
     if_else = dplyr::if_else, case_when = dplyr::case_when,
     # FR3
     c = base::c, coalesce = dplyr::coalesce, "%in%" = in_rowwise, sample = base::sample,
-    rnorm = stats::rnorm, "[" = base::`[`), rx_call_fns())
+    rnorm = stats::rnorm, "[" = base::`[`,
+    # FR8
+    "if" = base::`if`), rx_call_fns())
 }
 
 # Base functions R itself computes over the evaluated (numeric) arguments: their
@@ -127,6 +131,11 @@ rx_compile <- function(expr) {
       }
       return(c(list("if_else"), lapply(args, walk)))
     }
+    if (fn == "if") {
+      # base `if (c) t else f`: lazy, one condition value (FR8; R errs otherwise)
+      if (length(args) != 3L || any(nzchar(nms))) no("`if` without `else`")
+      return(c(list("if"), lapply(args, walk)))
+    }
     if (fn %in% rx_fr3_fns) {
       r <- rx_walk_fr3(fn, e, args, nms, walk, no, function(h) heads <<- c(heads, h))
       if (!is.null(r)) return(r)
@@ -170,10 +179,20 @@ rx_walk_fr3 <- function(fn, e, args, nms, walk, no, add_head) {
       }
       return(list("sample", walk(m$x), walk(m$size)))
     }
-    if (!identical(m$n, quote(n()))) no(paste0("`", fn, "()` whose first argument is not `n()`"))
-    add_head("n")
+    # `n()` draws one per row; a literal 1 (FR8) draws one value
+    one <- is.numeric(m$n) && length(m$n) == 1L && is.null(attributes(m$n)) &&
+      isTRUE(m$n == 1)
+    if (!one && !identical(m$n, quote(n()))) {
+      no(paste0("`", fn, "()` whose first argument is not `n()` or 1"))
+    }
+    if (!one) add_head("n")
     p <- if (fn == "runif") c("min", "max") else c("mean", "sd")
     if (!all(names(m) %in% c("n", p))) no(paste0("`", fn, "()` with other arguments"))
+    if (one) {
+      a <- if (is.null(m[[p[1]]])) list("const", 0) else walk(m[[p[1]]])
+      b <- if (is.null(m[[p[2]]])) list("const", 1) else walk(m[[p[2]]])
+      return(list(if (fn == "runif") "runif_ab1" else "rnorm_ab1", a, b))
+    }
     if (fn == "runif" && length(m) == 1L) return(list("runif"))
     a <- if (is.null(m[[p[1]]])) list("const", if (fn == "runif") 0 else 0) else walk(m[[p[1]]])
     b <- if (is.null(m[[p[2]]])) list("const", 1) else walk(m[[p[2]]])
@@ -187,6 +206,10 @@ rx_walk_fr3 <- function(fn, e, args, nms, walk, no, add_head) {
       no("`c()` of other than literal values")
     }
     return(list("constv", do.call(base::c, args)))
+  }
+  if (fn %in% c("as.numeric", "as.double", "as.integer") && length(args) == 1L) {
+    # numbers coerced natively (FR8): no R call per evaluation
+    return(list(if (fn == "as.integer") "as_int" else "as_dbl", walk(args[[1]])))
   }
   if (fn == "coalesce") {
     if (!length(args)) no("`coalesce()` of nothing")

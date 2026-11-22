@@ -146,20 +146,27 @@ fn decode(x: SEXP) -> savvy::Result<Node> {
         "runif_ab" => Node::Rand(false, boxed(1)?, boxed(2)?),
         "rnorm_ab" => Node::Rand(true, boxed(1)?, boxed(2)?),
         "[" => Node::Index(boxed(1)?, boxed(2)?),
+        "if" => Node::If(boxed(1)?, boxed(2)?, boxed(3)?),
+        "runif_ab1" => Node::Draw1(false, boxed(1)?, boxed(2)?),
+        "rnorm_ab1" => Node::Draw1(true, boxed(1)?, boxed(2)?),
+        "as_int" => Node::Cast(true, boxed(1)?),
+        "as_dbl" => Node::Cast(false, boxed(1)?),
         other => return Err(bad(&format!("unknown operator `{other}`"))),
     })
 }
 
 fn draws(n: &Node) -> bool {
     match n {
-        Node::Runif | Node::Sample(..) | Node::Rand(..) => true,
+        Node::Runif | Node::Sample(..) | Node::Rand(..) | Node::Draw1(..) => true,
         Node::Const(_) | Node::Input(_) | Node::N | Node::ConstVec(_) => false,
-        Node::Unary(_, x) | Node::Math(_, x) | Node::Reduce(_, x) | Node::ReduceNaRm(_, x) => {
-            draws(x)
-        }
+        Node::Unary(_, x)
+        | Node::Math(_, x)
+        | Node::Reduce(_, x)
+        | Node::ReduceNaRm(_, x)
+        | Node::Cast(_, x) => draws(x),
         Node::Bin(_, a, b) | Node::In(a, b) | Node::Index(a, b) => draws(a) || draws(b),
         Node::Call(_, a) | Node::Coalesce(a) => a.iter().any(draws),
-        Node::IfElse(a, b, c) => draws(a) || draws(b) || draws(c),
+        Node::IfElse(a, b, c) | Node::If(a, b, c) => draws(a) || draws(b) || draws(c),
         Node::CaseWhen(p, d) => {
             p.iter().any(|(c, v)| draws(c) || draws(v)) || d.as_deref().is_some_and(draws)
         }
@@ -655,6 +662,55 @@ impl RxProgram {
             }
             other => other,
         })
+    }
+}
+
+/// One host held across many evaluations of several programs (FR8: a sequential
+/// step's agents, one at a time), inside one RNG scope: R's generator is loaded
+/// once for the whole step rather than per evaluation.
+pub(crate) struct Evaluator<'r> {
+    h: RHost<'r>,
+}
+
+impl<'r> Evaluator<'r> {
+    pub(crate) fn new(rng: Option<&'r mut RRng>) -> Self {
+        // SAFETY: reading statics of R's (its NA_real_ and NA_character_).
+        let (na_real, na_str) = unsafe { (rapi::R_NaReal, rapi::R_NaString as usize) };
+        Evaluator {
+            h: RHost {
+                rng,
+                fns: &[],
+                na_real,
+                na_str,
+                err: None,
+            },
+        }
+    }
+
+    /// The generator, for draws made outside a program (a shuffle).
+    pub(crate) fn rng(&mut self) -> Option<&mut RRng> {
+        self.h.rng.as_deref_mut()
+    }
+
+    /// Rule `k` of `prog` over `n` rows of `ins`: as [`RxProgram::compute_one`]
+    /// (a result of the wrong length declines; an R condition is the outer `Err`).
+    pub(crate) fn eval<'a>(
+        &mut self,
+        prog: &'r RxProgram,
+        k: usize,
+        ins: &[Vals<'a>],
+        n: usize,
+    ) -> savvy::Result<Result<Vals<'a>, Decline>> {
+        let rule = prog.rules.get(k).ok_or_else(|| bad("rule out of range"))?;
+        self.h.fns = &prog.fns;
+        match ce::eval(rule, ins, n, &mut self.h) {
+            Ok(v) if v.len() == n || v.len() == 1 => Ok(Ok(v)),
+            Ok(_) => Ok(Err(Decline("a result of the wrong length"))),
+            Err(d) => match self.h.err.take() {
+                Some(e) => Err(e),
+                None => Ok(Err(d)),
+            },
+        }
     }
 }
 

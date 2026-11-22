@@ -143,6 +143,13 @@ pub enum Node {
     Rand(bool, Box<Node>, Box<Node>),
     /// `x[i]`, `i` positive whole numbers or `NA`
     Index(Box<Node>, Box<Node>),
+    /// base `if (c) t else f`: one value of `c`, then only the branch taken (FR8)
+    If(Box<Node>, Box<Node>, Box<Node>),
+    /// `runif(1, a, b)` (`false`) / `rnorm(1, a, b)` (`true`): one draw whatever
+    /// the number of rows (FR8)
+    Draw1(bool, Box<Node>, Box<Node>),
+    /// `as.integer(x)` (`true`) / `as.numeric(x)`, `as.double(x)` of numbers (FR8)
+    Cast(bool, Box<Node>),
 }
 
 /// What the evaluator needs from R.
@@ -384,6 +391,76 @@ pub fn eval<'a>(node: &Node, inputs: &[Vals<'a>], n: usize, h: &mut dyn Host) ->
             let i = eval(i, inputs, n, h)?;
             index(x, &i, h)
         }
+        Node::If(..) | Node::Draw1(..) | Node::Cast(..) => eval_fr8(node, inputs, n, h),
+    }
+}
+
+/// FR8's nodes, out of line: `eval()` is the hot recursion of every compiled
+/// rule, and its frame and inlining stay as they were without them.
+#[inline(never)]
+fn eval_fr8<'a>(node: &Node, inputs: &[Vals<'a>], n: usize, h: &mut dyn Host) -> R<Vals<'a>> {
+    match node {
+        Node::If(c, t, f) => {
+            if if_cond(&eval(c, inputs, n, h)?)? {
+                eval(t, inputs, n, h)
+            } else {
+                eval(f, inputs, n, h)
+            }
+        }
+        Node::Draw1(norm, a, b) => {
+            let a = scalar_dbl(eval(a, inputs, n, h)?, h)?;
+            let b = scalar_dbl(eval(b, inputs, n, h)?, h)?;
+            let v = h.rand2(*norm, a, b, 1)?;
+            if v.iter().any(|x| x.is_nan()) {
+                return Err(Decline("runif()/rnorm() made NaN (R warns)"));
+            }
+            Ok(Vals::Dbl(Cow::Owned(v)))
+        }
+        Node::Cast(to_int, x) => cast_num(*to_int, eval(x, inputs, n, h)?, h),
+        _ => Err(Decline("not an FR8 node")),
+    }
+}
+
+/// The condition of base `if`: one logical or number, not `NA` (R errs on
+/// anything else, or reads strings such as `"TRUE"`: both left to R).
+fn if_cond(c: &Vals) -> R<bool> {
+    let bad = Err(Decline("an if() condition that is not one TRUE or FALSE"));
+    if c.len() != 1 {
+        return bad;
+    }
+    match c {
+        Vals::Lgl(x) | Vals::Int(x) if x[0] != NA_INT => Ok(x[0] != 0),
+        Vals::Dbl(x) if !x[0].is_nan() => Ok(x[0] != 0.0),
+        _ => bad,
+    }
+}
+
+/// `as.integer(x)` / `as.numeric(x)` of logicals, integers or doubles, as R
+/// coerces them (`NaN` and `NA` become `NA`; a double outside the integer range,
+/// where R warns, declines); strings decline.
+fn cast_num<'a>(to_int: bool, x: Vals<'a>, h: &dyn Host) -> R<Vals<'a>> {
+    match (to_int, x) {
+        (false, Vals::Dbl(v)) => Ok(Vals::Dbl(v)),
+        (false, Vals::Int(v) | Vals::Lgl(v)) => {
+            Ok(Vals::Dbl(Cow::Owned(int_to_dbl(&v, h.na_real()))))
+        }
+        (true, Vals::Int(v) | Vals::Lgl(v)) => Ok(Vals::Int(v)),
+        (true, Vals::Dbl(v)) => {
+            let mut out = Vec::with_capacity(v.len());
+            for &d in v.iter() {
+                if d.is_nan() {
+                    out.push(NA_INT);
+                    continue;
+                }
+                let t = d.trunc();
+                if !(-2147483647.0..=2147483647.0).contains(&t) {
+                    return Err(Decline("as.integer() out of range (R warns)"));
+                }
+                out.push(t as i32);
+            }
+            Ok(Vals::Int(Cow::Owned(out)))
+        }
+        (_, Vals::Str(_)) => Err(Decline("as.integer()/as.numeric() of strings")),
     }
 }
 
@@ -1244,6 +1321,68 @@ mod tests {
                 .map(|u| (u * dn).floor() as i32 + 1)
                 .collect())
         }
+    }
+
+    #[test]
+    fn if_draw1_cast() {
+        let mut h = Plain {
+            draws: vec![0.25, 0.75],
+        };
+        let k = |x: Konst| Box::new(Node::Const(x));
+        // if (FALSE) runif(1) else 2: the branch not taken does not draw
+        let lazy = Node::If(
+            k(Konst::Lgl(0)),
+            Box::new(Node::Draw1(false, k(Konst::Dbl(0.0)), k(Konst::Dbl(1.0)))),
+            k(Konst::Int(2)),
+        );
+        assert!(matches!(eval(&lazy, &[], 5, &mut h).unwrap(), Vals::Int(v) if v[..] == [2]));
+        assert_eq!(
+            h.draws.len(),
+            2,
+            "if() drew from the branch it did not take"
+        );
+        // one draw whatever n is
+        let d = Node::Draw1(false, k(Konst::Dbl(0.0)), k(Konst::Dbl(4.0)));
+        assert!(matches!(eval(&d, &[], 5, &mut h).unwrap(), Vals::Dbl(v) if v[..] == [1.0]));
+        // NA condition, two-value condition: R errs
+        assert!(eval(
+            &Node::If(k(Konst::Lgl(NA_INT)), k(Konst::Int(1)), k(Konst::Int(2))),
+            &[],
+            1,
+            &mut h
+        )
+        .is_err());
+        let two = Vals::Lgl(Cow::Owned(vec![1, 0]));
+        assert!(eval(
+            &Node::If(Box::new(Node::Input(0)), k(Konst::Int(1)), k(Konst::Int(2))),
+            &[two],
+            2,
+            &mut h
+        )
+        .is_err());
+        // casts
+        let x = Vals::Dbl(Cow::Owned(vec![-1.7, 2.9, f64::NAN, na_real()]));
+        let got = eval(&Node::Cast(true, Box::new(Node::Input(0))), &[x], 4, &mut h).unwrap();
+        assert!(matches!(got, Vals::Int(v) if v[..] == [-1, 2, NA_INT, NA_INT]));
+        let big = Vals::Dbl(Cow::Owned(vec![3e9]));
+        assert!(eval(
+            &Node::Cast(true, Box::new(Node::Input(0))),
+            &[big],
+            1,
+            &mut h
+        )
+        .is_err());
+        let l = Vals::Lgl(Cow::Owned(vec![1, NA_INT]));
+        let got = eval(
+            &Node::Cast(false, Box::new(Node::Input(0))),
+            &[l],
+            2,
+            &mut h,
+        )
+        .unwrap();
+        assert!(
+            matches!(got, Vals::Dbl(v) if v[0] == 1.0 && v[1].to_bits() == na_real().to_bits())
+        );
     }
 
     #[test]

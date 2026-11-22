@@ -367,3 +367,35 @@ abm_measures <- function(x) {
   }
   attr(x, "measures")
 }
+
+#' Runs `1:n` of a sweep on a pool of R sessions (where R cannot fork)
+#'
+#' The workers are set up as the caller's session is: its attached packages,
+#' its `tidyABM.*` options and its global workspace, which formulas written at
+#' the console close over (a formula's environment is sent as a reference to
+#' the global one, not by value). Each run carries its own seed, so the results
+#' are those of `cores = 1`. A run's error comes back as a `try-error` holding
+#' its condition, as from [parallel::mclapply()]; a worker lost outright (its
+#' session killed) makes its runs `NULL`.
+#' @noRd
+run_psock <- function(n, one_run, cores) {
+  cl <- parallel::makePSOCKcluster(min(cores, n))
+  on.exit(parallel::stopCluster(cl), add = TRUE)
+  opts <- options()
+  opts <- opts[startsWith(names(opts), "tidyABM.")]
+  parallel::clusterCall(cl, function(pkgs, opts) {
+    for (p in rev(pkgs)) suppressPackageStartupMessages(library(p, character.only = TRUE))
+    loadNamespace("tidyABM")
+    options(opts)
+    NULL
+  }, (.packages()), opts)
+  ws <- ls(globalenv(), all.names = TRUE)
+  ws <- ws[ws != ".Random.seed"]
+  if (length(ws)) parallel::clusterExport(cl, ws, envir = globalenv())
+  tryCatch(
+    parallel::parLapply(cl, seq_len(n), function(i) {
+      tryCatch(one_run(i), error = function(e) structure(conditionMessage(e), class = "try-error",
+                                                         condition = e))
+    }),
+    error = function(e) vector("list", n))
+}

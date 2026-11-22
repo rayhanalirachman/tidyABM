@@ -79,3 +79,10 @@ expect_engines_agree <- function(..., what = "model") {
   }
   invisible(ref)
 }
+
+# tidyABM loaded from source by pkgload (a PSOCK worker would load the
+# installed copy instead)
+# (pkgload marks a namespace it loaded with `.__DEVTOOLS__`)
+dev_loaded <- function() {
+  exists(".__DEVTOOLS__", envir = asNamespace("tidyABM"), inherits = FALSE)
+}

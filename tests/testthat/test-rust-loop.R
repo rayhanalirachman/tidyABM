@@ -194,6 +194,20 @@ test_that("native steps keep every new R object protected (gctorture)", {
   got5 <- tryCatch(run_in("rust", mt, go5, ticks = 2, seed = 3), error = identity)
   gctorture(FALSE)
   expect_identical(got5, ref5)
+  # FR8: native sequential (columns of two groups, partner writes, globals, a
+  # string column and global, `.order`)
+  ms <- abm_setup(agents = list(hh = abm_agents(n = 5, c = ~runif(n, 1, 3), g = 0, s = "x"),
+                                firm = abm_agents(n = 2, inv = 4, p = ~runif(n))),
+                  globals = list(tot = 0, who = "none"), seed = 5)
+  go6 <- abm_go(abm_match(pair = "one_of", eligible = .group == "hh", among = .group == "firm"),
+                abm_sequential(g ~ pmin(c, partner_inv), partner_inv ~ partner_inv - g,
+                               tot ~ tot + g, who ~ s, s ~ if (g > 1) "y" else who),
+                abm_sequential(c ~ c + runif(1), .order = c))
+  ref6 <- run_in("r", ms, go6, ticks = 2, seed = 3)
+  gctorture(TRUE)
+  got6 <- tryCatch(run_in("rust", ms, go6, ticks = 2, seed = 3), error = identity)
+  gctorture(FALSE)
+  expect_identical(got6, ref6)
 })
 
 test_that("FR9b: measures and checks compiled natively give R's tables and errors", {

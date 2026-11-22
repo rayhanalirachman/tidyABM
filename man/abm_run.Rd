@@ -66,8 +66,10 @@ never turns up in a rendered page. \code{TRUE} forces it on from the first tick,
 \item{cores}{How many CPU cores share the runs: a whole number, or \code{"max"}
 for all of them. Each run is forked into its own process with
 \code{\link[parallel:mclapply]{parallel::mclapply()}}, and the result is identical to \code{cores = 1} (the
-default). Windows cannot fork, so there it always runs on one core, and a
-parallel sweep shows no progress bar.}
+default). Windows cannot fork: there the runs go to a pool of R sessions
+started for the sweep (\code{\link[parallel:makePSOCKcluster]{parallel::makePSOCKcluster()}}), each with the
+caller's attached packages, \code{tidyABM} options and global workspace, which
+costs a second or two to start. A parallel sweep shows no progress bar.}
 }
 \value{
 An \code{abm_result}: a tibble of one row per agent per tick, carrying

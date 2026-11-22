@@ -342,8 +342,12 @@ struct GroupPlan {
     /// per rule in `order`: elementwise (else, under a standing match of a
     /// match-scope step, evaluated once per pair or group, `.group_id`)
     rew: Vec<bool>,
-    /// a birth step's program: 0 `when`, 1 `times`, 2 `cost`, 3 `inherit`
+    /// a birth step's program: 0 `when`, 1 `times`, 2 `cost`, 3 `inherit`; 4 a
+    /// sequential step's `.order`
     part: u8,
+    /// a sequential step (FR8): per rule, the input its value replaces for the
+    /// rules after it (-1 none)
+    wslot: Vec<i32>,
 }
 
 /// The R closures of a step whose rules R and Rust share (`rl_rule_fns()`).
@@ -371,6 +375,8 @@ struct Plan {
     /// `abm_tell()` (kind 11): `when` given, and `.resolve` (0 last, 1 first,
     /// 2 sum, 3 mean, 4 error)
     tell: Option<(bool, u8)>,
+    /// `abm_sequential()` (kind 12): `.order` given
+    seq: Option<bool>,
     /// `.by` rules: the key column's name
     by: Option<SEXP>,
     nb: Option<NbPlan>,
@@ -576,11 +582,13 @@ fn parse_plan(desc: H) -> savvy::Result<Plan> {
                 Some(b"times") => 1,
                 Some(b"cost") => 2,
                 Some(b"inherit") => 3,
+                Some(b"order") => 4,
                 _ => 0,
             },
             None => 0,
         };
         groups.push(GroupPlan {
+            wslot: ints(b"wslot")?,
             part,
             rew,
             mcols,
@@ -761,6 +769,18 @@ fn parse_plan(desc: H) -> savvy::Result<Plan> {
     } else {
         None
     };
+    let seq = if kind == 12 {
+        let x = field(d, b"seq")?;
+        let o = field(x, b"order")?;
+        // SAFETY: reading a type tag, then a logical of length 1.
+        let lg = unsafe { rapi::TYPEOF(o) } == rapi::LGLSXP && len(o) == 1;
+        // SAFETY: as above.
+        Some(lg && unsafe { *rapi::LOGICAL_RO(o) } == 1)
+    } else {
+        None
+    };
+    // a sequential step without `.order` shuffles its agents
+    let draws = draws || seq == Some(false);
     let birth = if kind == 9 {
         let x = field(d, b"birth")?;
         let ptr = field(x, b"round")?;
@@ -791,6 +811,7 @@ fn parse_plan(desc: H) -> savvy::Result<Plan> {
         None
     };
     Ok(Plan {
+        seq,
         tell,
         mv,
         mixed,
@@ -3694,6 +3715,582 @@ fn exec_tell(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
     }
 }
 
+// ---- abm_sequential (FR8) ----------------------------------------------------
+
+/// A column of a sequential step's working store: loaded once per step, written
+/// in place agent by agent, and written back when `dirty`.
+struct SeqCol {
+    name: SEXP,
+    vals: Vals<'static>,
+    dirty: bool,
+}
+
+/// Where a sequential rule writes ([run_sequential()]'s order of cases): the
+/// partner's row (a standing match), a global, else a column of the agent's own
+/// group (an index into its store).
+#[derive(Clone, Copy)]
+enum SeqTarget {
+    Partner(usize),
+    Global(usize),
+    Own(usize),
+}
+
+/// A match column a sequential rule reads, per agent.
+#[derive(Clone, Copy)]
+enum SeqMatchIn {
+    Partner,
+    Role,
+    GroupId,
+    /// `partner_<col>`: an index into the partner columns
+    Col(usize),
+}
+
+/// One group's rules, resolved against the step's stores.
+struct SeqGroup<'s> {
+    q: usize,
+    cols: Vec<usize>,
+    globs: Vec<usize>,
+    scope: Vec<Vals<'s>>,
+    mcols: Vec<SeqMatchIn>,
+    targets: Vec<SeqTarget>,
+    wslot: Vec<Option<usize>>,
+}
+
+/// Column `name` of group `j` in the store (loaded on first use): `Ok(Some)` its
+/// index, `Ok(None)` when the group lacks it, `Err(())` (decline) when it is not
+/// a bare vector of a type the evaluator takes.
+fn seq_col(
+    groups: SEXP,
+    store: &mut [Vec<SeqCol>],
+    j: usize,
+    name: &[u8],
+) -> savvy::Result<Result<Option<usize>, ()>> {
+    if let Some(k) = store[j].iter().position(|c| bytes(c.name) == name) {
+        return Ok(Ok(Some(k)));
+    }
+    let g = elt(groups, j);
+    let names = names_of(g)?;
+    let Some(ci) = names.iter().position(|&c| same_bytes(c, name)) else {
+        return Ok(Ok(None));
+    };
+    let col = elt(g, ci);
+    if !all_bare(&[col])? {
+        return Ok(Err(()));
+    }
+    let Some(v) = expr::vals_of(col, false)? else {
+        return Ok(Err(()));
+    };
+    store[j].push(SeqCol {
+        name: names[ci],
+        vals: expr::owned(v),
+        dirty: false,
+    });
+    Ok(Ok(Some(store[j].len() - 1)))
+}
+
+/// Element `i` of `v`, borrowed.
+fn seq_at<'a>(v: &'a Vals<'static>, i: usize) -> Vals<'a> {
+    use std::borrow::Cow;
+    match v {
+        Vals::Lgl(x) => Vals::Lgl(Cow::Borrowed(&x[i..=i])),
+        Vals::Int(x) => Vals::Int(Cow::Borrowed(&x[i..=i])),
+        Vals::Dbl(x) => Vals::Dbl(Cow::Borrowed(&x[i..=i])),
+        Vals::Str(x) => Vals::Str(Cow::Borrowed(&x[i..=i])),
+    }
+}
+
+/// [write_at()]'s value (one) for a column of `col`'s type: itself when of that
+/// type, cast when vctrs' common type of the two is the column's own; `None`
+/// (decline) when the write would change the column's type.
+fn seq_cast(col: &Vals, v: &Vals) -> Option<Vals<'static>> {
+    use std::borrow::Cow;
+    use tidyabm_core::sample::NA_INT;
+    // SAFETY: reading statics of R's.
+    let (na_real, na_str) = unsafe { (rapi::R_NaReal, rapi::R_NaString as usize) };
+    Some(match (col, v) {
+        (Vals::Dbl(_), Vals::Dbl(x)) => Vals::Dbl(Cow::Owned(vec![x[0]])),
+        (Vals::Dbl(_), Vals::Int(x) | Vals::Lgl(x)) => {
+            Vals::Dbl(Cow::Owned(vec![if x[0] == NA_INT {
+                na_real
+            } else {
+                f64::from(x[0])
+            }]))
+        }
+        (Vals::Int(_), Vals::Int(x) | Vals::Lgl(x)) => Vals::Int(Cow::Owned(vec![x[0]])),
+        (Vals::Lgl(_), Vals::Lgl(x)) => Vals::Lgl(Cow::Owned(vec![x[0]])),
+        (Vals::Str(_), Vals::Str(x)) => Vals::Str(Cow::Owned(vec![x[0]])),
+        (Vals::Str(_), Vals::Lgl(x)) if x[0] == NA_INT => Vals::Str(Cow::Owned(vec![na_str])),
+        _ => return None,
+    })
+}
+
+/// `col[[i]] <- v[[1]]`, `v` of `col`'s type ([`seq_cast`]).
+fn seq_set(col: &mut Vals<'static>, i: usize, v: &Vals) {
+    match (col, v) {
+        (Vals::Dbl(c), Vals::Dbl(x)) => c.to_mut()[i] = x[0],
+        (Vals::Int(c), Vals::Int(x)) | (Vals::Lgl(c), Vals::Lgl(x)) => c.to_mut()[i] = x[0],
+        (Vals::Str(c), Vals::Str(x)) => c.to_mut()[i] = x[0],
+        _ => {}
+    }
+}
+
+/// The standing match's columns `.id`, `.partner`, `.role`, `.group_id`:
+/// `Ok(None)` without one, `Ok(Some(None))` for one the step cannot read.
+#[allow(clippy::type_complexity)]
+fn seq_match<'a>(
+    st: SEXP,
+) -> savvy::Result<Option<Option<(&'a [i32], &'a [i32], &'a [SEXP], &'a [i32])>>> {
+    let Some(mi) = find_str(st, b"match")? else {
+        return Ok(None);
+    };
+    let ms = elt(st, mi);
+    if ms == rapi_nil() {
+        return Ok(None);
+    }
+    let Some(m) = find_str(ms, b"match")?.map(|j| elt(ms, j)) else {
+        return Ok(Some(None));
+    };
+    let col =
+        |nm: &[u8]| -> savvy::Result<Option<SEXP>> { Ok(find_str(m, nm)?.map(|j| elt(m, j))) };
+    let (Some(id), Some(pt), Some(role), Some(gid)) = (
+        col(b".id")?,
+        col(b".partner")?,
+        col(b".role")?,
+        col(b".group_id")?,
+    ) else {
+        return Ok(Some(None));
+    };
+    // SAFETY: reading a type tag.
+    if unsafe { rapi::TYPEOF(role) } != STRSXP {
+        return Ok(Some(None));
+    }
+    let (Some(id), Some(pt), Some(gid)) = (
+        store::numbers_of::<i32>(id, INTSXP)?,
+        store::numbers_of::<i32>(pt, INTSXP)?,
+        store::numbers_of::<i32>(gid, INTSXP)?,
+    ) else {
+        return Ok(Some(None));
+    };
+    let role = store::chars_of(role)?;
+    if pt.len() != id.len() || role.len() != id.len() || gid.len() != id.len() {
+        return Ok(Some(None));
+    }
+    Ok(Some(Some((id, pt, role, gid))))
+}
+
+/// `abm_sequential()` natively ([run_sequential()]): the agents in a shuffled
+/// order (or by `.order`), each evaluating its group's rules on its own row, a
+/// later rule reading what an earlier one wrote, and the next agent reading the
+/// columns and globals as the agents before it left them. Every write is checked
+/// as [write_at()] makes it; anything else declines and the step is replayed on
+/// the R path.
+fn exec_seq(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
+    use std::borrow::Cow;
+    use tidyabm_core::sample::NA_INT;
+    let has_order = plan.seq.ok_or_else(|| bad("no seq"))?;
+    if let Some(ri) = find_str(st, b"relations")? {
+        if len(elt(st, ri)) > 0 {
+            return decline("a relation");
+        }
+    }
+    let gi = find_str(st, b"groups")?.ok_or_else(|| bad("no groups"))?;
+    let li = find_str(st, b"globals")?.ok_or_else(|| bad("no globals"))?;
+    let groups = elt(st, gi);
+    let gl = elt(st, li);
+    // SAFETY: reading a type tag.
+    if unsafe { rapi::TYPEOF(gl) } != VECSXP {
+        return decline("globals that are not a list");
+    }
+    let ng = len(groups);
+    let mut sizes = Vec::with_capacity(ng);
+    for k in 0..ng {
+        match rows(elt(groups, k)) {
+            Some(r) => sizes.push(r),
+            None => return decline("a group without columns"),
+        }
+    }
+    let n: usize = sizes.iter().sum();
+    if n == 0 {
+        return Ok(Some(keep(st)?));
+    }
+    let Some(Vals::Int(all_ids)) = stacked_col_named(groups, b".id", &sizes)? else {
+        return decline("ids that are not integers");
+    };
+    let mut group_of = Vec::with_capacity(n);
+    let mut starts = Vec::with_capacity(ng);
+    for (k, &s) in sizes.iter().enumerate() {
+        starts.push(group_of.len());
+        group_of.extend(std::iter::repeat(k).take(s));
+    }
+    let gnames = names_of(groups)?;
+    let mut gplan: Vec<Option<usize>> = vec![None; ng];
+    let mut key_q = None;
+    for (q, gp) in plan.groups.iter().enumerate() {
+        if gp.part == 4 {
+            key_q = Some(q);
+            continue;
+        }
+        let Some(j) = find(gnames, gp.name) else {
+            return decline("a group not found");
+        };
+        gplan[j] = Some(q);
+    }
+    // the standing match narrows the step to the agents it placed
+    let mt = match seq_match(st)? {
+        None => None,
+        Some(Some(m)) => Some(m),
+        Some(None) => return decline("a match the step cannot read"),
+    };
+    let uses_match = plan.groups.iter().any(|g| {
+        !g.mcols.is_empty() || g.targets.iter().any(|&t| bytes(t).starts_with(b"partner_"))
+    });
+    let mut order_ids: Vec<i32> = all_ids.to_vec();
+    let midx = match mt {
+        None if uses_match => return decline("match columns without a standing match"),
+        None => None,
+        Some((mid, ..)) => {
+            if mid.is_empty() {
+                return Ok(Some(keep(st)?));
+            }
+            let ix = IdIndex::new(mid);
+            order_ids.retain(|&id| ix.get(id).is_some());
+            if order_ids.is_empty() {
+                return Ok(Some(keep(st)?));
+            }
+            Some(ix)
+        }
+    };
+    let Some(svals) = scope_values(plan)? else {
+        return decline("a formula-environment value that cannot be read");
+    };
+    // the stores: columns, globals, partner columns
+    let mut store: Vec<Vec<SeqCol>> = (0..ng).map(|_| Vec::new()).collect();
+    let gl_names = names_of(gl)?;
+    let mut gstore: Vec<(SEXP, Vals)> = Vec::new();
+    let mut gwritten: Vec<bool> = Vec::new();
+    let mut pcols: Vec<(Vec<u8>, Vec<Option<usize>>)> = Vec::new();
+    let mut seqs: Vec<Option<SeqGroup>> = (0..ng).map(|_| None).collect();
+    for j in 0..ng {
+        let Some(q) = gplan[j] else { continue };
+        let gp = &plan.groups[q];
+        let mut cols = Vec::with_capacity(gp.cols.len());
+        for &c in &gp.cols {
+            match seq_col(groups, &mut store, j, bytes(c))? {
+                Ok(Some(k)) => cols.push(k),
+                _ => return decline("a column the step reads that cannot be read natively"),
+            }
+        }
+        let glob = |name: SEXP, gstore: &mut Vec<(SEXP, Vals)>| -> savvy::Result<Option<usize>> {
+            let Some(gj) = find(gl_names, name) else {
+                return Ok(None);
+            };
+            if let Some(x) = gstore.iter().position(|(nm, _)| *nm == gl_names[gj]) {
+                return Ok(Some(x));
+            }
+            let x = elt(gl, gj);
+            if !all_bare(&[x])? {
+                return Ok(None);
+            }
+            match expr::vals_of(x, false)? {
+                Some(v) => {
+                    gstore.push((gl_names[gj], v));
+                    Ok(Some(gstore.len() - 1))
+                }
+                None => Ok(None),
+            }
+        };
+        let mut globs = Vec::with_capacity(gp.globs.len());
+        for &g in &gp.globs {
+            match glob(g, &mut gstore)? {
+                Some(x) => globs.push(x),
+                None => return decline("a global the step cannot read natively"),
+            }
+        }
+        let mut xs = Vec::new();
+        if !read_scope(&svals, &gp.scope, &mut xs) {
+            return decline("a formula-environment value not found");
+        }
+        let Some(scope) = inputs(&xs)? else {
+            return decline("a scope value of an unsupported type");
+        };
+        let mut pcol = |x: &[u8], store: &mut Vec<Vec<SeqCol>>| -> savvy::Result<Option<usize>> {
+            if let Some(p) = pcols.iter().position(|(nm, _)| nm == x) {
+                return Ok(Some(p));
+            }
+            let mut at = Vec::with_capacity(ng);
+            for j2 in 0..ng {
+                match seq_col(groups, store, j2, x)? {
+                    Ok(k) => at.push(k),
+                    Err(()) => return Ok(None),
+                }
+            }
+            pcols.push((x.to_vec(), at));
+            Ok(Some(pcols.len() - 1))
+        };
+        let mut mcols = Vec::with_capacity(gp.mcols.len());
+        for &c in &gp.mcols {
+            mcols.push(match bytes(c) {
+                b".partner" => SeqMatchIn::Partner,
+                b".role" => SeqMatchIn::Role,
+                b".group_id" => SeqMatchIn::GroupId,
+                b => match b.strip_prefix(b"partner_") {
+                    Some(x) => match pcol(x, &mut store)? {
+                        Some(p) => SeqMatchIn::Col(p),
+                        None => return decline("a partner column of another kind"),
+                    },
+                    None => return decline("a match column the step cannot read"),
+                },
+            });
+        }
+        let mut targets = Vec::with_capacity(gp.targets.len());
+        for &t in &gp.targets {
+            let b = bytes(t);
+            targets.push(if let Some(x) = b.strip_prefix(b"partner_") {
+                match pcol(x, &mut store)? {
+                    Some(p) => SeqTarget::Partner(p),
+                    None => return decline("a partner column of another kind"),
+                }
+            } else if find(gl_names, t).is_some() {
+                match glob(t, &mut gstore)? {
+                    Some(x) => SeqTarget::Global(x),
+                    None => return decline("a global the step cannot write natively"),
+                }
+            } else {
+                match seq_col(groups, &mut store, j, b)? {
+                    Ok(Some(k)) => SeqTarget::Own(k),
+                    _ => return decline("a column the step writes that is new or of another kind"),
+                }
+            });
+        }
+        if gp.wslot.len() != targets.len() {
+            return Err(bad("seq write slots"));
+        }
+        let wslot = gp.wslot.iter().map(|&w| usize::try_from(w).ok()).collect();
+        seqs[j] = Some(SeqGroup {
+            q,
+            cols,
+            globs,
+            scope,
+            mcols,
+            targets,
+            wslot,
+        });
+    }
+    gwritten.resize(gstore.len(), false);
+    // the `.order` key's inputs: the groups stacked as bind_groups() stacks them
+    let mut key_ins: Vec<Vals> = Vec::new();
+    if has_order {
+        let gp = &plan.groups[key_q.ok_or_else(|| bad("no order program"))?];
+        for &c in &gp.cols {
+            match stacked_pad(groups, c, &sizes)? {
+                Some(v) => key_ins.push(v),
+                None => return decline("an order column of another kind"),
+            }
+        }
+        let mut xs = Vec::new();
+        if !read_globals(st, &gp.globs, &mut xs)? {
+            return decline("a global not found");
+        }
+        if !read_scope(&svals, &gp.scope, &mut xs) {
+            return decline("a formula-environment value not found");
+        }
+        let Some(more) = inputs(&xs)? else {
+            return decline("a global or scope value of an unsupported type");
+        };
+        key_ins.extend(more);
+    }
+    let at_id = IdIndex::new(&all_ids);
+    // SAFETY: reading a static of R's.
+    let na_str = unsafe { rapi::R_NaString } as usize;
+    let mut body = |rng: Option<&mut crate::rng::RRng>| -> savvy::Result<Result<(), Decline>> {
+        let mut ev = expr::Evaluator::new(rng);
+        if has_order {
+            let gp = &plan.groups[key_q.ok_or_else(|| bad("no order program"))?];
+            // SAFETY: the program is kept alive by the plan's descriptor.
+            let prog = unsafe { &*gp.prog };
+            let key = match ev.eval(prog, 0, &key_ins, n)? {
+                Ok(v) => recycle(v, n),
+                Err(d) => return Ok(Err(d)),
+            };
+            let wanted = IdIndex::new(&order_ids);
+            let keep_at: Vec<usize> = (0..n)
+                .filter(|&i| wanted.get(all_ids[i]).is_some())
+                .collect();
+            // `combined$.id[keep][order(key[keep])]`: a stable sort, `NA` dropped
+            let mut kept: Vec<usize> = match &key {
+                Vals::Dbl(x) => keep_at.into_iter().filter(|&i| !x[i].is_nan()).collect(),
+                Vals::Int(x) | Vals::Lgl(x) => {
+                    keep_at.into_iter().filter(|&i| x[i] != NA_INT).collect()
+                }
+                Vals::Str(_) => return Ok(Err(Decline("an order of strings (collation)"))),
+            };
+            match &key {
+                Vals::Dbl(x) => kept
+                    .sort_by(|&a, &b| x[a].partial_cmp(&x[b]).unwrap_or(std::cmp::Ordering::Equal)),
+                Vals::Int(x) | Vals::Lgl(x) => kept.sort_by_key(|&i| x[i]),
+                Vals::Str(_) => {}
+            }
+            order_ids = kept.iter().map(|&i| all_ids[i]).collect();
+        } else if let Some(r) = ev.rng() {
+            shuffle(r, &mut order_ids)?;
+        } else if order_ids.len() > 1 {
+            return Err(bad("a shuffle outside the RNG scope"));
+        }
+        let mut pending: Vec<(usize, usize, usize, Vals<'static>)> = Vec::new();
+        let mut gpending: Vec<(usize, Vals<'static>)> = Vec::new();
+        for &id in &order_ids {
+            let pos = at_id.get(id).ok_or_else(|| bad("an agent not found"))?;
+            let g = group_of[pos];
+            let i = pos - starts[g];
+            let Some(sg) = &seqs[g] else { continue };
+            let (mut pid, mut role, mut gid) = (NA_INT, na_str, NA_INT);
+            if let (Some((_, mpt, mrole, mgid)), Some(ix)) = (mt, &midx) {
+                let r = ix.get(id).ok_or_else(|| bad("an agent not in the match"))?;
+                pid = mpt[r];
+                role = mrole[r] as usize;
+                gid = mgid[r];
+            }
+            let ploc = if pid == NA_INT {
+                None
+            } else {
+                match at_id.get(pid) {
+                    Some(pp) => Some((group_of[pp], pp - starts[group_of[pp]])),
+                    None => return Ok(Err(Decline("a partner not in the population (R's error)"))),
+                }
+            };
+            {
+                let mut ins: Vec<Vals> = Vec::with_capacity(
+                    sg.cols.len() + sg.globs.len() + sg.scope.len() + sg.mcols.len(),
+                );
+                for &ci in &sg.cols {
+                    ins.push(seq_at(&store[g][ci].vals, i));
+                }
+                for &x in &sg.globs {
+                    ins.push(gstore[x].1.clone());
+                }
+                for s in &sg.scope {
+                    ins.push(s.clone());
+                }
+                for m in &sg.mcols {
+                    ins.push(match *m {
+                        SeqMatchIn::Partner => Vals::Int(Cow::Owned(vec![pid])),
+                        SeqMatchIn::Role => Vals::Str(Cow::Owned(vec![role])),
+                        SeqMatchIn::GroupId => Vals::Int(Cow::Owned(vec![gid])),
+                        SeqMatchIn::Col(p) => match ploc.and_then(|(pg, pj)| {
+                            pcols[p].1[pg].map(|ci| seq_at(&store[pg][ci].vals, pj))
+                        }) {
+                            Some(v) => v,
+                            // no partner, or one whose group lacks the column
+                            None => Vals::Lgl(Cow::Owned(vec![NA_INT])),
+                        },
+                    });
+                }
+                // SAFETY: the program is kept alive by the plan's descriptor.
+                let prog = unsafe { &*plan.groups[sg.q].prog };
+                for k in 0..sg.targets.len() {
+                    let v = match ev.eval(prog, k, &ins, 1)? {
+                        Ok(v) => v,
+                        Err(d) => return Ok(Err(d)),
+                    };
+                    if v.len() != 1 {
+                        return Ok(Err(Decline("a sequential value that is not one value")));
+                    }
+                    let raw = expr::owned(v);
+                    match sg.targets[k] {
+                        SeqTarget::Own(ci) => {
+                            let Some(c) = seq_cast(&store[g][ci].vals, &raw) else {
+                                return Ok(Err(Decline("a write that changes a column's type")));
+                            };
+                            pending.push((g, ci, i, c));
+                        }
+                        SeqTarget::Global(x) => gpending.push((x, raw.clone())),
+                        SeqTarget::Partner(p) => {
+                            let Some((pg, pj)) = ploc else { continue };
+                            if let Some(ci) = pcols[p].1[pg] {
+                                let Some(c) = seq_cast(&store[pg][ci].vals, &raw) else {
+                                    return Ok(Err(Decline(
+                                        "a write that changes a column's type",
+                                    )));
+                                };
+                                pending.push((pg, ci, pj, c));
+                            }
+                        }
+                    }
+                    if let Some(w) = sg.wslot[k] {
+                        if w >= ins.len() {
+                            return Err(bad("seq write slot"));
+                        }
+                        ins[w] = raw;
+                    }
+                }
+            }
+            for (g2, ci, row, c) in pending.drain(..) {
+                let col = &mut store[g2][ci];
+                seq_set(&mut col.vals, row, &c);
+                col.dirty = true;
+            }
+            for (x, v) in gpending.drain(..) {
+                gstore[x].1 = v;
+                gwritten[x] = true;
+            }
+        }
+        Ok(Ok(()))
+    };
+    let res = if plan.draws {
+        crate::rng::with_rng(|r| body(Some(r)))?
+    } else {
+        body(None)?
+    };
+    if let Err(d) = res {
+        expr::note_decline(&d);
+        return Ok(None);
+    }
+    // write back: the columns written, then the globals
+    // SAFETY: reading a static of R's.
+    let blank = unsafe { rapi::R_BlankString };
+    let mut st_cur: Option<H> = None;
+    if store.iter().flatten().any(|c| c.dirty) {
+        let mut cur: Option<H> = None;
+        for (j, cols) in store.iter().enumerate() {
+            let mut g2: Option<H> = None;
+            for c in cols.iter().filter(|c| c.dirty) {
+                let gs = cur.as_ref().map_or(groups, |h| h.get());
+                let base = g2.as_ref().map_or_else(|| elt(gs, j), |h| h.get());
+                let mut hold = OwnedListSexp::new(1, false)?;
+                hold.set_value(0, expr::to_r(&c.vals, sizes[j])?)?;
+                g2 = Some(set_named(base, c.name, elt(hold.inner(), 0))?);
+            }
+            if let Some(g2) = g2 {
+                let gs = cur.as_ref().map_or(groups, |h| h.get());
+                cur = Some(with_elt(gs, j, g2.get(), blank)?);
+            }
+        }
+        if let Some(gs) = cur {
+            st_cur = Some(with_elt(st, gi, gs.get(), blank)?);
+        }
+    }
+    if gwritten.iter().any(|&w| w) {
+        let mut gcur: Option<H> = None;
+        for (x, (name, v)) in gstore.iter().enumerate() {
+            if !gwritten[x] {
+                continue;
+            }
+            let base = gcur.as_ref().map_or(gl, |h| h.get());
+            let mut hold = OwnedListSexp::new(1, false)?;
+            hold.set_value(0, expr::to_r(v, 1)?)?;
+            gcur = Some(set_named(base, *name, elt(hold.inner(), 0))?);
+        }
+        if let Some(g) = gcur {
+            let base = st_cur.as_ref().map_or(st, |h| h.get());
+            st_cur = Some(with_elt(base, li, g.get(), blank)?);
+        }
+    }
+    match st_cur {
+        Some(h) => Ok(Some(h)),
+        None => Ok(Some(keep(st)?)),
+    }
+}
+
 fn same_side(a: Side, b: Side) -> bool {
     match (a, b) {
         (Side::D(p), Side::D(q)) => p == q,
@@ -4072,7 +4669,9 @@ fn exec(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
     if let Some(nb) = &plan.nb {
         return exec_nb(plan, nb, st);
     }
-    if plan.tell.is_some() {
+    if plan.seq.is_some() {
+        exec_seq(plan, st)
+    } else if plan.tell.is_some() {
         exec_tell(plan, st)
     } else if plan.mv.is_some() {
         exec_move(plan, st)

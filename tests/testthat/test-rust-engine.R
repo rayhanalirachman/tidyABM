@@ -76,9 +76,31 @@ test_that("sweeps, replicates, worlds per run and cores agree", {
                                  globals = list(tax = 0.5, total = 0))
   expect_engines_agree(world, go, ticks = 2, seed = 12, params = list(n = c(5, 8)),
                        what = "worlds")
-  skip_on_os("windows")  # no forks: `cores` is 1 there
+  # (Windows: a pool of R sessions, which load the installed tidyABM)
+  if (.Platform$OS.type == "windows") skip_if(dev_loaded(), "workers load the installed tidyABM")
   expect_engines_agree(economy(), go, ticks = 3, seed = 13, reps = 3, cores = 2,
                        what = "cores")
+})
+
+test_that("FR10: a sweep on a pool of R sessions returns the serial result", {
+  skip_on_cran()
+  skip_if(dev_loaded(), "workers load the installed tidyABM")
+  go <- abm_go(abm_match(pair = "random"), abm_rules(money ~ money * (1 - tax) + runif(n())),
+               abm_global(total ~ sum(money)))
+  rate <- 0.5
+  world <- function(n) abm_setup(agents = abm_agents(n = n, money = ~runif(n) * rate),
+                                 globals = list(tax = 0.1, total = 0))
+  for (eng in c("r", "rust")) {
+    withr::local_options(tidyABM.engine = eng)
+    one <- abm_run(world, go, ticks = 3, seed = 14, reps = 2, params = list(n = c(5, 9)))
+    withr::local_options(tidyABM.psock = TRUE)
+    expect_identical(abm_run(world, go, ticks = 3, seed = 14, reps = 2,
+                             params = list(n = c(5, 9)), cores = 2), one,
+                     label = paste("psock", eng))
+    expect_error(abm_run(world, go, ticks = 2, reps = 2, params = list(n = 4), cores = 2,
+                         checks = list(no = ~FALSE)), class = "tidyABM_check_failed")
+    withr::local_options(tidyABM.psock = NULL)
+  }
 })
 
 test_that("seed = NULL continues the caller's stream identically", {

@@ -306,6 +306,26 @@ the R engine's own `run_step()`. Rules:
   (error is R's), no `.order`; `when`, `to` and the messages one program over
   the groups stacked; writes in vctrs' common type (`replace_at()`). `to =
   "neighbours"`, list recipients, `collect`/`max`/`min`, `partner_` reads: R.
+* Sequential (kind 12, `exec_seq()`): every rule compiled; per group one
+  program over the rules `applicable_rules()` routes to it, evaluated agent by
+  agent (`expr::Evaluator`: one RNG scope for the whole step, never a nested
+  `with_rng()`, which would reload the generator and lose draws). Inputs borrow
+  the agent's row from a per-step column store; a rule's value replaces its
+  input slot (`wslot`) for the rules after it, as `data[[target]] <-` does;
+  writes to the store and the globals are applied after the agent's rules (no
+  rule of the same agent reads them back). A write is cast only where vctrs'
+  common type is the column's own (`seq_cast()`); one that would change the
+  column's type, a new column, relations, a `.cell` target, rules R must
+  evaluate: R. Order: `shuffle()` over the ids (narrowed by a standing match),
+  or `.order` compiled over the groups stacked, stable, `NA` dropped (`-0` ties
+  `0`, as `order()`'s radix sort). Partner reads are live (`NA` logical with no
+  partner or a partner group without the column).
+* Parallel reps (FR10): forks (`mclapply()`) on Unix; on Windows (or with
+  `options(tidyABM.psock = TRUE)`, for tests) a PSOCK pool per sweep
+  (`run_psock()`) set up with the caller's attached packages, `tidyABM.*`
+  options and global workspace. Each run carries its seed, so results are the
+  serial ones. The PSOCK test is skipped under pkgload (workers load the
+  installed package).
 * `find_str()` compares names byte by byte against R's buffer (`same_bytes()`):
   every step looks the state's elements up by name, and `strlen()` on each name
   first was measurable on short models.

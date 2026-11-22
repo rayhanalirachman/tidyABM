@@ -232,6 +232,7 @@ rl_kind <- function(step, kernels) {
   if (inherits(step, "abm_birth")) return(9L)
   if (inherits(step, "abm_move")) return(10L)
   if (inherits(step, "abm_tell")) return(11L)
+  if (inherits(step, "abm_sequential")) return(12L)
   as.integer(k$native)
 }
 
@@ -246,6 +247,7 @@ rl_prep <- function(step, state, slot = NULL) {
          abm_birth = rl_prep_memo(step, state, slot, rl_prep_birth),
          abm_move = rl_prep_memo(step, state, slot, rl_prep_move),
          abm_tell = rl_prep_memo(step, state, slot, rl_prep_tell),
+         abm_sequential = rl_prep_memo(step, state, slot, rl_prep_seq),
          abm_global = rl_prep_memo(step, state, slot, rl_prep_global),
          abm_neighbours = rl_prep_neighbours(step, state, slot),
          rl_prep_memo(step, state, slot, rl_prep_rules))
@@ -857,6 +859,64 @@ rl_prep_tell <- function(step, state) {
                                         scope = p$scope, ew = FALSE, mcols = p$mcols)),
                      tell = list(when = !is.null(step$when), resolve = step$resolve)),
                 if (length(p$scope)) list(p$env))
+}
+
+# FR8: `abm_sequential()` natively ([run_sequential()]): every rule compiled,
+# each group's rules (as [applicable_rules()] routes them) one program evaluated
+# agent by agent; `.order` compiled over the groups stacked. No relation, no
+# `.cell` and no new column (R adds it and routes the rules again).
+rl_seq_ok <- function(step) {
+  !any(vapply(step$rules, function(r) r$target %in% c(".cell", "partner_.cell"), NA)) &&
+    !any(vapply(rx_rules(step), is_rx_no, NA)) &&
+    (is.null(step$order) || !is_rx_no(rx_compile_memo(rlang::quo_get_expr(step$order))))
+}
+rl_prep_seq <- function(step, state) {
+  if (!planned(step, "rx_seq", rl_seq_ok(step))) return(FALSE)
+  if (length(state$relations)) return(NULL)
+  groups <- state$groups
+  cols_all <- model_columns(groups)
+  gl <- names(state$globals)
+  targets <- vapply(step$rules, `[[`, "", "target")
+  syms <- unique(unlist(lapply(rx_rules(step), `[[`, "syms")))
+  # `n` is the agent's own `n()` in the R engine's mask; a `partner_` column of
+  # the model's, or a target that is both a global and a column, reads otherwise
+  if ("n" %in% c(cols_all, syms) || any(startsWith(cols_all, "partner_")) ||
+      any(targets %in% gl & targets %in% cols_all)) return(NULL)
+  quos <- lapply(step$rules, `[[`, "quo")
+  mnames <- if (planned(step, "uses_match", reads_match(quos))) {
+    planned(step, "rx_mnames", rx_match_names(step)) %||% return(NULL)
+  } else character()
+  out <- list()
+  envs <- list()
+  for (nm in names(groups)) {
+    gnames <- names(groups[[nm]])
+    idx <- applicable_rules(step, gnames, groups, state$globals)
+    if (!length(idx)) next
+    tg <- targets[idx]
+    if (!all(startsWith(tg, "partner_") | tg %in% gnames | tg %in% gl)) return(NULL)
+    p <- rx_program(step, idx, gnames, state$globals, match_names = mnames)
+    if (is_rx_no(p)) return(NULL)
+    if (length(p$scope)) envs <- c(envs, list(p$env))
+    wslot <- match(tg, p$names) - 1L
+    wslot[is.na(wslot)] <- -1L
+    out[[length(out) + 1L]] <- list(name = nm, prog = p$prog$.ptr, cols = p$cols,
+                                    globs = p$globs, targets = tg, scope = p$scope,
+                                    ew = FALSE, mcols = p$mcols, wslot = as.integer(wslot))
+  }
+  if (!is.null(step$order)) {
+    if (planned(step, "order_match", reads_match(list(step$order)))) return(NULL)
+    fake <- planned(step, "rx_seq_order",
+                    rl_fake_rules(list(list(target = ".order", quo = step$order))))
+    p <- rx_program(fake, 1L, cols_all, state$globals)
+    if (is_rx_no(p)) return(NULL)
+    if (length(p$scope)) envs <- c(envs, list(p$env))
+    out[[length(out) + 1L]] <- list(name = "", part = "order", prog = p$prog$.ptr,
+                                    cols = p$cols, globs = p$globs, targets = character(),
+                                    scope = p$scope, ew = FALSE, mcols = character(),
+                                    wslot = integer())
+  }
+  rl_scope_bind(list(kind = 12L, scope_match = FALSE, groups = out,
+                     seq = list(order = !is.null(step$order))), envs)
 }
 
 # the network neighbour shapes the loop folds natively: every rule `sum()` or

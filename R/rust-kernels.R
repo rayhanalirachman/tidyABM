@@ -21,6 +21,8 @@ rust_kernels <- list(
                         can = function(step) rl_nb_ok(step) || rl_nb_within_ok(step) ||
                           rl_nb_where_ok(step),
                         native = 3L),
+  abm_sequential = list(fun = rk_native, auto = FALSE, store = FALSE, can = rl_seq_ok,
+                        native = 12L),
   abm_tell       = list(fun = rk_native, auto = FALSE, store = FALSE, can = rl_tell_ok,
                         native = 11L),
   abm_move       = list(fun = rk_native, auto = FALSE, store = FALSE, can = rl_move_ok,

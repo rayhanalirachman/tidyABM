@@ -167,8 +167,10 @@
 #' @param cores How many CPU cores share the runs: a whole number, or `"max"`
 #'   for all of them. Each run is forked into its own process with
 #'   [parallel::mclapply()], and the result is identical to `cores = 1` (the
-#'   default). Windows cannot fork, so there it always runs on one core, and a
-#'   parallel sweep shows no progress bar.
+#'   default). Windows cannot fork: there the runs go to a pool of R sessions
+#'   started for the sweep ([parallel::makePSOCKcluster()]), each with the
+#'   caller's attached packages, `tidyABM` options and global workspace, which
+#'   costs a second or two to start. A parallel sweep shows no progress bar.
 #'
 #' @return An `abm_result`: a tibble of one row per agent per tick, carrying
 #'   the run's globals, measures and final network as attributes. With several
@@ -239,7 +241,7 @@ abm_run <- function(model, go, ticks, params = NULL, reps = 1, measures = NULL,
     abm_abort("{.arg cores} must be a whole number, at least 1, or {.val max}.",
               class = "tidyABM_bad_cores")
   }
-  cores <- if (.Platform$OS.type == "windows") 1L else as.integer(cores)
+  cores <- as.integer(cores)
 
   runs <- param_grid(params, reps)
   n_runs <- length(runs)
@@ -290,12 +292,15 @@ abm_run <- function(model, go, ticks, params = NULL, reps = 1, measures = NULL,
     if (by_run && !is.null(bar)) cli::cli_progress_update(id = bar)
     o
   }
-  # each run has its own seed already, so a forked worker per core returns
-  # exactly what the loop would (Windows cannot fork: `cores` is 1 there)
+  # each run has its own seed already, so a worker process per core returns
+  # exactly what the loop would: forked, or (Windows) a pool of R sessions
   if (cores > 1L && by_run) {
-    # mclapply's own warnings only announce the failures handled just below
-    out <- suppressWarnings(
-      parallel::mclapply(seq_len(n_runs), one_run, mc.cores = cores))
+    out <- if (.Platform$OS.type == "windows" || isTRUE(getOption("tidyABM.psock"))) {
+      run_psock(n_runs, one_run, cores)
+    } else {
+      # mclapply's own warnings only announce the failures handled just below
+      suppressWarnings(parallel::mclapply(seq_len(n_runs), one_run, mc.cores = cores))
+    }
     failed <- Filter(function(o) inherits(o, "try-error"), out)
     if (length(failed)) stop(attr(failed[[1]], "condition"))
     # a worker killed outright (out of memory, say) returns NULL, not an error

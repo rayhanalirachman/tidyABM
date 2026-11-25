@@ -376,6 +376,28 @@ the R engine's own `run_step()`. Rules:
   moving group's compiled expression (with mover-over-patch shadowing and `own_`
   columns) evaluated per mover inside the step's single RNG scope after
   occupancy filtering, matching R's draw interleaving and tie-breaking.
+* Nearest+cost matches, network link/unlink, and `collect` tells (FR15a):
+  `abm_match(pair = "nearest", cost =)` (pair code 6) evaluates compiled `cost`
+  over the `(chooser, candidate)` view (excluding self and `NA`/`NaN`), picks
+  the first minimum per chooser, and sorts by chooser `.id`. Network
+  `abm_link()`/`abm_unlink()` (kind 18, `exec_link()`, no `via =`) turn
+  standing pairs or `size > 2` cliques into canonical deduplicated edges and
+  append (`tbl_frame_named()`, bare `from`/`to` only) or slice
+  (`slice_tibble()`). `abm_tell(.resolve = "collect")` (resolve code 5)
+  writes per-recipient vectors into bare or `AsIs` list columns (tagging
+  `class = "AsIs"` to match `vctrs::vec_cast_common(list, I(list))`).
+* Relations and `abm_pairs()` (FR15b): `schema_key()` and `rl_prep_memo()` now
+  include relation counts and edge-column schemas, so non-relation steps
+  (`abm_rules`, `abm_global`, `abm_match`, `abm_tell`, `abm_birth`, `abm_link`,
+  `abm_neighbours` except kind 3's `nb_cache$ix`) run natively when
+  `state$relations` is non-empty as long as they touch no name in
+  `relation_derived_names(state$relations)` (`abm_death` keeps declining so R
+  runs `prune_relations()`). `abm_sequential()` (kind 12, `exec_seq()`) reads
+  `.R`/`R_<col>` and `_back` forms and writes existing relation columns on
+  `(me, partner)` via a per-relation `HashMap<(i32, i32), usize>` committed back
+  to shallow copies of `state$relations`. `abm_pairs()` (kind 19,
+  `exec_pairs()`) evaluates `.when` and rules over `rel$edges` plus
+  `from_<col>`/`to_<col>` and updates existing columns with `assign_rows()`.
 * `pkg::f` heads (`dplyr::case_when()`, `stats::runif()`) compile as `f` when
   they are the very function the IR takes for `f` (`rx_ns_head()`); their
   scope is not checked (the call names its function).

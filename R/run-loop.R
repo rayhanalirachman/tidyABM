@@ -287,6 +287,8 @@ rl_kind <- function(step, kernels) {
   if (inherits(step, "abm_sequential")) return(12L)
   if (inherits(step, "abm_global") && !is.null(step$by)) return(13L)
   if (inherits(step, "abm_draw")) return(16L)
+  if (inherits(step, c("abm_link", "abm_unlink"))) return(18L)
+  if (inherits(step, "abm_pairs")) return(19L)
   if (inherits(step, "abm_neighbours") && is.null(step$within) && is.null(step$where)) {
     sh <- planned(step, "rl_nbshapes", rl_nb_shapes(step))
     if (is.null(sh)) return(17L)
@@ -301,6 +303,9 @@ rl_kind <- function(step, kernels) {
 #' @noRd
 rl_prep <- function(step, state, slot = NULL) {
   switch(class(step)[[1]],
+         abm_pairs = rl_prep_memo(step, state, slot, rl_prep_pairs),
+         abm_link = ,
+         abm_unlink = rl_prep_memo(step, state, slot, rl_prep_link),
          abm_draw = rl_prep_memo(step, state, slot, rl_prep_draw),
          abm_match = rl_prep_memo(step, state, slot, rl_prep_match),
          abm_death = rl_prep_memo(step, state, slot, rl_prep_death),
@@ -325,6 +330,7 @@ rl_prep_memo <- function(step, state, slot, f) {
   key <- paste0("d", slot)
   sk <- list(schema_key(state), Filter(is.function, state$globals), isTRUE(.bound$on),
              RNGkind(), step$by, step$scope,
+             if (length(state$relations)) lapply(state$relations, function(r) names(r$edges)),
              if (inherits(step, "abm_neighbours")) drawn_names(state$edges)
              else if (inherits(step, "abm_draw")) {
                if (is.null(state$edges)) FALSE
@@ -356,6 +362,13 @@ rl_prep_rules <- function(step, state) {
   # A `.cell` write moves agents ([run_step()] re-derives `.x`/`.y`); a
   # `partner_` target writes another agent's row: never native
   if (!planned(step, "rx_shape", rx_rules_mixed_ok(step))) return(FALSE)
+  rel_names <- relation_derived_names(state$relations)
+  if (length(rel_names)) {
+    all_tg <- vapply(step$rules, `[[`, "", "target")
+    all_sy <- unique(unlist(lapply(step$rules, function(r) all.vars(rlang::quo_get_expr(r$quo))),
+                            use.names = FALSE))
+    if (any(all_tg %in% rel_names) || any(all_sy %in% rel_names)) return(NULL)
+  }
   routes <- if (length(state$groups) > 1L) rule_routes(step, state)
   groups <- list()
   envs <- list()
@@ -518,7 +531,14 @@ rl_prep_rules_by <- function(step, state) {
   groups <- state$groups
   by <- by_columns(step$by)
   cols <- Reduce(intersect, lapply(groups, names))
-  if (!by %in% cols || length(state$relations)) return(NULL)
+  if (!by %in% cols) return(NULL)
+  rel_names <- relation_derived_names(state$relations)
+  if (length(rel_names)) {
+    all_tg <- vapply(step$rules, `[[`, "", "target")
+    all_sy <- unique(unlist(lapply(step$rules, function(r) all.vars(rlang::quo_get_expr(r$quo))),
+                            use.names = FALSE))
+    if (any(all_tg %in% rel_names) || any(all_sy %in% rel_names)) return(NULL)
+  }
   p <- rx_program(step, seq_along(step$rules), cols, state$globals, global_step = "by")
   if (is_rx_no(p)) return(NULL)
   # a column some group lacks is padded with NA by the R engine: not native
@@ -654,9 +674,11 @@ rl_nb_cross_ok <- function(step) !is.null(rl_nb_cross_shape(step))
 rl_prep_nb_cross <- function(step, state) {
   sh <- planned(step, "rx_nbx", rl_nb_cross_shape(step))
   if (is.null(sh)) return(FALSE)
-  if (length(state$relations)) return(NULL)
   cols <- model_columns(state$groups)
   names <- unique(unlist(lapply(sh$comp, `[[`, "syms")))
+  targets <- vapply(step$rules, `[[`, "", "target")
+  rel_names <- relation_derived_names(state$relations)
+  if (length(rel_names) && any(c(names, targets) %in% rel_names)) return(NULL)
   own <- startsWith(names, "own_") & sub("^own_", "", names) %in% cols
   src <- ifelse(names %in% cols | own, 1L, ifelse(names %in% names(state$globals), 2L, 3L))
   env <- rlang::quo_get_env(step$within)
@@ -680,9 +702,13 @@ rl_prep_nb_cross <- function(step, state) {
 rl_prep_nb_within <- function(step, state) {
   sh <- planned(step, "rx_nb1", rl_nb1_shape(step))
   if (is.null(sh)) return(FALSE)
-  if (length(state$relations)) return(NULL)
   cols <- model_columns(state$groups)
   key <- sh$key
+  targets <- vapply(step$rules, `[[`, "", "target")
+  rel_names <- relation_derived_names(state$relations)
+  if (length(rel_names) && any(c(key$focal, key$cand, sh$shape$vars, targets) %in% rel_names)) {
+    return(NULL)
+  }
   if (!key$focal %in% cols || !key$cand %in% cols || !all(sh$shape$vars %in% cols)) {
     return(NULL)
   }
@@ -732,7 +758,7 @@ rl_prep_nb_where <- function(step, state) {
   rules <- planned(step, "rx_nbw", rl_nbw_shape(step))
   if (is.null(rules)) return(FALSE)
   lat <- state$lattice
-  if (length(state$relations) || is.null(lat) || !tolower(step$where) %in% names(lat$dir_nb)) {
+  if (is.null(lat) || !tolower(step$where) %in% names(lat$dir_nb)) {
     return(NULL)
   }
   dir <- lat$dir_nb[[tolower(step$where)]]
@@ -740,7 +766,10 @@ rl_prep_nb_where <- function(step, state) {
   cols <- model_columns(state$groups)
   args <- Filter(function(r) r$fn != "n", rules)
   comp <- lapply(args, `[[`, "cp")
-  names <- unique(unlist(lapply(comp, `[[`, "syms")))
+  names <- unique(unlist(lapply(comp, `[[`, "syms"))) %||% character()
+  targets <- vapply(step$rules, `[[`, "", "target")
+  rel_names <- relation_derived_names(state$relations)
+  if (length(rel_names) && any(c(names, targets) %in% rel_names)) return(NULL)
   own <- startsWith(names, "own_") & sub("^own_", "", names) %in% cols
   src <- ifelse(names %in% cols | own, 1L,
                 ifelse(names %in% names(state$globals), 2L, 3L))
@@ -798,19 +827,25 @@ rl_nb_program <- function(step, state) {
 # groups stacked as [bind_groups()] stacks them
 rl_match_shape <- function(step) {
   if (!step$pair %in% c("random", "one_of", "opposite_group", "network", "nearest") ||
-      !is.null(step$weight) || !is.null(step$cost)) return(NULL)
-  # `nearest` on one coordinate (FR13): the distances are exact there; several
-  # go through BLAS, whose summation order R does not pin down
+      !is.null(step$weight)) return(NULL)
+  has_cost <- !is.null(step$cost)
+  if (has_cost && step$pair != "nearest") return(NULL)
+  # `nearest` on one coordinate (FR13) or compiled `cost =` (FR15a)
   if (step$pair == "nearest" && (!is.null(step$role) || mentions_pair(step$among))) return(NULL)
   if (step$pair == "network" && (!identical(step$from, "neighbour") || !is.null(step$role))) {
     return(NULL)
   }
   if (!step$pair %in% c("one_of", "nearest") && !is.null(step$among)) return(NULL)
   if (!is.null(step$dot_by) && (step$pair != "opposite_group" || !is.null(step$role))) return(NULL)
-  by <- if (step$pair %in% c("opposite_group", "nearest")) {
+  by <- if ((step$pair == "opposite_group") || (step$pair == "nearest" && !has_cost)) {
     e <- rlang::quo_get_expr(step$by)
     if (!rlang::is_symbol(e)) return(NULL)
     rlang::as_string(e)
+  }
+  cost_cp <- if (has_cost) {
+    cp <- rx_compile_memo(rlang::quo_get_expr(step$cost))
+    if (is_rx_no(cp)) return(NULL)
+    cp
   }
   dot_by <- if (!is.null(step$dot_by)) {
     e <- rlang::quo_get_expr(step$dot_by)
@@ -837,7 +872,7 @@ rl_match_shape <- function(step) {
   }
   envs <- lapply(conds, rlang::quo_get_env)
   if (length(envs) > 1L && !all(vapply(envs, identical, NA, envs[[1]]))) return(NULL)
-  list(by = by, dot_by = dot_by, conds = conds, comp = comp,
+  list(by = by, dot_by = dot_by, conds = conds, comp = comp, cost_cp = cost_cp,
        roles = if (!is.null(roles)) names(roles))
 }
 rl_match_ok <- function(step) !is.null(rl_match_shape(step))
@@ -845,7 +880,13 @@ rl_match_ok <- function(step) !is.null(rl_match_shape(step))
 rl_prep_match <- function(step, state) {
   sh <- planned(step, "rx_match", rl_match_shape(step))
   if (is.null(sh)) return(FALSE)
-  if (length(state$relations)) return(NULL)
+  rel_names <- relation_derived_names(state$relations)
+  if (length(rel_names)) {
+    msyms <- c(sh$by, sh$dot_by,
+               unlist(lapply(sh$comp, `[[`, "syms"), use.names = FALSE),
+               if (!is.null(sh$cost_cp)) sh$cost_cp$syms)
+    if (any(msyms %in% rel_names)) return(NULL)
+  }
   cols <- model_columns(state$groups)
   if (!is.null(sh$by) && !sh$by %in% cols) return(NULL)
   if (!is.null(sh$dot_by) && !sh$dot_by %in% cols) return(NULL)
@@ -855,9 +896,10 @@ rl_prep_match <- function(step, state) {
   if (length(sh$conds)) {
     q1 <- sh$conds[[1]]
     env <- rlang::quo_get_env(q1)
-    names <- unique(unlist(lapply(sh$comp, `[[`, "syms")))
-    if (!rx_heads_ok(unique(unlist(lapply(sh$comp, `[[`, "heads"))),
-                     abm_eval_env(q1, state$globals, n = 1L))) return(NULL)
+    names <- unique(unlist(lapply(sh$comp, `[[`, "syms"))) %||% character()
+    heads <- unique(unlist(lapply(sh$comp, `[[`, "heads"))) %||% character()
+    if (!rx_heads_ok(heads, abm_eval_env(q1, state$globals, n = 1L))) return(NULL)
+    if (any(c("runif", "rnorm", "sample") %in% heads) && !rust_rng_ok()) return(NULL)
     src <- ifelse(names %in% cols, 1L, ifelse(names %in% names(state$globals), 2L, 3L))
     for (nm in names[src == 3L]) if (!exists(nm, envir = env)) return(NULL)
     o <- order(src)
@@ -872,9 +914,46 @@ rl_prep_match <- function(step, state) {
     prog_g$scope <- names[src == 3L]
     if (any(src == 3L)) envs <- list(env)
   }
-  rl_scope_bind(list(kind = 7L, scope_match = FALSE, groups = list(prog_g),
-                     mt = list(pair = match(step$pair, c("random", "one_of", "opposite_group",
-                                                         "network", "nearest")),
+  groups <- list(prog_g)
+  pair_code <- match(step$pair, c("random", "one_of", "opposite_group", "network", "nearest"))
+  if (!is.null(sh$cost_cp)) {
+    cp <- sh$cost_cp
+    cenv <- rlang::quo_get_env(step$cost)
+    if (!rx_heads_ok(cp$heads, abm_eval_env(step$cost, state$globals, n = 1L))) return(NULL)
+    if (any(c("runif", "rnorm", "sample") %in% cp$heads) && !rust_rng_ok()) return(NULL)
+    csyms <- cp$syms
+    csrc <- integer(length(csyms))
+    vkind <- integer(length(csyms))
+    vcol <- character(length(csyms))
+    for (j in seq_along(csyms)) {
+      s <- csyms[[j]]
+      if (s %in% cols) {
+        csrc[[j]] <- 1L; vkind[[j]] <- 0L; vcol[[j]] <- s
+      } else if (startsWith(s, "own_") && sub("^own_", "", s) %in% cols) {
+        csrc[[j]] <- 1L; vkind[[j]] <- 1L; vcol[[j]] <- sub("^own_", "", s)
+      } else if (s == ".of") {
+        csrc[[j]] <- 1L; vkind[[j]] <- 2L; vcol[[j]] <- ".of"
+      } else if (s %in% names(state$globals)) {
+        csrc[[j]] <- 2L
+      } else if (exists(s, envir = cenv)) {
+        csrc[[j]] <- 3L
+      } else {
+        return(NULL)
+      }
+    }
+    o <- order(csrc)
+    csyms <- csyms[o]; csrc <- csrc[o]; vkind <- vkind[o]; vcol <- vcol[o]
+    cprog <- rx_new_program(list(rlang::quo_get_expr(step$cost)), csyms, -1L,
+                            list(rx_bind(cp$ir, csyms)))
+    if (any(csrc == 3L)) envs <- c(envs, list(cenv))
+    groups[[2L]] <- list(name = "", prog = cprog$.ptr, cols = vcol[csrc == 1L],
+                         globs = csyms[csrc == 2L], targets = character(),
+                         scope = csyms[csrc == 3L], ew = FALSE, mcols = character(),
+                         wslot = as.integer(vkind[csrc == 1L]))
+    pair_code <- 6L
+  }
+  rl_scope_bind(list(kind = 7L, scope_match = FALSE, groups = groups,
+                     mt = list(pair = pair_code,
                                roles = sh$roles %||% character(),
                                size = step$size, by = sh$by %||% character(),
                                dot_by = sh$dot_by %||% character(),
@@ -952,9 +1031,15 @@ rl_birth_ok <- function(step) {
 }
 rl_prep_birth <- function(step, state) {
   if (!planned(step, "rx_birth", rl_birth_ok(step))) return(FALSE)
-  if (length(state$relations)) return(NULL)
   parts <- planned(step, "rx_birth_parts", rl_birth_parts(step))
   quos <- c(list(step$when, step$times), lapply(c(step$cost, step$inherit), `[[`, "quo"))
+  rel_names <- relation_derived_names(state$relations)
+  if (length(rel_names)) {
+    btg <- vapply(c(step$cost, step$inherit), `[[`, "", "target")
+    bsy <- unlist(lapply(Filter(Negate(is.null), quos), function(q) all.vars(rlang::quo_get_expr(q))),
+                  use.names = FALSE)
+    if (any(c(btg, bsy) %in% rel_names)) return(NULL)
+  }
   mnames <- if (planned(step, "uses_match", reads_match(quos))) {
     rx_match_names(rl_fake_rules(lapply(Filter(Negate(is.null), quos), function(q) {
       list(target = ".x", quo = q)
@@ -1126,12 +1211,43 @@ rl_prep_draw <- function(step, state) {
     if (length(p$scope)) list(p$env))
 }
 
-# FR7: `abm_tell(to = <id expression>)` natively ([run_tell()] without `.order`,
-# `"neighbours"`, list recipients, `.resolve = "collect"`/`"max"`/`"min"`): `when`,
-# `to` and each message compiled over the groups stacked, read in that order
+# FR15a: network `abm_link()` / `abm_unlink()` (no `via =`): pairs from the
+# standing match (including cliques for `size > 2`), canonicalised and
+# deduplicated, appended to `state$edges` or dropped via `slice_tibble()`
+rl_link_ok <- function(step) {
+  if (!is.null(step$via)) return(FALSE)
+  is.null(step$when) || !is_rx_no(rx_compile_memo(rlang::quo_get_expr(step$when)))
+}
+rl_prep_link <- function(step, state) {
+  if (!planned(step, "rx_link", rl_link_ok(step))) return(FALSE)
+  if (mentions_relation(step$when, state$relations)) return(NULL)
+  groups <- list()
+  envs <- list()
+  if (!is.null(step$when)) {
+    fake <- planned(step, "rx_link_fake",
+                    rl_fake_rules(list(list(target = ".keep", quo = step$when))))
+    mnames <- if (planned(step, "uses_match", reads_match(list(step$when)))) {
+      rx_match_names(fake) %||% return(NULL)
+    } else character()
+    cols <- model_columns(state$groups)
+    pcols <- sub("^partner_", "", mnames[startsWith(mnames, "partner_")])
+    if (!all(pcols %in% cols)) return(NULL)
+    p <- rx_program(fake, 1L, cols, state$globals, match_names = mnames)
+    if (is_rx_no(p)) return(NULL)
+    if (length(p$scope)) envs <- list(p$env)
+    groups <- list(list(name = "", prog = p$prog$.ptr, cols = p$cols, globs = p$globs,
+                        targets = character(), scope = p$scope, ew = FALSE, mcols = p$mcols))
+  }
+  rl_scope_bind(list(kind = 18L, scope_match = FALSE, groups = groups,
+       link = list(drop = isTRUE(step$drop), when = !is.null(step$when))), envs)
+}
+
+# FR7/FR15a: `abm_tell(to = <id expression>)` natively ([run_tell()] without
+# `.order`, `"neighbours"`, list recipients, `"max"`/`"min"`): `when`, `to` and
+# each message compiled over the groups stacked, read in that order
 rl_tell_ok <- function(step) {
   if (!identical(step$to, "id") || !is.null(step$order) ||
-      !step$resolve %in% c("last", "first", "sum", "mean", "error")) return(FALSE)
+      !step$resolve %in% c("last", "first", "sum", "mean", "error", "collect")) return(FALSE)
   if (any(vapply(step$rules, function(r) r$target %in% c(".cell", "partner_.cell", ".id"), NA))) {
     return(FALSE)
   }
@@ -1142,9 +1258,14 @@ rl_tell_ok <- function(step) {
 }
 rl_prep_tell <- function(step, state) {
   if (!planned(step, "rx_tell", rl_tell_ok(step))) return(FALSE)
-  if (length(state$relations)) return(NULL)
   quos <- c(if (!is.null(step$when)) list(step$when), list(step$to_quo),
             lapply(step$rules, `[[`, "quo"))
+  rel_names <- relation_derived_names(state$relations)
+  if (length(rel_names)) {
+    ttg <- vapply(step$rules, `[[`, "", "target")
+    tsy <- unlist(lapply(quos, function(q) all.vars(rlang::quo_get_expr(q))), use.names = FALSE)
+    if (any(c(ttg, tsy) %in% rel_names)) return(NULL)
+  }
   fake <- planned(step, "rx_tell_fake", rl_fake_rules(lapply(quos, function(q) {
     list(target = ".tell", quo = q)
   })))
@@ -1174,20 +1295,48 @@ rl_seq_ok <- function(step) {
 }
 rl_prep_seq <- function(step, state) {
   if (!planned(step, "rx_seq", rl_seq_ok(step))) return(FALSE)
-  if (length(state$relations)) return(NULL)
   groups <- state$groups
   cols_all <- model_columns(groups)
   gl <- names(state$globals)
   targets <- vapply(step$rules, `[[`, "", "target")
-  syms <- unique(unlist(lapply(rx_rules(step), `[[`, "syms")))
+  syms <- unique(unlist(lapply(rx_rules(step), `[[`, "syms"))) %||% character()
   # `n` is the agent's own `n()` in the R engine's mask; a `partner_` column of
   # the model's, or a target that is both a global and a column, reads otherwise
   if ("n" %in% c(cols_all, syms) || any(startsWith(cols_all, "partner_")) ||
       any(targets %in% gl & targets %in% cols_all)) return(NULL)
+  rel_spec <- NULL
+  rel_mnames <- character()
+  rel_tg_names <- character()
+  if (length(state$relations)) {
+    rel_names <- relation_derived_names(state$relations)
+    rel_tg <- intersect(targets, rel_names)
+    rel_rd <- intersect(syms, rel_names)
+    rel_all <- union(rel_rd, rel_tg)
+    if (length(rel_all)) {
+      hits <- lapply(rel_all, resolve_relation_name, relations = state$relations)
+      for (k in seq_along(rel_all)) {
+        h <- hits[[k]]
+        if (rel_all[[k]] %in% rel_tg) {
+          if (is.null(h$col) || !h$col %in% names(state$relations[[h$rel]]$edges)) {
+            return(NULL)
+          }
+        }
+      }
+      rel_mnames <- rel_rd
+      rel_tg_names <- rel_tg
+      rel_spec <- list(
+        names = rel_all,
+        rel = vapply(hits, `[[`, "", "rel"),
+        col = vapply(hits, function(h) h$col %||% "", ""),
+        back = vapply(hits, function(h) isTRUE(h$back), NA)
+      )
+    }
+  }
   quos <- lapply(step$rules, `[[`, "quo")
   mnames <- if (planned(step, "uses_match", reads_match(quos))) {
     planned(step, "rx_mnames", rx_match_names(step)) %||% return(NULL)
   } else character()
+  mnames <- union(mnames, rel_mnames)
   out <- list()
   envs <- list()
   for (nm in names(groups)) {
@@ -1195,7 +1344,9 @@ rl_prep_seq <- function(step, state) {
     idx <- applicable_rules(step, gnames, groups, state$globals)
     if (!length(idx)) next
     tg <- targets[idx]
-    if (!all(startsWith(tg, "partner_") | tg %in% gnames | tg %in% gl)) return(NULL)
+    if (!all(startsWith(tg, "partner_") | tg %in% gnames | tg %in% gl | tg %in% rel_tg_names)) {
+      return(NULL)
+    }
     p <- rx_program(step, idx, gnames, state$globals, match_names = mnames)
     if (is_rx_no(p)) return(NULL)
     if (length(p$scope)) envs <- c(envs, list(p$env))
@@ -1206,7 +1357,8 @@ rl_prep_seq <- function(step, state) {
                                     ew = FALSE, mcols = p$mcols, wslot = as.integer(wslot))
   }
   if (!is.null(step$order)) {
-    if (planned(step, "order_match", reads_match(list(step$order)))) return(NULL)
+    if (planned(step, "order_match", reads_match(list(step$order))) ||
+        mentions_relation(step$order, state$relations)) return(NULL)
     fake <- planned(step, "rx_seq_order",
                     rl_fake_rules(list(list(target = ".order", quo = step$order))))
     p <- rx_program(fake, 1L, cols_all, state$globals)
@@ -1218,7 +1370,66 @@ rl_prep_seq <- function(step, state) {
                                     wslot = integer())
   }
   rl_scope_bind(list(kind = 12L, scope_match = FALSE, groups = out,
-                     seq = list(order = !is.null(step$order))), envs)
+                     seq = list(order = !is.null(step$order), rel = rel_spec)), envs)
+}
+
+# FR15b: `abm_pairs(via = <rel>, ..., .when =)` natively ([run_pairs()]):
+# `.when` (optional) and rules compiled over the relation's edge columns plus
+# `from_<col>` / `to_<col>`, globals and scope; existing target columns only
+# (a new column goes to R once so it updates `rel$cols` and `rel$defaults`)
+rl_pairs_ok <- function(step) {
+  (is.null(step$when) || !is_rx_no(rx_compile_memo(rlang::quo_get_expr(step$when)))) &&
+    !any(vapply(rx_rules(step), is_rx_no, NA))
+}
+rl_prep_pairs <- function(step, state) {
+  if (!rl_pairs_ok(step)) return(FALSE)
+  rel <- state$relations[[step$via]]
+  if (is.null(rel)) return(NULL)
+  ecols <- names(rel$edges)
+  tg <- vapply(step$rules, `[[`, "", "target")
+  if (!all(tg %in% ecols)) return(NULL)
+  quos <- c(if (!is.null(step$when)) list(step$when), lapply(step$rules, `[[`, "quo"))
+  envs <- lapply(quos, rlang::quo_get_env)
+  if (!all(vapply(envs, identical, NA, envs[[1]]))) return(NULL)
+  env <- envs[[1]]
+  comp <- lapply(quos, function(q) rx_compile_memo(rlang::quo_get_expr(q)))
+  if (any(vapply(comp, is_rx_no, NA))) return(NULL)
+  heads <- unique(unlist(lapply(comp, `[[`, "heads"))) %||% character()
+  if (!rx_heads_ok(heads, abm_eval_env(quos[[1]], state$globals, n = 1L))) return(NULL)
+  if (any(c("runif", "rnorm", "sample") %in% heads) && !rust_rng_ok()) return(NULL)
+  acols <- model_columns(state$groups)
+  syms <- unique(unlist(lapply(comp, `[[`, "syms"))) %||% character()
+  src <- integer(length(syms))
+  vkind <- integer(length(syms))
+  vcol <- character(length(syms))
+  for (j in seq_along(syms)) {
+    s <- syms[[j]]
+    if (startsWith(s, "from_") && sub("^from_", "", s) %in% acols) {
+      src[[j]] <- 1L; vkind[[j]] <- 1L; vcol[[j]] <- sub("^from_", "", s)
+    } else if (startsWith(s, "to_") && sub("^to_", "", s) %in% acols) {
+      src[[j]] <- 1L; vkind[[j]] <- 2L; vcol[[j]] <- sub("^to_", "", s)
+    } else if (s %in% ecols) {
+      src[[j]] <- 1L; vkind[[j]] <- 0L; vcol[[j]] <- s
+    } else if (s %in% names(state$globals)) {
+      src[[j]] <- 2L
+    } else if (exists(s, envir = env)) {
+      src[[j]] <- 3L
+    } else {
+      return(NULL)
+    }
+  }
+  o <- order(src)
+  syms <- syms[o]; src <- src[o]; vkind <- vkind[o]; vcol <- vcol[o]
+  exprs <- lapply(quos, rlang::quo_get_expr)
+  prog <- rx_new_program(exprs, syms, rep(-1L, length(exprs)),
+                         lapply(comp, function(cp) rx_bind(cp$ir, syms)))
+  rl_scope_bind(list(kind = 19L, scope_match = FALSE,
+       groups = list(list(name = "", prog = prog$.ptr, cols = vcol[src == 1L],
+                          globs = syms[src == 2L], targets = tg,
+                          scope = syms[src == 3L], ew = FALSE, mcols = character(),
+                          wslot = as.integer(vkind[src == 1L]))),
+       pairs = list(via = step$via, when = !is.null(step$when))),
+    if (any(src == 3L)) list(env))
 }
 
 # the network neighbour shapes the loop folds natively: every rule `sum()` or
@@ -1230,7 +1441,12 @@ rl_prep_seq <- function(step, state) {
 # when it is the current edges' (else R builds it, as it would)
 rl_prep_nb_anyall <- function(step, state) {
   shapes <- planned(step, "rl_nbshapes", rl_nb_shapes(step))
-  if (length(state$relations)) return(NULL)
+  rel_names <- relation_derived_names(state$relations)
+  if (length(rel_names)) {
+    ntg <- vapply(step$rules, `[[`, "", "target")
+    nsy <- unlist(lapply(shapes, function(s) all.vars(s$arg)), use.names = FALSE)
+    if (any(c(ntg, nsy) %in% rel_names)) return(NULL)
+  }
   pg <- rl_nb_program(step, state)
   if (is.null(pg)) return(NULL)
   rl_scope_bind(list(kind = 3L, scope_match = FALSE, groups = list(pg$prog_g),
@@ -1311,12 +1527,15 @@ rl_nb_view_ok <- function(step) !is.null(rl_nb_view_shape(step))
 rl_prep_nb_view <- function(step, state) {
   shapes <- planned(step, "rx_nbv", rl_nb_view_shape(step))
   if (is.null(shapes)) return(FALSE)
-  if (is.null(state$edges) || length(state$relations) || !is.null(state$stale_draws)) return(NULL)
+  if (is.null(state$edges) || !is.null(state$stale_draws)) return(NULL)
   agent_cols <- model_columns(state$groups)
   drawn <- drawn_names(state$edges)
   args <- Filter(function(s) s$fn != "n", shapes)
   comp <- lapply(args, `[[`, "cp")
   syms <- unique(unlist(lapply(comp, `[[`, "syms"))) %||% character()
+  targets <- vapply(step$rules, `[[`, "", "target")
+  rel_names <- relation_derived_names(state$relations)
+  if (length(rel_names) && any(c(syms, targets) %in% rel_names)) return(NULL)
   env <- rlang::quo_get_env(step$rules[[1]]$quo)
   heads <- unique(unlist(lapply(comp, `[[`, "heads"))) %||% character()
   if (!rx_heads_ok(heads, abm_eval_env(step$rules[[1]]$quo, state$globals, n = 1L))) return(NULL)

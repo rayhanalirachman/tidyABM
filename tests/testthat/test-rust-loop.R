@@ -277,6 +277,40 @@ test_that("native steps keep every new R object protected (gctorture)", {
   got14 <- tryCatch(run_in("rust", mt, go14, ticks = 2, seed = 3), error = identity)
   gctorture(FALSE)
   expect_identical(got14, ref14)
+  # FR15a: nearest+cost match, tell(.resolve = "collect"), network link/unlink
+  m15 <- abm_setup(agents = list(c = abm_agents(n = 4, v = ~runif(n), inbox = ~vector("list", n)),
+                                 p = abm_agents(n = 6, v = ~runif(n))),
+                   network = abm_network(type = "empty"), seed = 6)
+  go15 <- abm_go(
+    abm_match(pair = "nearest", cost = abs(v - own_v),
+              eligible = .group == "p", among = .group == "c"),
+    abm_tell(inbox ~ .id, to = .partner, when = !is.na(.partner), .resolve = "collect"),
+    abm_link(),
+    abm_match(pair = "random", size = 3),
+    abm_link(),
+    abm_match(pair = "network"),
+    abm_unlink())
+  ref15 <- run_in("r", m15, go15, ticks = 2, seed = 3)
+  gctorture(TRUE)
+  got15 <- tryCatch(run_in("rust", m15, go15, ticks = 2, seed = 3), error = identity)
+  gctorture(FALSE)
+  expect_identical(got15, ref15)
+  # FR15b: relations in abm_sequential() and abm_pairs()
+  m15b <- abm_setup(
+    agents = list(b = abm_agents(n = 4, w = 2, g = 0), s = abm_agents(n = 2, inv = 5)),
+    relations = list(rel = abm_relation(data.frame(from = 1:4, to = c(5L, 5L, 6L, 6L)), u = 0L)),
+    seed = 4)
+  go15b <- abm_go(
+    abm_rules(w ~ 2, g ~ 0, .scope = "population"),
+    abm_match(pair = "one_of", eligible = .group == "b", among = .rel),
+    abm_sequential(g ~ pmin(w, partner_inv), partner_inv ~ partner_inv - g,
+                   rel_u ~ rel_u + as.integer(g < w)),
+    abm_pairs(via = "rel", u ~ u + 1L, .when = from_w > 0))
+  ref15b <- run_in("r", m15b, go15b, ticks = 2, seed = 4)
+  gctorture(TRUE)
+  got15b <- tryCatch(run_in("rust", m15b, go15b, ticks = 2, seed = 4), error = identity)
+  gctorture(FALSE)
+  expect_identical(got15b, ref15b)
 })
 
 test_that("FR9b: measures and checks compiled natively give R's tables and errors", {
@@ -317,7 +351,12 @@ test_that("abm_repeat() blocks run inside the loop, natively where their steps a
                                 abm_global(tot ~ tot + 1), until = tot > 6, max = 3)),
     # an R step inside the block
     r_step  = abm_go(abm_repeat(abm_rules(x ~ vapply(x, function(v) v + 1, 0)),
-                                abm_global(tot ~ sum(x)), until = tot > 100, max = 9))
+                                abm_global(tot ~ sum(x)), until = tot > 100, max = 9)),
+    # an R step immediately before a block end whose `until` stays on R (Slot::Never
+    # on the end marker must never be swallowed into the R segment on pass 2+)
+    r_end   = abm_go(abm_repeat(abm_rules(k ~ k + 1L),
+                                abm_rules(x ~ vapply(x, function(v) v + 0.5, 0)),
+                                until = any(x > 2), max = 5))
   )
   for (nm in names(cases)) {
     expect_engines_agree(m, cases[[nm]], ticks = 4, seed = 1, what = paste("repeat", nm))

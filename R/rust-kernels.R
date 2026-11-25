@@ -17,6 +17,12 @@
 #' ([run_once_loop()]); `fun` is then the same native executor, for "both" mode.
 #' @noRd
 rust_kernels <- list(
+  abm_pairs      = list(fun = rk_native, auto = FALSE, store = FALSE, can = rl_pairs_ok,
+                        native = 19L),
+  abm_link       = list(fun = rk_native, auto = FALSE, store = FALSE, can = rl_link_ok,
+                        native = 18L),
+  abm_unlink     = list(fun = rk_native, auto = FALSE, store = FALSE, can = rl_link_ok,
+                        native = 18L),
   abm_draw       = list(fun = rk_native, auto = FALSE, store = FALSE, can = rl_draw_ok,
                         native = 16L),
   abm_neighbours = list(fun = rk_native, auto = FALSE, store = FALSE,

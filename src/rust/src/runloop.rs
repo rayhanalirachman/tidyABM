@@ -304,7 +304,8 @@ fn rows(g: SEXP) -> Option<usize> {
     Some(len(elt(g, 0)))
 }
 
-/// The schema key: `c(length(globals), lengths(groups))`.
+/// The schema key: `c(length(globals), lengths(groups))`, plus relation count
+/// and each relation's edge column count when `state$relations` is non-NULL.
 fn schema_key(st: SEXP) -> savvy::Result<Option<Vec<usize>>> {
     let (Some(gi), Some(li)) = (find_str(st, b"groups")?, find_str(st, b"globals")?) else {
         return Ok(None);
@@ -313,6 +314,18 @@ fn schema_key(st: SEXP) -> savvy::Result<Option<Vec<usize>>> {
     let mut key = vec![len(elt(st, li))];
     for k in 0..len(groups) {
         key.push(len(elt(groups, k)));
+    }
+    if let Some(ri) = find_str(st, b"relations")? {
+        let rels = elt(st, ri);
+        if rels != rapi_nil() {
+            let nr = len(rels);
+            key.push(nr);
+            for k in 0..nr {
+                let r = elt(rels, k);
+                let nc = find_str(r, b"edges")?.map_or(0, |ei| len(elt(r, ei)));
+                key.push(nc);
+            }
+        }
     }
     Ok(Some(key))
 }
@@ -379,8 +392,8 @@ struct Plan {
     /// `abm_tell()` (kind 11): `when` given, and `.resolve` (0 last, 1 first,
     /// 2 sum, 3 mean, 4 error)
     tell: Option<(bool, u8)>,
-    /// `abm_sequential()` (kind 12): `.order` given
-    seq: Option<bool>,
+    /// `abm_sequential()` (kind 12): `.order` given, plus any relation reads/writes
+    seq: Option<SeqPlan>,
     /// the cross-product `within` (kind 14): per rule 0 `n()`, 1 `sum`, 2
     /// `mean`, 3 `any`, 4 `all`, 5 any other formula; `na.rm`
     cross: Option<(Vec<u8>, Vec<bool>)>,
@@ -391,6 +404,10 @@ struct Plan {
     draw: Option<bool>,
     /// network `abm_neighbours()` over the pair view (kind 17: `own_`, edge draws, `na.rm`, mixes)
     nbv: Option<NbvPlan>,
+    /// network `abm_link()` / `abm_unlink()` (kind 18): `(drop, has_when)`
+    link: Option<(bool, bool)>,
+    /// `abm_pairs()` (kind 19): `(via, has_when)`
+    pairs: Option<(SEXP, bool)>,
     /// `.by` rules: the key column's name
     by: Option<SEXP>,
     nb: Option<NbPlan>,
@@ -402,6 +419,21 @@ struct Plan {
     mixed: Option<Mixed>,
     // the descriptor: keeps the names' CHARSXPs and the programs alive
     _desc: H,
+}
+
+/// A relation read or write referenced by an `abm_sequential()` step (FR15b).
+struct SeqRel {
+    name: SEXP,
+    rel: SEXP,
+    /// column name on `rel$edges` (`""` for existence `.R` / `.R_back`)
+    col: SEXP,
+    back: bool,
+}
+
+/// An `abm_sequential()` step: `.order` given, plus resolved relation names.
+struct SeqPlan {
+    order: bool,
+    rels: Vec<SeqRel>,
 }
 
 /// A `within = <col> == own_<col> [& rest]` step whose candidates are distinct
@@ -862,6 +894,7 @@ fn parse_plan(desc: H) -> savvy::Result<Plan> {
             Some(b"sum") => 2,
             Some(b"mean") => 3,
             Some(b"error") => 4,
+            Some(b"collect") => 5,
             _ => return Err(bad("tell resolve")),
         };
         Some((when, res))
@@ -874,7 +907,36 @@ fn parse_plan(desc: H) -> savvy::Result<Plan> {
         // SAFETY: reading a type tag, then a logical of length 1.
         let lg = unsafe { rapi::TYPEOF(o) } == rapi::LGLSXP && len(o) == 1;
         // SAFETY: as above.
-        Some(lg && unsafe { *rapi::LOGICAL_RO(o) } == 1)
+        let order = lg && unsafe { *rapi::LOGICAL_RO(o) } == 1;
+        let mut rels = Vec::new();
+        if let Some(ri) = find_str(x, b"rel")? {
+            let r = elt(x, ri);
+            if r != rapi_nil() {
+                let rnames = chars(field(r, b"names")?)?;
+                let rrel = chars(field(r, b"rel")?)?;
+                let rcol = chars(field(r, b"col")?)?;
+                let rback_v = field(r, b"back")?;
+                // SAFETY: reading a type tag, then a logical vector of its length.
+                if unsafe { rapi::TYPEOF(rback_v) } != rapi::LGLSXP
+                    || len(rback_v) != rnames.len()
+                    || rrel.len() != rnames.len()
+                    || rcol.len() != rnames.len()
+                {
+                    return Err(bad("seq rel"));
+                }
+                for j in 0..rnames.len() {
+                    // SAFETY: as above.
+                    let back = unsafe { *rapi::LOGICAL_RO(rback_v).add(j) } == 1;
+                    rels.push(SeqRel {
+                        name: rnames[j],
+                        rel: rrel[j],
+                        col: rcol[j],
+                        back,
+                    });
+                }
+            }
+        }
+        Some(SeqPlan { order, rels })
     } else {
         None
     };
@@ -919,7 +981,7 @@ fn parse_plan(desc: H) -> savvy::Result<Plan> {
         None
     };
     // a sequential step without `.order` shuffles its agents
-    let draws = draws || seq == Some(false);
+    let draws = draws || seq.as_ref().is_some_and(|s| !s.order);
     let birth = if kind == 9 {
         let x = field(d, b"birth")?;
         let ptr = field(x, b"round")?;
@@ -1008,6 +1070,33 @@ fn parse_plan(desc: H) -> savvy::Result<Plan> {
     } else {
         None
     };
+    let link = if kind == 18 {
+        let x = field(d, b"link")?;
+        let flag = |nm: &[u8]| -> savvy::Result<bool> {
+            let v = field(x, nm)?;
+            // SAFETY: reading a type tag, then a logical of length 1.
+            let lg = unsafe { rapi::TYPEOF(v) } == rapi::LGLSXP && len(v) == 1;
+            // SAFETY: as above.
+            Ok(lg && unsafe { *rapi::LOGICAL_RO(v) } == 1)
+        };
+        Some((flag(b"drop")?, flag(b"when")?))
+    } else {
+        None
+    };
+    let pairs = if kind == 19 {
+        let x = field(d, b"pairs")?;
+        let via = chars(field(x, b"via")?)?
+            .first()
+            .copied()
+            .ok_or_else(|| bad("pairs via"))?;
+        let w = field(x, b"when")?;
+        // SAFETY: reading a type tag, then a logical of length 1.
+        let lg = unsafe { rapi::TYPEOF(w) } == rapi::LGLSXP && len(w) == 1;
+        // SAFETY: as above.
+        Some((via, lg && unsafe { *rapi::LOGICAL_RO(w) } == 1))
+    } else {
+        None
+    };
     let by = if kind == 4 {
         Some(
             chars(field(d, b"by")?)?
@@ -1019,6 +1108,8 @@ fn parse_plan(desc: H) -> savvy::Result<Plan> {
         None
     };
     Ok(Plan {
+        pairs,
+        link,
         nbv,
         draw,
         cross,
@@ -1318,11 +1409,6 @@ fn match_inputs_ids(
 /// `abm_rules()` natively (the shapes of slice 1's `rk_rules()`): every group's
 /// rules from the start-of-step columns, then the writes. `None` = declined.
 fn exec_rules(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
-    if let Some(ri) = find_str(st, b"relations")? {
-        if len(elt(st, ri)) > 0 {
-            return decline("a relation");
-        }
-    }
     // a standing match with pairs narrows a match-scope step to the agents it
     // placed (`run_rules()`: rows `!is.na(.group_id)`); elementwise rules give
     // the same values over the whole group, others go to R
@@ -1807,11 +1893,6 @@ fn exec_nb1(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
     use tidyabm_core::sample::NA_INT;
     let nb = plan.nb1.as_ref().ok_or_else(|| bad("no nb1"))?;
     let gp = plan.groups.first().ok_or_else(|| bad("no program"))?;
-    if let Some(ri) = find_str(st, b"relations")? {
-        if len(elt(st, ri)) > 0 {
-            return decline("a relation");
-        }
-    }
     let gi = find_str(st, b"groups")?.ok_or_else(|| bad("no groups"))?;
     let groups = elt(st, gi);
     let ng = len(groups);
@@ -1993,11 +2074,6 @@ fn exec_nbw(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
     use tidyabm_core::sample::NA_INT;
     let nb = plan.nbw.as_ref().ok_or_else(|| bad("no nbw"))?;
     let gp = plan.groups.first().ok_or_else(|| bad("no program"))?;
-    if let Some(ri) = find_str(st, b"relations")? {
-        if len(elt(st, ri)) > 0 {
-            return decline("a relation");
-        }
-    }
     match find_str(st, b"lattice")? {
         Some(li) if elt(st, li) == nb.lattice => {}
         _ => return decline("the lattice changed"),
@@ -2378,11 +2454,6 @@ fn exec_match(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
     use tidyabm_core::sample::NA_INT;
     let mt = plan.mt.as_ref().ok_or_else(|| bad("no match"))?;
     let gp = plan.groups.first().ok_or_else(|| bad("no program"))?;
-    if let Some(ri) = find_str(st, b"relations")? {
-        if len(elt(st, ri)) > 0 {
-            return decline("a relation");
-        }
-    }
     let gi = find_str(st, b"groups")?.ok_or_else(|| bad("no groups"))?;
     let groups = elt(st, gi);
     let ng = len(groups);
@@ -2396,6 +2467,9 @@ fn exec_match(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
     let n: usize = sizes.iter().sum();
     let Some(Vals::Int(ids)) = stacked_col_named(groups, b".id", &sizes)? else {
         return decline("ids that are not integers");
+    };
+    let Some(svals) = scope_values(plan)? else {
+        return decline("a formula-environment value that cannot be read");
     };
     // the conditions over the agents
     let mut elig = vec![true; n];
@@ -2416,9 +2490,6 @@ fn exec_match(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
         if !read_globals(st, &gp.globs, &mut xs)? {
             return decline("a global not found");
         }
-        let Some(svals) = scope_values(plan)? else {
-            return decline("a formula-environment value that cannot be read");
-        };
         if !read_scope(&svals, &gp.scope, &mut xs) {
             return decline("a formula-environment value not found");
         }
@@ -2456,6 +2527,39 @@ fn exec_match(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
             };
             role_c = Some((a, b));
         }
+    }
+    // FR15a: `nearest` with `cost =`: prepare pair-view column inputs before RNG
+    let mut cost_prog: *const RxProgram = std::ptr::null();
+    let mut cost_cols: Vec<(i32, Option<Vals<'static>>)> = Vec::new();
+    let mut cost_rest: Vec<Vals> = Vec::new();
+    if mt.pair == 6 && n > 0 {
+        let gp2 = plan.groups.get(1).ok_or_else(|| bad("no cost program"))?;
+        if gp2.prog.is_null() || gp2.wslot.len() != gp2.cols.len() {
+            return Err(bad("malformed cost program"));
+        }
+        cost_prog = gp2.prog;
+        for (j, &c) in gp2.cols.iter().enumerate() {
+            let vk = gp2.wslot[j];
+            if vk == 2 {
+                cost_cols.push((2, None));
+            } else {
+                let Some(v) = stacked_pad(groups, c, &sizes)? else {
+                    return decline("a cost column of another kind");
+                };
+                cost_cols.push((vk, Some(v)));
+            }
+        }
+        let mut xs = Vec::new();
+        if !read_globals(st, &gp2.globs, &mut xs)? {
+            return decline("a cost global not found");
+        }
+        if !read_scope(&svals, &gp2.scope, &mut xs) {
+            return decline("a cost formula-environment value not found");
+        }
+        let Some(more) = inputs(&xs)? else {
+            return decline("a cost global or scope value of an unsupported type");
+        };
+        cost_rest = more;
     }
     let col = |nm: Option<SEXP>| -> savvy::Result<Option<Vals<'static>>> {
         match nm {
@@ -2607,6 +2711,92 @@ fn exec_match(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
                             out_partner.push(ids[c]);
                         }
                     }
+                }
+                out_gid = (1..=out_id.len() as i32).collect();
+            }
+            6 => {
+                // FR15a: match_cheapest() — evaluate compiled `cost =` over the
+                // (chooser, candidate) pair view, drop self and NA/NaN, take the
+                // first minimum per chooser, output ordered by chooser `.id`
+                let subs: Vec<usize> = (0..n).filter(|&i| elig[i]).collect();
+                let cands: Vec<usize> = (0..n).filter(|&i| among[i]).collect();
+                if subs.is_empty() || cands.is_empty() {
+                    return Ok(Some(()));
+                }
+                let ns = subs.len();
+                let nc = cands.len();
+                let nv = ns * nc;
+                let mut si = Vec::with_capacity(nv);
+                let mut ci = Vec::with_capacity(nv);
+                for &s in &subs {
+                    for &c in &cands {
+                        si.push(s);
+                        ci.push(c);
+                    }
+                }
+                let mut cins: Vec<Vals> = Vec::with_capacity(cost_cols.len() + cost_rest.len());
+                for (vk, v) in &cost_cols {
+                    match vk {
+                        0 => cins.push(tidyabm_core::expr::take(
+                            v.as_ref().ok_or_else(|| bad("cost col"))?,
+                            &ci,
+                        )),
+                        1 => cins.push(tidyabm_core::expr::take(
+                            v.as_ref().ok_or_else(|| bad("cost own col"))?,
+                            &si,
+                        )),
+                        2 => cins.push(Vals::Int(std::borrow::Cow::Owned(
+                            si.iter().map(|&s| ids[s]).collect(),
+                        ))),
+                        _ => return Err(bad("cost input kind")),
+                    }
+                }
+                cins.extend(cost_rest.iter().cloned());
+                let mut ev = expr::Evaluator::new(Some(r));
+                // SAFETY: the cost program is kept alive by the plan's descriptor.
+                let prog = unsafe { &*cost_prog };
+                let val = match ev.eval(prog, 0, &cins, nv)? {
+                    Ok(v) => recycle(v, nv),
+                    Err(d) => {
+                        expr::note_decline(&d);
+                        return Ok(None);
+                    }
+                };
+                let costs: Vec<f64> = match &val {
+                    Vals::Dbl(x) => x.to_vec(),
+                    Vals::Int(x) => x
+                        .iter()
+                        .map(|&v| if v == NA_INT { f64::NAN } else { f64::from(v) })
+                        .collect(),
+                    // R aborts `tidyABM_bad_cost` for logical / character
+                    Vals::Lgl(_) | Vals::Str(_) => return Ok(None),
+                };
+                let mut picked: Vec<(i32, i32)> = Vec::with_capacity(ns);
+                for (a, &s) in subs.iter().enumerate() {
+                    let sid = ids[s];
+                    let base = a * nc;
+                    let mut best: Option<(f64, i32)> = None;
+                    for (b, &c) in cands.iter().enumerate() {
+                        let cid = ids[c];
+                        if sid == cid {
+                            continue;
+                        }
+                        let v = costs[base + b];
+                        if v.is_nan() {
+                            continue;
+                        }
+                        if best.map_or(true, |(m, _)| v < m) {
+                            best = Some((v, cid));
+                        }
+                    }
+                    if let Some((_, cid)) = best {
+                        picked.push((sid, cid));
+                    }
+                }
+                picked.sort_by_key(|&(sid, _)| sid);
+                for (sid, cid) in picked {
+                    out_id.push(sid);
+                    out_partner.push(cid);
                 }
                 out_gid = (1..=out_id.len() as i32).collect();
             }
@@ -3208,11 +3398,6 @@ fn exec_birth(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
     let round_prog = plan.birth.ok_or_else(|| bad("no birth"))?;
     if let Some(c) = plan.count {
         return exec_birth_count(plan, st, c);
-    }
-    if let Some(ri) = find_str(st, b"relations")? {
-        if len(elt(st, ri)) > 0 {
-            return decline("a relation");
-        }
     }
     let Some(svals) = scope_values(plan)? else {
         return decline("a formula-environment value that cannot be read");
@@ -4151,11 +4336,6 @@ fn exec_tell(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
     use tidyabm_core::sample::NA_INT;
     let (has_when, resolve) = plan.tell.ok_or_else(|| bad("no tell"))?;
     let gp = plan.groups.first().ok_or_else(|| bad("no program"))?;
-    if let Some(ri) = find_str(st, b"relations")? {
-        if len(elt(st, ri)) > 0 {
-            return decline("a relation");
-        }
-    }
     let gi = find_str(st, b"groups")?.ok_or_else(|| bad("no groups"))?;
     let groups = elt(st, gi);
     let ng = len(groups);
@@ -4262,7 +4442,7 @@ fn exec_tell(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
     if dup && resolve == 4 {
         return decline("several messages to one agent (R's error)");
     }
-    let at: Vec<usize> = if dup {
+    let at: Vec<usize> = if dup || resolve == 5 {
         first.iter().map(|&q| recipient_row[q]).collect()
     } else {
         recipient_row.clone()
@@ -4273,7 +4453,7 @@ fn exec_tell(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
     for v in res.into_iter().skip(k) {
         let v = recycle(v, n);
         let sent = tidyabm_core::expr::take(&v, &senders);
-        let msg = if !dup {
+        let msg = if !dup || resolve == 5 {
             sent
         } else {
             match resolve {
@@ -4352,13 +4532,65 @@ fn exec_tell(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
                 return decline("a recipient group without the column (R's error)");
             };
             let col = elt(g, cj);
+            let sz = sizes[j];
+            if resolve == 5 {
+                // SAFETY: reading a type tag.
+                if unsafe { rapi::TYPEOF(col) } != VECSXP || len(col) != sz {
+                    return decline("collect target that is not a list column");
+                }
+                // accept bare list or `AsIs`-only list (`vctrs::vec_cast_common` sets class = "AsIs")
+                let ok_col = if all_bare(&[col])? {
+                    true
+                } else {
+                    // SAFETY: main thread; `col` is protected by `g`; temporary empty lists
+                    // are protected while compared with `R_compute_identical`.
+                    unsafe {
+                        rapi::protect_value(0, move || {
+                            let a = rapi::Rf_protect(rapi::Rf_allocVector(VECSXP, 0));
+                            rapi::SHALLOW_DUPLICATE_ATTRIB(a, col);
+                            let b = rapi::Rf_protect(rapi::Rf_allocVector(VECSXP, 0));
+                            let cls = rapi::Rf_protect(rapi::Rf_allocVector(STRSXP, 1));
+                            rapi::SET_STRING_ELT(cls, 0, rapi::Rf_mkChar(c"AsIs".as_ptr()));
+                            rapi::Rf_setAttrib(b, rapi::Rf_install(c"class".as_ptr()), cls);
+                            let eq = rapi::R_compute_identical(a, b, 16);
+                            rapi::Rf_unprotect(3);
+                            eq
+                        })
+                    }? != 0
+                };
+                if !ok_col {
+                    return decline("collect target with unsupported attributes");
+                }
+                let mut new_col = OwnedListSexp::new(sz, false)?;
+                for i in 0..sz {
+                    new_col.set_value(i, Sexp(elt(col, i)))?;
+                }
+                for &q in &sel {
+                    let part = tidyabm_core::expr::take(msg, &members[q]);
+                    new_col.set_value(at[q] - start, expr::to_r(&part, part.len())?)?;
+                }
+                let nc_p = new_col.inner();
+                // SAFETY: main thread; `new_col` is protected by `OwnedListSexp`; setting
+                // `class = "AsIs"` matches `vctrs::vec_cast_common(list, I(list))`.
+                unsafe {
+                    rapi::protect(move || {
+                        let cls = rapi::Rf_protect(rapi::Rf_allocVector(STRSXP, 1));
+                        rapi::SET_STRING_ELT(cls, 0, rapi::Rf_mkChar(c"AsIs".as_ptr()));
+                        rapi::Rf_setAttrib(nc_p, rapi::Rf_install(c"class".as_ptr()), cls);
+                        rapi::Rf_unprotect(1);
+                    })
+                }?;
+                let g2 = set_named(g, t, nc_p)?;
+                // SAFETY: reading a static of R's (unused name: `j` is in range).
+                cur = Some(with_elt(gs, j, g2.get(), unsafe { rapi::R_BlankString })?);
+                continue;
+            }
             if !all_bare(&[col])? {
                 return decline("a target column with attributes");
             }
             let Some(old) = expr::vals_of(col, false)? else {
                 return decline("a target column of another type");
             };
-            let sz = sizes[j];
             let mut mask = vec![false; sz];
             let mut spread_rows = vec![0usize; sz];
             for &q in &sel {
@@ -4400,17 +4632,28 @@ struct SeqCol {
     dirty: bool,
 }
 
-/// Where a sequential rule writes ([run_sequential()]'s order of cases): the
-/// partner's row (a standing match), a global, else a column of the agent's own
-/// group (an index into its store).
+/// A relation's working store inside `exec_seq()` (FR15b).
+struct SeqRelStore {
+    rel_name: SEXP,
+    rel_i: usize,
+    edges_i: usize,
+    nrows: usize,
+    map: std::collections::HashMap<(i32, i32), usize>,
+    cols: Vec<SeqCol>,
+}
+
+/// Where a sequential rule writes ([run_sequential()]'s order of cases): a
+/// relation value on `(me, partner)`, the partner's row (a standing match), a
+/// global, else a column of the agent's own group (an index into its store).
 #[derive(Clone, Copy)]
 enum SeqTarget {
+    Rel(usize, usize, bool),
     Partner(usize),
     Global(usize),
     Own(usize),
 }
 
-/// A match column a sequential rule reads, per agent.
+/// A match or relation column a sequential rule reads, per agent.
 #[derive(Clone, Copy)]
 enum SeqMatchIn {
     Partner,
@@ -4418,6 +4661,10 @@ enum SeqMatchIn {
     GroupId,
     /// `partner_<col>`: an index into the partner columns
     Col(usize),
+    /// `.R` / `.R_back`: `(rstore_idx, back)`
+    RelExist(usize, bool),
+    /// `R_<col>` / `R_<col>_back`: `(rstore_idx, col_idx_opt, back)`
+    RelCol(usize, Option<usize>, bool),
 }
 
 /// One group's rules, resolved against the step's stores.
@@ -4509,12 +4756,12 @@ fn seq_set(col: &mut Vals<'static>, i: usize, v: &Vals) {
     }
 }
 
-/// The standing match's columns `.id`, `.partner`, `.role`, `.group_id`:
-/// `Ok(None)` without one, `Ok(Some(None))` for one the step cannot read.
+/// The standing match's columns `.id`, `.partner`, `.role`, `.group_id` and its
+/// `size`: `Ok(None)` without one, `Ok(Some(None))` for one the step cannot read.
 #[allow(clippy::type_complexity)]
 fn seq_match<'a>(
     st: SEXP,
-) -> savvy::Result<Option<Option<(&'a [i32], &'a [i32], &'a [SEXP], &'a [i32])>>> {
+) -> savvy::Result<Option<Option<(&'a [i32], &'a [i32], &'a [SEXP], &'a [i32], i32)>>> {
     let Some(mi) = find_str(st, b"match")? else {
         return Ok(None);
     };
@@ -4524,6 +4771,22 @@ fn seq_match<'a>(
     }
     let Some(m) = find_str(ms, b"match")?.map(|j| elt(ms, j)) else {
         return Ok(Some(None));
+    };
+    let msz = match find_str(ms, b"size")? {
+        Some(si) => {
+            let s = elt(ms, si);
+            store::numbers_of::<i32>(s, INTSXP)?
+                .and_then(|v| v.first().copied())
+                .or_else(|| {
+                    store::numbers_of::<f64>(s, rapi::REALSXP)
+                        .ok()
+                        .flatten()
+                        .and_then(|v| v.first().copied())
+                        .map(|x| x as i32)
+                })
+                .unwrap_or(0)
+        }
+        None => 0,
     };
     let col =
         |nm: &[u8]| -> savvy::Result<Option<SEXP>> { Ok(find_str(m, nm)?.map(|j| elt(m, j))) };
@@ -4550,24 +4813,21 @@ fn seq_match<'a>(
     if pt.len() != id.len() || role.len() != id.len() || gid.len() != id.len() {
         return Ok(Some(None));
     }
-    Ok(Some(Some((id, pt, role, gid))))
+    Ok(Some(Some((id, pt, role, gid, msz))))
 }
 
 /// `abm_sequential()` natively ([run_sequential()]): the agents in a shuffled
 /// order (or by `.order`), each evaluating its group's rules on its own row, a
 /// later rule reading what an earlier one wrote, and the next agent reading the
-/// columns and globals as the agents before it left them. Every write is checked
-/// as [write_at()] makes it; anything else declines and the step is replayed on
-/// the R path.
+/// columns, globals and relations as the agents before it left them. Every write
+/// is checked as [write_at()] makes it; anything else declines and the step is
+/// replayed on the R path.
 fn exec_seq(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
     use std::borrow::Cow;
+    use std::collections::HashMap;
     use tidyabm_core::sample::NA_INT;
-    let has_order = plan.seq.ok_or_else(|| bad("no seq"))?;
-    if let Some(ri) = find_str(st, b"relations")? {
-        if len(elt(st, ri)) > 0 {
-            return decline("a relation");
-        }
-    }
+    let seq_plan = plan.seq.as_ref().ok_or_else(|| bad("no seq"))?;
+    let has_order = seq_plan.order;
     let gi = find_str(st, b"groups")?.ok_or_else(|| bad("no groups"))?;
     let li = find_str(st, b"globals")?.ok_or_else(|| bad("no globals"))?;
     let groups = elt(st, gi);
@@ -4616,9 +4876,16 @@ fn exec_seq(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
         Some(Some(m)) => Some(m),
         Some(None) => return decline("a match the step cannot read"),
     };
-    let uses_match = plan.groups.iter().any(|g| {
-        !g.mcols.is_empty() || g.targets.iter().any(|&t| bytes(t).starts_with(b"partner_"))
-    });
+    let has_rel_target = !seq_plan.rels.is_empty()
+        && plan.groups.iter().any(|g| {
+            g.targets
+                .iter()
+                .any(|&t| seq_plan.rels.iter().any(|r| r.name == t))
+        });
+    let uses_match = has_rel_target
+        || plan.groups.iter().any(|g| {
+            !g.mcols.is_empty() || g.targets.iter().any(|&t| bytes(t).starts_with(b"partner_"))
+        });
     let mut order_ids: Vec<i32> = all_ids.to_vec();
     let midx = match mt {
         None if uses_match => return decline("match columns without a standing match"),
@@ -4635,8 +4902,103 @@ fn exec_seq(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
             Some(ix)
         }
     };
+    if has_rel_target && !matches!(mt, Some((_, _, _, _, 2))) {
+        return decline("relation write without a pairing match (R's error)");
+    }
     let Some(svals) = scope_values(plan)? else {
         return decline("a formula-environment value that cannot be read");
+    };
+    // relation stores (FR15b): loaded once per referenced relation
+    let mut rel_root: Option<(usize, SEXP)> = None;
+    let mut rstore: Vec<SeqRelStore> = Vec::new();
+    if !seq_plan.rels.is_empty() {
+        let Some(ri) = find_str(st, b"relations")? else {
+            return decline("no relations");
+        };
+        let rels_sexp = elt(st, ri);
+        // SAFETY: reading a type tag.
+        if rels_sexp == rapi_nil() || unsafe { rapi::TYPEOF(rels_sexp) } != VECSXP {
+            return decline("relations that are not a list");
+        }
+        rel_root = Some((ri, rels_sexp));
+        let rnames = names_of(rels_sexp)?;
+        for sr in &seq_plan.rels {
+            if rstore.iter().any(|rs| rs.rel_name == sr.rel) {
+                continue;
+            }
+            let Some(rel_i) = find(rnames, sr.rel) else {
+                return decline("a relation not found");
+            };
+            let rel_obj = elt(rels_sexp, rel_i);
+            let Some(edges_i) = find_str(rel_obj, b"edges")? else {
+                return decline("a relation without edges");
+            };
+            let edges = elt(rel_obj, edges_i);
+            let Some(nrows) = rows(edges) else {
+                return decline("malformed relation edges");
+            };
+            let (Some(fi), Some(ti)) = (find_str(edges, b"from")?, find_str(edges, b"to")?) else {
+                return decline("relation edges without from/to");
+            };
+            let (cf, ct) = (elt(edges, fi), elt(edges, ti));
+            if !all_bare(&[cf, ct])? {
+                return decline("relation edges with attributes");
+            }
+            let (Some(ef), Some(et)) = (
+                store::numbers_of::<i32>(cf, INTSXP)?,
+                store::numbers_of::<i32>(ct, INTSXP)?,
+            ) else {
+                return decline("relation edges that are not integers");
+            };
+            if ef.len() != nrows || et.len() != nrows {
+                return decline("malformed relation edges");
+            }
+            let mut map: HashMap<(i32, i32), usize> = HashMap::with_capacity(nrows);
+            for r in 0..nrows {
+                map.entry((ef[r], et[r])).or_insert(r);
+            }
+            rstore.push(SeqRelStore {
+                rel_name: sr.rel,
+                rel_i,
+                edges_i,
+                nrows,
+                map,
+                cols: Vec::new(),
+            });
+        }
+    }
+    let load_rel_col = |rstore: &mut [SeqRelStore],
+                        rs_i: usize,
+                        col_nm: SEXP|
+     -> savvy::Result<Result<Option<usize>, ()>> {
+        let cname = bytes(col_nm);
+        if let Some(ci) = rstore[rs_i]
+            .cols
+            .iter()
+            .position(|c| bytes(c.name) == cname)
+        {
+            return Ok(Ok(Some(ci)));
+        }
+        let (_, rels_sexp) = rel_root.ok_or_else(|| bad("no rel root"))?;
+        let rel_obj = elt(rels_sexp, rstore[rs_i].rel_i);
+        let edges = elt(rel_obj, rstore[rs_i].edges_i);
+        let enames = names_of(edges)?;
+        let Some(ej) = enames.iter().position(|&c| same_bytes(c, cname)) else {
+            return Ok(Ok(None));
+        };
+        let col = elt(edges, ej);
+        if !all_bare(&[col])? {
+            return Ok(Err(()));
+        }
+        let Some(v) = expr::vals_of(col, false)? else {
+            return Ok(Err(()));
+        };
+        rstore[rs_i].cols.push(SeqCol {
+            name: enames[ej],
+            vals: expr::owned(v),
+            dirty: false,
+        });
+        Ok(Ok(Some(rstore[rs_i].cols.len() - 1)))
     };
     // the stores: columns, globals, partner columns
     let mut store: Vec<Vec<SeqCol>> = (0..ng).map(|_| Vec::new()).collect();
@@ -4704,6 +5066,21 @@ fn exec_seq(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
         };
         let mut mcols = Vec::with_capacity(gp.mcols.len());
         for &c in &gp.mcols {
+            if let Some(sr) = seq_plan.rels.iter().find(|r| r.name == c) {
+                let rs_i = rstore
+                    .iter()
+                    .position(|rs| rs.rel_name == sr.rel)
+                    .ok_or_else(|| bad("seq rel store"))?;
+                if bytes(sr.col).is_empty() {
+                    mcols.push(SeqMatchIn::RelExist(rs_i, sr.back));
+                } else {
+                    match load_rel_col(&mut rstore, rs_i, sr.col)? {
+                        Ok(ci) => mcols.push(SeqMatchIn::RelCol(rs_i, ci, sr.back)),
+                        Err(()) => return decline("a relation column of another kind"),
+                    }
+                }
+                continue;
+            }
             mcols.push(match bytes(c) {
                 b".partner" => SeqMatchIn::Partner,
                 b".role" => SeqMatchIn::Role,
@@ -4719,6 +5096,20 @@ fn exec_seq(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
         }
         let mut targets = Vec::with_capacity(gp.targets.len());
         for &t in &gp.targets {
+            if let Some(sr) = seq_plan.rels.iter().find(|r| r.name == t) {
+                if bytes(sr.col).is_empty() {
+                    return decline("cannot write relation existence (R's error)");
+                }
+                let rs_i = rstore
+                    .iter()
+                    .position(|rs| rs.rel_name == sr.rel)
+                    .ok_or_else(|| bad("seq rel store"))?;
+                match load_rel_col(&mut rstore, rs_i, sr.col)? {
+                    Ok(Some(ci)) => targets.push(SeqTarget::Rel(rs_i, ci, sr.back)),
+                    _ => return decline("a relation column that is new or of another kind"),
+                }
+                continue;
+            }
             let b = bytes(t);
             targets.push(if let Some(x) = b.strip_prefix(b"partner_") {
                 match pcol(x, &mut store)? {
@@ -4812,6 +5203,7 @@ fn exec_seq(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
             return Err(bad("a shuffle outside the RNG scope"));
         }
         let mut pending: Vec<(usize, usize, usize, Vals<'static>)> = Vec::new();
+        let mut rpending: Vec<(usize, usize, usize, Vals<'static>)> = Vec::new();
         let mut gpending: Vec<(usize, Vals<'static>)> = Vec::new();
         for &id in &order_ids {
             let pos = at_id.get(id).ok_or_else(|| bad("an agent not found"))?;
@@ -4819,7 +5211,7 @@ fn exec_seq(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
             let i = pos - starts[g];
             let Some(sg) = &seqs[g] else { continue };
             let (mut pid, mut role, mut gid) = (NA_INT, na_str, NA_INT);
-            if let (Some((_, mpt, mrole, mgid)), Some(ix)) = (mt, &midx) {
+            if let (Some((_, mpt, mrole, mgid, _)), Some(ix)) = (mt, &midx) {
                 let r = ix.get(id).ok_or_else(|| bad("an agent not in the match"))?;
                 pid = mpt[r];
                 role = mrole[r] as usize;
@@ -4858,6 +5250,26 @@ fn exec_seq(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
                             // no partner, or one whose group lacks the column
                             None => Vals::Lgl(Cow::Owned(vec![NA_INT])),
                         },
+                        SeqMatchIn::RelExist(rs_i, back) => {
+                            let found = pid != NA_INT
+                                && rstore[rs_i].map.contains_key(&if back {
+                                    (pid, id)
+                                } else {
+                                    (id, pid)
+                                });
+                            Vals::Lgl(Cow::Owned(vec![i32::from(found)]))
+                        }
+                        SeqMatchIn::RelCol(rs_i, ci_opt, back) => {
+                            let key = if back { (pid, id) } else { (id, pid) };
+                            match (pid != NA_INT)
+                                .then(|| rstore[rs_i].map.get(&key).copied())
+                                .flatten()
+                                .zip(ci_opt)
+                            {
+                                Some((erow, ci)) => seq_at(&rstore[rs_i].cols[ci].vals, erow),
+                                None => Vals::Lgl(Cow::Owned(vec![NA_INT])),
+                            }
+                        }
                     });
                 }
                 // SAFETY: the program is kept alive by the plan's descriptor.
@@ -4872,6 +5284,21 @@ fn exec_seq(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
                     }
                     let raw = expr::owned(v);
                     match sg.targets[k] {
+                        SeqTarget::Rel(rs_i, ci, back) => {
+                            if pid == NA_INT {
+                                continue;
+                            }
+                            let key = if back { (pid, id) } else { (id, pid) };
+                            let Some(&erow) = rstore[rs_i].map.get(&key) else {
+                                return Ok(Err(Decline("not related (R's error)")));
+                            };
+                            let Some(c) = seq_cast(&rstore[rs_i].cols[ci].vals, &raw) else {
+                                return Ok(Err(Decline(
+                                    "a write that changes a relation column's type",
+                                )));
+                            };
+                            rpending.push((rs_i, ci, erow, c));
+                        }
                         SeqTarget::Own(ci) => {
                             let Some(c) = seq_cast(&store[g][ci].vals, &raw) else {
                                 return Ok(Err(Decline("a write that changes a column's type")));
@@ -4904,6 +5331,11 @@ fn exec_seq(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
                 seq_set(&mut col.vals, row, &c);
                 col.dirty = true;
             }
+            for (rs_i, ci, row, c) in rpending.drain(..) {
+                let col = &mut rstore[rs_i].cols[ci];
+                seq_set(&mut col.vals, row, &c);
+                col.dirty = true;
+            }
             for (x, v) in gpending.drain(..) {
                 gstore[x].1 = v;
                 gwritten[x] = true;
@@ -4920,7 +5352,7 @@ fn exec_seq(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
         expr::note_decline(&d);
         return Ok(None);
     }
-    // write back: the columns written, then the globals
+    // write back: the columns written, the globals, then any dirty relation columns
     // SAFETY: reading a static of R's.
     let blank = unsafe { rapi::R_BlankString };
     let mut st_cur: Option<H> = None;
@@ -4958,6 +5390,34 @@ fn exec_seq(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
         if let Some(g) = gcur {
             let base = st_cur.as_ref().map_or(st, |h| h.get());
             st_cur = Some(with_elt(base, li, g.get(), blank)?);
+        }
+    }
+    if let Some((ri, rels_sexp)) = rel_root {
+        if rstore.iter().any(|r| r.cols.iter().any(|c| c.dirty)) {
+            let mut rcur: Option<H> = None;
+            for rs in &rstore {
+                if !rs.cols.iter().any(|c| c.dirty) {
+                    continue;
+                }
+                let cur_rels = rcur.as_ref().map_or(rels_sexp, |h| h.get());
+                let rel_obj = elt(cur_rels, rs.rel_i);
+                let edges0 = elt(rel_obj, rs.edges_i);
+                let mut e2: Option<H> = None;
+                for c in rs.cols.iter().filter(|c| c.dirty) {
+                    let base = e2.as_ref().map_or(edges0, |h| h.get());
+                    let mut hold = OwnedListSexp::new(1, false)?;
+                    hold.set_value(0, expr::to_r(&c.vals, rs.nrows)?)?;
+                    e2 = Some(set_named(base, c.name, elt(hold.inner(), 0))?);
+                }
+                if let Some(e2) = e2 {
+                    let rel2 = with_elt(rel_obj, rs.edges_i, e2.get(), blank)?;
+                    rcur = Some(with_elt(cur_rels, rs.rel_i, rel2.get(), blank)?);
+                }
+            }
+            if let Some(rcur) = rcur {
+                let base = st_cur.as_ref().map_or(st, |h| h.get());
+                st_cur = Some(with_elt(base, ri, rcur.get(), blank)?);
+            }
         }
     }
     match st_cur {
@@ -5001,11 +5461,6 @@ fn exec_global_by(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
     use std::borrow::Cow;
     use tidyabm_core::sample::NA_INT;
     let (by, by_src) = plan.gby.ok_or_else(|| bad("no gby"))?;
-    if let Some(ri) = find_str(st, b"relations")? {
-        if len(elt(st, ri)) > 0 {
-            return decline("a relation");
-        }
-    }
     let gi = find_str(st, b"groups")?.ok_or_else(|| bad("no groups"))?;
     let li = find_str(st, b"globals")?.ok_or_else(|| bad("no globals"))?;
     let groups = elt(st, gi);
@@ -5554,11 +6009,6 @@ fn exec_birth_count(plan: &Plan, st: SEXP, count: usize) -> savvy::Result<Option
     if count == 0 {
         return Ok(Some(keep(st)?));
     }
-    if let Some(ri) = find_str(st, b"relations")? {
-        if len(elt(st, ri)) > 0 {
-            return decline("a relation");
-        }
-    }
     let Some(svals) = scope_values(plan)? else {
         return decline("a formula-environment value that cannot be read");
     };
@@ -5699,11 +6149,6 @@ fn exec_cross(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
     use tidyabm_core::sample::NA_INT;
     let (fns, narm) = plan.cross.as_ref().ok_or_else(|| bad("no cross"))?;
     let gp = plan.groups.first().ok_or_else(|| bad("no program"))?;
-    if let Some(ri) = find_str(st, b"relations")? {
-        if len(elt(st, ri)) > 0 {
-            return decline("a relation");
-        }
-    }
     let gi = find_str(st, b"groups")?.ok_or_else(|| bad("no groups"))?;
     let groups = elt(st, gi);
     let ng = len(groups);
@@ -5962,11 +6407,6 @@ fn exec_nb_anyall(plan: &Plan, nb: &NbPlan, st: SEXP) -> savvy::Result<Option<H>
     use tidyabm_core::sample::NA_INT;
     // SAFETY: reading a static of R's.
     let nil = unsafe { rapi::R_NilValue };
-    if let Some(ri) = find_str(st, b"relations")? {
-        if len(elt(st, ri)) > 0 {
-            return decline("a relation");
-        }
-    }
     if let Some(si) = find_str(st, b"stale_draws")? {
         if elt(st, si) != nil {
             return decline("stale draws");
@@ -6213,11 +6653,6 @@ fn exec_by(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
     use tidyabm_core::expr as ce;
     let gp = plan.groups.first().ok_or_else(|| bad("no program"))?;
     let by = plan.by.ok_or_else(|| bad("no key"))?;
-    if let Some(ri) = find_str(st, b"relations")? {
-        if len(elt(st, ri)) > 0 {
-            return decline("a relation");
-        }
-    }
     let gi = find_str(st, b"groups")?.ok_or_else(|| bad("no groups"))?;
     let groups = elt(st, gi);
     let ng = len(groups);
@@ -6697,11 +7132,6 @@ fn exec_nb_view(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
     let nbv = plan.nbv.as_ref().ok_or_else(|| bad("no nbv"))?;
     let gp = plan.groups.first().ok_or_else(|| bad("no program"))?;
     let nil = rapi_nil();
-    if let Some(ri) = find_str(st, b"relations")? {
-        if len(elt(st, ri)) > 0 {
-            return decline("a relation");
-        }
-    }
     if let Some(si) = find_str(st, b"stale_draws")? {
         if elt(st, si) != nil {
             return decline("stale draws");
@@ -7074,11 +7504,434 @@ fn exec_nb_view(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
     Ok(Some(set_named(st2.get(), key.get(), cache.get())?))
 }
 
+/// Network `abm_link()` / `abm_unlink()` (FR15a, no `via =`): pairs from the
+/// standing match (`size == 2` or cliques for `size > 2`), canonicalised and
+/// deduplicated, appended to `state$edges` or dropped via `slice_tibble()`.
+fn exec_link(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
+    use std::borrow::Cow;
+    use std::collections::{BTreeMap, HashSet};
+    use tidyabm_core::sample::NA_INT;
+    let (drop_edges, has_when) = plan.link.ok_or_else(|| bad("no link"))?;
+    let nil = rapi_nil();
+    let ei_opt = find_str(st, b"edges")?;
+    let edges = ei_opt.map_or(nil, |i| elt(st, i));
+    if drop_edges {
+        if edges == nil || rows(edges).unwrap_or(0) == 0 {
+            return Ok(Some(keep(st)?));
+        }
+    } else if edges == nil {
+        return decline("no network (R's error)");
+    }
+    let ei = ei_opt.ok_or_else(|| bad("no edges slot"))?;
+    let Some(mi) = find_str(st, b"match")? else {
+        return decline("no standing match (R's error)");
+    };
+    let mobj = elt(st, mi);
+    if mobj == nil {
+        return decline("no standing match (R's error)");
+    }
+    let (Some(mti), Some(msi)) = (find_str(mobj, b"match")?, find_str(mobj, b"size")?) else {
+        return decline("malformed match");
+    };
+    let mtbl = elt(mobj, mti);
+    let msz_s = elt(mobj, msi);
+    let Some(msz) = store::numbers_of::<i32>(msz_s, INTSXP)?
+        .and_then(|v| v.first().copied())
+        .or_else(|| {
+            store::numbers_of::<f64>(msz_s, rapi::REALSXP)
+                .ok()
+                .flatten()
+                .and_then(|v| v.first().copied())
+                .map(|x| x as i32)
+        })
+    else {
+        return decline("non-numeric match size");
+    };
+    if rows(mtbl).unwrap_or(0) == 0 {
+        return Ok(Some(keep(st)?));
+    }
+    // validate existing edges columns (`from`/`to`; `!drop` requires no drawn/extra cols)
+    let (Some(fi_col), Some(ti_col)) = (find_str(edges, b"from")?, find_str(edges, b"to")?) else {
+        return decline("edges without from/to");
+    };
+    let (ec_f, ec_t) = (elt(edges, fi_col), elt(edges, ti_col));
+    if !all_bare(&[ec_f, ec_t])? {
+        return decline("edges with attributes");
+    }
+    let (Some(ef), Some(et)) = (
+        store::numbers_of::<i32>(ec_f, INTSXP)?,
+        store::numbers_of::<i32>(ec_t, INTSXP)?,
+    ) else {
+        return decline("edges that are not integers");
+    };
+    if ef.len() != et.len() {
+        return decline("malformed edges");
+    }
+    if !drop_edges && len(edges) != 2 {
+        return decline("edges with drawn or extra columns");
+    }
+    let gi = find_str(st, b"groups")?.ok_or_else(|| bad("no groups"))?;
+    let groups = elt(st, gi);
+    let ng = len(groups);
+    let mut sizes = Vec::with_capacity(ng);
+    for k in 0..ng {
+        match rows(elt(groups, k)) {
+            Some(r) => sizes.push(r),
+            None => return decline("a group without columns"),
+        }
+    }
+    let n: usize = sizes.iter().sum();
+    if n == 0 {
+        return Ok(Some(keep(st)?));
+    }
+    let Some(Vals::Int(ids)) = stacked_col_named(groups, b".id", &sizes)? else {
+        return decline("ids that are not integers");
+    };
+    let keep_row: Vec<bool> = if has_when {
+        let gp = plan.groups.first().ok_or_else(|| bad("no link program"))?;
+        let mut ins: Vec<Vals> = Vec::with_capacity(gp.cols.len() + gp.globs.len());
+        for &c in &gp.cols {
+            match stacked_pad(groups, c, &sizes)? {
+                Some(v) => ins.push(v),
+                None => return decline("a column of another kind"),
+            }
+        }
+        let mut xs = Vec::new();
+        if !read_globals(st, &gp.globs, &mut xs)? {
+            return decline("a global not found");
+        }
+        let Some(svals) = scope_values(plan)? else {
+            return decline("a formula-environment value that cannot be read");
+        };
+        if !read_scope(&svals, &gp.scope, &mut xs) {
+            return decline("a formula-environment value not found");
+        }
+        let Some(more) = inputs(&xs)? else {
+            return decline("a global or scope value of an unsupported type");
+        };
+        ins.extend(more);
+        if !gp.mcols.is_empty() {
+            let mnames: Vec<&[u8]> = gp.mcols.iter().map(|&c| bytes(c)).collect();
+            match match_inputs_ids(st, groups, &ids, &mnames)? {
+                Some(v) => ins.extend(v),
+                None => return decline("match columns that cannot be built natively"),
+            }
+        }
+        // SAFETY: the program is kept alive by the plan's descriptor.
+        let prog = unsafe { &*gp.prog };
+        let res = match prog.compute(ins, n, n)? {
+            Ok(r) => r,
+            Err(d) => {
+                expr::note_decline(&d);
+                return Ok(None);
+            }
+        };
+        let Some(c) = condition(&res[0], n) else {
+            return decline("a when condition that is not logical");
+        };
+        c
+    } else {
+        vec![true; n]
+    };
+    // build canonical deduplicated pairs from the standing match
+    let Some(mid_j) = find_str(mtbl, b".id")? else {
+        return decline("match without .id");
+    };
+    let Some(mids) = store::numbers_of::<i32>(elt(mtbl, mid_j), INTSXP)? else {
+        return decline("match .id not integer");
+    };
+    let midx = IdIndex::new(mids);
+    let mut seen_pair: HashSet<(i32, i32)> = HashSet::new();
+    let mut pairs: Vec<(i32, i32)> = Vec::new();
+    if msz == 2 {
+        let Some(mp_j) = find_str(mtbl, b".partner")? else {
+            return decline("match without .partner");
+        };
+        let Some(mpart) = store::numbers_of::<i32>(elt(mtbl, mp_j), INTSXP)? else {
+            return decline("match .partner not integer");
+        };
+        for i in 0..n {
+            if !keep_row[i] {
+                continue;
+            }
+            if let Some(mr) = midx.get(ids[i]) {
+                let p = mpart[mr];
+                if p != NA_INT {
+                    let pair = (ids[i].min(p), ids[i].max(p));
+                    if seen_pair.insert(pair) {
+                        pairs.push(pair);
+                    }
+                }
+            }
+        }
+    } else {
+        let Some(mg_j) = find_str(mtbl, b".group_id")? else {
+            return decline("match without .group_id");
+        };
+        let Some(mgid) = store::numbers_of::<i32>(elt(mtbl, mg_j), INTSXP)? else {
+            return decline("match .group_id not integer");
+        };
+        let mut by_gid: BTreeMap<i32, Vec<i32>> = BTreeMap::new();
+        for i in 0..n {
+            if !keep_row[i] {
+                continue;
+            }
+            if let Some(mr) = midx.get(ids[i]) {
+                let g = mgid[mr];
+                if g != NA_INT {
+                    by_gid.entry(g).or_default().push(ids[i]);
+                }
+            }
+        }
+        for (_, grp) in by_gid {
+            if grp.len() < 2 {
+                continue;
+            }
+            for a in 0..grp.len() {
+                for b in (a + 1)..grp.len() {
+                    let pair = (grp[a].min(grp[b]), grp[a].max(grp[b]));
+                    if seen_pair.insert(pair) {
+                        pairs.push(pair);
+                    }
+                }
+            }
+        }
+    }
+    if pairs.is_empty() {
+        return Ok(Some(keep(st)?));
+    }
+    if !drop_edges {
+        let mut existing: HashSet<(i32, i32)> = HashSet::with_capacity(ef.len());
+        for (&a, &b) in ef.iter().zip(et) {
+            existing.insert((a.min(b), a.max(b)));
+        }
+        let add: Vec<(i32, i32)> = pairs
+            .into_iter()
+            .filter(|p| !existing.contains(p))
+            .collect();
+        if add.is_empty() {
+            return Ok(Some(keep(st)?));
+        }
+        let total = ef.len() + add.len();
+        let mut nf = Vec::with_capacity(total);
+        let mut nt = Vec::with_capacity(total);
+        nf.extend_from_slice(ef);
+        nt.extend_from_slice(et);
+        for (a, b) in add {
+            nf.push(a);
+            nt.push(b);
+        }
+        let mut out = OwnedListSexp::new(2, false)?;
+        out.set_value(0, expr::to_r(&Vals::Int(Cow::Owned(nf)), total)?)?;
+        out.set_value(1, expr::to_r(&Vals::Int(Cow::Owned(nt)), total)?)?;
+        let frame = tbl_frame_named(out.inner(), &[c"from", c"to"], total)?;
+        // SAFETY: reading a static of R's (unused name: `ei` is in range).
+        Ok(Some(with_elt(st, ei, frame.get(), unsafe {
+            rapi::R_BlankString
+        })?))
+    } else {
+        let keep_e: Vec<bool> = ef
+            .iter()
+            .zip(et)
+            .map(|(&a, &b)| !seen_pair.contains(&(a.min(b), a.max(b))))
+            .collect();
+        if keep_e.iter().all(|&b| b) {
+            return Ok(Some(keep(st)?));
+        }
+        let Some(pe) = slice_tibble(edges, &keep_e)? else {
+            return decline("edges that cannot be sliced natively");
+        };
+        // SAFETY: reading a static of R's (unused name: `ei` is in range).
+        Ok(Some(with_elt(st, ei, pe.get(), unsafe {
+            rapi::R_BlankString
+        })?))
+    }
+}
+
+/// `abm_pairs(via = <rel>, ..., .when =)` natively (FR15b, [run_pairs()]):
+/// `.when` (optional) and rules evaluated over `rel$edges` plus `from_<col>` /
+/// `to_<col>`, updating existing columns via `assign_rows()` (`vctrs` common type).
+fn exec_pairs(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
+    let (via, has_when) = plan.pairs.ok_or_else(|| bad("no pairs"))?;
+    let gp = plan.groups.first().ok_or_else(|| bad("no program"))?;
+    let nil = rapi_nil();
+    let Some(ri) = find_str(st, b"relations")? else {
+        return decline("no relations (R's error)");
+    };
+    let rels = elt(st, ri);
+    // SAFETY: reading a type tag.
+    if rels == nil || unsafe { rapi::TYPEOF(rels) } != VECSXP {
+        return decline("no relations (R's error)");
+    }
+    let rnames = names_of(rels)?;
+    let Some(rel_i) = find(rnames, via) else {
+        return decline("relation not found (R's error)");
+    };
+    let rel = elt(rels, rel_i);
+    let Some(ei) = find_str(rel, b"edges")? else {
+        return decline("relation without edges");
+    };
+    let edges = elt(rel, ei);
+    let Some(m) = rows(edges) else {
+        return decline("malformed relation edges");
+    };
+    if m == 0 {
+        return Ok(Some(keep(st)?));
+    }
+    if gp.wslot.len() != gp.cols.len() {
+        return Err(bad("pairs vkind length"));
+    }
+    let need_agents = gp.wslot.iter().any(|&k| k != 0);
+    let mut fi: Vec<usize> = Vec::new();
+    let mut ti: Vec<usize> = Vec::new();
+    let mut groups_sexp = nil;
+    let mut sizes: Vec<usize> = Vec::new();
+    if need_agents {
+        let gi = find_str(st, b"groups")?.ok_or_else(|| bad("no groups"))?;
+        groups_sexp = elt(st, gi);
+        let ng = len(groups_sexp);
+        sizes.reserve(ng);
+        for k in 0..ng {
+            match rows(elt(groups_sexp, k)) {
+                Some(r) => sizes.push(r),
+                None => return decline("a group without columns"),
+            }
+        }
+        let Some(Vals::Int(all_ids)) = stacked_col_named(groups_sexp, b".id", &sizes)? else {
+            return decline("ids that are not integers");
+        };
+        let (Some(fc), Some(tc)) = (find_str(edges, b"from")?, find_str(edges, b"to")?) else {
+            return decline("relation edges without from/to");
+        };
+        let (ecf, ect) = (elt(edges, fc), elt(edges, tc));
+        if !all_bare(&[ecf, ect])? {
+            return decline("relation edges with attributes");
+        }
+        let (Some(ef), Some(et)) = (
+            store::numbers_of::<i32>(ecf, INTSXP)?,
+            store::numbers_of::<i32>(ect, INTSXP)?,
+        ) else {
+            return decline("relation edges that are not integers");
+        };
+        if ef.len() != m || et.len() != m {
+            return decline("malformed relation edges");
+        }
+        let at_id = IdIndex::new(&all_ids);
+        fi.reserve(m);
+        ti.reserve(m);
+        for r in 0..m {
+            let (Some(a), Some(b)) = (at_id.get(ef[r]), at_id.get(et[r])) else {
+                return decline("relation endpoint not in population");
+            };
+            fi.push(a);
+            ti.push(b);
+        }
+    }
+    let enms = names_of(edges)?;
+    let mut ins: Vec<Vals> = Vec::with_capacity(gp.cols.len() + gp.globs.len() + gp.scope.len());
+    for (&c, &vk) in gp.cols.iter().zip(&gp.wslot) {
+        match vk {
+            0 => {
+                let Some(ej) = find(enms, c) else {
+                    return decline("relation column not found");
+                };
+                let col = elt(edges, ej);
+                if !all_bare(&[col])? {
+                    return decline("relation column with attributes");
+                }
+                match expr::vals_of(col, false)? {
+                    Some(v) => ins.push(v),
+                    None => return decline("relation column of another type"),
+                }
+            }
+            1 | 2 => {
+                let Some(v) = stacked_pad(groups_sexp, c, &sizes)? else {
+                    return decline("agent column of another kind");
+                };
+                let idx = if vk == 1 { &fi } else { &ti };
+                ins.push(tidyabm_core::expr::take(&v, idx));
+            }
+            _ => return Err(bad("pairs vkind")),
+        }
+    }
+    let mut xs = Vec::new();
+    if !read_globals(st, &gp.globs, &mut xs)? {
+        return decline("a global not found");
+    }
+    let Some(svals) = scope_values(plan)? else {
+        return decline("a formula-environment value that cannot be read");
+    };
+    if !read_scope(&svals, &gp.scope, &mut xs) {
+        return decline("a formula-environment value not found");
+    }
+    let Some(more) = inputs(&xs)? else {
+        return decline("a global or scope value of an unsupported type");
+    };
+    ins.extend(more);
+    // SAFETY: the program is kept alive by the plan's descriptor.
+    let prog = unsafe { &*gp.prog };
+    let res = match prog.compute(ins, m, m)? {
+        Ok(r) => r,
+        Err(d) => {
+            expr::note_decline(&d);
+            return Ok(None);
+        }
+    };
+    let (keep_row, vals) = if has_when {
+        let Some(k) = condition(&res[0], m) else {
+            return decline("a pairs .when that is not logical (R's error)");
+        };
+        (k, &res[1..])
+    } else {
+        (vec![true; m], &res[..])
+    };
+    if vals.len() != gp.targets.len() {
+        return Err(bad("pairs rule count"));
+    }
+    let mut out = OwnedListSexp::new(vals.len(), false)?;
+    for (i, (&tg, v)) in gp.targets.iter().zip(vals).enumerate() {
+        let Some(ej) = find(enms, tg) else {
+            return decline("new relation column (R updates rel$cols/defaults)");
+        };
+        let old_c = elt(edges, ej);
+        if !all_bare(&[old_c])? {
+            return decline("relation target column with attributes");
+        }
+        let Some(old) = expr::vals_of(old_c, false)? else {
+            return decline("relation target column of another type");
+        };
+        match expr::assign_rows(Some(old), v, &keep_row)? {
+            Ok(col) => out.set_value(i, expr::to_r(&col, m)?)?,
+            Err(d) => {
+                expr::note_decline(&d);
+                return Ok(None);
+            }
+        }
+    }
+    let mut e2: Option<H> = None;
+    for (i, &tg) in gp.targets.iter().enumerate() {
+        let base = e2.as_ref().map_or(edges, |h| h.get());
+        e2 = Some(set_named(base, tg, elt(out.inner(), i))?);
+    }
+    let Some(e2) = e2 else {
+        return Ok(Some(keep(st)?));
+    };
+    // SAFETY: reading a static of R's (unused names: indices are in range).
+    let blank = unsafe { rapi::R_BlankString };
+    let rel2 = with_elt(rel, ei, e2.get(), blank)?;
+    let rels2 = with_elt(rels, rel_i, rel2.get(), blank)?;
+    Ok(Some(with_elt(st, ri, rels2.get(), blank)?))
+}
+
 fn exec(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
     if let Some(nb) = &plan.nb {
         return exec_nb(plan, nb, st);
     }
-    if plan.nbv.is_some() {
+    if plan.pairs.is_some() {
+        exec_pairs(plan, st)
+    } else if plan.link.is_some() {
+        exec_link(plan, st)
+    } else if plan.nbv.is_some() {
         exec_nb_view(plan, st)
     } else if plan.draw.is_some() {
         exec_draw(plan, st)
@@ -7705,7 +8558,7 @@ impl RunLoop {
                         continue;
                     }
                     let mut j = i;
-                    while j + 1 < n && !self.native_now(j + 1) {
+                    while j + 1 < n && self.kinds[j + 1] >= 0 && !self.native_now(j + 1) {
                         j += 1;
                     }
                     self.stats[3] += 1;

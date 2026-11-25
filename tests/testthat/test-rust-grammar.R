@@ -771,3 +771,150 @@ test_that("FR14: abm_move() uphill/downhill and range/axes_only are native and b
            ticks = 1, seed = 1), error = identity))
   expect_identical(err("rust"), err("r"))
 })
+
+test_that("FR15a: nearest+cost match, network link/unlink, and tell(.resolve = 'collect') are native", {
+  # nearest + cost (own_, .of, ties, NA, -Inf, non-monotonic ids, multi-group)
+  open <- FALSE
+  m <- abm_setup(
+    agents = list(
+      choices = abm_agents(n = 6, kind = ~rep(1:3, 2), deficit = ~c(3, 1, 2, 1, 4, 2),
+                           members = ~vector("list", n), score = 0),
+      problems = abm_agents(n = 12, kind = ~sample(1:3, n, TRUE), active = ~runif(n) < 0.8)
+    ),
+    globals = list(bonus = 0.5), seed = 11)
+  go <- abm_go(
+    abm_rules(members ~ vector("list", n()), .scope = "population"),
+    abm_match(pair = "nearest",
+              cost = if_else(open | kind == own_kind, deficit - bonus * (kind == 1L), NA_real_),
+              eligible = .group == "problems" & active, among = .group == "choices"),
+    abm_tell(members ~ .id, to = .partner,
+             when = .group == "problems" & !is.na(.partner), .resolve = "collect"),
+    abm_tell(score ~ 1L, to = .partner,
+             when = .group == "problems" & !is.na(.partner), .resolve = "sum"),
+    abm_rules(deficit ~ deficit + 0.1 * (.id %% 3L), .scope = "population"))
+  got <- expect_native_agree(m, go, "FR15a nearest+cost & tell collect", ticks = 4)
+  # step 1 (`vector("list", n())`) stays R, all other 4 steps run natively
+  expect_identical(got$stats[[2]], 0L)
+  expect_identical(got$stats[[1]], 16L)
+
+  # error parity: cost returning logical -> tidyABM_bad_cost; collect on non-list column
+  err <- function(e, mod, g) conditionMessage(tryCatch(run_in(e, mod, g, ticks = 1, seed = 1),
+                                                       error = identity))
+  expect_identical(err("rust", m, abm_go(abm_match(pair = "nearest", cost = kind == own_kind))),
+                   err("r",    m, abm_go(abm_match(pair = "nearest", cost = kind == own_kind))))
+  expect_identical(err("rust", m, abm_go(abm_match(pair = "random"),
+                                         abm_tell(score ~ .id, to = .partner, .resolve = "collect"))),
+                   err("r",    m, abm_go(abm_match(pair = "random"),
+                                         abm_tell(score ~ .id, to = .partner, .resolve = "collect"))))
+
+  # network abm_link() and abm_unlink(): size = 2, size = 3 cliques, when =, duplicates, empty match
+  g <- abm_setup(agents = abm_agents(n = 15, x = ~runif(n)),
+                 network = abm_network(type = "empty"), seed = 12)
+  go_l <- abm_go(
+    abm_match(pair = "random", eligible = x > 0.2),
+    abm_link(when = x + partner_x > 0.7),
+    abm_match(pair = "random", size = 3, eligible = x > 0.4),
+    abm_link(),
+    abm_match(pair = "network", eligible = runif(n()) < 0.5),
+    abm_unlink(when = x > 0.3),
+    abm_match(pair = "random", eligible = FALSE),
+    abm_link(),
+    abm_unlink())
+  got_l <- expect_native_agree(g, go_l, "FR15a link/unlink", ticks = 4)
+  expect(got_l$stats[[2]] == 0L && got_l$stats[[4]] == 0L,
+         paste("FR15a link/unlink not fully native:", paste(got_l$stats, collapse = " ")))
+
+  # error parity: link without network, link without match
+  m_nonet <- abm_setup(agents = abm_agents(n = 4, x = 1))
+  expect_identical(err("rust", m_nonet, abm_go(abm_match(pair = "random"), abm_link())),
+                   err("r",    m_nonet, abm_go(abm_match(pair = "random"), abm_link())))
+  expect_identical(err("rust", g, abm_go(abm_link())),
+                   err("r",    g, abm_go(abm_link())))
+})
+
+
+test_that("FR15b: relations in abm_sequential(), non-relation steps alongside relations, and abm_pairs()", {
+  # two groups (buyers 1..6, sellers 7..10) + relation `sellers` with `unmet` and `trades`
+  pairs_df <- data.frame(from = rep(1:6, each = 2L),
+                         to   = c(7L, 8L, 7L, 9L, 8L, 9L, 8L, 10L, 9L, 10L, 7L, 10L))
+  m <- abm_setup(
+    agents = list(
+      buyers  = abm_agents(n = 6, want = 3, got = 0, cash = 10, shop = ~c(7L, 7L, 8L, 8L, 9L, 10L)),
+      sellers = abm_agents(n = 4, inv = 5, price = ~c(1, 1.5, 2, 1.2), sales = 0)
+    ),
+    globals = list(rate = 0.5),
+    relations = list(sellers = abm_relation(pairs_df, unmet = 0L, trades = 0)),
+    seed = 21)
+
+  # 1. non-relation steps (abm_rules, abm_neighbours within, abm_global, abm_match)
+  #    + abm_sequential reading/writing relation cols (incl. .sellers and _back) + abm_pairs
+  go_rel <- abm_go(
+    abm_rules(want ~ 3, got ~ 0, .scope = "population"),
+    abm_neighbours(within = .id == own_shop, shop_price ~ sum(price)),
+    abm_match(pair = "one_of", eligible = .group == "buyers", among = .sellers),
+    abm_sequential(
+      got ~ if_else(.sellers, pmin(want, partner_inv), 0),
+      partner_inv ~ if_else(.sellers, partner_inv - got, partner_inv),
+      sellers_unmet ~ if_else(got < want, sellers_unmet + 1L, 0L),
+      sellers_trades ~ sellers_trades + got,
+      cash ~ cash - if_else(.sellers & sellers_unmet == 0L, got * partner_price, 0)
+    ),
+    abm_match(pair = "one_of", eligible = .group == "sellers", among = .group == "buyers"),
+    abm_sequential(
+      sales ~ sales + if_else(.sellers_back, coalesce(sellers_trades_back, 0), 0),
+      .order = -.id
+    ),
+    abm_pairs(via = "sellers",
+              unmet ~ if_else(from_cash < 5, unmet + 1L, unmet),
+              trades ~ trades * rate,
+              .when = to_price >= 1.2),
+    abm_global(rate ~ rate * 0.99)
+  )
+  got <- expect_native_agree(m, go_rel, "FR15b relations full", ticks = 4)
+  # only step 3 (`among = .sellers`) stays R; the other 7 steps run natively every tick (28)
+  expect_identical(got$stats[[2]], 0L)
+  expect_identical(got$stats[[1]], 28L)
+
+  # 2. abm_pairs creating a new column on tick 1 (R updates rel$cols/defaults), then native tick 2+
+  go_new <- abm_go(
+    abm_pairs(via = "sellers", fresh ~ unmet + 1L),
+    abm_pairs(via = "sellers", fresh ~ fresh + 2L)
+  )
+  got_new <- expect_native_agree(m, go_new, "FR15b pairs new col", ticks = 3)
+  expect_true(got_new$stats[[1]] >= 4L)
+
+  # 3. abm_death with relations still declines safely so R prunes relations
+  go_death <- abm_go(
+    abm_death(when = .id == 1L),
+    abm_pairs(via = "sellers", unmet ~ unmet + 1L)
+  )
+  expect_engines_agree(m, go_death, ticks = 2, seed = 1, what = "FR15b death prunes relations")
+
+  # 4. error parity: not_related, no_match (missing & size > 2), bad_target (.R on LHS),
+  #    no_relation & bad_when in abm_pairs
+  err <- function(e, mod, g) conditionMessage(tryCatch(run_in(e, mod, g, ticks = 1, seed = 1),
+                                                       error = identity))
+  # non-related pair write in abm_sequential -> tidyABM_not_related
+  go_nr <- abm_go(
+    abm_match(pair = "one_of", eligible = .id == 1L, among = .id == 10L),
+    abm_sequential(sellers_unmet ~ 1L)
+  )
+  expect_identical(err("rust", m, go_nr), err("r", m, go_nr))
+  # no match standing -> tidyABM_no_match
+  go_nm <- abm_go(abm_sequential(sellers_unmet ~ 1L))
+  expect_identical(err("rust", m, go_nm), err("r", m, go_nm))
+  # size > 2 match -> tidyABM_no_match
+  go_sz <- abm_go(abm_match(pair = "random", size = 3), abm_sequential(sellers_unmet ~ 1L))
+  expect_identical(err("rust", m, go_sz), err("r", m, go_sz))
+  # .sellers on LHS -> tidyABM_bad_target
+  go_bt <- abm_go(
+    abm_match(pair = "one_of", eligible = .group == "buyers", among = .sellers),
+    abm_sequential(.sellers ~ TRUE)
+  )
+  expect_identical(err("rust", m, go_bt), err("r", m, go_bt))
+  # abm_pairs errors: unknown relation & non-logical .when
+  go_nrel <- abm_go(abm_pairs(via = "nope", unmet ~ 1L))
+  expect_identical(err("rust", m, go_nrel), err("r", m, go_nrel))
+  go_bw <- abm_go(abm_pairs(via = "sellers", unmet ~ 1L, .when = unmet + 1L))
+  expect_identical(err("rust", m, go_bw), err("r", m, go_bw))
+})

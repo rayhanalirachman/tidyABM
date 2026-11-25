@@ -258,6 +258,25 @@ test_that("native steps keep every new R object protected (gctorture)", {
   got12 <- tryCatch(run_in("rust", mt, go12, ticks = 2, seed = 3), error = identity)
   gctorture(FALSE)
   expect_identical(got12, ref12)
+  # FR14: abm_draw + network-view abm_neighbours (own_, edge draws, na.rm)
+  go13 <- abm_go(abm_draw(w ~ runif(n()), .each = "endpoint"),
+                 abm_neighbours(c ~ sum(w < own_x), b ~ sum(w_back < x),
+                                p ~ mean(k == own_k, na.rm = TRUE), d ~ n()))
+  ref13 <- run_in("r", m, go13, ticks = 2, seed = 3)
+  gctorture(TRUE)
+  got13 <- tryCatch(run_in("rust", m, go13, ticks = 2, seed = 3), error = identity)
+  gctorture(FALSE)
+  expect_identical(got13, ref13)
+  # FR14: uphill/downhill moves with range/axes_only/avoid_occupied and draws
+  go14 <- abm_go(abm_move(along = "patches", who = "sheep",
+                          to = uphill(if_else(grass, 1, 0) + runif(n())),
+                          range = 2, axes_only = TRUE, avoid_occupied = TRUE),
+                 abm_move(along = "patches", who = "sheep", to = downhill(heat + own_e)))
+  ref14 <- run_in("r", mt, go14, ticks = 2, seed = 3)
+  gctorture(TRUE)
+  got14 <- tryCatch(run_in("rust", mt, go14, ticks = 2, seed = 3), error = identity)
+  gctorture(FALSE)
+  expect_identical(got14, ref14)
 })
 
 test_that("FR9b: measures and checks compiled natively give R's tables and errors", {

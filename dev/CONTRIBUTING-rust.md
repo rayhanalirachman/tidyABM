@@ -361,6 +361,21 @@ the R engine's own `run_step()`. Rules:
   draws: it is evaluated after the movers' order is drawn), `heading_names()`
   natively (strings lowered, numbers `round()`ed half to even, `%% 4`), then
   `dir_nb` per mover in the drawn order, occupancy as R counts it.
+* Edge draws, network-view neighbours, and gradient/`range` moves (FR14):
+  `abm_draw()` (kind 16, `exec_draw()`) evaluates rules over non-draw edge
+  columns once per edge (or twice for `.each = "endpoint"`) inside one RNG
+  scope, commits `.draw_<t>`/`.back_<t>` on shallow copies of `state$edges`, and
+  clears `state$stale_draws`. Network `abm_neighbours()` with `own_<col>`,
+  edge-draw columns (`<name>`, `<name>_back`), `na.rm`, or mixed
+  `n()`/`sum()`/`mean()`/`any()`/`all()` runs natively as kind 17
+  (`exec_nb_view()`): evaluates arguments over the `(focal, neighbour)` view,
+  aggregates integer/logical sums/means (declining doubles for `rowsum()` parity,
+  using `reduce::mean_int(&[])` for all-`NA` `0/0` NaNs) and `any`/`all`/`n()`,
+  and rebuilds `state$nb_cache` when stale. `abm_move()` (kind 10) now handles
+  `range > 1`, `axes_only = TRUE`, and `uphill()`/`downhill()` natively: per
+  moving group's compiled expression (with mover-over-patch shadowing and `own_`
+  columns) evaluated per mover inside the step's single RNG scope after
+  occupancy filtering, matching R's draw interleaving and tie-breaking.
 * `pkg::f` heads (`dplyr::case_when()`, `stats::runif()`) compile as `f` when
   they are the very function the IR takes for `f` (`rx_ns_head()`); their
   scope is not checked (the call names its function).

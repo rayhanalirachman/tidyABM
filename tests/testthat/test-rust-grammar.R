@@ -665,3 +665,109 @@ test_that("abm_move(direction =) is native and bit-identical to R", {
                                                error = identity))
   expect_identical(err("rust"), err("r"))
 })
+
+test_that("FR14: abm_draw() and network-view abm_neighbours() (own_, edge draws, na.rm) are native", {
+  # complete graph with endpoint draws, edge draws, own_ columns and mixed aggregates
+  m <- abm_setup(
+    agents = abm_agents(n = 14, b = ~sample(0:7, n, TRUE), v = ~sample(0:7, n, TRUE),
+                        type = ~sample(c("A", "B", NA), n, TRUE)),
+    network = abm_network(type = "complete"), globals = list(k = 0.5), seed = 1)
+  go <- abm_go(
+    abm_rules(seen ~ runif(n())),
+    abm_rules(def ~ b / 7 > seen),
+    abm_draw(saw ~ runif(n()), zeal ~ runif(n()), .each = "endpoint"),
+    abm_neighbours(w ~ sum(def & saw < seen),
+                   pa ~ sum(def & saw < seen & zeal < own_v / 7)),
+    abm_neighbours(pun ~ sum(own_def & saw_back < own_seen & zeal_back < v / 7)),
+    abm_draw(coin ~ runif(n()) < k, .each = "edge"),
+    abm_neighbours(mc ~ sum(coin), mn ~ mean(type == own_type, na.rm = TRUE),
+                   ma ~ any(coin), ml ~ all(coin), deg ~ n()))
+  got <- expect_native_agree(m, go, "draw + nb_view", ticks = 4)
+  expect(got$stats[[2]] == 0L && got$stats[[4]] == 0L,
+         paste("draw + nb_view not fully native:", paste(got$stats, collapse = " ")))
+
+  # isolated agents, all-NA neighbourhoods (0/0 NaN), and non-sequential ids after death
+  g <- abm_setup(
+    agents = abm_agents(n = 16, type = ~sample(c("A", "B", NA), n, TRUE, c(0.2, 0.2, 0.6)),
+                        e = ~runif(n)),
+    network = abm_network(type = "poisson", degree = 1.5), seed = 2)
+  go2 <- abm_go(
+    abm_death(when = e < 0.15),
+    abm_draw(w ~ runif(n()) < 0.4),
+    abm_neighbours(same ~ mean(type == own_type, na.rm = TRUE),
+                   s_na ~ sum(type == own_type),
+                   cnt ~ n(),
+                   any_w ~ any(w),
+                   of_hit ~ sum(.of > 0L)))
+  got2 <- expect_native_agree(g, go2, "nb_view sparse/death", ticks = 4)
+  expect(got2$stats[[2]] == 0L && got2$stats[[4]] == 0L,
+         paste("nb_view sparse/death not fully native:", paste(got2$stats, collapse = " ")))
+
+  # bare n() alone (zero argument programs)
+  got_n <- expect_native_agree(g, abm_go(abm_neighbours(deg ~ n())), "nb_view bare n", ticks = 2)
+  expect(got_n$stats[[2]] == 0L && got_n$stats[[4]] == 0L,
+         paste("nb_view bare n not fully native:", paste(got_n$stats, collapse = " ")))
+
+  # errors: draw with no network, draw shadowing an agent column, stale draw after link
+  m_nonet <- abm_setup(agents = abm_agents(n = 4, x = 1))
+  e_cases <- list(
+    list(m_nonet, abm_go(abm_draw(z ~ runif(n())))),
+    list(m, abm_go(abm_draw(b ~ runif(n())))),
+    list(g, abm_go(abm_draw(z ~ runif(n())), abm_match(pair = "random"), abm_link(),
+                   abm_neighbours(s ~ sum(z > 0.5))))
+  )
+  for (ec in e_cases) {
+    err <- function(e) conditionMessage(tryCatch(run_in(e, ec[[1]], ec[[2]], ticks = 2, seed = 1),
+                                                 error = identity))
+    expect_identical(err("rust"), err("r"))
+  }
+})
+
+test_that("FR14: abm_move() uphill/downhill and range/axes_only are native and bit-identical", {
+  w <- 12L
+  mk <- function(torus, diag) {
+    abm_setup(
+      agents = list(
+        patches = abm_agents(food = ~sample(c(0, 1, 2, 3, NA), n, TRUE, c(0.3, 0.3, 0.2, 0.15, 0.05)),
+                             scent = ~runif(n), x = ~runif(n)),
+        a = abm_agents(n = 15, carrying = ~runif(n) < 0.4, vision = ~sample.int(4, n, TRUE),
+                       x = ~runif(n), at = ~sample(prod(dims), n)),
+        b = abm_agents(n = 8, carrying = FALSE, vision = 2L, x = 0.5)),
+      network = abm_network(type = "grid", dims = c(w, w), on = "patches",
+                            torus = torus, diagonals = diag),
+      globals = list(wiggle = 0.5), seed = 5)
+  }
+  cases <- list(
+    ants = list(mk(FALSE, TRUE),
+                abm_move(along = "patches", who = "a",
+                         to = uphill(if_else(carrying, scent, coalesce(food, 0) + runif(n()) * wiggle)))),
+    sugar = list(mk(TRUE, FALSE),
+                 abm_move(along = "patches", who = "a",
+                          to = uphill(if_else(pmin(abs(.x - own_.x), w - abs(.x - own_.x)) +
+                                              pmin(abs(.y - own_.y), w - abs(.y - own_.y)) <= vision,
+                                              food, -Inf)),
+                          range = 4, axes_only = TRUE, avoid_occupied = TRUE)),
+    down = list(mk(TRUE, TRUE),
+                abm_move(along = "patches", who = c("a", "b"),
+                         to = downhill(if_else(x > 0.5, food, own_x + scent)),
+                         range = 2, avoid_occupied = TRUE)),
+    ball = list(mk(FALSE, FALSE),
+                abm_move(along = "patches", to = "random_neighbour", who = "a", range = 2)),
+    axes_rand = list(mk(TRUE, TRUE),
+                     abm_move(along = "patches", to = "random_empty_neighbour",
+                              who = "a", range = 3, axes_only = TRUE))
+  )
+  for (nm in names(cases)) {
+    go <- abm_go(cases[[nm]][[2]])
+    got <- expect_native_agree(cases[[nm]][[1]], go, paste("move FR14", nm), ticks = 5)
+    expect(got$stats[[2]] == 0L && got$stats[[4]] == 0L,
+           paste("move FR14", nm, "not fully native:", paste(got$stats, collapse = " ")))
+  }
+  # empty wired group: R's tidyABM_no_lattice error
+  m_empty <- mk(TRUE, FALSE)
+  m_empty$groups$patches <- m_empty$groups$patches[0, ]
+  err <- function(e) conditionMessage(tryCatch(
+    run_in(e, m_empty, abm_go(abm_move(along = "patches", who = "a", to = uphill(food))),
+           ticks = 1, seed = 1), error = identity))
+  expect_identical(err("rust"), err("r"))
+})

@@ -387,6 +387,10 @@ struct Plan {
     /// `abm_global(.by = <name>)` (kind 13): the keys' name, from a global (2)
     /// or the formula's environment (3)
     gby: Option<(SEXP, i32)>,
+    /// `abm_draw()` (kind 16): `.each == "endpoint"`
+    draw: Option<bool>,
+    /// network `abm_neighbours()` over the pair view (kind 17: `own_`, edge draws, `na.rm`, mixes)
+    nbv: Option<NbvPlan>,
     /// `.by` rules: the key column's name
     by: Option<SEXP>,
     nb: Option<NbPlan>,
@@ -438,8 +442,8 @@ struct MatchPlan {
     roles: Vec<SEXP>,
 }
 
-/// An `abm_move()` step to a random (empty) adjacent cell: the moving groups,
-/// whether occupied cells are avoided, and the lattice's adjacency and coordinates.
+/// An `abm_move()` step on a lattice: random (empty) neighbour, `direction =`,
+/// or `uphill()` / `downhill()`.
 struct MovePlan {
     who: Vec<SEXP>,
     avoid: bool,
@@ -448,8 +452,27 @@ struct MovePlan {
     x: SEXP,
     y: SEXP,
     ncell: i32,
-    /// `direction =` (FR13): the lattice's `dir_nb` (or `NULL`)
+    /// `direction =` (FR13) or `axes_only` (FR14): the lattice's `dir_nb` (or `NULL`)
     dir: SEXP,
+    /// `range` (>= 1) and `axes_only` (FR14)
+    range: usize,
+    axes: bool,
+    /// `uphill` (1), `downhill` (-1), or none (0) (FR14)
+    grad: i32,
+    /// the lattice's wired group name (for gradient moves)
+    on: Option<SEXP>,
+}
+
+/// A network `abm_neighbours()` step evaluated over the `(focal, neighbour)`
+/// view (FR14: `own_<col>`, edge-draw columns, `na.rm`, mixed aggregates).
+struct NbvPlan {
+    /// per rule: 0 `n()`, 1 `sum`, 2 `mean`, 3 `any`, 4 `all`
+    fns: Vec<u8>,
+    narm: Vec<bool>,
+    /// per view input (`gp.cols`): 0 cand, 1 focal, 2 draw fwd, 3 draw back, 4 `.of`
+    vkind: Vec<i32>,
+    /// `.back_<name>` CHARSXP for draw inputs
+    vback: Vec<SEXP>,
 }
 
 /// A network `abm_neighbours()` step whose rules are `sum()`/`mean()` of bare
@@ -777,6 +800,37 @@ fn parse_plan(desc: H) -> savvy::Result<Plan> {
             .and_then(|v| v.first().copied())
             .ok_or_else(|| bad("move ncell"))?;
         let y = find_str(x, b"y")?.map_or_else(rapi_nil, |i| elt(x, i));
+        let range = match find_str(x, b"range")? {
+            Some(i) => store::numbers_of::<i32>(elt(x, i), INTSXP)?
+                .and_then(|v| v.first().copied())
+                .and_then(|r| usize::try_from(r).ok())
+                .filter(|&r| r >= 1)
+                .ok_or_else(|| bad("move range"))?,
+            None => 1,
+        };
+        let axes = match find_str(x, b"axes")? {
+            Some(i) => {
+                let v = elt(x, i);
+                // SAFETY: reading a type tag, then a logical of length 1.
+                let lg = unsafe { rapi::TYPEOF(v) } == rapi::LGLSXP && len(v) == 1;
+                // SAFETY: as above.
+                lg && unsafe { *rapi::LOGICAL_RO(v) } == 1
+            }
+            None => false,
+        };
+        let grad = match find_str(x, b"grad")? {
+            Some(i) => store::numbers_of::<i32>(elt(x, i), INTSXP)?
+                .and_then(|v| v.first().copied())
+                .ok_or_else(|| bad("move grad"))?,
+            None => 0,
+        };
+        let on = match find_str(x, b"on")? {
+            Some(i) => chars(elt(x, i))?
+                .first()
+                .copied()
+                .filter(|&c| !bytes(c).is_empty()),
+            None => None,
+        };
         Some(MovePlan {
             who: chars(field(x, b"who")?)?,
             avoid,
@@ -786,6 +840,10 @@ fn parse_plan(desc: H) -> savvy::Result<Plan> {
             y,
             ncell,
             dir: find_str(x, b"dir")?.map_or_else(rapi_nil, |i| elt(x, i)),
+            range,
+            axes,
+            grad,
+            on,
         })
     } else {
         None
@@ -908,6 +966,48 @@ fn parse_plan(desc: H) -> savvy::Result<Plan> {
     } else {
         None
     };
+    let draw = if kind == 16 {
+        let x = field(d, b"draw")?;
+        let ep = field(x, b"endpoint")?;
+        // SAFETY: reading a type tag, then a logical of length 1.
+        let lg = unsafe { rapi::TYPEOF(ep) } == rapi::LGLSXP && len(ep) == 1;
+        // SAFETY: as above.
+        Some(lg && unsafe { *rapi::LOGICAL_RO(ep) } == 1)
+    } else {
+        None
+    };
+    let nbv = if kind == 17 {
+        let x = field(d, b"nbv")?;
+        let fns: Vec<u8> = store::numbers_of::<i32>(field(x, b"fns")?, INTSXP)?
+            .ok_or_else(|| bad("nbv fns"))?
+            .iter()
+            .map(|&f| u8::try_from(f).map_err(|_| bad("nbv fn")))
+            .collect::<savvy::Result<Vec<_>>>()?;
+        let v = field(x, b"narm")?;
+        // SAFETY: reading a type tag, then a logical vector of its length.
+        if unsafe { rapi::TYPEOF(v) } != rapi::LGLSXP || len(v) != fns.len() {
+            return Err(bad("nbv narm"));
+        }
+        // SAFETY: as above.
+        let narm = (0..len(v))
+            .map(|i| unsafe { *rapi::LOGICAL_RO(v).add(i) } == 1)
+            .collect();
+        let vkind = store::numbers_of::<i32>(field(x, b"vkind")?, INTSXP)?
+            .unwrap_or(&[])
+            .to_vec();
+        let vback = chars(field(x, b"vback")?)?;
+        if vkind.len() != vback.len() {
+            return Err(bad("nbv inputs"));
+        }
+        Some(NbvPlan {
+            fns,
+            narm,
+            vkind,
+            vback,
+        })
+    } else {
+        None
+    };
     let by = if kind == 4 {
         Some(
             chars(field(d, b"by")?)?
@@ -919,6 +1019,8 @@ fn parse_plan(desc: H) -> savvy::Result<Plan> {
         None
     };
     Ok(Plan {
+        nbv,
+        draw,
         cross,
         count,
         attach,
@@ -3476,9 +3578,11 @@ fn exec_move(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
     };
     // `direction =`: each mover's side of the lattice (`heading_names()`), as an
     // index into `dir_nb`, `None` for `NA`
+    let is_dir = mv.dir != rapi_nil() && !mv.axes && mv.grad == 0;
     let mut heading: Vec<Vec<Option<usize>>> = Vec::new();
     let mut dir_vecs: Vec<&[i32]> = Vec::new();
-    if mv.dir != rapi_nil() {
+    let mut axis_vecs: Vec<&[i32]> = Vec::new();
+    if is_dir || mv.axes {
         let dn: Vec<&[u8]> = names_of(mv.dir)?.iter().map(|&c| bytes(c)).collect();
         for k in 0..len(mv.dir) {
             match store::numbers_of::<i32>(elt(mv.dir, k), INTSXP)? {
@@ -3486,79 +3590,219 @@ fn exec_move(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
                 None => return decline("a direction table that is not integer"),
             }
         }
-        let Some(svals) = scope_values(plan)? else {
+        if mv.axes {
+            for want in [b"north".as_slice(), b"south", b"east", b"west"] {
+                if let Some(pos) = dn.iter().position(|&d| d == want) {
+                    axis_vecs.push(dir_vecs[pos]);
+                }
+            }
+        }
+        if is_dir {
+            let Some(svals) = scope_values(plan)? else {
+                return decline("a formula-environment value that cannot be read");
+            };
+            let compass: [&[u8]; 4] = [b"north", b"east", b"south", b"west"];
+            for (p, &k) in ks.iter().enumerate() {
+                let g = elt(groups, k);
+                let gp = plan
+                    .groups
+                    .iter()
+                    .find(|e| e.name == mv.who[p])
+                    .ok_or_else(|| bad("no heading program"))?;
+                let ng = sizes[p];
+                let Some(ins) = entry_inputs(st, groups, g, gp, &svals, None)? else {
+                    return Ok(None);
+                };
+                // SAFETY: the program is kept alive by the plan's descriptor.
+                let prog = unsafe { &*gp.prog };
+                let v = match prog.compute(ins, ng, ng)? {
+                    Ok(mut r) => recycle(r.remove(0), ng),
+                    Err(d) => {
+                        expr::note_decline(&d);
+                        return Ok(None);
+                    }
+                };
+                let mut hs: Vec<Option<usize>> = Vec::with_capacity(ng);
+                for i in 0..ng {
+                    let name: Option<Vec<u8>> = match &v {
+                        Vals::Str(x) => {
+                            // SAFETY: reading a static of R's.
+                            if x[i] == unsafe { rapi::R_NaString } as usize {
+                                None
+                            } else {
+                                let b = bytes(x[i] as SEXP);
+                                if !b.is_ascii() {
+                                    return decline("a non-ASCII heading");
+                                }
+                                Some(b.to_ascii_lowercase())
+                            }
+                        }
+                        _ => {
+                            // as.integer(round(as.numeric(v))) %% 4
+                            let d = match &v {
+                                Vals::Dbl(x) => x[i],
+                                Vals::Int(x) | Vals::Lgl(x) => {
+                                    if x[i] == NA_INT {
+                                        f64::NAN
+                                    } else {
+                                        f64::from(x[i])
+                                    }
+                                }
+                                Vals::Str(_) => unreachable!("strings above"),
+                            };
+                            let r = d.round_ties_even();
+                            if r.is_nan() || !(-2147483647.0..=2147483647.0).contains(&r) {
+                                None
+                            } else {
+                                Some(compass[(r as i64).rem_euclid(4) as usize].to_vec())
+                            }
+                        }
+                    };
+                    hs.push(match name {
+                        None => None,
+                        Some(nm) => match dn.iter().position(|&d| d == &nm[..]) {
+                            Some(q) => Some(q),
+                            None => {
+                                return decline("a heading the lattice has no side for (R's error)")
+                            }
+                        },
+                    });
+                }
+                heading.push(hs);
+            }
+        }
+    }
+    // `uphill()` / `downhill()` (FR14): prepare wired index and per-group inputs
+    // before opening the RNG scope so any type/attribute decline happens cleanly
+    struct GradGroup<'a> {
+        prog: &'a RxProgram,
+        cols: Vec<(bool, Vals<'a>)>, // true = mover col, false = patch col
+        rest: Vec<Vals<'a>>,
+    }
+    let mut widx: Option<IdIndex> = None;
+    let mut grad_groups: Vec<GradGroup> = Vec::new();
+    let grad_svals: Option<H>;
+    if mv.grad != 0 {
+        let Some(on) = mv.on else {
+            return decline("no wired group for gradient move");
+        };
+        let Some(wk) = find(gnames, on) else {
+            return decline("wired group not found");
+        };
+        let wired = elt(groups, wk);
+        if rows(wired).unwrap_or(0) == 0 {
+            return decline("empty wired group (R's error)");
+        }
+        let Some(wj) = find_str(wired, b".id")? else {
+            return decline("wired group without .id");
+        };
+        let Some(wids) = store::numbers_of::<i32>(elt(wired, wj), INTSXP)? else {
+            return decline("wired .id not integer");
+        };
+        widx = Some(IdIndex::new(wids));
+        let Some(sv) = scope_values(plan)? else {
             return decline("a formula-environment value that cannot be read");
         };
-        let compass: [&[u8]; 4] = [b"north", b"east", b"south", b"west"];
+        grad_svals = sv;
+        let wnames = names_of(wired)?;
         for (p, &k) in ks.iter().enumerate() {
             let g = elt(groups, k);
+            let mnames = names_of(g)?;
             let gp = plan
                 .groups
                 .iter()
                 .find(|e| e.name == mv.who[p])
-                .ok_or_else(|| bad("no heading program"))?;
-            let ng = sizes[p];
-            let Some(ins) = entry_inputs(st, groups, g, gp, &svals, None)? else {
-                return Ok(None);
+                .ok_or_else(|| bad("no gradient program"))?;
+            if gp.wslot.len() != gp.cols.len() {
+                return Err(bad("gradient column kinds"));
+            }
+            let mut cols = Vec::with_capacity(gp.cols.len());
+            for (j, &c) in gp.cols.iter().enumerate() {
+                let is_mover = gp.wslot[j] != 0;
+                let (tbl, nms) = if is_mover {
+                    (g, mnames)
+                } else {
+                    (wired, wnames)
+                };
+                let Some(ci) = find(nms, c) else {
+                    return decline("a gradient column not found");
+                };
+                let col = elt(tbl, ci);
+                if !all_bare(&[col])? {
+                    return decline("a gradient column with attributes");
+                }
+                let Some(v) = expr::vals_of(col, false)? else {
+                    return decline("a gradient column of another type");
+                };
+                cols.push((is_mover, v));
+            }
+            let mut xs = Vec::new();
+            if !read_globals(st, &gp.globs, &mut xs)? {
+                return decline("a global not found");
+            }
+            if !read_scope(&grad_svals, &gp.scope, &mut xs) {
+                return decline("a formula-environment value not found");
+            }
+            let Some(rest) = inputs(&xs)? else {
+                return decline("a global or scope value of an unsupported type");
             };
             // SAFETY: the program is kept alive by the plan's descriptor.
-            let prog = unsafe { &*gp.prog };
-            let v = match prog.compute(ins, ng, ng)? {
-                Ok(mut r) => recycle(r.remove(0), ng),
-                Err(d) => {
-                    expr::note_decline(&d);
-                    return Ok(None);
-                }
-            };
-            let mut hs: Vec<Option<usize>> = Vec::with_capacity(ng);
-            for i in 0..ng {
-                let name: Option<Vec<u8>> = match &v {
-                    Vals::Str(x) => {
-                        // SAFETY: reading a static of R's.
-                        if x[i] == unsafe { rapi::R_NaString } as usize {
-                            None
-                        } else {
-                            let b = bytes(x[i] as SEXP);
-                            if !b.is_ascii() {
-                                return decline("a non-ASCII heading");
-                            }
-                            Some(b.to_ascii_lowercase())
-                        }
-                    }
-                    _ => {
-                        // as.integer(round(as.numeric(v))) %% 4
-                        let d = match &v {
-                            Vals::Dbl(x) => x[i],
-                            Vals::Int(x) | Vals::Lgl(x) => {
-                                if x[i] == NA_INT {
-                                    f64::NAN
-                                } else {
-                                    f64::from(x[i])
-                                }
-                            }
-                            Vals::Str(_) => unreachable!("strings above"),
-                        };
-                        let r = d.round_ties_even();
-                        if r.is_nan() || !(-2147483647.0..=2147483647.0).contains(&r) {
-                            None
-                        } else {
-                            Some(compass[(r as i64).rem_euclid(4) as usize].to_vec())
-                        }
-                    }
-                };
-                hs.push(match name {
-                    None => None,
-                    Some(nm) => match dn.iter().position(|&d| d == &nm[..]) {
-                        Some(q) => Some(q),
-                        None => {
-                            return decline("a heading the lattice has no side for (R's error)")
-                        }
-                    },
-                });
-            }
-            heading.push(hs);
+            grad_groups.push(GradGroup {
+                prog: unsafe { &*gp.prog },
+                cols,
+                rest,
+            });
         }
     }
+    let cand_cells = |here: i32| -> savvy::Result<Option<Vec<i32>>> {
+        if mv.range <= 1 && !mv.axes {
+            return Ok(nb_at(here)?.map(|v| v.to_vec()));
+        }
+        if mv.axes {
+            let mut out = Vec::new();
+            for tbl in &axis_vecs {
+                let mut cur = here;
+                for _ in 0..mv.range {
+                    if cur < 1 {
+                        return Ok(None);
+                    }
+                    if cur as usize > tbl.len() {
+                        break;
+                    }
+                    cur = tbl[cur as usize - 1];
+                    if cur == NA_INT || cur == here {
+                        break;
+                    }
+                    if !out.contains(&cur) {
+                        out.push(cur);
+                    }
+                }
+            }
+            return Ok(Some(out));
+        }
+        let mut seen = vec![here];
+        let mut frontier = vec![here];
+        for _ in 0..mv.range {
+            let mut next = Vec::new();
+            for &c in &frontier {
+                let Some(ns) = nb_at(c)? else {
+                    return Ok(None);
+                };
+                for &nb in ns {
+                    if !seen.contains(&nb) && !next.contains(&nb) {
+                        next.push(nb);
+                    }
+                }
+            }
+            if next.is_empty() {
+                break;
+            }
+            seen.extend_from_slice(&next);
+            frontier = next;
+        }
+        seen.remove(0);
+        Ok(Some(seen))
+    };
     // (group, row) of every mover, the groups stacked
     let mut owner: Vec<(usize, usize)> = Vec::with_capacity(n_movers);
     for (gk, &sz) in sizes.iter().enumerate() {
@@ -3631,7 +3875,7 @@ fn exec_move(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
             }
             return Ok(Some(()));
         }
-        if !mv.avoid {
+        if mv.grad == 0 && !mv.avoid && mv.range <= 1 && !mv.axes {
             // the batch draw, when every mover stands on a cell with k > 1 neighbours
             let here: Vec<i32> = ord.iter().map(|&m| cells[owner[m].0][owner[m].1]).collect();
             let ok_here = here
@@ -3655,7 +3899,7 @@ fn exec_move(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
                 }
             }
         }
-        // one mover at a time
+        // one mover at a time (random with avoid/range/axes, or uphill/downhill)
         let mut occupied: Vec<i32> = Vec::new();
         if mv.avoid {
             let mx = cells
@@ -3678,16 +3922,118 @@ fn exec_move(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
         }
         let taken =
             |occ: &Vec<i32>, i: i32| i >= 1 && (i as usize) <= occ.len() && occ[i as usize - 1] > 0;
+        if mv.grad != 0 {
+            let widx = widx.as_ref().ok_or_else(|| bad("no wired index"))?;
+            let uphill = mv.grad > 0;
+            let fill_na = if uphill {
+                f64::NEG_INFINITY
+            } else {
+                f64::INFINITY
+            };
+            let mut ev = expr::Evaluator::new(Some(r));
+            for &m in &ord {
+                let (gk, rw) = owner[m];
+                let here = cells[gk][rw];
+                if here == NA_INT {
+                    continue;
+                }
+                let Some(raw) = cand_cells(here)? else {
+                    return Ok(None);
+                };
+                let mut cand = Vec::with_capacity(raw.len() + 1);
+                cand.push(here);
+                for c in raw {
+                    if c != NA_INT && !cand.contains(&c) {
+                        cand.push(c);
+                    }
+                }
+                if mv.avoid {
+                    cand.retain(|&c| c == here || !taken(&occupied, c));
+                }
+                if cand.is_empty() {
+                    continue;
+                }
+                let np = cand.len();
+                let mut wrows = Vec::with_capacity(np);
+                for &c in &cand {
+                    let Some(wr) = widx.get(c) else {
+                        return Ok(None);
+                    };
+                    wrows.push(wr);
+                }
+                let gg = &grad_groups[gk];
+                let mut ins = Vec::with_capacity(gg.cols.len() + gg.rest.len());
+                for (is_mover, v) in &gg.cols {
+                    if *is_mover {
+                        ins.push(recycle(one_at(v, rw), np));
+                    } else {
+                        ins.push(tidyabm_core::expr::take(v, &wrows));
+                    }
+                }
+                ins.extend(gg.rest.iter().cloned());
+                let val = match ev.eval(gg.prog, 0, &ins, np)? {
+                    Ok(v) => recycle(v, np),
+                    Err(d) => {
+                        expr::note_decline(&d);
+                        return Ok(None);
+                    }
+                };
+                let scores: Vec<f64> = match &val {
+                    Vals::Dbl(x) => x
+                        .iter()
+                        .map(|&v| if v.is_nan() { fill_na } else { v })
+                        .collect(),
+                    Vals::Int(x) | Vals::Lgl(x) => x
+                        .iter()
+                        .map(|&v| if v == NA_INT { fill_na } else { f64::from(v) })
+                        .collect(),
+                    Vals::Str(_) => return Ok(None),
+                };
+                let best_val = if uphill {
+                    scores.iter().copied().fold(f64::NEG_INFINITY, f64::max)
+                } else {
+                    scores.iter().copied().fold(f64::INFINITY, f64::min)
+                };
+                let best: Vec<usize> = scores
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(i, &s)| (s == best_val).then_some(i))
+                    .collect();
+                if best.is_empty() {
+                    continue;
+                }
+                let pick = if best.len() == 1 {
+                    best[0]
+                } else {
+                    let rng = ev.rng().ok_or_else(|| bad("no move rng"))?;
+                    best[tidyabm_core::sample::RDraws::unif_index(rng, best.len() as f64) as usize]
+                };
+                let target = cand[pick];
+                if mv.avoid && target != here {
+                    if here < 1
+                        || target < 1
+                        || here as usize > occupied.len()
+                        || target as usize > occupied.len()
+                    {
+                        return Ok(None);
+                    }
+                    occupied[here as usize - 1] -= 1;
+                    occupied[target as usize - 1] += 1;
+                }
+                cells[gk][rw] = target;
+            }
+            return Ok(Some(()));
+        }
         for &m in &ord {
             let (gk, rw) = owner[m];
             let here = cells[gk][rw];
             if here == NA_INT {
                 continue;
             }
-            let Some(all) = nb_at(here)? else {
+            let Some(all) = cand_cells(here)? else {
                 return Ok(None);
             };
-            let mut cand: Vec<i32> = all.iter().copied().filter(|&c| c != NA_INT).collect();
+            let mut cand: Vec<i32> = all.into_iter().filter(|&c| c != NA_INT).collect();
             if mv.avoid {
                 cand.retain(|&c| c == here || !taken(&occupied, c));
             }
@@ -6232,11 +6578,511 @@ fn exec_nb(plan: &Plan, nb: &NbPlan, st: SEXP) -> savvy::Result<Option<H>> {
     Ok(Some(set_named(st2.get(), nb.cache_name, nb.cache)?))
 }
 
+/// `abm_draw()` natively (FR14, [run_draw()]): rules evaluated over the edge
+/// table (one per edge, or twice for `.each = "endpoint"`), written into
+/// `.draw_<target>` and `.back_<target>` on shallow copies of `state$edges`,
+/// clearing `state$stale_draws`.
+fn exec_draw(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
+    let endpoint = plan.draw.ok_or_else(|| bad("no draw"))?;
+    let gp = plan.groups.first().ok_or_else(|| bad("no program"))?;
+    if gp.all_targets.len() != gp.targets.len() {
+        return Err(bad("draw targets"));
+    }
+    let Some(ei) = find_str(st, b"edges")? else {
+        return decline("no network (R's error)");
+    };
+    let edges = elt(st, ei);
+    if edges == rapi_nil() {
+        return decline("no network (R's error)");
+    }
+    let Some(m) = rows(edges) else {
+        return decline("edges without columns");
+    };
+    let enms = names_of(edges)?;
+    let mut ins: Vec<Vals> = Vec::with_capacity(gp.cols.len() + gp.globs.len() + gp.scope.len());
+    for &c in &gp.cols {
+        let Some(j) = find(enms, c) else {
+            return decline("an edge column not found");
+        };
+        let col = elt(edges, j);
+        if !all_bare(&[col])? {
+            return decline("an edge column with attributes");
+        }
+        let Some(v) = expr::vals_of(col, false)? else {
+            return decline("an edge column of another type");
+        };
+        ins.push(v);
+    }
+    let mut xs = Vec::new();
+    if !read_globals(st, &gp.globs, &mut xs)? {
+        return decline("a global not found");
+    }
+    let Some(svals) = scope_values(plan)? else {
+        return decline("a formula-environment value that cannot be read");
+    };
+    if !read_scope(&svals, &gp.scope, &mut xs) {
+        return decline("a formula-environment value not found");
+    }
+    let Some(more) = inputs(&xs)? else {
+        return decline("a global or scope value of an unsupported type");
+    };
+    ins.extend(more);
+    // SAFETY: the program is kept alive by the plan's descriptor.
+    let prog = unsafe { &*gp.prog };
+    let nr = gp.targets.len();
+    type DrawPair = (Vals<'static>, Option<Vals<'static>>);
+    let eval_all = |rng: Option<&mut crate::rng::RRng>| -> savvy::Result<Option<Vec<DrawPair>>> {
+        let mut ev = expr::Evaluator::new(rng);
+        let mut out = Vec::with_capacity(nr);
+        for k in 0..nr {
+            let fwd = match ev.eval(prog, k, &ins, m)? {
+                Ok(v) => expr::owned(recycle(v, m)),
+                Err(d) => {
+                    expr::note_decline(&d);
+                    return Ok(None);
+                }
+            };
+            let back = if endpoint {
+                match ev.eval(prog, k, &ins, m)? {
+                    Ok(v) => Some(expr::owned(recycle(v, m))),
+                    Err(d) => {
+                        expr::note_decline(&d);
+                        return Ok(None);
+                    }
+                }
+            } else {
+                None
+            };
+            out.push((fwd, back));
+        }
+        Ok(Some(out))
+    };
+    let drawn = if plan.draws {
+        crate::rng::with_rng(|r| eval_all(Some(r)))?
+    } else {
+        eval_all(None)?
+    };
+    let Some(drawn) = drawn else {
+        return Ok(None);
+    };
+    let mut e_cur: Option<H> = None;
+    for (k, (fwd, back)) in drawn.into_iter().enumerate() {
+        let mut hold = OwnedListSexp::new(if back.is_some() { 2 } else { 1 }, false)?;
+        hold.set_value(0, expr::to_r(&fwd, m)?)?;
+        let base = e_cur.as_ref().map_or(edges, |h| h.get());
+        let e1 = set_named(base, gp.targets[k], elt(hold.inner(), 0))?;
+        let e2 = match back {
+            Some(b) => {
+                hold.set_value(1, expr::to_r(&b, m)?)?;
+                set_named(e1.get(), gp.all_targets[k], elt(hold.inner(), 1))?
+            }
+            None => set_named(e1.get(), gp.all_targets[k], elt(hold.inner(), 0))?,
+        };
+        e_cur = Some(e2);
+    }
+    let st2 = match &e_cur {
+        // SAFETY: reading a static of R's (unused name: `ei` is in range).
+        Some(e2) => with_elt(st, ei, e2.get(), unsafe { rapi::R_BlankString })?,
+        None => keep(st)?,
+    };
+    Ok(Some(without(st2.get(), b"stale_draws")?))
+}
+
+/// Network `abm_neighbours()` over the `(focal, neighbour)` view (FR14:
+/// `own_<col>`, edge-draw columns `<name>`/`<name>_back`, `na.rm`, mixed
+/// `n()`/`sum()`/`mean()`/`any()`/`all()`, [network_view()] + [neighbour_aggregate()]).
+fn exec_nb_view(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
+    use std::borrow::Cow;
+    use tidyabm_core::sample::NA_INT;
+    let nbv = plan.nbv.as_ref().ok_or_else(|| bad("no nbv"))?;
+    let gp = plan.groups.first().ok_or_else(|| bad("no program"))?;
+    let nil = rapi_nil();
+    if let Some(ri) = find_str(st, b"relations")? {
+        if len(elt(st, ri)) > 0 {
+            return decline("a relation");
+        }
+    }
+    if let Some(si) = find_str(st, b"stale_draws")? {
+        if elt(st, si) != nil {
+            return decline("stale draws");
+        }
+    }
+    let Some(e) = find_str(st, b"edges")?.map(|i| elt(st, i)) else {
+        return decline("no network (R's error)");
+    };
+    if e == nil {
+        return decline("no network (R's error)");
+    }
+    let (Some(fi_col), Some(ti_col)) = (find_str(e, b"from")?, find_str(e, b"to")?) else {
+        return decline("edges without from/to");
+    };
+    let (ec_f, ec_t) = (elt(e, fi_col), elt(e, ti_col));
+    if !all_bare(&[ec_f, ec_t])? {
+        return decline("edges with attributes");
+    }
+    let (Some(ef), Some(et)) = (
+        store::numbers_of::<i32>(ec_f, INTSXP)?,
+        store::numbers_of::<i32>(ec_t, INTSXP)?,
+    ) else {
+        return decline("edges that are not integers");
+    };
+    if ef.len() != et.len() {
+        return decline("malformed edges");
+    }
+    let m = ef.len();
+    // if any global/scope symbol is now shadowed by a drawn edge column, decline
+    if !gp.all_targets.is_empty() {
+        let enms = names_of(e)?;
+        for &en in enms {
+            if let Some(base) = bytes(en).strip_prefix(b".draw_") {
+                for &nv in &gp.all_targets {
+                    let b = bytes(nv);
+                    if b == base || b.strip_suffix(b"_back") == Some(base) {
+                        return decline("a drawn column shadows a global or scope name");
+                    }
+                }
+            }
+        }
+    }
+    // `state$nb_cache` check (same as FR13)
+    let mut cached: Option<SEXP> = None;
+    if let Some(i) = find_str(st, b"nb_cache")? {
+        let c = elt(st, i);
+        if c != nil {
+            cached = find_str(c, b"edges")?.map(|j| elt(c, j));
+        }
+    }
+    let current = match cached {
+        Some(ce) if ce == e => true,
+        Some(ce) => {
+            // SAFETY: main thread; both are protected by the state.
+            let same =
+                unsafe { rapi::protect_value(0, move || rapi::R_compute_identical(ce, e, 16)) }?;
+            same != 0
+        }
+        None => false,
+    };
+    let gi = find_str(st, b"groups")?.ok_or_else(|| bad("no groups"))?;
+    let groups = elt(st, gi);
+    let ng = len(groups);
+    let mut sizes = Vec::with_capacity(ng);
+    for k in 0..ng {
+        match rows(elt(groups, k)) {
+            Some(r) => sizes.push(r),
+            None => return decline("a group without columns"),
+        }
+    }
+    let n: usize = sizes.iter().sum();
+    if n == 0 {
+        return Ok(Some(keep(st)?));
+    }
+    let focal: Vec<i32> = [ef, et].concat();
+    let nbr: Vec<i32> = [et, ef].concat();
+    // map endpoints to stacked row indices 0..n
+    let mut fi: Vec<usize> = Vec::with_capacity(2 * m);
+    let mut ci: Vec<usize> = Vec::with_capacity(2 * m);
+    let mut ei_v: Vec<usize> = Vec::with_capacity(2 * m);
+    let mut fwd_v: Vec<bool> = Vec::with_capacity(2 * m);
+    let mut all_ids_owned: Vec<i32> = Vec::new();
+    let need_of = nbv.vkind.contains(&4);
+    if ids_are_rows(groups)?.is_some() {
+        for r in 0..(2 * m) {
+            let f = focal[r];
+            let b = nbr[r];
+            if f < 1 || (f as usize) > n || b < 1 || (b as usize) > n {
+                return decline("an edge endpoint outside 1..n");
+            }
+            fi.push(f as usize - 1);
+            ci.push(b as usize - 1);
+            ei_v.push(if r < m { r } else { r - m });
+            fwd_v.push(r < m);
+        }
+        if need_of {
+            all_ids_owned = (1..=n as i32).collect();
+        }
+    } else {
+        let Some(Vals::Int(ids)) = stacked_col_named(groups, b".id", &sizes)? else {
+            return decline(".id not integer");
+        };
+        let idx = IdIndex::new(&ids);
+        for r in 0..(2 * m) {
+            if let (Some(fr), Some(cr)) = (idx.get(focal[r]), idx.get(nbr[r])) {
+                fi.push(fr);
+                ci.push(cr);
+                ei_v.push(if r < m { r } else { r - m });
+                fwd_v.push(r < m);
+            }
+        }
+        if need_of {
+            all_ids_owned = ids.into_owned();
+        }
+    }
+    let nv = fi.len();
+    let enms = names_of(e)?;
+    let mut ins: Vec<Vals> = Vec::with_capacity(gp.cols.len() + gp.globs.len() + gp.scope.len());
+    for (idx, &vk) in nbv.vkind.iter().enumerate() {
+        match vk {
+            0 => {
+                let Some(col) = stacked_pad(groups, gp.cols[idx], &sizes)? else {
+                    return decline("a candidate column of another kind");
+                };
+                ins.push(tidyabm_core::expr::take(&col, &ci));
+            }
+            1 => {
+                let Some(col) = stacked_pad(groups, gp.cols[idx], &sizes)? else {
+                    return decline("an own_ column of another kind");
+                };
+                ins.push(tidyabm_core::expr::take(&col, &fi));
+            }
+            2 | 3 => {
+                let (Some(di), Some(bi)) = (find(enms, gp.cols[idx]), find(enms, nbv.vback[idx]))
+                else {
+                    return decline("a drawn edge column not found");
+                };
+                let (dc, bc) = (elt(e, di), elt(e, bi));
+                if !all_bare(&[dc, bc])? || len(dc) != m || len(bc) != m {
+                    return decline("a drawn edge column with attributes or wrong length");
+                }
+                let (Some(dv), Some(bv)) = (expr::vals_of(dc, false)?, expr::vals_of(bc, false)?)
+                else {
+                    return decline("a drawn edge column of another type");
+                };
+                let is_fwd = vk == 2;
+                let picked = match (&dv, &bv) {
+                    (Vals::Dbl(d), Vals::Dbl(b)) => Vals::Dbl(Cow::Owned(
+                        (0..nv)
+                            .map(|r| {
+                                if fwd_v[r] == is_fwd {
+                                    d[ei_v[r]]
+                                } else {
+                                    b[ei_v[r]]
+                                }
+                            })
+                            .collect(),
+                    )),
+                    (Vals::Int(d), Vals::Int(b)) => Vals::Int(Cow::Owned(
+                        (0..nv)
+                            .map(|r| {
+                                if fwd_v[r] == is_fwd {
+                                    d[ei_v[r]]
+                                } else {
+                                    b[ei_v[r]]
+                                }
+                            })
+                            .collect(),
+                    )),
+                    (Vals::Lgl(d), Vals::Lgl(b)) => Vals::Lgl(Cow::Owned(
+                        (0..nv)
+                            .map(|r| {
+                                if fwd_v[r] == is_fwd {
+                                    d[ei_v[r]]
+                                } else {
+                                    b[ei_v[r]]
+                                }
+                            })
+                            .collect(),
+                    )),
+                    (Vals::Str(d), Vals::Str(b)) => Vals::Str(Cow::Owned(
+                        (0..nv)
+                            .map(|r| {
+                                if fwd_v[r] == is_fwd {
+                                    d[ei_v[r]]
+                                } else {
+                                    b[ei_v[r]]
+                                }
+                            })
+                            .collect(),
+                    )),
+                    _ => return decline("drawn forward and back columns of different types"),
+                };
+                ins.push(picked);
+            }
+            4 => {
+                ins.push(Vals::Int(Cow::Owned(
+                    fi.iter().map(|&r| all_ids_owned[r]).collect(),
+                )));
+            }
+            _ => return Err(bad("nbv input kind")),
+        }
+    }
+    let mut xs = Vec::new();
+    if !read_globals(st, &gp.globs, &mut xs)? {
+        return decline("a global not found");
+    }
+    let Some(svals) = scope_values(plan)? else {
+        return decline("a formula-environment value that cannot be read");
+    };
+    if !read_scope(&svals, &gp.scope, &mut xs) {
+        return decline("a formula-environment value not found");
+    }
+    let Some(more) = inputs(&xs)? else {
+        return decline("a global or scope value of an unsupported type");
+    };
+    ins.extend(more);
+    let res: Vec<Vals> = if !gp.prog.is_null() {
+        // SAFETY: the program is kept alive by the plan's descriptor.
+        let prog = unsafe { &*gp.prog };
+        match prog.compute(ins, nv, nv)? {
+            Ok(r) => r,
+            Err(d) => {
+                expr::note_decline(&d);
+                return Ok(None);
+            }
+        }
+    } else {
+        Vec::new()
+    };
+    // SAFETY: reading a static of R's (its NA_real_, not a Rust constant).
+    let na_real = unsafe { rapi::R_NaReal };
+    let mut vals: Vec<Vals<'static>> = Vec::with_capacity(nbv.fns.len());
+    let mut pi = 0;
+    for (r, &f) in nbv.fns.iter().enumerate() {
+        if f == 0 {
+            let mut cnt = vec![0i32; n];
+            for &fl in &fi {
+                cnt[fl] += 1;
+            }
+            vals.push(Vals::Int(Cow::Owned(cnt)));
+            continue;
+        }
+        let x = recycle(res[pi].clone(), nv);
+        pi += 1;
+        let out = match f {
+            1 | 2 => {
+                let xs = match &x {
+                    Vals::Int(v) | Vals::Lgl(v) => v,
+                    _ => return decline("a view aggregate of doubles (rowsum())"),
+                };
+                let narm = nbv.narm[r];
+                let mut sum = vec![0i64; n];
+                let mut cnt = vec![0i32; n];
+                let mut has_na = vec![false; n];
+                let mut seen = vec![false; n];
+                let mut ovf = vec![false; n];
+                for j in 0..nv {
+                    let fl = fi[j];
+                    seen[fl] = true;
+                    let v = xs[j];
+                    if v == NA_INT {
+                        if !narm {
+                            has_na[fl] = true;
+                        }
+                    } else {
+                        sum[fl] += i64::from(v);
+                        if sum[fl].abs() > i64::from(i32::MAX) {
+                            ovf[fl] = true;
+                        }
+                        cnt[fl] += 1;
+                    }
+                }
+                for i in 0..n {
+                    if seen[i] && !has_na[i] && ovf[i] {
+                        return decline("an integer sum outside the range");
+                    }
+                }
+                if f == 1 {
+                    Vals::Int(Cow::Owned(
+                        (0..n)
+                            .map(|i| {
+                                if !seen[i] || has_na[i] {
+                                    NA_INT
+                                } else {
+                                    sum[i] as i32
+                                }
+                            })
+                            .collect(),
+                    ))
+                } else {
+                    let empty_nan = crate::reduce::mean_int(&[]);
+                    Vals::Dbl(Cow::Owned(
+                        (0..n)
+                            .map(|i| {
+                                if !seen[i] || has_na[i] {
+                                    na_real
+                                } else if cnt[i] == 0 {
+                                    empty_nan
+                                } else {
+                                    sum[i] as f64 / f64::from(cnt[i])
+                                }
+                            })
+                            .collect(),
+                    ))
+                }
+            }
+            3 | 4 => {
+                let Vals::Lgl(xs) = &x else {
+                    return decline("any()/all() of other than logicals");
+                };
+                let want = if f == 3 { 1 } else { 0 };
+                let narm = nbv.narm[r];
+                let mut seen = vec![false; n];
+                let mut hit = vec![false; n];
+                let mut na = vec![false; n];
+                for j in 0..nv {
+                    let fl = fi[j];
+                    seen[fl] = true;
+                    hit[fl] |= xs[j] == want;
+                    na[fl] |= xs[j] == NA_INT;
+                }
+                Vals::Lgl(Cow::Owned(
+                    (0..n)
+                        .map(|i| {
+                            if !seen[i] || (!narm && !hit[i] && na[i]) {
+                                NA_INT
+                            } else {
+                                i32::from(if want == 1 { hit[i] } else { !hit[i] })
+                            }
+                        })
+                        .collect(),
+                ))
+            }
+            _ => return Err(bad("nbv fn")),
+        };
+        vals.push(out);
+    }
+    let mut cur: Option<H> = None;
+    for (r, v) in vals.iter().enumerate() {
+        let t = gp.targets[r];
+        let mut start = 0;
+        for (g, &sz) in sizes.iter().enumerate() {
+            let rows_g: Vec<usize> = (start..start + sz).collect();
+            start += sz;
+            if sz == 0 {
+                continue;
+            }
+            let col = tidyabm_core::expr::take(v, &rows_g);
+            let gs = cur.as_ref().map_or(groups, |h| h.get());
+            let base = elt(gs, g);
+            let mut hold = OwnedListSexp::new(1, false)?;
+            hold.set_value(0, expr::to_r(&col, sz)?)?;
+            let g2 = set_named(base, t, elt(hold.inner(), 0))?;
+            // SAFETY: reading a static of R's (unused name: `g` is in range).
+            cur = Some(with_elt(gs, g, g2.get(), unsafe { rapi::R_BlankString })?);
+        }
+    }
+    let st2 = match &cur {
+        // SAFETY: as above.
+        Some(gs) => with_elt(st, gi, gs.get(), unsafe { rapi::R_BlankString })?,
+        None => keep(st)?,
+    };
+    if current {
+        return Ok(Some(st2));
+    }
+    let cache = nb_cache_of(e, &focal, &nbr, m)?;
+    // SAFETY: making the CHARSXP may allocate; kept at once.
+    let key = unsafe { build(|| rapi::Rf_mkChar(c"nb_cache".as_ptr())) }?;
+    Ok(Some(set_named(st2.get(), key.get(), cache.get())?))
+}
+
 fn exec(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
     if let Some(nb) = &plan.nb {
         return exec_nb(plan, nb, st);
     }
-    if plan.cross.is_some() {
+    if plan.nbv.is_some() {
+        exec_nb_view(plan, st)
+    } else if plan.draw.is_some() {
+        exec_draw(plan, st)
+    } else if plan.cross.is_some() {
         exec_cross(plan, st)
     } else if plan.gby.is_some() {
         exec_global_by(plan, st)
@@ -6533,10 +7379,13 @@ impl RunLoop {
 
     fn try_native(&mut self, i: usize, st: SEXP) -> savvy::Result<Option<H>> {
         self.saved = false;
-        let Some(mut key) = schema_key(st)? else {
+        let Some(base_key) = schema_key(st)? else {
             return Ok(None);
         };
-        if self.kinds[i] == 3 {
+        let mut key = base_key.clone();
+        let nb_by_edge =
+            self.kinds[i] == 3 && !matches!(&self.slots[i], Slot::Ready(_, p) if p.nbv.is_some());
+        if nb_by_edge {
             // a neighbour index is built for these edges and this many agents
             let s = st;
             let edges = find_str(s, b"edges")?.map_or(0, |e| elt(s, e) as usize);
@@ -6558,7 +7407,9 @@ impl RunLoop {
             self.slots[i] = if t == rapi::LGLSXP {
                 Slot::Never
             } else if t == VECSXP {
-                Slot::Ready(key, Box::new(parse_plan(d)?))
+                let p = parse_plan(d)?;
+                let store_key = if p.nbv.is_some() { base_key } else { key };
+                Slot::Ready(store_key, Box::new(p))
             } else {
                 Slot::Skip(key)
             };

@@ -311,6 +311,25 @@ test_that("native steps keep every new R object protected (gctorture)", {
   got15b <- tryCatch(run_in("rust", m15b, go15b, ticks = 2, seed = 4), error = identity)
   gctorture(FALSE)
   expect_identical(got15b, ref15b)
+
+  # Tier 1: tell(to = "neighbours", .resolve = "max"), multi-match equijoin, rbinom/ifelse
+  mt1 <- abm_setup(
+    agents = list(
+      firms = abm_agents(n = 3, score = 0),
+      workers = abm_agents(n = 6, employer = ~c(1L, 1L, 2L, 2L, NA_integer_, 1L), score = 0)
+    ),
+    network = abm_network(type = "ring", degree = 2),
+    seed = 5)
+  got1_go <- abm_go(
+    abm_rules(score ~ ifelse(rbinom(n(), 2, 0.5) > 0L, 1, 0), .scope = "population"),
+    abm_neighbours(n_emp ~ n(), within = employer == own_.id),
+    abm_tell(score ~ score + 1, to = "neighbours", .resolve = "max")
+  )
+  reft1 <- run_in("r", mt1, got1_go, ticks = 2, seed = 5)
+  gctorture(TRUE)
+  gott1 <- tryCatch(run_in("rust", mt1, got1_go, ticks = 2, seed = 5), error = identity)
+  gctorture(FALSE)
+  expect_identical(gott1, reft1)
 })
 
 test_that("FR9b: measures and checks compiled natively give R's tables and errors", {

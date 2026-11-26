@@ -1,0 +1,111 @@
+---
+title: "Engines and performance"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Engines and performance}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>", eval = FALSE)
+```
+
+`tidyABM` runs every model under the same declarative R grammar, using a
+compiled Rust engine by default with the original pure-R engine kept alongside
+it as an automatic fallback and bit-for-bit reference.
+
+## Choosing an engine
+
+Set `options(tidyABM.engine = ...)` before calling `abm_run()`:
+
+| Option | Behaviour |
+|---|---|
+| `"auto"` (default) | Uses the Rust tick loop and expression evaluator whenever at least one step has a native kernel, otherwise runs directly on the R engine. |
+| `"r"` | Runs purely on the R reference engine. |
+| `"rust"` | Uses the Rust engine for every registered kernel. |
+| `"both"` | Runs every step on both engines from the same state and `.Random.seed` and stops immediately (`tidyABM_engine_mismatch`) if any value, attribute, condition, or RNG state differs. Intended for testing and bug reports (user code with side effects runs twice). |
+
+```{r}
+# Default: automatic Rust acceleration with R fallback
+res <- abm_run(world, go, ticks = 100, seed = 1)
+
+# Force the pure-R reference engine
+options(tidyABM.engine = "r")
+res_r <- abm_run(world, go, ticks = 100, seed = 1)
+
+identical(res, res_r)
+#> [1] TRUE
+```
+
+## Bit-for-bit identity
+
+Results under `"auto"` and `"r"` are `identical()` on the same machine, R
+version, and dependency versions — including `.Random.seed`, column attributes,
+`NA` payloads, warnings, and classed error messages:
+
+* All random draws call R's own C RNG API on the main thread, so mixing native
+  Rust steps with R steps consumes the exact same random stream.
+* Floating-point sums and means match R's accumulator width (`long double` on
+  x86_64, `double` on arm64).
+* Whenever a compiled formula or native step encounters a case that would warn,
+  error, or depend on R-only semantics (such as integer overflow, `log(-1)`,
+  non-ASCII collation, or a user-defined R function), it declines before
+  mutating state and replays the step on the R engine from the saved
+  `.Random.seed`.
+
+## What runs natively vs in R
+
+Most grammar steps run natively inside the Rust tick loop: `abm_rules()`
+(including `.by`, match scope, and mixed native/R rules), `abm_global()`
+(including `.by`), `abm_neighbours()` (network folds, pair views with `own_`
+and edge draws, `within =`, and lattice `.where =`), `abm_match()` (`"random"`,
+`"one_of"`, `"opposite_group"` with `.by`, `"network"`, `"nearest"` with `by`
+or `cost`, and `role`), `abm_birth()`, `abm_death()`, `abm_move()` (random,
+empty, `direction`, `range`, `axes_only`, `uphill`/`downhill`), `abm_tell()`
+(including `"collect"`), `abm_sequential()` (including relations),
+`abm_draw()`, network `abm_link()`/`abm_unlink()`, `abm_pairs()`, and
+`abm_repeat()`.
+
+A step or individual rule stays on the R engine when it uses:
+
+* User-defined R functions, `Map()`/`lapply()`, or list-column manipulation
+* Weighted sampling (`sample(..., prob =)` or `abm_match(weight =)`)
+* Non-default `RNGkind()` combinations outside the verified set
+* Relation-mutating `abm_link(via =)` / `abm_unlink(via =)` or `abm_death()` on
+  models with relations (which prunes relation rows)
+
+For profiling, `abm_rules()` steps that mix native and R rules run compiled
+rules natively and call R only for the uncompiled rules.
+
+## Parallel sweeps (`cores`)
+
+Passing `cores > 1` to `abm_run()` parallelises across parameter combinations
+and replicates:
+
+* On Unix (macOS and Linux), workers are forked via `parallel::mclapply()`.
+* On Windows, a `parallel::makePSOCKcluster()` worker pool is started once per
+  sweep.
+
+Every run receives its own deterministic seed derived from `seed`, so parallel
+sweeps return results `identical()` to `cores = 1`.
+
+## Measured speedups
+
+Representative timings comparing `options(tidyABM.engine = "r")` against the
+Rust engine (installed release build, Apple Silicon macOS, R 4.6, 1 core, all
+results `identical()`):
+
+| Model | R | Rust (`"auto"`) | Speedup |
+|---|---:|---:|---:|
+| Tax compliance sweep (441 agents, 150 runs × 40 ticks) | 2.70 s | 0.60 s | **4.5×** |
+| Lengnick (2013) baseline macro economy (12 months, relations) | 10.99 s | 2.39 s | **4.6×** |
+| Gross SFC macro economy (1,000 ticks, mixed R user functions) | 9.21 s | 6.36 s | **1.45×** |
+| Hawks and Doves (2,000 agents, 200 ticks) | 1.03 s | 0.16 s | **6.6×** |
+| Hammond & Axelrod ethnocentrism | 61.8 s | 6.8 s | **9.1×** |
+| Kirman's ants | 34.3 s | 2.8 s | **12.5×** |
+
+Models dominated by user-defined R functions (such as Gross's `ledger()` or
+Information Cascade's `side()`) see smaller gains because those functions still
+execute in R; models expressed in the built-in grammar typically run **3–12×**
+faster with zero code changes.

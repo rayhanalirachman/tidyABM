@@ -31,6 +31,8 @@ navbar:
         href: articles/grammar.html
       - text: Model gallery
         href: articles/models.html
+      - text: Engines and performance
+        href: articles/engines.html
       - text: Corrections
         href: articles/corrections.html
 

@@ -211,3 +211,94 @@ test_that("strings compare by identity, and non-ASCII strings are left to R", {
     expect_identical(abm_run(m, go, ticks = 1, record = "all"), ref)
   }
 })
+
+
+test_that("native min()/max() match R and .rx_cache stays bounded", {
+  m <- abm_setup(agents = abm_agents(n = 6,
+                                     x = c(1.5, -2, 3, 0, 4, -1),
+                                     k = c(2L, -5L, 1L, 0L, 4L, 3L),
+                                     flag = c(TRUE, FALSE, TRUE, TRUE, FALSE, FALSE)),
+                 seed = 1)
+  go <- abm_go(
+    abm_match(pair = "random"),
+    abm_rules(
+      mn_d ~ min(x, 0),
+      mx_d ~ max(x, k, 1.5),
+      mn_i ~ min(k, flag),
+      mx_l ~ max(flag)
+    )
+  )
+  expect_engines_agree(m, go, ticks = 3, seed = 2, what = "native min/max")
+  # NA propagation and empty decline match R
+  m_na <- abm_setup(agents = abm_agents(n = 4, x = c(1, NA_real_, 2, 3), k = c(1L, NA_integer_, 2L, 3L)))
+  go_na <- abm_go(abm_rules(a ~ min(x), b ~ max(k)))
+  expect_engines_agree(m_na, go_na, ticks = 1, seed = 1, what = "min/max NA")
+  # fast-reject unknown call head matches rx_no format and stays bounded
+  bad <- rx_compile(quote(unknown_fn(x + 1)))
+  expect_true(is_rx_no(bad))
+  expect_match(unclass(bad), "unknown_fn", fixed = TRUE)
+  expect_true(length(.rx_cache) <= .rx_cache_max)
+})
+
+test_that("Tier 1 expression built-ins match R bit-for-bit", {
+  # is.finite / is.infinite / is.nan / any / all / between / seq_len / seq_along
+  m <- abm_setup(agents = abm_agents(
+    n = 6,
+    x = c(0, Inf, -Inf, NaN, NA_real_, 2.5),
+    k = c(1L, NA_integer_, 3L, 0L, 5L, 2L),
+    b = c(TRUE, FALSE, NA, TRUE, FALSE, NA),
+    s = c("a", NA_character_, "b", "c", "d", "e")
+  ), seed = 1)
+  go <- abm_go(abm_rules(
+    fd ~ is.finite(x), fi ~ is.finite(k), fl ~ is.finite(b), fs ~ is.finite(s),
+    id ~ is.infinite(x), ii ~ is.infinite(k), is_ ~ is.infinite(s),
+    nd ~ is.nan(x), ni ~ is.nan(k), ns ~ is.nan(s),
+    a1 ~ any(b), a2 ~ any(b, na.rm = TRUE), a3 ~ all(b), a4 ~ all(b, na.rm = TRUE),
+    bt ~ between(k, 1L, 3L), bt2 ~ between(x, 0, 3),
+    sl ~ seq_len(n()), sa ~ seq_along(x)
+  ))
+  expect_engines_agree(m, go, ticks = 2, seed = 1, what = "Tier 1 unary/reduce/seq/between")
+  expect_identical(.rl_last$stats[[2]], 0L)
+  expect_identical(.rl_last$stats[[4]], 0L)
+
+  # lazy base ifelse(): unused branch must NOT draw from RNG
+  m_if <- abm_setup(agents = abm_agents(
+    n = 8,
+    p = c(TRUE, FALSE, NA, TRUE, FALSE, TRUE, FALSE, NA),
+    t_all = TRUE, f_all = FALSE, na_all = NA,
+    s = c("a", "b", "c", "d", "e", "f", "g", "h")
+  ), seed = 2)
+  go_if <- abm_go(abm_rules(
+    v1 ~ ifelse(p, 1L, 2.5),
+    v2 ~ ifelse(p, s, NA),
+    v3 ~ ifelse(t_all, 1L, runif(n())),
+    v4 ~ ifelse(f_all, runif(n()), 2L),
+    v5 ~ ifelse(na_all, runif(n()), runif(n())),
+    u  ~ runif(n())
+  ))
+  expect_engines_agree(m_if, go_if, ticks = 3, seed = 7, what = "Tier 1 lazy ifelse")
+  expect_identical(.rl_last$stats[[2]], 0L)
+  expect_identical(.rl_last$stats[[4]], 0L)
+
+  # sample.int() and rbinom / rpois / rexp / rlnorm (n() and scalar 1)
+  m_rng <- abm_setup(agents = abm_agents(n = 12, x = 0), seed = 3)
+  go_rng <- abm_go(abm_rules(
+    p1 ~ sample.int(n()),
+    p2 ~ sample.int(n(), n(), replace = TRUE),
+    rb ~ rbinom(n(), 5, 0.3),
+    rb1 ~ rbinom(1, 4, 0.5),
+    rp ~ rpois(n(), 2.5),
+    rp1 ~ rpois(1, 3),
+    re ~ rexp(n(), 0.5),
+    re1 ~ rexp(1),
+    rl ~ rlnorm(n(), 0.2, 0.4),
+    rl1 ~ rlnorm(1)
+  ))
+  expect_engines_agree(m_rng, go_rng, ticks = 3, seed = 9, what = "Tier 1 sample.int & rdist")
+  expect_identical(.rl_last$stats[[2]], 0L)
+  expect_identical(.rl_last$stats[[4]], 0L)
+
+  # invalid parameter declines to R (warning parity)
+  go_bad <- abm_go(abm_rules(z ~ suppressWarnings(rexp(n(), 0))))
+  expect_engines_agree(m_rng, go_bad, ticks = 1, seed = 1, what = "Tier 1 rdist decline")
+})

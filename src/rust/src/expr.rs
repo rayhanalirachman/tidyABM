@@ -87,6 +87,9 @@ fn decode(x: SEXP) -> savvy::Result<Node> {
         "neg" => Node::Unary(Un::Neg, boxed(1)?),
         "!" => Node::Unary(Un::Not, boxed(1)?),
         "is.na" => Node::Unary(Un::IsNa, boxed(1)?),
+        "is.finite" => Node::Unary(Un::IsFinite, boxed(1)?),
+        "is.infinite" => Node::Unary(Un::IsInfinite, boxed(1)?),
+        "is.nan" => Node::Unary(Un::IsNaN, boxed(1)?),
         "+" => bin(Bin::Add)?,
         "-" => bin(Bin::Sub)?,
         "*" => bin(Bin::Mul)?,
@@ -152,23 +155,79 @@ fn decode(x: SEXP) -> savvy::Result<Node> {
         "as_int" => Node::Cast(true, boxed(1)?),
         "as_dbl" => Node::Cast(false, boxed(1)?),
         "abs" => Node::Abs(boxed(1)?),
+        "min" => Node::Extreme(
+            false,
+            (1..l.len()).map(arg).collect::<savvy::Result<Vec<_>>>()?,
+        ),
+        "max" => Node::Extreme(
+            true,
+            (1..l.len()).map(arg).collect::<savvy::Result<Vec<_>>>()?,
+        ),
+        "any" => Node::AnyAll(true, false, boxed(1)?),
+        "any_narm" => Node::AnyAll(true, true, boxed(1)?),
+        "all" => Node::AnyAll(false, false, boxed(1)?),
+        "all_narm" => Node::AnyAll(false, true, boxed(1)?),
+        "between" => Node::Between(boxed(1)?, boxed(2)?, boxed(3)?),
+        "ifelse" => Node::BaseIfElse(boxed(1)?, boxed(2)?, boxed(3)?),
+        "seq_len" => Node::SeqLen(boxed(1)?),
+        "seq_along" => Node::SeqAlong(boxed(1)?),
+        "sample_int" => {
+            let sz = match l.get_by_index(2) {
+                Some(s) if !s.is_null() => Some(Box::new(decode(s.0)?)),
+                _ => None,
+            };
+            let rep = logicals_of(
+                l.get_by_index(3)
+                    .ok_or_else(|| bad("sample_int replace"))?
+                    .0,
+            )?
+            .first()
+            .copied()
+                == Some(1);
+            Node::SampleInt(boxed(1)?, sz, rep)
+        }
+        "rdist" => {
+            let k = l.get_by_index(1).ok_or_else(|| bad("rdist kind"))?.0;
+            let k = store::numbers_of::<i32>(k, rapi::INTSXP)?.ok_or_else(|| bad("rdist kind"))?;
+            let kind = u8::try_from(k[0]).map_err(|_| bad("rdist kind"))?;
+            let one = logicals_of(l.get_by_index(2).ok_or_else(|| bad("rdist one"))?.0)?
+                .first()
+                .copied()
+                == Some(1);
+            let b = match l.get_by_index(4) {
+                Some(s) if !s.is_null() => Some(Box::new(decode(s.0)?)),
+                _ => None,
+            };
+            Node::RDist(kind, one, boxed(3)?, b)
+        }
         other => return Err(bad(&format!("unknown operator `{other}`"))),
     })
 }
 
 fn draws(n: &Node) -> bool {
     match n {
-        Node::Runif | Node::Sample(..) | Node::Rand(..) | Node::Draw1(..) => true,
+        Node::Runif
+        | Node::Sample(..)
+        | Node::Rand(..)
+        | Node::Draw1(..)
+        | Node::SampleInt(..)
+        | Node::RDist(..) => true,
         Node::Const(_) | Node::Input(_) | Node::N | Node::ConstVec(_) => false,
         Node::Unary(_, x)
         | Node::Math(_, x)
         | Node::Reduce(_, x)
         | Node::ReduceNaRm(_, x)
         | Node::Cast(_, x)
-        | Node::Abs(x) => draws(x),
+        | Node::Abs(x)
+        | Node::AnyAll(_, _, x)
+        | Node::SeqLen(x)
+        | Node::SeqAlong(x) => draws(x),
         Node::Bin(_, a, b) | Node::In(a, b) | Node::Index(a, b) => draws(a) || draws(b),
-        Node::Call(_, a) | Node::Coalesce(a) => a.iter().any(draws),
-        Node::IfElse(a, b, c) | Node::If(a, b, c) => draws(a) || draws(b) || draws(c),
+        Node::Call(_, a) | Node::Coalesce(a) | Node::Extreme(_, a) => a.iter().any(draws),
+        Node::IfElse(a, b, c)
+        | Node::If(a, b, c)
+        | Node::Between(a, b, c)
+        | Node::BaseIfElse(a, b, c) => draws(a) || draws(b) || draws(c),
         Node::CaseWhen(p, d) => {
             p.iter().any(|(c, v)| draws(c) || draws(v)) || d.as_deref().is_some_and(draws)
         }
@@ -369,6 +428,59 @@ impl Host for RHost<'_> {
             return Err(Decline("an R condition while drawing"));
         }
         Ok(v.iter().map(|&x| x as i32 + 1).collect())
+    }
+    fn sample_int(&mut self, n: usize, size: usize, replace: bool) -> Result<Vec<i32>, Decline> {
+        if tidyabm_core::sample::check_sample(n, size, replace).is_err() {
+            return Err(Decline("sample.int() invalid n or size"));
+        }
+        let Some(r) = self.rng.as_deref_mut() else {
+            return Err(Decline("a draw outside the RNG scope"));
+        };
+        tidyabm_core::sample::sample_int(r, n, size, replace)
+            .map_err(|_| Decline("sample.int() failed"))
+    }
+    fn rdist(&mut self, kind: u8, a: f64, b: f64, n: usize) -> Result<Vals<'static>, Decline> {
+        let Some(r) = self.rng.as_deref_mut() else {
+            return Err(Decline("a draw outside the RNG scope"));
+        };
+        let fin = a.is_finite() && b.is_finite();
+        let (d, ok, as_int) = match kind {
+            0 => {
+                let sz_ok = a >= 0.0 && a <= i32::MAX as f64 && a.fract() == 0.0;
+                (
+                    Draw::Rmath2(rapi::Rf_rbinom, a, b),
+                    fin && sz_ok && (0.0..=1.0).contains(&b),
+                    true,
+                )
+            }
+            1 => (Draw::Rmath1(rapi::Rf_rpois, a), fin && a >= 0.0, true),
+            2 => (
+                Draw::Rmath1(rapi::Rf_rexp, 1.0 / a),
+                fin && a > 0.0 && (1.0 / a).is_finite(),
+                false,
+            ),
+            3 => (Draw::Rmath2(rapi::Rf_rlnorm, a, b), fin && b >= 0.0, false),
+            _ => return Err(Decline("unknown rdist kind")),
+        };
+        if !ok {
+            return Err(Decline("rdist() parameter out of range (R warns)"));
+        }
+        let mut v = vec![0.0; n];
+        if let Err(e) = r.fill(&mut v, d) {
+            self.err = Some(e);
+            return Err(Decline("an R condition while drawing"));
+        }
+        if v.iter().any(|x| x.is_nan()) {
+            return Err(Decline("rdist() made NaN (R warns)"));
+        }
+        if as_int
+            && v.iter()
+                .all(|&x| x.is_finite() && (0.0..=i32::MAX as f64).contains(&x))
+        {
+            Ok(Vals::Int(Cow::Owned(v.iter().map(|&x| x as i32).collect())))
+        } else {
+            Ok(Vals::Dbl(Cow::Owned(v)))
+        }
     }
 }
 

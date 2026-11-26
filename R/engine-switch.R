@@ -1,22 +1,20 @@
-# The engine switch and the R side of the Rust bridge (migration phases 1 and 3).
+# The engine switch and the R side of the Rust bridge.
 #
 # `options(tidyABM.engine = )` picks the engine a run uses:
-#   "r"    the R engine (the default, and the reference implementation);
-#   "auto" the Rust path for a run with at least one step that has a Rust kernel,
-#          else the R engine;
-#   "rust" the Rust path: the groups in the Rust column store, every step without
-#          a kernel run by the R engine's step function through the step adapter;
+#   "auto" the default: runs the Rust tick loop for any run with at least one
+#          native step (`auto = TRUE` in `rust_kernels`), else the R engine;
+#   "r"    the R engine (the reference implementation);
+#   "rust" the Rust path for any run with a registered kernel (regardless of
+#          `auto`);
 #   "both" each step on the R engine and on the Rust path, compared after every
 #          step (a developer and CI tool: user code in a step runs twice).
-# Phase 3 has the store and the adapter but no kernel, so "auto" runs the R engine
-# (R/run-rust.R).
 
 engine_choices <- c("auto", "r", "rust", "both")
 
 #' The engine a run uses, from `getOption("tidyABM.engine")`
 #' @noRd
 engine_resolve <- function(call = rlang::caller_env()) {
-  engine <- getOption("tidyABM.engine", "r")
+  engine <- getOption("tidyABM.engine", "auto")
   if (!rlang::is_string(engine) || !engine %in% engine_choices) {
     abm_abort(
       c("{.code options(tidyABM.engine = )} must be one of {.or {.val {engine_choices}}}.",

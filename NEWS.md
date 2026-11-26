@@ -1,22 +1,41 @@
 # tidyABM (development version)
 
-## Rust plumbing (no change in behaviour)
+## Rust engine (now the default)
 
-The package now contains compiled Rust code, the first step of moving the engine
-to Rust (branch `rust`). Nothing a model does changes: every run still uses the R
-engine, and results are identical.
+The simulation engine now runs in compiled Rust under the unchanged R grammar,
+producing bit-for-bit identical results (`.Random.seed`, column attributes,
+`NA` payloads, warnings and errors) to the pure-R reference engine.
 
-* tidyABM needs R >= 4.2 (was 4.1), and installing it from source needs Rust's
-  `cargo` and `rustc` >= 1.81 (`SystemRequirements`). The Rust crates it uses are
-  bundled in the source package, so the build works offline; they are listed with
-  their licences (all MIT or Apache-2.0) in `inst/AUTHORS`.
-* `options(tidyABM.engine = )` chooses the engine: `"r"` (the default), `"auto"`,
-  `"rust"` or `"both"`. For now `"auto"` runs the R engine, `"rust"` and `"both"`
-  stop with a `tidyABM_engine_unavailable` error, and any other value with
-  `tidyABM_bad_engine`.
-* Contributors: `dev/CONTRIBUTING-rust.md` explains the Rust toolchain, `savvy-cli`,
-  `cargo test`, vendoring and the oracle (`dev/oracle/`) that every migration step
-  is checked against.
+* `options(tidyABM.engine = )` chooses the engine: `"auto"` (now the default),
+  `"r"` (the pure-R reference engine), `"rust"`, or `"both"` (developer
+  differential mode comparing both engines after every step). Under `"auto"`,
+  any run with native steps executes inside the Rust tick loop and expression
+  evaluator, seamlessly handing unsupported steps, user R functions, or
+  warning/error edge cases back to the R engine.
+* Native Rust coverage includes `abm_rules()` (including `.by`, match scope,
+  and mixed native/R rules), `abm_global()` (including `.by`),
+  `abm_neighbours()` (network fast folds, pair views with `own_`/edge draws,
+  `within =` equijoins and cross products, lattice `.where =`), `abm_match()`
+  (`"random"`, `"one_of"`, `"opposite_group"` with `.by`, `"network"`,
+  `"nearest"` with `by` or `cost`, `role`), `abm_birth()` (with `attach_via`),
+  `abm_death()`, `abm_move()` (random, empty, `direction`, `range`,
+  `axes_only`, `uphill`/`downhill`), `abm_tell()` (including `"collect"`),
+  `abm_sequential()` (including relations), `abm_draw()`, network `abm_link()`
+  and `abm_unlink()`, `abm_pairs()`, `abm_repeat()`, and native tick logging,
+  measures, and checks, with `Ctrl-C` interruption honoured inside the loop.
+* Parallel sweeps (`abm_run(cores = k)`) now also work on Windows via a PSOCK
+  worker pool (Unix continues to use forks), giving results identical to
+  `cores = 1`.
+* Random draws and powers call R's own C API (keeping the package MIT
+  licenced); sums and means match R's platform accumulator width (`long double`
+  on x86_64).
+* tidyABM requires R >= 4.2, and installing from source requires Rust's `cargo`
+  and `rustc >= 1.81` (`SystemRequirements`). Dependency crates are vendored in
+  the source tarball for offline builds and listed with their licences (MIT /
+  Apache-2.0 / Unicode-3.0) in `inst/AUTHORS`.
+* See `vignette("engines")` for engine selection and measured speedups, and
+  `dev/CONTRIBUTING-rust.md` / `src/rust/ARCHITECTURE.md` for contributor
+  internals.
 
 ## Checks: an accounting identity that stops the run
 

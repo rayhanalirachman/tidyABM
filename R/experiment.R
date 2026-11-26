@@ -383,12 +383,13 @@ run_psock <- function(n, one_run, cores) {
   on.exit(parallel::stopCluster(cl), add = TRUE)
   opts <- options()
   opts <- opts[startsWith(names(opts), "tidyABM.")]
-  parallel::clusterCall(cl, function(pkgs, opts) {
+  parallel::clusterCall(cl, function(libs, pkgs, opts) {
+    .libPaths(libs)
     for (p in rev(pkgs)) suppressPackageStartupMessages(library(p, character.only = TRUE))
     loadNamespace("tidyABM")
     options(opts)
     NULL
-  }, (.packages()), opts)
+  }, .libPaths(), (.packages()), opts)
   ws <- ls(globalenv(), all.names = TRUE)
   ws <- ws[ws != ".Random.seed"]
   if (length(ws)) parallel::clusterExport(cl, ws, envir = globalenv())

@@ -1,9 +1,9 @@
 # The Rust library and the engine switch (migration phase 1): the build, the calls
 # and the error transport. The Rust run path itself is tested in test-rust-engine.R.
 
-test_that("the engine option defaults to the R engine and is validated", {
+test_that("the engine option defaults to auto and is validated", {
   withr::local_options(tidyABM.engine = NULL)
-  expect_identical(engine_resolve(), "r")
+  expect_identical(engine_resolve(), "auto")
   for (engine in c("r", "auto", "rust", "both")) {
     withr::local_options(tidyABM.engine = engine)
     expect_identical(engine_resolve(), engine)

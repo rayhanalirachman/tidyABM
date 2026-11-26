@@ -123,8 +123,10 @@ test_that("an error in a rule is the R engine's own under every engine", {
   }
 })
 
-test_that("\"auto\" leaves runs whose kernels are not proven faster on the R engine", {
+test_that("\"auto\" uses proven kernels and leaves auto = FALSE kernels on R", {
   go <- abm_go(abm_neighbours(avg ~ mean(x)))
-  expect_false(rust_kernels$abm_neighbours$auto)
+  expect_true(rust_kernels$abm_neighbours$auto)
+  expect_false(identical(engine_run_once("auto", go$steps), run_once))
+  local_mocked_bindings(rust_kernels = list(abm_neighbours = list(fun = rk_native, auto = FALSE)))
   expect_identical(engine_run_once("auto", go$steps), run_once)
 })

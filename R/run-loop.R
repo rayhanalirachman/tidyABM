@@ -215,7 +215,7 @@ rl_prep_until <- function(step, state) {
 rl_prep_tick <- function(step, state) {
   if (is.null(step)) return(FALSE)
   heads <- unique(unlist(lapply(rx_rules(step), function(cp) if (!is_rx_no(cp)) cp$heads)))
-  if (any(c("runif", "rnorm", "sample") %in% heads)) return(FALSE)
+  if (any(rx_draw_heads %in% heads)) return(FALSE)
   rl_prep_global(step, state, mode = "values")
 }
 
@@ -594,15 +594,12 @@ rl_prep_global_by <- function(step, state) {
                      gby = list(by = by, src = by_src)), envs)
 }
 
-# one program over every group stacked
+# one program over every group stacked (missing columns padded with NA)
 rl_prep_global <- function(step, state, mode = TRUE) {
   if (!planned(step, "rx_gshape", rx_global_ok(step))) return(FALSE)
-  groups <- state$groups
-  cols <- Reduce(intersect, lapply(groups, names))
+  cols <- model_columns(state$groups)
   p <- rx_program(step, seq_along(step$rules), cols, state$globals, global_step = mode)
   if (is_rx_no(p)) return(NULL)
-  # a column some group lacks is padded with NA by the R engine: not native
-  if (any(p$names %in% setdiff(model_columns(groups), cols))) return(NULL)
   rl_scope_bind(list(kind = 2L, scope_match = FALSE,
                      groups = list(list(name = "", prog = p$prog$.ptr, cols = p$cols,
                                         globs = p$globs, targets = p$targets, scope = p$scope,
@@ -663,7 +660,7 @@ rl_nb_cross_shape <- function(step) {
   if (any(vapply(comp, is_rx_no, NA))) return(NULL)
   heads <- unique(unlist(lapply(comp, `[[`, "heads")))
   syms <- unique(unlist(lapply(comp, `[[`, "syms")))
-  if (any(c("runif", "rnorm", "sample") %in% heads) || "n" %in% comp[[1]]$heads ||
+  if (any(rx_draw_heads %in% heads) || "n" %in% comp[[1]]$heads ||
       ".of" %in% syms) return(NULL)
   envs <- lapply(c(list(step$within), lapply(step$rules, `[[`, "quo")), rlang::quo_get_env)
   if (!all(vapply(envs, identical, NA, envs[[1]]))) return(NULL)
@@ -867,7 +864,7 @@ rl_match_shape <- function(step) {
   comp <- lapply(conds, function(q) rx_compile_memo(rlang::quo_get_expr(q)))
   if (any(vapply(comp, is_rx_no, NA))) return(NULL)
   if (!is.null(roles) &&
-      any(c("runif", "rnorm", "sample") %in% unlist(lapply(utils::tail(comp, 2L), `[[`, "heads")))) {
+      any(rx_draw_heads %in% unlist(lapply(utils::tail(comp, 2L), `[[`, "heads")))) {
     return(NULL)
   }
   envs <- lapply(conds, rlang::quo_get_env)
@@ -899,7 +896,7 @@ rl_prep_match <- function(step, state) {
     names <- unique(unlist(lapply(sh$comp, `[[`, "syms"))) %||% character()
     heads <- unique(unlist(lapply(sh$comp, `[[`, "heads"))) %||% character()
     if (!rx_heads_ok(heads, abm_eval_env(q1, state$globals, n = 1L))) return(NULL)
-    if (any(c("runif", "rnorm", "sample") %in% heads) && !rust_rng_ok()) return(NULL)
+    if (!rx_rng_heads_ok(heads)) return(NULL)
     src <- ifelse(names %in% cols, 1L, ifelse(names %in% names(state$globals), 2L, 3L))
     for (nm in names[src == 3L]) if (!exists(nm, envir = env)) return(NULL)
     o <- order(src)
@@ -920,7 +917,7 @@ rl_prep_match <- function(step, state) {
     cp <- sh$cost_cp
     cenv <- rlang::quo_get_env(step$cost)
     if (!rx_heads_ok(cp$heads, abm_eval_env(step$cost, state$globals, n = 1L))) return(NULL)
-    if (any(c("runif", "rnorm", "sample") %in% cp$heads) && !rust_rng_ok()) return(NULL)
+    if (!rx_rng_heads_ok(cp$heads)) return(NULL)
     csyms <- cp$syms
     csrc <- integer(length(csyms))
     vkind <- integer(length(csyms))
@@ -1095,7 +1092,7 @@ rl_move_ok <- function(step) {
     # FR13: a compiled heading that does not draw (it is evaluated after the
     # movers' order is drawn)
     cp <- rx_compile_memo(rlang::quo_get_expr(step$direction))
-    return(!is_rx_no(cp) && !any(c("runif", "rnorm", "sample") %in% cp$heads))
+    return(!is_rx_no(cp) && !any(rx_draw_heads %in% cp$heads))
   }
   if (step$mode %in% c("uphill", "downhill")) {
     return(!is_rx_no(rx_compile_memo(rlang::quo_get_expr(step$expr))))
@@ -1140,7 +1137,7 @@ rl_prep_move <- function(step, state) {
     cp <- rx_compile_memo(rlang::quo_get_expr(step$expr))
     env <- rlang::quo_get_env(step$expr)
     if (!rx_heads_ok(cp$heads, abm_eval_env(step$expr, state$globals, n = 1L))) return(NULL)
-    if (any(c("runif", "rnorm", "sample") %in% cp$heads) && !rust_rng_ok()) return(NULL)
+    if (!rx_rng_heads_ok(cp$heads)) return(NULL)
     wcols <- names(wired)
     reserved <- c(".id", ".group", ".x", ".y", ".cell")
     for (nm in who) {
@@ -1242,23 +1239,28 @@ rl_prep_link <- function(step, state) {
        link = list(drop = isTRUE(step$drop), when = !is.null(step$when))), envs)
 }
 
-# FR7/FR15a: `abm_tell(to = <id expression>)` natively ([run_tell()] without
-# `.order`, `"neighbours"`, list recipients, `"max"`/`"min"`): `when`, `to` and
-# each message compiled over the groups stacked, read in that order
+# FR7/FR15a: `abm_tell(to = <id> | "neighbours")` natively ([run_tell()]
+# without `.order` or list recipients): `when`, `to` (for `"id"`) and each
+# message compiled over the groups stacked, read in that order
 rl_tell_ok <- function(step) {
-  if (!identical(step$to, "id") || !is.null(step$order) ||
-      !step$resolve %in% c("last", "first", "sum", "mean", "error", "collect")) return(FALSE)
+  if (!step$to %in% c("id", "neighbours") || !is.null(step$order) ||
+      !step$resolve %in% c("last", "first", "sum", "mean", "error", "collect", "min", "max")) {
+    return(FALSE)
+  }
   if (any(vapply(step$rules, function(r) r$target %in% c(".cell", "partner_.cell", ".id"), NA))) {
     return(FALSE)
   }
-  quos <- c(list(step$when, step$to_quo), lapply(step$rules, `[[`, "quo"))
+  quos <- c(list(step$when), if (identical(step$to, "id")) list(step$to_quo),
+            lapply(step$rules, `[[`, "quo"))
   all(vapply(Filter(Negate(is.null), quos), function(q) {
     !is_rx_no(rx_compile_memo(rlang::quo_get_expr(q)))
   }, NA))
 }
 rl_prep_tell <- function(step, state) {
   if (!planned(step, "rx_tell", rl_tell_ok(step))) return(FALSE)
-  quos <- c(if (!is.null(step$when)) list(step$when), list(step$to_quo),
+  to_nb <- identical(step$to, "neighbours")
+  quos <- c(if (!is.null(step$when)) list(step$when),
+            if (!to_nb) list(step$to_quo),
             lapply(step$rules, `[[`, "quo"))
   rel_names <- relation_derived_names(state$relations)
   if (length(rel_names)) {
@@ -1280,7 +1282,7 @@ rl_prep_tell <- function(step, state) {
                      groups = list(list(name = "", prog = p$prog$.ptr, cols = p$cols,
                                         globs = p$globs, targets = vapply(step$rules, `[[`, "", "target"),
                                         scope = p$scope, ew = FALSE, mcols = p$mcols)),
-                     tell = list(when = !is.null(step$when), resolve = step$resolve)),
+                     tell = list(when = !is.null(step$when), resolve = step$resolve, nb = to_nb)),
                 if (length(p$scope)) list(p$env))
 }
 
@@ -1396,7 +1398,7 @@ rl_prep_pairs <- function(step, state) {
   if (any(vapply(comp, is_rx_no, NA))) return(NULL)
   heads <- unique(unlist(lapply(comp, `[[`, "heads"))) %||% character()
   if (!rx_heads_ok(heads, abm_eval_env(quos[[1]], state$globals, n = 1L))) return(NULL)
-  if (any(c("runif", "rnorm", "sample") %in% heads) && !rust_rng_ok()) return(NULL)
+  if (!rx_rng_heads_ok(heads)) return(NULL)
   acols <- model_columns(state$groups)
   syms <- unique(unlist(lapply(comp, `[[`, "syms"))) %||% character()
   src <- integer(length(syms))
@@ -1514,7 +1516,7 @@ rl_nb_view_shape <- function(step) {
     }
     if (length(args) != 1L || nzchar(nms[[1]]) || !is_elementwise(args[[1]])) return(NULL)
     cp <- rx_compile_memo(args[[1]])
-    if (is_rx_no(cp) || any(c("runif", "rnorm", "sample", "n") %in% cp$heads)) return(NULL)
+    if (is_rx_no(cp) || any(c(rx_draw_heads, "n") %in% cp$heads)) return(NULL)
     list(fn = fn, narm = narm, arg = args[[1]], cp = cp)
   })
   if (!length(shapes) || any(vapply(shapes, is.null, NA))) return(NULL)

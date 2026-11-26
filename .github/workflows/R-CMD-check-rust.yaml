@@ -58,6 +58,22 @@ jobs:
           error-on: '"warning"'
           upload-snapshots: true
           upload-results: true
+      - name: Verify R reference engine and both-mode parity
+        shell: Rscript {0}
+        run: |
+          rcheck <- Sys.glob("check/*.Rcheck")[1]
+          if (is.na(rcheck)) stop("No .Rcheck directory found")
+          .libPaths(c(normalizePath(rcheck), .libPaths()))
+          Sys.setenv(R_LIBS = paste(.libPaths(), collapse = .Platform$path.sep))
+          Sys.setenv(TIDYABM_ENGINE = "r", NOT_CRAN = "true")
+          options(tidyABM.engine = "r")
+          testthat::test_dir("tests/testthat", package = "tidyABM",
+                             reporter = "summary", stop_on_failure = TRUE)
+          Sys.setenv(TIDYABM_ENGINE = "both", NOT_CRAN = "true")
+          options(tidyABM.engine = "both")
+          testthat::test_dir("tests/testthat", package = "tidyABM",
+                             filter = "^rust-(engine|expr|grammar|loop)$",
+                             reporter = "summary", stop_on_failure = TRUE)
       # The Rust differential tests (test-rust-rng.R, test-rust-reduce.R) name the
       # platform, long double size and first mismatch in their failure messages; this
       # prints them, and the library's platform facts, whether the check passed or not.

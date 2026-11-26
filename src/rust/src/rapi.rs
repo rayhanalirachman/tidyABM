@@ -130,6 +130,8 @@ extern "C" {
     pub fn STRING_ELT(x: SEXP, i: isize) -> SEXP;
     // FR9: native tick book-keeping
     pub fn Rf_mkChar(s: *const std::os::raw::c_char) -> SEXP;
+    // R_ext/Utils.h: honour Ctrl-C in long native runs
+    pub fn R_CheckUserInterrupt();
 }
 
 // src/reduce.c (tidyABM's own C; pure computation, safe on any thread)

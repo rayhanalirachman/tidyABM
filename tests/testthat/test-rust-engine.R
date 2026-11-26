@@ -147,11 +147,13 @@ test_that("errors, failed checks, warnings and printing are the R engine's", {
   }
 })
 
-test_that("\"auto\" is the R engine while no step has a Rust kernel", {
+test_that("\"auto\" uses the Rust loop when a step has an auto kernel, else R", {
   go <- abm_go(abm_rules(money ~ money + 1))
-  expect_identical(engine_run_once("auto", go$steps), run_once)
+  expect_false(identical(engine_run_once("auto", go$steps), run_once))
   expect_identical(engine_run_once("r", go$steps), run_once)
   expect_true(is.function(engine_run_once("rust", go$steps)))
+  go_r <- abm_go(abm_rules(money ~ identity(money)))
+  expect_identical(engine_run_once("auto", go_r$steps), run_once)
 })
 
 # A stand-in for a phase-4 kernel: the step adapter, then `tamper` applied to the

@@ -389,9 +389,9 @@ struct Plan {
     attach: Option<(u8, usize)>,
     /// `abm_move()` (kind 10)
     mv: Option<MovePlan>,
-    /// `abm_tell()` (kind 11): `when` given, and `.resolve` (0 last, 1 first,
-    /// 2 sum, 3 mean, 4 error)
-    tell: Option<(bool, u8)>,
+    /// `abm_tell()` (kind 11): `when` given, `.resolve` (0 last, 1 first,
+    /// 2 sum, 3 mean, 4 error, 5 collect, 6 min, 7 max), and `to = "neighbours"`
+    tell: Option<(bool, u8, bool)>,
     /// `abm_sequential()` (kind 12): `.order` given, plus any relation reads/writes
     seq: Option<SeqPlan>,
     /// the cross-product `within` (kind 14): per rule 0 `n()`, 1 `sum`, 2
@@ -895,9 +895,21 @@ fn parse_plan(desc: H) -> savvy::Result<Plan> {
             Some(b"mean") => 3,
             Some(b"error") => 4,
             Some(b"collect") => 5,
+            Some(b"min") => 6,
+            Some(b"max") => 7,
             _ => return Err(bad("tell resolve")),
         };
-        Some((when, res))
+        let to_nb = match find_str(x, b"nb")? {
+            Some(i) => {
+                let v = elt(x, i);
+                // SAFETY: reading a type tag, then a logical of length 1.
+                let lg = unsafe { rapi::TYPEOF(v) } == rapi::LGLSXP && len(v) == 1;
+                // SAFETY: as above.
+                lg && unsafe { *rapi::LOGICAL_RO(v) } == 1
+            }
+            None => false,
+        };
+        Some((when, res, to_nb))
     } else {
         None
     };
@@ -1709,28 +1721,43 @@ fn exec_global(plan: &Plan, st: SEXP, values_only: bool) -> savvy::Result<Option
         return decline("globals that are not a list");
     }
     let ng = len(groups);
+    let mut sizes = Vec::with_capacity(ng);
     let mut n = 0;
     for k in 0..ng {
         match rows(elt(groups, k)) {
-            Some(r) => n += r,
+            Some(r) => {
+                sizes.push(r);
+                n += r;
+            }
             None => return decline("a group without columns"),
         }
     }
     if n == 0 {
         return decline("no agents");
     }
-    // every column of every group the step reads, then the globals: checked bare
-    let mut xs = Vec::with_capacity(gp.cols.len() * ng + gp.globs.len());
-    for &c in &gp.cols {
-        for k in 0..ng {
-            let g = elt(groups, k);
-            let Some(j) = find(names_of(g)?, c) else {
+    let mut ins: Vec<Vals> = Vec::with_capacity(gp.cols.len() + gp.globs.len() + gp.scope.len());
+    let mut xs = Vec::with_capacity(
+        (if ng == 1 { gp.cols.len() } else { 0 }) + gp.globs.len() + gp.scope.len(),
+    );
+    let n_cols = if ng == 1 {
+        let g = elt(groups, 0);
+        let gnms = names_of(g)?;
+        for &c in &gp.cols {
+            let Some(j) = find(gnms, c) else {
                 return decline("a column some group lacks");
             };
             xs.push(elt(g, j));
         }
-    }
-    let n_cols = xs.len();
+        xs.len()
+    } else {
+        for &c in &gp.cols {
+            match stacked_pad(groups, c, &sizes)? {
+                Some(v) => ins.push(v),
+                None => return decline("a column of another kind"),
+            }
+        }
+        0
+    };
     if !read_globals(st, &gp.globs, &mut xs)? {
         return decline("a global not found");
     }
@@ -1743,18 +1770,8 @@ fn exec_global(plan: &Plan, st: SEXP, values_only: bool) -> savvy::Result<Option
     if !all_bare(&xs)? {
         return decline("an input that is not a bare vector");
     }
-    let mut ins = Vec::with_capacity(gp.cols.len() + gp.globs.len());
-    for parts in xs[..n_cols].chunks(ng.max(1)) {
-        let v = if ng == 1 {
-            expr::vals_of(parts[0], false)?
-        } else {
-            let mut l = OwnedListSexp::new(ng, false)?;
-            for (k, &x) in parts.iter().enumerate() {
-                l.set_value(k, Sexp(x))?;
-            }
-            expr::stacked(l.inner())?
-        };
-        match v {
+    for &x in &xs[..n_cols] {
+        match expr::vals_of(x, false)? {
             Some(v) => ins.push(v),
             None => return decline("an input of an unsupported type"),
         }
@@ -1913,17 +1930,14 @@ fn exec_nb1(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
     ) else {
         return decline("join columns that are not integers");
     };
-    // match(focal, cand): the first candidate of a value (NA matches NA, as in
-    // match()); candidates other than `.id` must be distinct
+    // detect whether non-NA candidate keys repeat (`nb_one` vs `equijoin_view`)
     let mut at: std::collections::HashMap<i32, usize> = std::collections::HashMap::with_capacity(n);
+    let mut has_dup = false;
     for (j, &c) in cand.iter().enumerate() {
         if at.insert(c, j).is_some() && !nb.cand_is_id && c != NA_INT {
-            return decline("candidates that are not distinct");
+            has_dup = true;
+            break;
         }
-    }
-    // keep the first of a repeated value (match() semantics)
-    for (j, &c) in cand.iter().enumerate().rev() {
-        at.insert(c, j);
     }
     let mut ins: Vec<Vals> = Vec::with_capacity(gp.cols.len());
     for &c in &gp.cols {
@@ -1948,6 +1962,151 @@ fn exec_nb1(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
             i
         }
     };
+    // SAFETY: reading a static of R's (its NA_real_).
+    let na_real = unsafe { rapi::R_NaReal };
+    if has_dup {
+        // multi-match equijoin: matches equijoin_view() (skips NA_INT, ascending candidate rows)
+        let mut by_key: std::collections::HashMap<i32, Vec<usize>> =
+            std::collections::HashMap::new();
+        for (j, &c) in cand.iter().enumerate() {
+            if c != NA_INT {
+                by_key.entry(c).or_default().push(j);
+            }
+        }
+        let mut next = 0;
+        let keep_cand: Option<Vec<bool>> = if nb.rest {
+            let Vals::Lgl(k) = &res[0] else {
+                return decline("a `within` condition that is not logical");
+            };
+            next = 1;
+            Some((0..n).map(|j| k[pick(&res[0], j)] == 1).collect())
+        } else {
+            None
+        };
+        let mut offsets = Vec::with_capacity(n + 1);
+        let mut flat = Vec::new();
+        offsets.push(0usize);
+        for &f in focal.iter() {
+            if f != NA_INT {
+                if let Some(js) = by_key.get(&f) {
+                    if let Some(ref kc) = keep_cand {
+                        flat.extend(js.iter().copied().filter(|&j| kc[j]));
+                    } else {
+                        flat.extend_from_slice(js);
+                    }
+                }
+            }
+            offsets.push(flat.len());
+        }
+        if flat.is_empty() {
+            return decline("nobody with a candidate");
+        }
+        let mut full_outs: Vec<Vals> = Vec::with_capacity(nb.fns.len());
+        let mut buf_i: Vec<i32> = Vec::new();
+        for &f in &nb.fns {
+            let v = match f {
+                3 => Vals::Int(Cow::Owned(
+                    (0..n)
+                        .map(|i| (offsets[i + 1] - offsets[i]) as i32)
+                        .collect(),
+                )),
+                _ => {
+                    let x = &res[next];
+                    next += 1;
+                    match (f, x) {
+                        (0 | 1, Vals::Lgl(a)) => {
+                            let mut out = Vec::with_capacity(n);
+                            for i in 0..n {
+                                let s = &flat[offsets[i]..offsets[i + 1]];
+                                if s.is_empty() {
+                                    out.push(NA_INT);
+                                } else {
+                                    buf_i.clear();
+                                    buf_i.extend(s.iter().map(|&j| a[pick(x, j)]));
+                                    out.push(tidyabm_core::reduce::any_all(&buf_i, f == 0, false));
+                                }
+                            }
+                            Vals::Lgl(Cow::Owned(out))
+                        }
+                        (0 | 1, _) => return decline("any()/all() of a value that is not logical"),
+                        (_, Vals::Dbl(a)) => {
+                            if (0..n).any(|i| offsets[i + 1] - offsets[i] > 1) {
+                                return decline("a multi-match sum() of doubles (rowsum())");
+                            }
+                            let out = (0..n)
+                                .map(|i| {
+                                    let s = &flat[offsets[i]..offsets[i + 1]];
+                                    if s.is_empty() {
+                                        na_real
+                                    } else {
+                                        0.0 + a[pick(x, s[0])]
+                                    }
+                                })
+                                .collect();
+                            Vals::Dbl(Cow::Owned(out))
+                        }
+                        (_, Vals::Int(a) | Vals::Lgl(a)) => {
+                            let mut out = Vec::with_capacity(n);
+                            for i in 0..n {
+                                let s = &flat[offsets[i]..offsets[i + 1]];
+                                if s.is_empty() {
+                                    out.push(NA_INT);
+                                } else {
+                                    buf_i.clear();
+                                    buf_i.extend(s.iter().map(|&j| a[pick(x, j)]));
+                                    let Some(sum) = tidyabm_core::reduce::sum_int(&buf_i, false)
+                                    else {
+                                        return decline("an integer sum outside the range");
+                                    };
+                                    out.push(sum);
+                                }
+                            }
+                            Vals::Int(Cow::Owned(out))
+                        }
+                        _ => return decline("sum() of strings"),
+                    }
+                }
+            };
+            full_outs.push(v);
+        }
+        let mut cur: Option<H> = None;
+        for (r, v) in full_outs.iter().enumerate() {
+            let t = gp.targets[r];
+            let mut start = 0;
+            for (g, &sz) in sizes.iter().enumerate() {
+                let end = start + sz;
+                let range = start..end;
+                start = end;
+                if sz == 0 {
+                    continue;
+                }
+                let col = match v {
+                    Vals::Lgl(a) => Vals::Lgl(Cow::Borrowed(&a[range])),
+                    Vals::Int(a) => Vals::Int(Cow::Borrowed(&a[range])),
+                    Vals::Dbl(a) => Vals::Dbl(Cow::Borrowed(&a[range])),
+                    Vals::Str(_) => return Err(bad("a string neighbour value")),
+                };
+                let gs = cur.as_ref().map_or(groups, |h| h.get());
+                let base = elt(gs, g);
+                let mut hold = OwnedListSexp::new(1, false)?;
+                hold.set_value(0, expr::to_r(&col, sz)?)?;
+                let g2 = set_named(base, t, elt(hold.inner(), 0))?;
+                // SAFETY: reading a static of R's (unused name: `g` is in range).
+                cur = Some(with_elt(gs, g, g2.get(), unsafe { rapi::R_BlankString })?);
+            }
+        }
+        return match cur {
+            // SAFETY: as above.
+            Some(gs) => Ok(Some(with_elt(st, gi, gs.get(), unsafe {
+                rapi::R_BlankString
+            })?)),
+            None => Ok(Some(keep(st)?)),
+        };
+    }
+    // keep the first of a repeated value (match() semantics)
+    for (j, &c) in cand.iter().enumerate().rev() {
+        at.insert(c, j);
+    }
     // the focal rows with a candidate (where the rest holds there), in row order
     let mut pairs: Vec<(usize, usize)> = Vec::new();
     for (i, f) in focal.iter().enumerate() {
@@ -1996,8 +2155,6 @@ fn exec_nb1(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
         let _ = r;
         outs.push(v);
     }
-    // SAFETY: reading a static of R's (its NA_real_).
-    let na_real = unsafe { rapi::R_NaReal };
     let mut cur: Option<H> = None;
     for (r, v) in outs.iter().enumerate() {
         let t = gp.targets[r];
@@ -4334,8 +4491,35 @@ fn exec_move(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
 fn exec_tell(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
     use std::borrow::Cow;
     use tidyabm_core::sample::NA_INT;
-    let (has_when, resolve) = plan.tell.ok_or_else(|| bad("no tell"))?;
+    let (has_when, resolve, to_nb) = plan.tell.ok_or_else(|| bad("no tell"))?;
     let gp = plan.groups.first().ok_or_else(|| bad("no program"))?;
+    let edges_nb: Option<(&[i32], &[i32])> = if to_nb {
+        let Some(e) = find_str(st, b"edges")?.map(|i| elt(st, i)) else {
+            return decline("no network (R's error)");
+        };
+        if e == rapi_nil() {
+            return decline("no network (R's error)");
+        }
+        let (Some(fi), Some(ti)) = (find_str(e, b"from")?, find_str(e, b"to")?) else {
+            return decline("edges without from/to");
+        };
+        let (ec_f, ec_t) = (elt(e, fi), elt(e, ti));
+        if !all_bare(&[ec_f, ec_t])? {
+            return decline("edges with attributes");
+        }
+        let (Some(ef), Some(et)) = (
+            store::numbers_of::<i32>(ec_f, INTSXP)?,
+            store::numbers_of::<i32>(ec_t, INTSXP)?,
+        ) else {
+            return decline("edges that are not integers");
+        };
+        if ef.len() != et.len() {
+            return decline("malformed edges");
+        }
+        Some((ef, et))
+    } else {
+        None
+    };
     let gi = find_str(st, b"groups")?.ok_or_else(|| bad("no groups"))?;
     let groups = elt(st, gi);
     let ng = len(groups);
@@ -4383,17 +4567,22 @@ fn exec_tell(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
     }
     // SAFETY: the program is kept alive by the plan's descriptor.
     let prog = unsafe { &*gp.prog };
-    let res = match prog.compute(ins, n, n)? {
-        Ok(r) => r,
-        Err(d) => {
-            expr::note_decline(&d);
-            return Ok(None);
+    let eval_one = |idx: usize| -> savvy::Result<Option<Vals>> {
+        match prog.compute_one(idx, &ins, n)? {
+            Ok(v) => Ok(Some(v)),
+            Err(d) => {
+                expr::note_decline(&d);
+                Ok(None)
+            }
         }
     };
     let mut k = 0;
     let speaks: Vec<bool> = if has_when {
         k = 1;
-        match condition(&res[0], n) {
+        let Some(w) = eval_one(0)? else {
+            return Ok(None);
+        };
+        match condition(&w, n) {
             Some(c) => c,
             None => return decline("a when that is not logical"),
         }
@@ -4403,23 +4592,55 @@ fn exec_tell(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
     if !speaks.iter().any(|&b| b) {
         return Ok(Some(keep(st)?));
     }
-    let tgt = recycle(res[k].clone(), n);
-    k += 1;
-    let Vals::Int(tgt) = tgt else {
-        return decline("recipients that are not integer ids");
-    };
-    let senders: Vec<usize> = (0..n).filter(|&i| speaks[i] && tgt[i] != NA_INT).collect();
-    let recipient: Vec<i32> = senders.iter().map(|&i| tgt[i]).collect();
     let at_id = IdIndex::new(&ids);
-    let mut recipient_row = Vec::with_capacity(recipient.len());
-    for &r in &recipient {
-        match at_id.get(r) {
-            Some(row) => recipient_row.push(row),
-            None => return decline("a recipient that does not exist (R's error)"),
-        }
-    }
+    let (senders, recipient, recipient_row): (Vec<usize>, Vec<i32>, Vec<usize>) =
+        if let Some((ef, et)) = edges_nb {
+            let mut s = Vec::new();
+            let mut r = Vec::new();
+            let mut rr = Vec::new();
+            // exact neighbour_table(state$edges) order: (from, to) then (to, from)
+            for (&f_id, &t_id) in ef.iter().zip(et.iter()).chain(et.iter().zip(ef.iter())) {
+                if let Some(sr) = at_id.get(f_id) {
+                    if speaks[sr] {
+                        let Some(rrow) = at_id.get(t_id) else {
+                            return decline("a recipient that does not exist (R's error)");
+                        };
+                        s.push(sr);
+                        r.push(t_id);
+                        rr.push(rrow);
+                    }
+                }
+            }
+            (s, r, rr)
+        } else {
+            let Some(tv) = eval_one(k)? else {
+                return Ok(None);
+            };
+            k += 1;
+            let tgt = recycle(tv, n);
+            let Vals::Int(tgt) = tgt else {
+                return decline("recipients that are not integer ids");
+            };
+            let s: Vec<usize> = (0..n).filter(|&i| speaks[i] && tgt[i] != NA_INT).collect();
+            let r: Vec<i32> = s.iter().map(|&i| tgt[i]).collect();
+            let mut rr = Vec::with_capacity(r.len());
+            for &id in &r {
+                match at_id.get(id) {
+                    Some(row) => rr.push(row),
+                    None => return decline("a recipient that does not exist (R's error)"),
+                }
+            }
+            (s, r, rr)
+        };
     if senders.is_empty() {
         return Ok(Some(keep(st)?));
+    }
+    let mut raw_msgs: Vec<Vals> = Vec::with_capacity(gp.targets.len());
+    for r_idx in k..k + gp.targets.len() {
+        let Some(v) = eval_one(r_idx)? else {
+            return Ok(None);
+        };
+        raw_msgs.push(v);
     }
     // recipients in order of first mention, and each one's messages
     let rmax = recipient.iter().copied().max().unwrap_or(0).max(0) as usize;
@@ -4450,7 +4671,7 @@ fn exec_tell(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
     // SAFETY: reading a static of R's.
     let na_real = unsafe { rapi::R_NaReal };
     let mut msgs: Vec<Vals> = Vec::with_capacity(gp.targets.len());
-    for v in res.into_iter().skip(k) {
+    for v in raw_msgs {
         let v = recycle(v, n);
         let sent = tidyabm_core::expr::take(&v, &senders);
         let msg = if !dup || resolve == 5 {
@@ -4499,6 +4720,43 @@ fn exec_tell(plan: &Plan, st: SEXP) -> savvy::Result<Option<H>> {
                             o
                         }
                         Vals::Str(_) => return decline("sum()/mean() of strings"),
+                    };
+                    Vals::Dbl(Cow::Owned(out))
+                }
+                6 | 7 => {
+                    let want_max = resolve == 7;
+                    let na_low = na_real.to_bits() & 0xFFFF_FFFF;
+                    let out: Vec<f64> = match &sent {
+                        Vals::Dbl(x) => {
+                            let mut o = Vec::with_capacity(members.len());
+                            for m in &members {
+                                let part: Vec<f64> = m.iter().map(|&q| x[q]).collect();
+                                let Some(v) = tidyabm_core::reduce::extreme_f64(
+                                    &part,
+                                    want_max,
+                                    false,
+                                    |v| v.is_nan() && (v.to_bits() & 0xFFFF_FFFF) == na_low,
+                                ) else {
+                                    return decline("min()/max() of empty messages");
+                                };
+                                o.push(v);
+                            }
+                            o
+                        }
+                        Vals::Int(x) | Vals::Lgl(x) => {
+                            let mut o = Vec::with_capacity(members.len());
+                            for m in &members {
+                                let part: Vec<i32> = m.iter().map(|&q| x[q]).collect();
+                                let Some(v) =
+                                    tidyabm_core::reduce::extreme_int(&part, want_max, false)
+                                else {
+                                    return decline("min()/max() of empty messages");
+                                };
+                                o.push(if v == NA_INT { na_real } else { f64::from(v) });
+                            }
+                            o
+                        }
+                        Vals::Str(_) => return decline("min()/max() of strings"),
                     };
                     Vals::Dbl(Cow::Owned(out))
                 }
@@ -8493,6 +8751,9 @@ impl RunLoop {
             let (seg, tick) = (self.seg.get(), self.tick.get());
             let mut st = self.call_state(tick, &[0, i32::from(ticks > 0)])?;
             for t in 1..=ticks {
+                // SAFETY: main thread; `R_CheckUserInterrupt` longjmps on Ctrl-C,
+                // caught by `protect` so Rust frames drop cleanly.
+                unsafe { rapi::protect(|| rapi::R_CheckUserInterrupt()) }?;
                 let mut i = 0;
                 while i < n {
                     let k = self.kinds[i];
@@ -8510,6 +8771,10 @@ impl RunLoop {
                         let b = self.begin_of[i];
                         let v = -i64::from(k) - 2;
                         self.passes[b] += 1;
+                        if self.passes[b] % 64 == 0 {
+                            // SAFETY: main thread; catches Ctrl-C inside long repeat blocks.
+                            unsafe { rapi::protect(|| rapi::R_CheckUserInterrupt()) }?;
+                        }
                         // `until` is asked after every pass, the last one too
                         let mut stop = self.passes[b] >= v / 2;
                         if v % 2 == 1 && self.until_met(i, st)? {

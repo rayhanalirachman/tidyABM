@@ -918,3 +918,58 @@ test_that("FR15b: relations in abm_sequential(), non-relation steps alongside re
   go_bw <- abm_go(abm_pairs(via = "sellers", unmet ~ 1L, .when = unmet + 1L))
   expect_identical(err("rust", m, go_bw), err("r", m, go_bw))
 })
+
+test_that("Tier 1: tell(to = 'neighbours' & min/max), partial-col abm_global, multi-match equijoin", {
+  # 1. abm_tell(to = "neighbours") + .resolve = "min"/"max"
+  g <- abm_setup(
+    agents = abm_agents(n = 12, val = ~sample(c(1L, 2L, 5L, NA_integer_), n, TRUE),
+                        x = ~runif(n), out = 0, out_i = 0L, box = ~vector("list", n)),
+    network = abm_network(type = "grid", dims = c(3, 4), diagonals = FALSE),
+    seed = 31)
+  for (res in c("last", "first", "sum", "mean", "min", "max")) {
+    go_t <- abm_go(
+      abm_tell(out ~ x, to = "neighbours", when = .id %% 2L == 1L, .resolve = res),
+      abm_tell(out_i ~ val, to = "neighbours", when = .id <= 6L, .resolve = res)
+    )
+    got <- expect_native_agree(g, go_t, paste("tell neighbours", res), ticks = 3)
+    expect(got$stats[[2]] == 0L && got$stats[[4]] == 0L,
+           paste("tell neighbours", res, "not fully native:", paste(got$stats, collapse = " ")))
+  }
+  # no_network error parity
+  m_nonet <- abm_setup(agents = abm_agents(n = 4, x = 1))
+  err <- function(e, mod, go) conditionMessage(tryCatch(run_in(e, mod, go, ticks = 1, seed = 1),
+                                                        error = identity))
+  expect_identical(err("rust", m_nonet, abm_go(abm_tell(x ~ 2, to = "neighbours"))),
+                   err("r",    m_nonet, abm_go(abm_tell(x ~ 2, to = "neighbours"))))
+  # silent abm_tell() (when all FALSE or all NA targets) must NOT evaluate drawing rules
+  go_silent <- abm_go(
+    abm_tell(out_i ~ sample.int(10L, 1L), to = .id, when = .id < 0L),
+    abm_tell(out_i ~ sample.int(10L, 1L), to = ifelse(.id > 0L, NA_integer_, .id)),
+    abm_rules(x ~ runif(n()))
+  )
+  got_s <- expect_native_agree(g, go_silent, "tell silent no draw", ticks = 3)
+  expect_identical(got_s$stats[[2]], 0L)
+  expect_identical(got_s$stats[[4]], 0L)
+
+  # 2. Multi-group abm_global() and abm_repeat(until =) with partial columns
+  mg <- abm_setup(
+    agents = list(
+      firms = abm_agents(n = 4, wage = ~c(10, 12, 8, 15)),
+      workers = abm_agents(n = 10, employer = ~c(1L, 1L, 1L, 2L, 2L, 3L, NA_integer_, 1L, 2L, NA_integer_),
+                           active = ~c(TRUE, FALSE, TRUE, TRUE, TRUE, FALSE, TRUE, FALSE, TRUE, FALSE),
+                           hours = ~c(4L, 5L, 6L, 3L, 2L, 8L, 1L, 4L, 5L, 2L))
+    ),
+    globals = list(avg_wage = 0, unemp = 0L), seed = 32)
+  go_mg <- abm_go(
+    abm_global(avg_wage ~ mean(wage, na.rm = TRUE),
+               unemp ~ sum(.group == "workers" & is.na(employer))),
+    abm_neighbours(n_emp ~ n(), any_act ~ any(active), all_act ~ all(active),
+                   tot_h ~ sum(hours), within = employer == own_.id),
+    abm_neighbours(n_act ~ n(), sum_act ~ sum(hours),
+                   within = employer == own_.id & active)
+  )
+  got_mg <- expect_native_agree(mg, go_mg, "partial-col global + multi-match nb1", ticks = 3)
+  expect(got_mg$stats[[2]] == 0L && got_mg$stats[[4]] == 0L,
+         paste("partial-col global + multi-match nb1 not fully native:",
+               paste(got_mg$stats, collapse = " ")))
+})

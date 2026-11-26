@@ -73,6 +73,9 @@ pub enum Un {
     Neg,
     Not,
     IsNa,
+    IsFinite,
+    IsInfinite,
+    IsNaN,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -152,6 +155,21 @@ pub enum Node {
     Cast(bool, Box<Node>),
     /// base `abs(x)` of numbers: logicals and integers as integers (FR12)
     Abs(Box<Node>),
+    /// base `min(...)` (`false`) / `max(...)` (`true`) without `na.rm` (numeric/int/lgl)
+    Extreme(bool, Vec<Node>),
+    /// base `any(x, na.rm =)` (`true`) / `all(x, na.rm =)` (`false`) on logicals
+    AnyAll(bool, bool, Box<Node>),
+    /// dplyr `between(x, left, right)`
+    Between(Box<Node>, Box<Node>, Box<Node>),
+    /// base `seq_len(k)` / `seq_along(x)`
+    SeqLen(Box<Node>),
+    SeqAlong(Box<Node>),
+    /// base lazy `ifelse(test, yes, no)`
+    BaseIfElse(Box<Node>, Box<Node>, Box<Node>),
+    /// base `sample.int(n, size, replace)`
+    SampleInt(Box<Node>, Option<Box<Node>>, bool),
+    /// `rbinom` (0), `rpois` (1), `rexp` (2), `rlnorm` (3); `one` = scalar draw (1 vs n())
+    RDist(u8, bool, Box<Node>, Option<Box<Node>>),
 }
 
 /// What the evaluator needs from R.
@@ -180,6 +198,10 @@ pub trait Host {
     fn rand2(&mut self, norm: bool, a: f64, b: f64, n: usize) -> Result<Vec<f64>, Decline>;
     /// `n` index draws `R_unif_index(dn)`, as 1-based values.
     fn unif_index(&mut self, dn: f64, n: usize) -> Result<Vec<i32>, Decline>;
+    /// `sample.int(n, size, replace)` from R's generator.
+    fn sample_int(&mut self, n: usize, size: usize, replace: bool) -> Result<Vec<i32>, Decline>;
+    /// Rmath variate draws: 0 `rbinom(a, b)`, 1 `rpois(a)`, 2 `rexp(a)`, 3 `rlnorm(a, b)`.
+    fn rdist(&mut self, kind: u8, a: f64, b: f64, n: usize) -> Result<Vals<'static>, Decline>;
 }
 
 type R<T> = Result<T, Decline>;
@@ -393,9 +415,18 @@ pub fn eval<'a>(node: &Node, inputs: &[Vals<'a>], n: usize, h: &mut dyn Host) ->
             let i = eval(i, inputs, n, h)?;
             index(x, &i, h)
         }
-        Node::If(..) | Node::Draw1(..) | Node::Cast(..) | Node::Abs(..) => {
-            eval_fr8(node, inputs, n, h)
-        }
+        Node::If(..)
+        | Node::Draw1(..)
+        | Node::Cast(..)
+        | Node::Abs(..)
+        | Node::Extreme(..)
+        | Node::AnyAll(..)
+        | Node::Between(..)
+        | Node::SeqLen(..)
+        | Node::SeqAlong(..)
+        | Node::BaseIfElse(..)
+        | Node::SampleInt(..)
+        | Node::RDist(..) => eval_fr8(node, inputs, n, h),
     }
 }
 
@@ -431,6 +462,167 @@ fn eval_fr8<'a>(node: &Node, inputs: &[Vals<'a>], n: usize, h: &mut dyn Host) ->
             Vals::Dbl(v) => Vals::Dbl(Cow::Owned(v.iter().map(|e| e.abs()).collect())),
             Vals::Str(_) => return Err(Decline("abs() of strings")),
         }),
+        Node::Extreme(want_max, args) => {
+            let mut vals = Vec::with_capacity(args.len());
+            let mut is_dbl = false;
+            for a in args {
+                let v = eval(a, inputs, n, h)?;
+                match &v {
+                    Vals::Str(_) => return Err(Decline("min()/max() of strings")),
+                    Vals::Dbl(_) => is_dbl = true,
+                    Vals::Int(_) | Vals::Lgl(_) => {}
+                }
+                vals.push(v);
+            }
+            if is_dbl {
+                let na = h.na_real();
+                let na_low = na.to_bits() & 0xFFFF_FFFF;
+                let mut buf = Vec::new();
+                for v in &vals {
+                    match v {
+                        Vals::Dbl(x) => buf.extend_from_slice(x),
+                        Vals::Int(x) | Vals::Lgl(x) => {
+                            buf.extend(
+                                x.iter()
+                                    .map(|&e| if e == NA_INT { na } else { f64::from(e) }),
+                            );
+                        }
+                        Vals::Str(_) => unreachable!(),
+                    }
+                }
+                let Some(out) = crate::reduce::extreme_f64(&buf, *want_max, false, |v| {
+                    v.is_nan() && (v.to_bits() & 0xFFFF_FFFF) == na_low
+                }) else {
+                    return Err(Decline("min()/max() of empty inputs (R warns)"));
+                };
+                Ok(Vals::Dbl(Cow::Owned(vec![out])))
+            } else {
+                let mut buf = Vec::new();
+                for v in &vals {
+                    match v {
+                        Vals::Int(x) | Vals::Lgl(x) => buf.extend_from_slice(x),
+                        _ => unreachable!(),
+                    }
+                }
+                let Some(out) = crate::reduce::extreme_int(&buf, *want_max, false) else {
+                    return Err(Decline("min()/max() of empty inputs (R warns)"));
+                };
+                Ok(Vals::Int(Cow::Owned(vec![out])))
+            }
+        }
+        Node::AnyAll(want_any, na_rm, x) => {
+            let Vals::Lgl(v) = eval(x, inputs, n, h)? else {
+                return Err(Decline("any()/all() of non-logical (R warns)"));
+            };
+            Ok(Vals::Lgl(Cow::Owned(vec![crate::reduce::any_all(
+                &v, *want_any, *na_rm,
+            )])))
+        }
+        Node::Between(x, lo, hi) => {
+            let x = eval(x, inputs, n, h)?;
+            let lo = eval(lo, inputs, n, h)?;
+            let hi = eval(hi, inputs, n, h)?;
+            if x.rank() == 3 || lo.rank() == 3 || hi.rank() == 3 {
+                return Err(Decline("between() of strings"));
+            }
+            let m = common_len(&[x.len(), lo.len(), hi.len()])?;
+            let ge = compare(Bin::Ge, x.clone(), lo, m, h)?;
+            let le = compare(Bin::Le, x, hi, m, h)?;
+            binary(Bin::And, ge, le, h)
+        }
+        Node::SeqLen(k) => {
+            let k = whole(&eval(k, inputs, n, h)?, 0.0)?;
+            Ok(Vals::Int(Cow::Owned((1..=k as i32).collect())))
+        }
+        Node::SeqAlong(x) => {
+            let len = eval(x, inputs, n, h)?.len();
+            if len > i32::MAX as usize {
+                return Err(Decline("seq_along() length overflows i32"));
+            }
+            Ok(Vals::Int(Cow::Owned((1..=len as i32).collect())))
+        }
+        Node::BaseIfElse(test, yes, no) => {
+            let Vals::Lgl(cv) = eval(test, inputs, n, h)? else {
+                return Err(Decline("ifelse() test is not logical"));
+            };
+            let m = cv.len();
+            if m == 0 {
+                return Ok(Vals::Lgl(Cow::Owned(Vec::new())));
+            }
+            let has_t = cv.contains(&1);
+            let has_f = cv.contains(&0);
+            let tv = if has_t {
+                Some(eval(yes, inputs, n, h)?)
+            } else {
+                None
+            };
+            let fv = if has_f {
+                Some(eval(no, inputs, n, h)?)
+            } else {
+                None
+            };
+            for v in tv.iter().chain(fv.iter()) {
+                if v.len() != 1 && v.len() != m {
+                    return Err(Decline("ifelse() branch of non-matching length"));
+                }
+            }
+            match (tv, fv) {
+                (None, None) => Ok(Vals::Lgl(Cow::Owned(vec![NA_INT; m]))),
+                (Some(t), None) => Ok(match t {
+                    Vals::Lgl(v) => Vals::Lgl(Cow::Owned(pick2(&cv, &v, &[], NA_INT))),
+                    Vals::Int(v) => Vals::Int(Cow::Owned(pick2(&cv, &v, &[], NA_INT))),
+                    Vals::Dbl(v) => Vals::Dbl(Cow::Owned(pick2(&cv, &v, &[], h.na_real()))),
+                    Vals::Str(v) => Vals::Str(Cow::Owned(pick2(&cv, &v, &[], h.na_str()))),
+                }),
+                (None, Some(f)) => Ok(match f {
+                    Vals::Lgl(v) => Vals::Lgl(Cow::Owned(pick2(&cv, &[], &v, NA_INT))),
+                    Vals::Int(v) => Vals::Int(Cow::Owned(pick2(&cv, &[], &v, NA_INT))),
+                    Vals::Dbl(v) => Vals::Dbl(Cow::Owned(pick2(&cv, &[], &v, h.na_real()))),
+                    Vals::Str(v) => Vals::Str(Cow::Owned(pick2(&cv, &[], &v, h.na_str()))),
+                }),
+                (Some(t), Some(f)) => {
+                    let to = common_type(&[&t, &f])?;
+                    let tf = [cast(t, to, h)?, cast(f, to, h)?];
+                    Ok(match to {
+                        0 => {
+                            let v = typed!(tf, Lgl);
+                            Vals::Lgl(Cow::Owned(pick2(&cv, v[0], v[1], NA_INT)))
+                        }
+                        1 => {
+                            let v = typed!(tf, Int);
+                            Vals::Int(Cow::Owned(pick2(&cv, v[0], v[1], NA_INT)))
+                        }
+                        2 => {
+                            let v = typed!(tf, Dbl);
+                            Vals::Dbl(Cow::Owned(pick2(&cv, v[0], v[1], h.na_real())))
+                        }
+                        _ => {
+                            let v = typed!(tf, Str);
+                            Vals::Str(Cow::Owned(pick2(&cv, v[0], v[1], h.na_str())))
+                        }
+                    })
+                }
+            }
+        }
+        Node::SampleInt(nv, size, replace) => {
+            let nv = whole(&eval(nv, inputs, n, h)?, 0.0)?;
+            let sz = match size {
+                Some(s) => whole(&eval(s, inputs, n, h)?, 0.0)?,
+                None => nv,
+            };
+            if !*replace && sz > nv {
+                return Err(Decline("sample.int() size > n without replace"));
+            }
+            Ok(Vals::Int(Cow::Owned(h.sample_int(nv, sz, *replace)?)))
+        }
+        Node::RDist(kind, one, a, b) => {
+            let a = scalar_dbl(eval(a, inputs, n, h)?, h)?;
+            let b = match b {
+                Some(bn) => scalar_dbl(eval(bn, inputs, n, h)?, h)?,
+                None => 0.0,
+            };
+            h.rdist(*kind, a, b, if *one { 1 } else { n })
+        }
         _ => Err(Decline("not an FR8 node")),
     }
 }
@@ -894,6 +1086,35 @@ fn unary<'a>(op: Un, x: Vals<'a>, h: &dyn Host) -> R<Vals<'a>> {
             };
             Vals::Lgl(Cow::Owned(out))
         }
+        (Un::IsFinite, v) => {
+            let out: Vec<i32> = match &v {
+                Vals::Dbl(d) => d.iter().map(|x| x.is_finite() as i32).collect(),
+                Vals::Int(i) | Vals::Lgl(i) => i.iter().map(|&x| (x != NA_INT) as i32).collect(),
+                Vals::Str(s) => vec![0; s.len()],
+            };
+            Vals::Lgl(Cow::Owned(out))
+        }
+        (Un::IsInfinite, v) => {
+            let out: Vec<i32> = match &v {
+                Vals::Dbl(d) => d.iter().map(|x| x.is_infinite() as i32).collect(),
+                Vals::Int(i) | Vals::Lgl(i) => vec![0; i.len()],
+                Vals::Str(s) => vec![0; s.len()],
+            };
+            Vals::Lgl(Cow::Owned(out))
+        }
+        (Un::IsNaN, v) => {
+            let out: Vec<i32> = match &v {
+                Vals::Dbl(d) => {
+                    let na_low = h.na_real().to_bits() & 0xFFFF_FFFF;
+                    d.iter()
+                        .map(|x| (x.is_nan() && (x.to_bits() & 0xFFFF_FFFF) != na_low) as i32)
+                        .collect()
+                }
+                Vals::Int(i) | Vals::Lgl(i) => vec![0; i.len()],
+                Vals::Str(s) => vec![0; s.len()],
+            };
+            Vals::Lgl(Cow::Owned(out))
+        }
         _ => return Err(Decline("unary operator on an unsupported type")),
     })
 }
@@ -1334,6 +1555,17 @@ mod tests {
                 .drain(..n)
                 .map(|u| (u * dn).floor() as i32 + 1)
                 .collect())
+        }
+        fn sample_int(&mut self, n: usize, size: usize, _replace: bool) -> R<Vec<i32>> {
+            self.unif_index(n as f64, size)
+        }
+        fn rdist(&mut self, kind: u8, a: f64, _b: f64, n: usize) -> R<Vals<'static>> {
+            let v: Vec<f64> = self.draws.drain(..n).map(|u| a + u).collect();
+            Ok(if kind <= 1 {
+                Vals::Int(Cow::Owned(v.iter().map(|&x| x as i32).collect()))
+            } else {
+                Vals::Dbl(Cow::Owned(v))
+            })
         }
     }
 

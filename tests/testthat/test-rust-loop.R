@@ -29,7 +29,7 @@ test_that("native rules and globals run in the loop and agree with the R engine"
 test_that("R steps between native steps are called back, record and measures as R", {
   m <- loop_model()
   go <- abm_go(abm_rules(x ~ x + 1),
-               abm_rules(y ~ y + length(x)),               # not compiled: R
+               abm_rules(y ~ y + length(rev(x))),          # not compiled: R
                abm_death(when = x > 30),
                abm_global(tot ~ sum(x)))
   for (rec in list("all", 3L, "final", "globals")) {

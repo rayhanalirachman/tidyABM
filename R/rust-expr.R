@@ -21,8 +21,11 @@
 # (`^`, `abs`, `round`, `cumsum`, `min`/`max`, `%%`, ...), which R itself computes
 # over the evaluated arguments. FR8: base `if (c) t else f` (lazy, one condition
 # value), `runif(1, a, b)` / `rnorm(1, a, b)` (one draw), and `as.integer()` /
-# `as.numeric()` / `as.double()` of numbers, computed natively. Every function name
-# must find the standard function from the formula's scope.
+# `as.numeric()` / `as.double()` of numbers, computed natively. `median()`, `sd()`
+# (with `na.rm`), `which()`, `which.min()`, `which.max()`, `unique()`, `length()`,
+# `isTRUE()`, `bitwAnd()`, `max(table(x))` and `rank(x, ties.method = )` are R's own
+# over numbers (`"random"` ties are ranked natively, with R's draws). Every function
+# name must find the standard function from the formula's scope.
 
 # The functions the IR takes, and what each name must find (cached per session)
 rx_fns <- function() {
@@ -45,7 +48,7 @@ rx_fns <- function() {
       rnorm = stats::rnorm, rbinom = stats::rbinom, rpois = stats::rpois,
       rexp = stats::rexp, rlnorm = stats::rlnorm, "[" = base::`[`,
       # FR8
-      "if" = base::`if`), rx_call_fns())
+      "if" = base::`if`, rank = base::rank, table = base::table), rx_call_fns())
   }
   .rx_memo$fns
 }
@@ -58,7 +61,9 @@ rx_fn_names <- c(
   "seq_len", "seq_along", "rnorm", "rbinom", "rpois", "rexp", "rlnorm", "[", "if",
   "^", "%%", "%/%", "abs", "sign", "floor", "ceiling", "trunc", "round",
   "signif", "cumsum", "cumprod", "cummax", "cummin", "as.integer", "as.numeric",
-  "as.double", "min", "max", "log2", "log10", "log1p", "expm1"
+  "as.double", "min", "max", "log2", "log10", "log1p", "expm1", "median", "sd",
+  "which", "which.min", "which.max", "unique", "length", "isTRUE", "bitwAnd",
+  "rank", "table"
 )
 
 rx_draw_heads <- c("runif", "rnorm", "sample", "sample.int", "rbinom", "rpois", "rexp", "rlnorm")
@@ -77,14 +82,33 @@ rx_call_spec <- list(
   round = c(1, 2, 0), signif = c(1, 2, 0), cumsum = c(1, 1, 1), cumprod = c(1, 1, 1),
   cummax = c(1, 1, 1), cummin = c(1, 1, 1), as.integer = c(1, 1, 1),
   as.numeric = c(1, 1, 1), as.double = c(1, 1, 1), min = c(1, Inf, 1), max = c(1, Inf, 1),
-  log2 = c(1, 1, 1), log10 = c(1, 1, 1), log1p = c(1, 1, 1), expm1 = c(1, 1, 0))
+  log2 = c(1, 1, 1), log10 = c(1, 1, 1), log1p = c(1, 1, 1), expm1 = c(1, 1, 0),
+  median = c(1, 1, 1), sd = c(1, 1, 1), which = c(1, 1, 1), which.min = c(1, 1, 1),
+  which.max = c(1, 1, 1), unique = c(1, 1, 1), length = c(1, 1, 0),
+  isTRUE = c(1, 1, 0), bitwAnd = c(2, 2, 1))
 
-rx_call_fns <- function() lapply(rlang::set_names(names(rx_call_spec)), get, envir = baseenv())
+# the forms with a fixed argument that a `call` node can also name
+rx_call_made <- list(
+  median_narm = function(x) stats::median(x, na.rm = TRUE),
+  sd_narm = function(x) stats::sd(x, na.rm = TRUE),
+  rank_average = function(x) rank(x),
+  rank_first = function(x) rank(x, ties.method = "first"),
+  rank_min = function(x) rank(x, ties.method = "min"),
+  rank_max = function(x) rank(x, ties.method = "max"),
+  max_table = function(x) max(table(x)))
+
+rx_base_fn <- function(fn) {
+  if (fn %in% c("median", "sd")) return(getExportedValue("stats", fn))
+  get(fn, envir = baseenv())
+}
+
+rx_call_fns <- function() lapply(rlang::set_names(names(rx_call_spec)), rx_base_fn)
 
 # the function a `call` node runs: R's own, or behind the guard
 rx_call_fun <- function(fn) {
-  f <- get(fn, envir = baseenv())
-  if (!rx_call_spec[[fn]][[3]]) return(f)
+  made <- rx_call_made[[fn]]
+  f <- made %||% rx_base_fn(fn)
+  if (is.null(made) && !rx_call_spec[[fn]][[3]]) return(f)
   function(...) tryCatch(f(...), warning = function(w) NULL, message = function(m) NULL,
                          error = function(e) NULL)
 }
@@ -226,7 +250,7 @@ rx_ns_head <- function(h) {
 # start stays as short as before
 rx_fr3_fns <- c("coalesce", "sum", "mean", "any", "all", "between", "ifelse",
                 "runif", "rnorm", "sample", "sample.int", "rbinom", "rpois", "rexp", "rlnorm",
-                "c", names(rx_call_spec))
+                "c", "rank", "table", names(rx_call_spec))
 rx_walk_fr3 <- function(fn, e, args, nms, walk, no, add_head) {
   if (fn %in% c("coalesce", "between") && !rx_dplyr_ok()) {
     no(paste0("dplyr ", utils::packageVersion("dplyr"), " is outside the verified range"))
@@ -327,8 +351,42 @@ rx_walk_fr3 <- function(fn, e, args, nms, walk, no, add_head) {
     b <- if (is.null(m[[p[2]]])) list("const", 1) else walk(m[[p[2]]])
     return(list(if (fn == "runif") "runif_ab" else "rnorm_ab", a, b))
   }
+  if (fn %in% c("median", "sd") && identical(nms, c("", "na.rm"))) {
+    narm <- args[[2]]
+    if (!(isTRUE(narm) || isFALSE(narm))) no("`na.rm` that is not TRUE or FALSE")
+    return(list("call", if (narm) paste0(fn, "_narm") else fn, walk(args[[1]])))
+  }
+  if (fn == "rank") {
+    m <- tryCatch(as.list(match.call(base::rank, e))[-1], error = function(err) NULL)
+    if (is.null(m$x) || !all(names(m) %in% c("x", "ties.method"))) {
+      no("`rank()` with unsupported arguments")
+    }
+    ties <- m$ties.method %||% "average"
+    if (!(rlang::is_string(ties) && ties %in% c("average", "first", "min", "max", "random"))) {
+      no("`rank()` with an unsupported `ties.method`")
+    }
+    if (ties != "random") return(list("call", paste0("rank_", ties), walk(m$x)))
+    add_head("runif") # it draws
+    return(list("rank_random", walk(m$x)))
+  }
+  if (fn == "table") no("`table()` other than in `max(table(x))`")
   if (any(nzchar(nms))) no(paste0("named arguments to `", fn, "()`"))
+  if (fn == "max" && length(args) == 1L && is.call(args[[1]]) &&
+      identical(args[[1]][[1]], quote(table)) && length(args[[1]]) == 2L &&
+      is.null(names(args[[1]]))) {
+    add_head("table")
+    return(list("call", "max_table", walk(args[[1]][[2]])))
+  }
   if (fn == "c") {
+    # `c(-1, 1)`: a minus on a literal number is a literal
+    args <- lapply(args, function(a) {
+      if (!(is.call(a) && identical(a[[1]], quote(`-`)) && length(a) == 2L &&
+            is.numeric(a[[2]]) && length(a[[2]]) == 1L && is.null(attributes(a[[2]])))) {
+        return(a)
+      }
+      add_head("-")
+      -a[[2]]
+    })
     if (!length(args) || !all(vapply(args, function(a) is.atomic(a) && length(a) == 1L &&
                                        is.null(attributes(a)) &&
                                        typeof(a) %in% c("logical", "integer", "double", "character"), NA))) {

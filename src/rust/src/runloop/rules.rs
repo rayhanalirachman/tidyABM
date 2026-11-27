@@ -650,9 +650,6 @@ pub(super) fn exec_global(plan: &Plan, st: SEXP, values_only: bool) -> savvy::Re
             None => return decline("a group without columns"),
         }
     }
-    if n == 0 {
-        return decline("no agents");
-    }
     let mut ins: Vec<Vals> = Vec::with_capacity(gp.cols.len() + gp.globs.len() + gp.scope.len());
     let mut xs = Vec::with_capacity(
         (if ng == 1 { gp.cols.len() } else { 0 }) + gp.globs.len() + gp.scope.len(),

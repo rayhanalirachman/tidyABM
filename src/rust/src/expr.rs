@@ -185,6 +185,7 @@ fn decode(x: SEXP) -> savvy::Result<Node> {
         "ifelse" => Node::BaseIfElse(boxed(1)?, boxed(2)?, boxed(3)?),
         "seq_len" => Node::SeqLen(boxed(1)?),
         "seq_along" => Node::SeqAlong(boxed(1)?),
+        "rank_random" => Node::RankRandom(boxed(1)?),
         "sample_int" => {
             let sz = match l.get_by_index(2) {
                 Some(s) if !s.is_null() => Some(Box::new(decode(s.0)?)),
@@ -229,7 +230,8 @@ fn draws(n: &Node) -> bool {
         | Node::Rand(..)
         | Node::Draw1(..)
         | Node::SampleInt(..)
-        | Node::RDist(..) => true,
+        | Node::RDist(..)
+        | Node::RankRandom(..) => true,
         Node::Const(_) | Node::Input(_) | Node::N | Node::ConstVec(_) => false,
         Node::Unary(_, x)
         | Node::Math(_, x)

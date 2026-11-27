@@ -164,6 +164,8 @@ pub enum Node {
     /// base `seq_len(k)` / `seq_along(x)`
     SeqLen(Box<Node>),
     SeqAlong(Box<Node>),
+    /// base `rank(x, ties.method = "random")` of numbers without `NA`
+    RankRandom(Box<Node>),
     /// base lazy `ifelse(test, yes, no)`
     BaseIfElse(Box<Node>, Box<Node>, Box<Node>),
     /// base `sample.int(n, size, replace, prob)`
@@ -439,6 +441,7 @@ pub fn eval<'a>(node: &Node, inputs: &[Vals<'a>], n: usize, h: &mut dyn Host) ->
         | Node::Between(..)
         | Node::SeqLen(..)
         | Node::SeqAlong(..)
+        | Node::RankRandom(..)
         | Node::BaseIfElse(..)
         | Node::SampleInt(..)
         | Node::RDist(..) => eval_fr8(node, inputs, n, h),
@@ -548,6 +551,10 @@ fn eval_fr8<'a>(node: &Node, inputs: &[Vals<'a>], n: usize, h: &mut dyn Host) ->
         Node::SeqLen(k) => {
             let k = whole(&eval(k, inputs, n, h)?, 0.0)?;
             Ok(Vals::Int(Cow::Owned((1..=k as i32).collect())))
+        }
+        Node::RankRandom(x) => {
+            let x = eval(x, inputs, n, h)?;
+            rank_random(x, h)
         }
         Node::SeqAlong(x) => {
             let len = eval(x, inputs, n, h)?.len();
@@ -1069,9 +1076,58 @@ fn sample<'a>(
     index(x, &ix, h)
 }
 
-/// `x[i]` for positive whole indices (`NA` or past the end gives `NA`).
+/// The elements of `v` where `c` is `TRUE`, and `na` where it is `NA`.
+fn keep_where<T: Copy>(v: &[T], c: &[i32], na: T) -> Vec<T> {
+    let mut out = Vec::with_capacity(c.iter().filter(|&&k| k != 0).count());
+    out.extend(
+        v.iter()
+            .zip(c)
+            .filter(|&(_, &k)| k != 0)
+            .map(|(&x, &k)| if k == NA_INT { na } else { x }),
+    );
+    out
+}
+
+/// R's `sort.list(order(x, runif(length(x))))`: ties broken by one draw each.
+fn rank_random<'a>(x: Vals<'a>, h: &mut dyn Host) -> R<Vals<'a>> {
+    let key: Vec<f64> = match &x {
+        Vals::Dbl(v) if !v.iter().any(|x| x.is_nan()) => v.to_vec(),
+        Vals::Int(v) | Vals::Lgl(v) if !v.contains(&NA_INT) => {
+            v.iter().map(|&x| f64::from(x)).collect()
+        }
+        _ => return Err(Decline("rank() of strings or missing values")),
+    };
+    let u = h.runif(key.len())?;
+    let mut order: Vec<usize> = (0..key.len()).collect();
+    // `partial_cmp`, so that -0 and 0 tie as they do in R
+    order.sort_by(|&a, &b| {
+        let by_key = key[a].partial_cmp(&key[b]);
+        by_key
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| u[a].total_cmp(&u[b]))
+    });
+    let mut rank = vec![0; key.len()];
+    for (r, &i) in order.iter().enumerate() {
+        rank[i] = r as i32 + 1;
+    }
+    Ok(Vals::Int(Cow::Owned(rank)))
+}
+
+/// `x[i]` for positive whole indices (`NA` or past the end gives `NA`) or a
+/// logical `i`, recycled over `x` (`NA`, or `TRUE` past the end, gives `NA`).
 fn index<'a>(x: Vals<'a>, i: &Vals, h: &dyn Host) -> R<Vals<'a>> {
     let m = x.len();
+    // `x[cond]`, one condition per element: kept without a list of positions
+    if let Vals::Lgl(c) = i {
+        if c.len() == m {
+            return Ok(match x {
+                Vals::Dbl(v) => Vals::Dbl(Cow::Owned(keep_where(&v, c, h.na_real()))),
+                Vals::Int(v) => Vals::Int(Cow::Owned(keep_where(&v, c, NA_INT))),
+                Vals::Lgl(v) => Vals::Lgl(Cow::Owned(keep_where(&v, c, NA_INT))),
+                Vals::Str(v) => Vals::Str(Cow::Owned(keep_where(&v, c, h.na_str()))),
+            });
+        }
+    }
     let pos: Vec<Option<usize>> = match i {
         Vals::Int(v) => v
             .iter()
@@ -1090,6 +1146,16 @@ fn index<'a>(x: Vals<'a>, i: &Vals, h: &dyn Host) -> R<Vals<'a>> {
                 Ok(Some(k.trunc() as usize - 1).filter(|&j| j < m))
             })
             .collect::<R<_>>()?,
+        Vals::Lgl(v) => {
+            let len = if v.is_empty() { 0 } else { m.max(v.len()) };
+            (0..len)
+                .filter_map(|j| match v[j % v.len()] {
+                    0 => None,
+                    NA_INT => Some(None),
+                    _ => Some(Some(j).filter(|&j| j < m)),
+                })
+                .collect()
+        }
         _ => return Err(Decline("an index that is not a number")),
     };
     Ok(match x {
@@ -1172,7 +1238,12 @@ fn unary<'a>(op: Un, x: Vals<'a>, h: &dyn Host) -> R<Vals<'a>> {
 }
 
 fn binary<'a>(op: Bin, a: Vals<'a>, b: Vals<'a>, h: &dyn Host) -> R<Vals<'a>> {
-    let n = common_len(&[a.len(), b.len()])?;
+    // an empty operand (an emptied population) gives an empty result, as in R
+    let n = if a.is_empty() || b.is_empty() {
+        0
+    } else {
+        common_len(&[a.len(), b.len()])?
+    };
     match op {
         Bin::And | Bin::Or => {
             let (Vals::Lgl(x), Vals::Lgl(y)) = (&a, &b) else {
@@ -1261,6 +1332,9 @@ fn binary<'a>(op: Bin, a: Vals<'a>, b: Vals<'a>, h: &dyn Host) -> R<Vals<'a>> {
 }
 
 fn compare<'a>(op: Bin, a: Vals<'a>, b: Vals<'a>, n: usize, h: &dyn Host) -> R<Vals<'a>> {
+    if let Some(out) = compare_one(op, &a, &b, h) {
+        return Ok(Vals::Lgl(Cow::Owned(out)));
+    }
     let out: Vec<i32> = match (&a, &b) {
         (Vals::Str(x), Vals::Str(y)) => {
             if !matches!(op, Bin::Eq | Bin::Ne) {
@@ -1307,6 +1381,35 @@ fn compare<'a>(op: Bin, a: Vals<'a>, b: Vals<'a>, n: usize, h: &dyn Host) -> R<V
         }
     };
     Ok(Vals::Lgl(Cow::Owned(out)))
+}
+
+/// `==`/`!=` against one ASCII string (`.group == "firm"`), a pointer test per
+/// element: R keeps one CHARSXP per ASCII string, and no other string equals it.
+fn compare_one(op: Bin, a: &Vals, b: &Vals, h: &dyn Host) -> Option<Vec<i32>> {
+    let (Vals::Str(x), Vals::Str(y)) = (a, b) else {
+        return None;
+    };
+    let (many, s) = match (x.len(), y.len()) {
+        (_, 1) => (x, y[0]),
+        (1, _) => (y, x[0]),
+        _ => return None,
+    };
+    let na = h.na_str();
+    if !matches!(op, Bin::Eq | Bin::Ne) || s == na || !h.str_ascii(s) {
+        return None;
+    }
+    let eq = op == Bin::Eq;
+    Some(
+        many.iter()
+            .map(|&p| {
+                if p == na {
+                    NA_INT
+                } else {
+                    i32::from((p == s) == eq)
+                }
+            })
+            .collect(),
+    )
 }
 
 /// A comparison over operands of length 1 or `n`: `NA` where either is missing.
@@ -1836,6 +1939,34 @@ mod tests {
             &mut h
         )
         .is_err());
+    }
+
+    #[test]
+    fn logical_index() {
+        let h = Plain { draws: vec![] };
+        let x = Vals::Int(Cow::Borrowed(&[10, 20, 30][..]));
+        let run = |i: &[i32]| match index(x.clone(), &Vals::Lgl(Cow::Borrowed(i)), &h) {
+            Ok(Vals::Int(v)) => v.into_owned(),
+            _ => panic!("not an integer vector"),
+        };
+        assert_eq!(run(&[1, 0, 1]), [10, 30]);
+        assert_eq!(run(&[1, 0]), [10, 30]); // recycled
+        assert_eq!(run(&[NA_INT, 0, 1]), [NA_INT, 30]);
+        assert_eq!(run(&[0, 0, 0, 1]), [NA_INT]); // past the end
+        assert_eq!(run(&[]), [0; 0]);
+        assert_eq!(run(&[0, NA_INT, 1]), [NA_INT, 30]);
+    }
+
+    #[test]
+    fn random_rank() {
+        let mut h = Plain {
+            draws: vec![0.9, 0.5, 0.1, 0.2],
+        };
+        let x = Vals::Dbl(Cow::Borrowed(&[2.0, 0.0, -0.0, 2.0][..]));
+        match rank_random(x, &mut h) {
+            Ok(Vals::Int(v)) => assert_eq!(v.into_owned(), [4, 2, 1, 3]),
+            _ => panic!("not an integer vector"),
+        }
     }
 
     #[test]

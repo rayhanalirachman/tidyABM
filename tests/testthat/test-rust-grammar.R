@@ -974,3 +974,65 @@ test_that("Tier 1: tell(to = 'neighbours' & min/max), partial-col abm_global, mu
          paste("partial-col global + multi-match nb1 not fully native:",
                paste(got_mg$stats, collapse = " ")))
 })
+
+test_that("a column named like a mask helper stays native", {
+  m <- abm_setup(agents = abm_agents(n = 20, pick = ~sample(1:20, 20, TRUE), across = ~runif(20), x = 0),
+                 seed = 3)
+  expect_native_agree(m, abm_go(abm_rules(x ~ across[pick] + pick), abm_global(g ~ sum(across))),
+                      "pick/across columns")
+  expect_null(read_vars(list(rlang::quo(x + dplyr::cur_group_id()))))
+  expect_null(read_vars(list(rlang::quo(sum(y[row_number() > 1, 1])))))
+})
+
+test_that("logical indexes and negative literals in c() are native and match R", {
+  m <- gram_model()
+  cases <- list(
+    keep = abm_global(g ~ sum(y[p == 1L], na.rm = TRUE), t ~ sum(p[b])),
+    na_index = abm_global(g ~ sum(x[b])),
+    recycled = abm_global(g ~ sum(p[c(TRUE, FALSE, TRUE)])),
+    longer = abm_global(g ~ sum(sample(p, 3L)[b])),
+    none = abm_global(g ~ sum(p[p > 99L]), t ~ mean(y[p > 99L])),
+    strings = abm_global(g ~ sum(s[p > 2L] == "a", na.rm = TRUE)),
+    one_string = abm_rules(b ~ s == "a", k ~ "b" != s),
+    signs = abm_rules(x ~ sample(c(-1, 1), n(), replace = TRUE), k ~ x %in% c(-1L, 2L)))
+  for (nm in names(cases)) expect_native_agree(m, abm_go(cases[[nm]]), nm)
+})
+
+test_that("a global over an emptied population matches R", {
+  m <- abm_setup(agents = list(sheep = abm_agents(n = 3, e = 1), wolves = abm_agents(n = 2, e = 1)),
+                 globals = list(s = 0, m = 0), seed = 8)
+  go <- abm_go(abm_death(e < 2),
+               abm_global(s ~ sum(.group == "sheep"), m ~ sum(e)))
+  got <- expect_native_agree(m, go, "empty population", ticks = 3)
+  expect_identical(got$stats[[2]], 0L)
+})
+
+test_that("abm_neighbours(any()) stays native when ids are not the row numbers", {
+  m <- abm_setup(agents = abm_agents(n = 12, age = ~sample(0:3, 12, TRUE), old = FALSE, near = FALSE),
+                 network = abm_network("complete"), seed = 4)
+  go <- abm_go(abm_rules(age ~ age + 1L), abm_death(age > 3L),
+               abm_neighbours(near ~ any(age > 2L), old ~ all(age > 1L)))
+  got <- expect_native_agree(m, go, "any/all after removal", ticks = 3)
+  expect_identical(got$stats[[2]], 0L)
+})
+
+test_that("the R built-ins taken by call are native and match R", {
+  m <- gram_model()
+  cases <- list(
+    median = abm_global(g ~ median(x, na.rm = TRUE), t ~ median(p)),
+    sd = abm_global(g ~ stats::sd(y, na.rm = TRUE), t ~ sd(p)),
+    which = abm_global(g ~ sum(p[which(b)]), t ~ which.max(y) + which.min(p)),
+    unique = abm_global(g ~ length(unique(k)), t ~ n() / length(unique(p))),
+    table = abm_global(g ~ max(table(p))),
+    flags = abm_global(g ~ if (isTRUE(sum(p) > 0)) 1 else 0, t ~ bitwAnd(sum(p), 7L)),
+    rank = abm_rules(x ~ rank(-p, ties.method = "first"), y ~ rank(p)),
+    rank_ties = abm_rules(x ~ rank(p, ties.method = "min") + rank(p, ties.method = "max")),
+    rank_random = abm_rules(x ~ rank(p, ties.method = "random")),
+    rank_runif = abm_rules(b ~ rank(runif(n()), ties.method = "random") > 5))
+  for (nm in names(cases)) expect_native_agree(m, abm_go(cases[[nm]]), nm)
+  # what stays with R: missing values ranked at random, strings, a bare table
+  expect_native_agree(m, abm_go(abm_rules(x ~ rank(y, ties.method = "random"))), "rank NA",
+                      native = FALSE)
+  expect_native_agree(m, abm_go(abm_global(g ~ length(unique(s)))), "strings", native = FALSE)
+  expect_true(is_rx_no(rx_compile(quote(sum(table(p))))))
+})

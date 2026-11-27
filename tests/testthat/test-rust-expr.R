@@ -193,10 +193,10 @@ test_that("errors, masked functions and uncovered formulas are the R engine's", 
   }
   # `.by` other than a name is R's (a name compiles; keys from a column are
   # left to R at run time)
-  cov <- rx_coverage(abm_go(abm_rules(y ~ rank(x)^2, z ~ rank(x)),
+  cov <- rx_coverage(abm_go(abm_rules(y ~ rev(x)^2, z ~ rev(x)),
                             abm_global(w ~ sum(x), .by = c(1, 2)), abm_global(w ~ sum(x), .by = j)))
   expect_identical(cov$path, c("r", "r", "r", "rust"))
-  expect_match(cov$reason[[1]], "`rank()` is not compiled yet", fixed = TRUE)
+  expect_match(cov$reason[[1]], "`rev()` is not compiled yet", fixed = TRUE)
   expect_match(cov$reason[[3]], ".by", fixed = TRUE)
 })
 

@@ -1650,9 +1650,22 @@ fn exec_nb_anyall(plan: &Plan, nb: &NbPlan, st: SEXP) -> savvy::Result<Option<H>
     let nbr: Vec<i32> = [et, ef].concat();
     let gi = find_str(st, b"groups")?.ok_or_else(|| bad("no groups"))?;
     let groups = elt(st, gi);
-    let Some((n, ids)) = ids_are_rows(groups)? else {
-        return decline("ids that are not the row numbers");
-    };
+    // the agents' ids stacked over the groups (after a birth or a death they
+    // are no longer the row numbers)
+    let mut ids: Vec<&[i32]> = Vec::with_capacity(len(groups));
+    for k in 0..len(groups) {
+        let g = elt(groups, k);
+        let Some(j) = find_str(g, b".id")? else {
+            return decline("a group without ids");
+        };
+        let Some(x) = store::numbers_of::<i32>(elt(g, j), INTSXP)? else {
+            return decline("ids that are not integers");
+        };
+        ids.push(x);
+    }
+    let all_ids: Vec<i32> = ids.concat();
+    let n = all_ids.len();
+    let at = IdIndex::new(&all_ids);
     if n == 0 {
         return Ok(Some(keep(st)?));
     }
@@ -1690,12 +1703,11 @@ fn exec_nb_anyall(plan: &Plan, nb: &NbPlan, st: SEXP) -> savvy::Result<Option<H>
             return Ok(None);
         }
     };
-    // the view's rows: both endpoints among the agents (ids are the rows)
+    // the view's rows: both endpoints among the agents, as row positions
     let rows: Vec<(usize, usize)> = focal
         .iter()
         .zip(&nbr)
-        .filter(|(&f, &b)| f >= 1 && (f as usize) <= n && b >= 1 && (b as usize) <= n)
-        .map(|(&f, &b)| (f as usize - 1, b as usize - 1))
+        .filter_map(|(&f, &b)| Some((at.get(f)?, at.get(b)?)))
         .collect();
     let mut seen_any = vec![false; n];
     for &(f, _) in &rows {
@@ -1726,20 +1738,21 @@ fn exec_nb_anyall(plan: &Plan, nb: &NbPlan, st: SEXP) -> savvy::Result<Option<H>
         vals.push(Vals::Lgl(std::borrow::Cow::Owned(out)));
     }
     let mut cur: Option<H> = None;
+    let mut start = 0;
     for (k, gids) in ids.iter().enumerate() {
         if gids.is_empty() {
             continue;
         }
         let gs = cur.as_ref().map_or(groups, |h| h.get());
         let mut g: Option<H> = None;
-        let miss_g: Vec<bool> = gids.iter().map(|&id| !seen_any[id as usize - 1]).collect();
+        let span = start..start + gids.len();
+        start = span.end;
+        let miss_g: Vec<bool> = seen_any[span.clone()].iter().map(|&s| !s).collect();
         for (r, &t) in nb.targets.iter().enumerate() {
             let Vals::Lgl(d) = &vals[r] else {
                 return Err(bad("an any/all value"));
             };
-            let v = Vals::Lgl(std::borrow::Cow::Owned(
-                gids.iter().map(|&id| d[id as usize - 1]).collect(),
-            ));
+            let v = Vals::Lgl(std::borrow::Cow::Owned(d[span.clone()].to_vec()));
             let Some(v) = apply_nb_default(v, &miss_g, plan.nb_default)? else {
                 return decline("a .default that cannot be applied natively");
             };

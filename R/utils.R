@@ -362,12 +362,30 @@ read_vars <- function(quos) {
   nms <- as.character(unlist(lapply(Filter(Negate(is.null), quos), function(q) {
     all.names(rlang::quo_get_expr(q))
   }), use.names = FALSE))
-  if (any(c(mask_only_fns, ".data", "get", "mget", "eval") %in% nms)) return(NULL)
+  if (any(c(".data", "get", "mget", "eval") %in% nms)) return(NULL)
+  # a column may be called `pick` or `across`: only a call of one counts
+  if (any(mask_only_fns %in% nms) &&
+      any(vapply(quos, function(q) !is.null(q) && calls_mask_fn(rlang::quo_get_expr(q)), NA))) {
+    return(NULL)
+  }
   pre <- startsWith(nms, "partner_") | startsWith(nms, "own_")
   out <- if (any(pre)) c(nms, sub("^(partner|own)_", "", nms[pre])) else nms
   if (any(startsWith(nms, "cell_"))) out <- c(out, ".cell")
   if (".dist" %in% nms) out <- c(out, ".x", ".y", ".cell")
   out
+}
+
+# is any of `mask_only_fns` called (as `f()` or `pkg::f()`) anywhere in `expr`?
+calls_mask_fn <- function(expr) {
+  if (!is.call(expr)) return(FALSE)
+  head <- expr[[1]]
+  if (rlang::is_call(head, c("::", ":::"))) head <- head[[3]]
+  if (rlang::is_symbol(head) && rlang::as_string(head) %in% mask_only_fns) return(TRUE)
+  for (i in seq_along(expr)) {
+    # `is.call()` first: an empty argument (`x[, 1]`) cannot be passed on
+    if (is.call(expr[[i]]) && calls_mask_fn(expr[[i]])) return(TRUE)
+  }
+  FALSE
 }
 
 #' Could these formulas read what a match adds: `.partner`, `.role`,

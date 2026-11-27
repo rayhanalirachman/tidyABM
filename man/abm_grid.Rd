@@ -25,9 +25,9 @@ An \code{abm_grid} object, recognised by \code{\link[=abm_setup]{abm_setup()}}.
 }
 \description{
 \code{abm_grid()} is sugar for a patch-heavy model. It desugars to an
-\code{\link[=abm_agents]{abm_agents()}} group plus an \code{\link[=abm_network]{abm_network()}} of \code{type = "grid"} wired to it,
+\code{\link[=abm_agents]{abm_agents()}} group plus an \code{\link[=abm_space]{abm_space()}} of \code{type = "grid"} wired to it,
 so the \code{\link[=abm_go]{abm_go()}} block is identical either way. Use the explicit two-line
-form instead when the network should be visible in the setup, or when another
+form instead when the space should be visible in the setup, or when another
 network sits alongside it.
 }
 \details{
@@ -37,9 +37,9 @@ network sits alongside it.
 
 desugars to
 
-\if{html}{\out{<div class="sourceCode r">}}\preformatted{agents  = list(patches = abm_agents(state = ~...)),
-network = abm_network(type = "grid", dims = c(w, h),
-                      diagonals = FALSE, torus = FALSE, on = "patches")
+\if{html}{\out{<div class="sourceCode r">}}\preformatted{agents = list(patches = abm_agents(state = ~...)),
+space  = abm_space(type = "grid", dims = c(w, h),
+                   diagonals = FALSE, torus = FALSE, on = "patches")
 }\if{html}{\out{</div>}}
 }
 \examples{

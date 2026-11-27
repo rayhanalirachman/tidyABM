@@ -871,9 +871,10 @@ test_that("FR15b: relations in abm_sequential(), non-relation steps alongside re
     abm_global(rate ~ rate * 0.99)
   )
   got <- expect_native_agree(m, go_rel, "FR15b relations full", ticks = 4)
-  # only step 3 (`among = .sellers`) stays R; the other 7 steps run natively every tick (28)
+  # all 8 steps (including `among = .sellers`) run natively every tick (32)
   expect_identical(got$stats[[2]], 0L)
-  expect_identical(got$stats[[1]], 28L)
+  expect_identical(got$stats[[1]], 32L)
+  expect_identical(got$stats[[4]], 0L)
 
   # 2. abm_pairs creating a new column on tick 1 (R updates rel$cols/defaults), then native tick 2+
   go_new <- abm_go(

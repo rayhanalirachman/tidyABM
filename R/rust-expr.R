@@ -446,7 +446,8 @@ rx_number_calls <- function(irs) {
 #' nowhere (the R engine then raises its error)
 #' @noRd
 rx_sources <- function(names, cols, globals, env) {
-  src <- ifelse(names %in% cols, 1L, ifelse(names %in% names(globals), 2L, 3L))
+  src <- ifelse(names %in% cols, 1L,
+                ifelse(names %in% names(globals) | names == ".tick", 2L, 3L))
   for (nm in names[src == 3L]) {
     if (!exists(nm, envir = env)) return(NULL)
   }
@@ -455,6 +456,10 @@ rx_sources <- function(names, cols, globals, env) {
 
 #' A program over some of a step's rules, bound for a group, or a reason
 #' @noRd
+rx_special_sym <- function(syms) {
+  any(syms == ".dist")
+}
+
 rx_program <- function(step, idx, cols, globals, global_step = FALSE,
                        match_names = character()) {
   comp <- rx_rules(step)[idx]
@@ -469,6 +474,7 @@ rx_program <- function(step, idx, cols, globals, global_step = FALSE,
   if (!rx_heads_ok(heads, scope)) return(rx_no("a function name is masked"))
   if (!rx_rng_heads_ok(heads)) return(rx_no("an RNG kind the Rust path was not verified under"))
   names <- unique(unlist(lapply(comp, `[[`, "syms")))
+  if (rx_special_sym(names)) return(rx_no("special grammar symbol"))
   # 4: a column a standing match adds (`.partner`, `.role`, `.group_id`,
   # `partner_<col>`), built by the native step from `state$match`
   src <- rep(4L, length(names))
@@ -521,31 +527,38 @@ rx_declined <- function(step, reason = rs_rx_reason()) {
 # the parts of a step's shape that never change during a run, for the kernels
 # and for "auto" to decide whether a run has anything to compile
 rx_rules_ok <- function(step) {
-  is.null(step$by) && !any(vapply(rx_rules(step), is_rx_no, NA)) &&
-    !(step$uses_match %||% reads_match(lapply(step$rules, `[[`, "quo"))) &&
+  quos <- c(lapply(step$rules, `[[`, "quo"), if (!is.null(step$when)) list(step$when))
+  is.null(step$by) && is.null(step$when) && !any(vapply(rx_rules(step), is_rx_no, NA)) &&
+    !(step$uses_match %||% reads_match(quos)) && !length(cell_vars(quos)) &&
     !any(vapply(step$rules, function(r) r$target == ".cell" || startsWith(r$target, "partner_"), NA))
 }
 # at least one rule compiled (the others are evaluated by R inside the native step)
 rx_rules_mixed_ok <- function(step) {
   if (!is.null(step$by)) return(rx_by_ok(step))
+  if (!is.null(step$when)) {
+    if (is_rx_no(rx_compile_memo(rlang::quo_get_expr(step$when)))) return(FALSE)
+    if (any(vapply(rx_rules(step), is_rx_no, NA))) return(FALSE)
+  }
+  quos <- c(lapply(step$rules, `[[`, "quo"), if (!is.null(step$when)) list(step$when))
+  needs_aux <- (step$uses_match %||% reads_match(quos)) || length(cell_vars(quos)) > 0L
   is.null(step$by) && any(!vapply(rx_rules(step), is_rx_no, NA)) &&
-    (!(step$uses_match %||% reads_match(lapply(step$rules, `[[`, "quo"))) ||
-       !is.null(rx_match_names(step))) &&
+    (!needs_aux || !is.null(rx_match_names(step))) &&
     !any(vapply(step$rules, function(r) r$target == ".cell" || startsWith(r$target, "partner_"), NA))
 }
-# The match columns a step's rules read (`.partner`, `.role`, `.group_id`,
-# `partner_<col>`), when every rule compiled (an R-evaluated rule would not see
-# them) and the names are known; `NULL` otherwise (the R path)
+# The auxiliary columns a step's rules/when read (`.partner`, `.role`, `.group_id`,
+# `.cost`, `partner_<col>`, `cell_<col>`), when every rule compiled and the names
+# are known; `NULL` otherwise (the R path)
 rx_match_names <- function(step) {
-  quos <- lapply(step$rules, `[[`, "quo")
+  quos <- c(lapply(step$rules, `[[`, "quo"), if (!is.null(step$when)) list(step$when))
   reads <- read_vars(quos)
   if (is.null(reads) || any(vapply(rx_rules(step), is_rx_no, NA))) return(NULL)
-  reads[reads %in% c(".partner", ".role", ".group_id") | startsWith(reads, "partner_")]
+  reads[reads %in% c(".partner", ".role", ".group_id", ".cost") |
+          startsWith(reads, "partner_") | startsWith(reads, "cell_")]
 }
 
 # `.by` rules: every rule compiled, one `.by` column, nothing read of a pairing
 rx_by_ok <- function(step) {
-  !is.null(step$by) && length(by_columns(step$by)) == 1L &&
+  !is.null(step$by) && is.null(step$when) && length(by_columns(step$by)) == 1L &&
     !any(vapply(rx_rules(step), is_rx_no, NA)) &&
     !(step$uses_match %||% reads_match(lapply(step$rules, `[[`, "quo"))) &&
     !any(vapply(step$rules, function(r) r$target == ".cell" || startsWith(r$target, "partner_"), NA))

@@ -6,8 +6,11 @@
 \usage{
 abm_match(
   pair = c("random", "one_of", "opposite_group", "nearest", "network"),
+  ...,
   size = NULL,
   by = NULL,
+  sides = NULL,
+  coords = NULL,
   role = NULL,
   eligible = NULL,
   from = NULL,
@@ -21,17 +24,25 @@ abm_match(
 \item{pair}{The pairing mode. \code{"random"} shuffles agents into groups of
 \code{size}; \code{"one_of"} gives each agent one partner drawn uniformly from the
 whole population; \code{"opposite_group"} pairs each agent with one from the
-other group named by \code{by}; \code{"nearest"} gives each agent its closest other
-agent in the space defined by \code{by}; \code{"network"} draws the partner from the
-agent's neighbours in the model's \code{\link[=abm_network]{abm_network()}}.}
+other group named by \code{sides} (or \code{by}); \code{"nearest"} gives each agent its
+closest other agent in the space defined by \code{coords} (or \code{by}); \code{"network"}
+draws the partner from the agent's neighbours in the model's \code{\link[=abm_network]{abm_network()}}.}
+
+\item{...}{Optional child steps scoped to this match. When supplied, the
+match is active for those steps and any outer standing match is restored
+afterwards.}
 
 \item{size}{Group size. Defaults to 2 (a pair). Only \code{"random"} and
 \code{"nearest"} support \code{size > 2}; \code{"opposite_group"} is undefined above 2.}
 
-\item{by}{Column(s) defining the space or the split. For \code{"opposite_group"}
-a single column that takes exactly two values (use \code{.group} for a
-multi-group model); for \code{"nearest"} one or more numeric columns, compared by
-Euclidean distance.}
+\item{by}{Deprecated alias for \code{sides} (in \code{"opposite_group"}) or \code{coords}
+(in \code{"nearest"}).}
+
+\item{sides}{For \code{"opposite_group"}, a single column that takes at most two
+values defining the two sides (use \code{.group} for a multi-group model).}
+
+\item{coords}{For \code{"nearest"}, one or more numeric columns compared by
+Euclidean distance (defaults to \code{.x} or \code{c(.x, .y)} on a continuous space).}
 
 \item{role}{A named list of two conditions, e.g. \code{list(giver = money > 0, receiver = TRUE)}. Within each pair, roles are assigned so that each member
 satisfies its own role's condition; if no assignment works the pair is
@@ -92,7 +103,7 @@ what "noticed in proportion to its size" and preferential attachment as a
 only ever matched with agents sharing its value. This is
 \code{\link[=abm_rules]{abm_rules()}}'s \code{.by} grouping applied to matching, and on a lattice
 \code{.by = .cell} is what makes every co-located interaction -- predation,
-mating, combat -- expressible: \code{abm_match(pair = "opposite_group", by = .group, .by = .cell)} gives each wolf one sheep from \emph{its own cell}, and
+mating, combat -- expressible: \code{abm_match(pair = "opposite_group", sides = .group, .by = .cell)} gives each wolf one sheep from \emph{its own cell}, and
 never pairs one sheep with two wolves. \code{NA} sits an agent out.}
 }
 \value{
@@ -111,22 +122,24 @@ After a match, every rule can see:
 so \code{!is.na(.partner)} is "I met someone this tick";
 \item grouped-mutate semantics when \code{size > 2}, so \code{sum(contribution)} inside a
 rule means "sum across this agent's group" and \code{n()} is its size;
-\item \code{.role}, when \code{role} is supplied (\code{NA} otherwise).
+\item \code{.role}, when \code{role} is supplied (\code{NA} otherwise);
+\item \code{.cost}, after \code{pair = "nearest"} with \code{size = 2}: the winning \verb{cost =}
+value or Euclidean distance (\code{NA_real_} when unmatched).
 }
 
-Who an \code{\link[=abm_rules]{abm_rules()}} step that follows is \emph{written for} is decided by the
-match too: an agent it left out keeps its values, unless the match paired
-nobody at all, in which case every agent is written with \code{NA} partner
-columns (\code{\link[=abm_sequential]{abm_sequential()}} then writes nobody). See \code{\link[=abm_rules]{abm_rules()}} for the
-two cases and how to write a rule that is right in both.
+Who an \code{\link[=abm_rules]{abm_rules()}} or \code{\link[=abm_sequential]{abm_sequential()}} step that follows is \emph{written for}
+is decided by the match too: an agent it left out keeps its values, and if
+the match paired nobody at all, \code{.scope = "match"} writes nobody. Pass child
+steps directly in \code{...} to scope the match to those steps only and restore
+any outer match on exit.
 
 Each \code{pair} mode uses a fixed set of the other arguments, and passing one
 that the chosen mode does not use is an error rather than being ignored:\tabular{ll}{
    mode \tab uses \cr
    \code{"random"} \tab \code{size}, \code{role}, \code{eligible} \cr
    \code{"one_of"} \tab \code{role}, \code{eligible}, \code{among}, \code{weight} \cr
-   \code{"opposite_group"} \tab \code{by}, \code{role}, \code{eligible} \cr
-   \code{"nearest"} \tab \code{by} \emph{or} \code{cost}, \code{size}, \code{eligible}, \code{among} \cr
+   \code{"opposite_group"} \tab \code{sides} (or \code{by}), \code{role}, \code{eligible} \cr
+   \code{"nearest"} \tab \code{coords} (or \code{by}) \emph{or} \code{cost}, \code{size}, \code{eligible}, \code{among} \cr
    \code{"network"} \tab \code{from}, \code{eligible} \cr
 }
 
@@ -148,8 +161,8 @@ depends on the source you are porting.
 abm_match(pair = "random")
 abm_match(pair = "one_of")
 abm_match(pair = "random", size = 4)
-abm_match(pair = "nearest", by = opinion)
-abm_match(pair = "nearest", by = position, among = .group == "shops")
+abm_match(pair = "nearest", coords = opinion)
+abm_match(pair = "nearest", coords = position, among = .group == "shops")
 
 # a firm I do not already buy from, noticed in proportion to its size
 abm_match(pair = "one_of", among = .group == "firms" & !.id \%in\% own_sellers,
@@ -158,9 +171,10 @@ abm_match(pair = "nearest", cost = price + abs(x - own_x),
           among = .group == "shops")
 abm_match(pair = "random", role = list(giver = money > 0, receiver = TRUE))
 
-# one prey per predator, per cell
-abm_match(pair = "opposite_group", by = .group, .by = .cell,
-          eligible = .group \%in\% c("wolves", "sheep"))
+# one prey per predator, per cell (scoped to its child steps)
+abm_match(pair = "opposite_group", sides = .group, .by = .cell,
+          eligible = .group \%in\% c("wolves", "sheep"),
+          abm_rules(energy ~ energy + 20, when = .group == "wolves"))
 }
 \seealso{
 \code{\link[=abm_go]{abm_go()}}, which lists every step and fixes the order they run

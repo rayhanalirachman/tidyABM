@@ -17,8 +17,8 @@ daisy <- abm_setup(
   agents = abm_agents(
     kind = ~sample(c("white", "black", "none"), n, TRUE, c(0.2, 0.2, 0.6)),
     age  = 0L),
-  network = abm_network(type = "grid", dims = c(40, 40),
-                        diagonals = TRUE, torus = TRUE),
+  space = abm_space(type = "grid", dims = c(40, 40),
+                    diagonals = TRUE, torus = TRUE),
   globals = list(luminosity = 1.0, global_temp = 0), seed = 1)
 
 go <- abm_go(

@@ -17,31 +17,28 @@ new_abm_agents <- function(n, cols, at = NULL) {
 #' * a one-sided formula (`money = ~runif(n, 0, 50)`) is evaluated **once** and
 #'   must return either a length-`n` vector or a length-1 value to recycle.
 #'
-#' Formulas are evaluated in order, and each one can see `n` as well as any
-#' column defined before it, so `abm_agents(n = 200, wtp = ~rnorm(n, 50, 10),
-#' offer = ~wtp * 0.8)` works as written.
+#' Formulas are evaluated in order, and each one can see `n` (or `n()`) as well
+#' as any column defined before it, so `abm_agents(n = 200, wtp = ~rnorm(n, 50,
+#' 10), offer = ~wtp * 0.8)` works as written.
 #'
-#' # On a lattice
+#' # In space
 #'
-#' Two things change when the model has a grid or line network (see
-#' [abm_network()]). The group that network is wired to **omits `n`**: its count
-#' is `prod(dims)`, and passing a matching `n` is allowed while a mismatch is an
-#' error. Every other group gets a `.cell` saying which cell it is standing on,
-#' drawn uniformly at random unless `at` says otherwise.
+#' When the model has a spatial geometry (see [abm_space()]), a grid-wired
+#' patch group **omits `n`** and inherits `prod(dims)`. Mobile groups get `.cell`
+#' (and `.x` / `.y`) on grids, or float `.x` / `.y` on continuous spaces, placed
+#' uniformly at random unless `at` says otherwise.
 #'
 #' @param n Number of agents in this group. A single positive integer. Optional,
-#'   and ignored, for the group a grid or line [abm_network()] is wired to,
-#'   which inherits `prod(dims)` instead.
+#'   and ignored, for the group a grid [abm_space()] is wired to, which inherits
+#'   `prod(dims)` instead.
 #' @param ... Named column specifications. Each is either a plain value (which
 #'   is recycled) or a one-sided formula (which is evaluated once, per group).
-#'   Names beginning with `.` are reserved for the package.
-#' @param at Where on the lattice this group starts, as a one-sided formula
-#'   evaluated once, like a column. It must yield a cell id (a wired-group
-#'   `.id`), either one to recycle or one per agent. The expression sees this
-#'   group's own columns, `n`, `dims`, and the wired group's columns, so both
-#'   `at = ~sample(prod(dims), n, replace = TRUE)` and `at = ~which(nest)[1]`
-#'   work. Only meaningful in a model with a lattice; the default is a uniform
-#'   random placement.
+#'   Names beginning with `.` or `cell_` are reserved for the package.
+#' @param at Where in space this group starts. On a grid: `"unique"` for random
+#'   distinct cells, or a one-sided formula returning cell ids (sees `n`, `n()`,
+#'   `dims`, this group's columns, and wired patch columns). On a continuous
+#'   space: a one-sided formula returning `.x` (1-D) or `list(x = ~..., y = ~...)`
+#'   (2-D). Defaults to uniform random placement.
 #'
 #' @return An `abm_agents` specification object.
 #' @export
@@ -99,6 +96,14 @@ abm_agents <- function(n = NULL, ..., at = NULL) {
       class = "tidyABM_reserved_column"
     )
   }
+  bad_cell <- grep("^cell_", names(cols), value = TRUE)
+  if (length(bad_cell)) {
+    abm_abort(
+      c("Column names beginning with {.code cell_} are reserved for reading patch columns.",
+        "x" = "Rename {.field {bad_cell}}."),
+      class = "tidyABM_reserved_column"
+    )
+  }
   validate_abm_agents(new_abm_agents(if (is.null(n)) NULL else as.integer(n),
                                      cols, at))
 }
@@ -117,6 +122,12 @@ validate_abm_agents <- function(x, call = rlang::caller_env()) {
   x
 }
 
+#' Parent environment for setup formulas: binds `n()` alongside `n` in the mask
+#' @noRd
+setup_eval_env <- function(quo, n) {
+  rlang::new_environment(list(n = function() n), parent = rlang::quo_get_env(quo))
+}
+
 #' Build the tibble for one agent group
 #' @noRd
 materialise_agents <- function(spec, group_name, id_offset = 0L,
@@ -129,6 +140,7 @@ materialise_agents <- function(spec, group_name, id_offset = 0L,
     val <- spec$cols[[nm]]
     if (is_formula1(val)) {
       quo <- rlang::as_quosure(val)
+      quo <- rlang::quo_set_env(quo, setup_eval_env(quo, n))
       value <- withCallingHandlers(
         rlang::eval_tidy(quo, data = c(as.list(out), mask_extra)),
         error = function(e) {

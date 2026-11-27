@@ -1,7 +1,7 @@
 # Values attached to edges ------------------------------------------------
 
-new_abm_draw <- function(rules, each) {
-  structure(list(rules = rules, each = each),
+new_abm_draw <- function(rules, each, via = NULL) {
+  structure(list(rules = rules, each = each, via = via),
             class = c("abm_draw", "abm_step"))
 }
 
@@ -41,6 +41,8 @@ new_abm_draw <- function(rules, each) {
 #' @param ... One or more `name ~ expression` rules, evaluated once per edge.
 #' @param .each `"edge"` for one value per edge, shared by both endpoints;
 #'   `"endpoint"` for one value per endpoint, read as `name` and `name_back`.
+#' @param via Optional `"space"` or `"network"` when a model has both a spatial
+#'   lattice and a social network, selecting which edge table receives the draw.
 #'
 #' @return An `abm_draw` step object.
 #' @seealso [abm_go()], which lists every step and fixes the order they run
@@ -56,21 +58,30 @@ new_abm_draw <- function(rules, each) {
 #'
 #' # whether I saw you, and whether you saw me, are two different coins
 #' abm_draw(noticed ~ runif(n()), .each = "endpoint")
-abm_draw <- function(..., .each = c("edge", "endpoint")) {
+abm_draw <- function(..., .each = c("edge", "endpoint"), via = NULL) {
   check_rule_dots(rlang::enexprs(...), "abm_draw")
   .each <- rlang::arg_match(.each)
-  new_abm_draw(collect_rules(rlang::list2(...), "abm_draw"), .each)
+  if (!is.null(via)) {
+    if (!rlang::is_string(via)) {
+      abm_abort('{.arg via} must be {.val space} or {.val network}.',
+                class = "tidyABM_bad_arg")
+    }
+    via <- rlang::arg_match0(via, c("space", "network"), arg_nm = "via")
+  }
+  new_abm_draw(collect_rules(rlang::list2(...), "abm_draw"), .each, via = via)
 }
 
 #' @noRd
 run_draw <- function(step, state) {
-  if (is.null(state$edges)) {
+  topo <- resolve_topology_edges(step$via, state, "abm_draw")
+  if (is.null(topo)) {
     abm_abort(
       c("{.fn abm_draw} needs a network to attach values to.",
         "i" = "Add one with {.code abm_setup(..., network = abm_network(...))}."),
       class = "tidyABM_no_network"
     )
   }
+  field <- if (topo$cache == "space_nb_cache") "space_edges" else "edges"
   agent_cols <- setdiff(model_columns(state$groups), c(".id", ".group"))
   for (r in step$rules) {
     if (r$target %in% agent_cols) {
@@ -81,19 +92,18 @@ run_draw <- function(step, state) {
         class = "tidyABM_draw_collision"
       )
     }
-    fwd <- edge_value(r, state)
-    back <- if (step$each == "endpoint") edge_value(r, state) else fwd
-    state$edges[[paste0(".draw_", r$target)]] <- fwd
-    state$edges[[paste0(".back_", r$target)]] <- back
+    fwd <- edge_value(r, state, edges = state[[field]])
+    back <- if (step$each == "endpoint") edge_value(r, state, edges = state[[field]]) else fwd
+    state[[field]][[paste0(".draw_", r$target)]] <- fwd
+    state[[field]][[paste0(".back_", r$target)]] <- back
   }
-  state$stale_draws <- NULL
+  if (field == "edges") state$stale_draws <- NULL
   state
 }
 
 #' Evaluate one draw rule over the edge table
 #' @noRd
-edge_value <- function(r, state) {
-  edges <- state$edges
+edge_value <- function(r, state, edges = state$edges) {
   # the draw columns are internal and are stripped from the view: a draw rule
   # sees `from` and `to`, never an earlier draw, so drawn values cannot
   # accumulate across ticks -- they are a fresh coin each time

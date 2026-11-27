@@ -1,5 +1,16 @@
 # tidyABM (development version)
 
+## Grammar refinements: spaces, `cell_<col>`, `when =`, `.tick`, and scoped matches
+
+Twenty targeted grammar refinements informed by the model corpus, all synced
+with the Rust engine and verified bit-for-bit against the R reference engine:
+
+* **Spatial geometry separated from networks:** New `abm_space(type = "grid" | "continuous", dims, diagonals, torus, on)` passed via `abm_setup(space = ...)` separates spatial geometry from undirected graphs in `abm_network(type = "regular" | "random" | ..., on = ...)`. Supports patchless grids, 1-D/2-D continuous spaces with `abm_move(to = offset(...) | forward(...))`, simultaneous `space` + `network` models disambiguated with `via = "space" | "network"` on `abm_neighbours()`, `abm_tell()`, and `abm_draw()`, `at = "unique"` on grids and `at = list(x = ~..., y = ~...)` in 2-D continuous space, torus-aware `.dist` across pair views and `uphill()`/`downhill()`, and AST cell bucketing for `.dist <= r` / `.dist < r`. `abm_network(type = "grid" | "line")` remains supported as a backward-compatible alias.
+* **Read-only `cell_<col>` patch access & `abm_move()` ergonomics:** Mobile agents read their current patch's columns directly as `cell_<col>` (replacing 1-to-1 `abm_neighbours(within = .group == "patches" & .id == own_.cell)` boilerplate while keeping writes explicit via `abm_tell(..., to = .cell)`). `abm_move()` now defaults `along =` to the model's space/lattice when unambiguous and adds `when =`, per-agent `range = <col/expr>`, and global relocation `to = "random_empty"` / `"random_cell"`.
+* **Row-level `when =` and built-in `.tick`:** `abm_rules()` and `abm_sequential()` gain `when =` (narrowing rows before evaluation so `n()` and `runif(n())` match the filtered subset) and `abm_sequential()` gains `.scope = c("match", "population")`. Every step, measure, check, and `until` formula now sees read-only `.tick` (`0L` at tick 0, `1L..ticks` during ticks, fixed inside `abm_repeat()`).
+* **Matching & relation cleanups:** `abm_match()` splits `by =` into `sides =` (`"opposite_group"`) and `coords =` (`"nearest"`, defaulting to `.x`/`c(.x, .y)` on continuous space; `by =` kept as a deprecated alias), exposes read-only `.cost` for `pair = "nearest"` (`size = 2`), accepts optional child steps `abm_match(..., <steps>)` that automatically restore outer match state on exit, and narrows empty standing matches in `abm_rules()` so `.scope = "match"` writes nobody (consistent with `abm_sequential()`). `abm_pairs()` renames `.when` to `when` (`.when` kept as a deprecated alias).
+* **Demography, messages, setup, and run ergonomics:** `abm_birth()` adds `attach = c("none", "parent", "random_edge", "neighbour")` shorthand, `group =` for `n =` in multi-group models, and patch-group guards on `abm_birth()` / `abm_death()`. `abm_tell()` adds `.resolve = "add"` (`+=`), `abm_neighbours()` adds `.default =`, setup formulas accept both `n` and `n()`, `abm_setup(globals =)` supports tick-0 `~expr` formulas, `abm_run()` adds early-stopping `until = ~expr` and a once-per-session hint when `reps > 1` reuses a stochastic built model, and `abm_go()` / `abm_repeat()` / scoped `abm_match()` recursively splice plain step lists.
+
 ## Rust engine (now the default)
 
 The simulation engine now runs in compiled Rust under the unchanged R grammar,
@@ -12,17 +23,29 @@ producing bit-for-bit identical results (`.Random.seed`, column attributes,
   any run with native steps executes inside the Rust tick loop and expression
   evaluator, seamlessly handing unsupported steps, user R functions, or
   warning/error edge cases back to the R engine.
-* Native Rust coverage includes `abm_rules()` (including `.by`, match scope,
-  and mixed native/R rules), `abm_global()` (including `.by`),
-  `abm_neighbours()` (network fast folds, pair views with `own_`/edge draws,
-  `within =` equijoins and cross products, lattice `.where =`), `abm_match()`
-  (`"random"`, `"one_of"`, `"opposite_group"` with `.by`, `"network"`,
-  `"nearest"` with `by` or `cost`, `role`), `abm_birth()` (with `attach_via`),
-  `abm_death()`, `abm_move()` (random, empty, `direction`, `range`,
-  `axes_only`, `uphill`/`downhill`), `abm_tell()` (including `"collect"`),
-  `abm_sequential()` (including relations), `abm_draw()`, network `abm_link()`
-  and `abm_unlink()`, `abm_pairs()`, `abm_repeat()`, and native tick logging,
-  measures, and checks, with `Ctrl-C` interruption honoured inside the loop.
+* Native Rust coverage includes `abm_rules()` (including `when =`, `.by`, match
+  scope, `cell_<col>`, `.cost`, `.tick`, relation reads/writes, and mixed
+  native/R rules), `abm_global()` (including `.by`), `abm_neighbours()`
+  (network fast folds, pair views with `own_`, edge draws, and double
+  `sum`/`mean`, `within =` equijoins, cross products with `.dist` and
+  torus-aware spatial cell bucketing, `within = .R` / `.R_back`, lattice
+  `.where =`, `.default =`, and `via = "space" | "network"`), `abm_match()`
+  (`"random"`, `"one_of"` with `among = .R` / `.R_back` and candidate
+  `weight =`, `"opposite_group"` with `sides`/`.by`, `"network"`, `"nearest"`
+  with 1-D/multi-coordinate `coords`, continuous torus defaults, or `cost` with
+  `.dist` emitting `.cost`, `role`, and scoped `abm_match(..., <steps>)`),
+  `abm_birth()` (with `group =` and
+  `attach = "parent" | "random_edge" | "neighbour"`), `abm_death()` (including
+  edge and relation pruning), `abm_move()` (`"stay"`, random/empty neighbour,
+  `"random_empty"`, `"random_cell"`, `direction`, scalar and per-agent
+  `range =`, `axes_only`, `when =`, wired and patchless `uphill`/`downhill`
+  with `.dist`, and continuous `offset()`/`forward()`), `abm_tell()` (including
+  `partner_<col>`, `"add"`/`"collect"`, `.order =`, and `via =`),
+  `abm_sequential()` (including `when =`, `.scope = "population"`, `cell_<col>`,
+  `.cost`, and relations), `abm_draw()` (including `via =`), network and
+  relation `abm_link()`/`abm_unlink()` (`via =`), `abm_pairs()`, `abm_repeat()`,
+  and native tick logging, measures, checks, and `abm_run(until =)`, with
+  `Ctrl-C` interruption honoured inside the loop.
 * Parallel sweeps (`abm_run(cores = k)`) now also work on Windows via a PSOCK
   worker pool (Unix continues to use forks), giving results identical to
   `cores = 1`.

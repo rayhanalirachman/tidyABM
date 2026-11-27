@@ -229,7 +229,7 @@ test_that("native steps keep every new R object protected (gctorture)", {
   # FR12: births attached to the network, births by count, deaths that drop edges
   go9 <- abm_go(abm_birth(when = x > 0.5, links = 2,
                           attach_via = abm_match(pair = "network", from = "parent")),
-                abm_birth(n = 2, inherit = list(k ~ 1L), attach_via = abm_match(pair = "network")),
+                abm_birth(n = 2, group = "a", inherit = list(k ~ 1L), attach_via = abm_match(pair = "network")),
                 abm_death(when = x < 0.3))
   ref9 <- run_in("r", m, go9, ticks = 2, seed = 3)
   gctorture(TRUE)
@@ -330,6 +330,99 @@ test_that("native steps keep every new R object protected (gctorture)", {
   gott1 <- tryCatch(run_in("rust", mt1, got1_go, ticks = 2, seed = 5), error = identity)
   gctorture(FALSE)
   expect_identical(gott1, reft1)
+
+  # Grammar refinements: .tick, cell_<col>, .cost, when=, range=, random_empty/cell,
+  # offset/forward, tell(add, .order, via), neighbours(.default, via), draw(via),
+  # birth(random_edge, group=), sequential(when, population), abm_run(until=)
+  mg <- abm_setup(
+    agents = list(
+      patches = abm_agents(food = ~seq_len(n) %% 4L, chem = 0, e = 0),
+      bugs = abm_agents(n = 4, e = ~seq_len(n) * 1.5, vis = c(1L, 2L, 1L, 2L),
+                        jailed = c(TRUE, FALSE, FALSE, FALSE), pri = ~seq_len(n), msg = 0, d = 0)
+    ),
+    space = abm_space(type = "grid", dims = c(3, 3), diagonals = FALSE, on = "patches"),
+    network = abm_network(type = "manual", edges = data.frame(from = 10L, to = 11L)),
+    globals = list(st = 0L),
+    seed = 7
+  )
+  gog <- abm_go(
+    abm_rules(e ~ e + cell_food * 0.1 + .tick * 0.01, when = !jailed),
+    abm_move(to = uphill(food), who = "bugs", range = vis, axes_only = TRUE,
+             avoid_occupied = TRUE, when = !jailed),
+    abm_move(to = "random_empty", who = "bugs", when = !jailed),
+    abm_tell(chem ~ 1, to = .cell, when = .group == "bugs", .resolve = "add"),
+    abm_tell(msg ~ e, to = "neighbours", via = "network", .order = pri, .resolve = "first"),
+    abm_draw(w ~ runif(n()), via = "space"),
+    abm_neighbours(sp_nb ~ sum(food), via = "space", .default = -1L),
+    abm_match(pair = "nearest", coords = e, eligible = .group == "bugs", among = .group == "bugs"),
+    abm_rules(d ~ .cost),
+    abm_sequential(e ~ e + cell_food * 0.1, when = .group == "bugs" & !jailed, .scope = "population"),
+    abm_birth(n = 1, group = "bugs", attach = "random_edge", links = 1),
+    abm_global(st ~ .tick)
+  )
+  refg <- run_in("r", mg, gog, ticks = 3, seed = 6, until = ~.tick >= 2L)
+  gctorture(TRUE)
+  gotg <- tryCatch(run_in("rust", mg, gog, ticks = 3, seed = 6, until = ~.tick >= 2L), error = identity)
+  gctorture(FALSE)
+  expect_identical(gotg, refg)
+
+  mc <- abm_setup(
+    agents = abm_agents(n = 4, vx = 0.5, vy = -0.3, hd = 0.5, act = c(TRUE, FALSE, TRUE, FALSE)),
+    space = abm_space(type = "continuous", dims = c(4, 4), torus = c(TRUE, FALSE)),
+    seed = 2
+  )
+  goc <- abm_go(abm_move(to = offset(vx, vy), when = act),
+                abm_move(to = forward(0.4, hd), when = !act))
+  refc <- run_in("r", mc, goc, ticks = 2, seed = 4)
+  gctorture(TRUE)
+  gotc <- tryCatch(run_in("rust", mc, goc, ticks = 2, seed = 4), error = identity)
+  gctorture(FALSE)
+  expect_identical(gotc, refc)
+
+  # Wave 2: .dist + bucketing, double pair-view mean, 2-D/torus nearest, weighted one_of
+  md <- abm_setup(
+    agents = abm_agents(n = 70, w = ~seq_len(n) * 1.11, nb_w = 0, d = 0, p = 0),
+    space = abm_space(type = "continuous", dims = c(12, 12), torus = TRUE),
+    globals = list(r = 3),
+    seed = 8
+  )
+  god <- abm_go(
+    abm_neighbours(nb_w ~ mean(w), within = .dist <= r & .id != own_.id, .default = 0),
+    abm_match(pair = "nearest"),
+    abm_rules(d ~ .cost),
+    abm_match(pair = "nearest", coords = c(.x, .y)),
+    abm_rules(d ~ d + .cost),
+    abm_match(pair = "nearest", cost = .dist + 0.01 * w),
+    abm_rules(d ~ d + .cost),
+    abm_match(pair = "one_of", weight = w),
+    abm_rules(p ~ partner_w)
+  )
+  refd <- run_in("r", md, god, ticks = 2, seed = 8)
+  gctorture(TRUE)
+  gotd <- tryCatch(run_in("rust", md, god, ticks = 2, seed = 8), error = identity)
+  gctorture(FALSE)
+  expect_identical(gotd, refd)
+
+  # Wave 2: relation link/unlink/rules/neighbours/match + death pruning relations
+  mr <- abm_setup(
+    agents = list(b = abm_agents(n = 5, w = ~seq_len(n), avg_u = 0, tgt = c(6L, 7L, 6L, 7L, 6L)),
+                  s = abm_agents(n = 2, p = c(1, 2))),
+    relations = list(rel = abm_relation(data.frame(from = 1:3, to = c(6L, 6L, 7L), u = c(1, 2, 3)), u = 0)),
+    seed = 9
+  )
+  gor <- abm_go(
+    abm_match(pair = "one_of", eligible = .group == "b", among = .rel),
+    abm_rules(rel_u ~ rel_u + 1, w ~ w + coalesce(rel_u, 0)),
+    abm_neighbours(avg_u ~ mean(rel_u), within = .rel, .default = 0),
+    abm_link(via = "rel", to = tgt, when = .group == "b" & w > 3, u ~ 5),
+    abm_unlink(via = "rel", when = rel_u > 5),
+    abm_death(when = .group == "b" & .id == 1L)
+  )
+  refr <- run_in("r", mr, gor, ticks = 2, seed = 9)
+  gctorture(TRUE)
+  gotr <- tryCatch(run_in("rust", mr, gor, ticks = 2, seed = 9), error = identity)
+  gctorture(FALSE)
+  expect_identical(gotr, refr)
 })
 
 test_that("FR9b: measures and checks compiled natively give R's tables and errors", {

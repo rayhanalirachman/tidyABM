@@ -8,20 +8,18 @@ abm_agents(n = NULL, ..., at = NULL)
 }
 \arguments{
 \item{n}{Number of agents in this group. A single positive integer. Optional,
-and ignored, for the group a grid or line \code{\link[=abm_network]{abm_network()}} is wired to,
-which inherits \code{prod(dims)} instead.}
+and ignored, for the group a grid \code{\link[=abm_space]{abm_space()}} is wired to, which inherits
+\code{prod(dims)} instead.}
 
 \item{...}{Named column specifications. Each is either a plain value (which
 is recycled) or a one-sided formula (which is evaluated once, per group).
-Names beginning with \code{.} are reserved for the package.}
+Names beginning with \code{.} or \code{cell_} are reserved for the package.}
 
-\item{at}{Where on the lattice this group starts, as a one-sided formula
-evaluated once, like a column. It must yield a cell id (a wired-group
-\code{.id}), either one to recycle or one per agent. The expression sees this
-group's own columns, \code{n}, \code{dims}, and the wired group's columns, so both
-\code{at = ~sample(prod(dims), n, replace = TRUE)} and \code{at = ~which(nest)[1]}
-work. Only meaningful in a model with a lattice; the default is a uniform
-random placement.}
+\item{at}{Where in space this group starts. On a grid: \code{"unique"} for random
+distinct cells, or a one-sided formula returning cell ids (sees \code{n}, \code{n()},
+\code{dims}, this group's columns, and wired patch columns). On a continuous
+space: a one-sided formula returning \code{.x} (1-D) or \code{list(x = ~..., y = ~...)}
+(2-D). Defaults to uniform random placement.}
 }
 \value{
 An \code{abm_agents} specification object.
@@ -40,15 +38,14 @@ Column values follow one rule:
 must return either a length-\code{n} vector or a length-1 value to recycle.
 }
 
-Formulas are evaluated in order, and each one can see \code{n} as well as any
-column defined before it, so \code{abm_agents(n = 200, wtp = ~rnorm(n, 50, 10), offer = ~wtp * 0.8)} works as written.
+Formulas are evaluated in order, and each one can see \code{n} (or \code{n()}) as well
+as any column defined before it, so \code{abm_agents(n = 200, wtp = ~rnorm(n, 50, 10), offer = ~wtp * 0.8)} works as written.
 }
-\section{On a lattice}{
-Two things change when the model has a grid or line network (see
-\code{\link[=abm_network]{abm_network()}}). The group that network is wired to \strong{omits \code{n}}: its count
-is \code{prod(dims)}, and passing a matching \code{n} is allowed while a mismatch is an
-error. Every other group gets a \code{.cell} saying which cell it is standing on,
-drawn uniformly at random unless \code{at} says otherwise.
+\section{In space}{
+When the model has a spatial geometry (see \code{\link[=abm_space]{abm_space()}}), a grid-wired
+patch group \strong{omits \code{n}} and inherits \code{prod(dims)}. Mobile groups get \code{.cell}
+(and \code{.x} / \code{.y}) on grids, or float \code{.x} / \code{.y} on continuous spaces, placed
+uniformly at random unless \code{at} says otherwise.
 }
 
 \examples{

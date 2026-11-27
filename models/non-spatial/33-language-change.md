@@ -22,8 +22,7 @@ seed_net <- abm_setup(
 )
 
 grow <- abm_go(
-  abm_birth(n = 1,
-            attach_via = abm_match(pair = "network", from = "random_edge")),
+  abm_birth(n = 1, attach = "random_edge"),
   abm_rules(dummy ~ dummy)
 )
 

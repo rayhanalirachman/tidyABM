@@ -33,28 +33,26 @@ hotelling <- function(n_shops = 2, n_buyers = 400, ticks = 300, step = 1,
   # every buyer walks to the nearest shop and the shop counts who turned up
   count_buyers <- list(
     abm_rules(customers ~ 0, .scope = "population"),
-    abm_match(pair = "nearest", by = x,
-              eligible = .group == "buyers", among = .group == "shops"),
-    abm_tell(customers ~ 1, to = .partner, when = .group == "buyers",
-             .resolve = "sum")
+    abm_match(
+      pair = "nearest", coords = x,
+      eligible = .group == "buyers", among = .group == "shops",
+      abm_tell(customers ~ 1, to = .partner, when = .group == "buyers",
+               .resolve = "sum")
+    )
   )
 
   # A shop compares a step against what it is getting *now*, not against the
   # best it ever got. The difference matters: once a rival moves in next door
   # your old takings are unreachable, and a shop that kept comparing against
   # them would never move again.
-  go <- do.call(abm_go, c(
+  go <- abm_go(
     count_buyers,
-    list(
-      abm_rules(base  ~ customers, .scope = "population"),
-      abm_rules(x_old ~ x, .scope = "population"),
-      abm_rules(x ~ pmin(100, pmax(0, x + sample(c(-1, 1), n(), TRUE) * step)),
-                .scope = "population")
-    ),
+    abm_rules(base  ~ customers),
+    abm_rules(x_old ~ x),
+    abm_rules(x ~ pmin(100, pmax(0, x + sample(c(-1, 1), n(), TRUE) * step))),
     count_buyers,
-    list(abm_rules(x ~ if_else(customers > base, x, x_old),
-                   .scope = "population"))
-  ))
+    abm_rules(x ~ if_else(customers > base, x, x_old))
+  )
 
   r <- abm_run(m, go, ticks = ticks, seed = seed)
   f <- r[r$tick == ticks, ]

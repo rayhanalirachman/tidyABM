@@ -185,21 +185,22 @@ test_that("the one-group rule path equals the general loop", {
                  globals = list(g = 2), seed = 4)
   state <- list(groups = m$groups, globals = m$globals, edges = NULL,
                 relations = NULL, match = NULL)
-  # a match that paired nobody narrows nothing, but sends the step the
-  # general way
+  # `.scope = "population"` with an empty standing match sends the step the
+  # general way while still writing every agent
   general <- state
   general$match <- list(match = tidyABM:::empty_match(), size = 2L)
   steps <- list(
-    abm_rules(x ~ x * g + runif(n()), y ~ sample(k), z ~ dplyr::row_number()),
-    abm_rules(x ~ mean(x)),
-    abm_rules(w ~ x, x ~ x + 1, k ~ as.character(k)),
+    abm_rules(x ~ x * g + runif(n()), y ~ sample(k), z ~ dplyr::row_number(),
+              .scope = "population"),
+    abm_rules(x ~ mean(x), .scope = "population"),
+    abm_rules(w ~ x, x ~ x + 1, k ~ as.character(k), .scope = "population"),
     abm_rules(x ~ cumsum(x), .scope = "population"))
   for (st in steps) {
     a <- withr::with_seed(1, run_rules(st, state))
     b <- withr::with_seed(1, run_rules(st, general))
     expect_identical(a$groups, b$groups)
   }
-  bad <- abm_rules(x ~ c(1, 2), y ~ 1)
+  bad <- abm_rules(x ~ c(1, 2), y ~ 1, .scope = "population")
   expect_identical(tryCatch(run_rules(bad, state), error = conditionMessage),
                    tryCatch(run_rules(bad, general), error = conditionMessage))
   expect_true(is.character(tryCatch(run_rules(bad, state), error = conditionMessage)))

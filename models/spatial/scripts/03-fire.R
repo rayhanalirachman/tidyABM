@@ -19,9 +19,9 @@ library(tidyABM)
 
 forest <- function(density, w = 100, seed = 1) {
   abm_setup(
-    agents  = abm_agents(state = ~if_else(runif(n) < density, "tree", "empty")),
-    network = abm_network(type = "grid", dims = c(w, w),
-                          diagonals = FALSE, torus = FALSE),
+    agents = abm_agents(state = ~if_else(runif(n) < density, "tree", "empty")),
+    space  = abm_space(type = "grid", dims = c(w, w),
+                       diagonals = FALSE, torus = FALSE),
     seed = seed)
 }
 fire_go <- function(w = 100) abm_go(
@@ -122,11 +122,11 @@ ggsave(fig_file("03-fire-lattice.png"), p2, width = 8, height = 4.4, dpi = 150,
 # forest is the same draw as before (one runif(n) against the density).
 lit_forest <- function(density, w = 100, seed = 1) {
   abm_setup(
-    agents  = abm_agents(state = ~case_when(runif(n) >= density ~ "empty",
-                                            .x == 1 ~ "burning",
-                                            TRUE ~ "tree")),
-    network = abm_network(type = "grid", dims = c(w, w),
-                          diagonals = FALSE, torus = FALSE),
+    agents = abm_agents(state = ~case_when(runif(n) >= density ~ "empty",
+                                           .x == 1 ~ "burning",
+                                           TRUE ~ "tree")),
+    space  = abm_space(type = "grid", dims = c(w, w),
+                       diagonals = FALSE, torus = FALSE),
     seed = seed)
 }
 spread_go <- abm_go(

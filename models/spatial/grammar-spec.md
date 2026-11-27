@@ -11,13 +11,14 @@ produced it), and the surface the ten models in
 
 ## Mental model
 
-A lattice **is a network**. `abm_network(type = "grid")` produces the same edge
-list every other network type produces, so patches are ordinary agents and
-everything that already reads a network — `abm_neighbours()`,
-`abm_match(pair = "network")`, `abm_link()`, `abm_edges()` — works on a grid
-with no change. A mobile agent's location is a patch `.id` held in a reserved
-`.cell` column; moving is writing that column. There is no second medium and no
-patch-specific rule syntax.
+Spatial geometry lives in `abm_space()` (`type = "grid"` for 1-D/2-D discrete
+lattices, or `type = "continuous"` for 1-D/2-D coordinate boxes), separate from
+undirected social connections in `abm_network()`. On a grid with patches,
+patches are ordinary agents so `abm_neighbours()`, `abm_match(pair = "network")`,
+and `abm_edges()` work unchanged (and `abm_network(type = "grid" | "line")`
+remains supported as a deprecated alias). A mobile agent's location is a patch
+`.id` held in `.cell`, it reads its patch's columns as read-only `cell_<col>`,
+writes back via `abm_tell(..., to = .cell)`, and moves via `abm_move()`.
 
 Three tiers, separable for scoping:
 
@@ -78,9 +79,9 @@ patches = abm_grid(dims = c(w, h), diagonals = FALSE, torus = FALSE,
 desugars exactly to
 
 ```r
-agents  = list(patches = abm_agents(state = ~..., ...))
-network = abm_network(type = "grid", dims = c(w, h),
-                      diagonals = FALSE, torus = FALSE, on = "patches")
+agents = list(patches = abm_agents(state = ~..., ...))
+space  = abm_space(type = "grid", dims = c(w, h),
+                   diagonals = FALSE, torus = FALSE, on = "patches")
 ```
 
 Identical model, identical go block. `...` are patch columns, same rules as
@@ -138,38 +139,42 @@ ants  = abm_agents(n = 100, at = ~which(nest)[1])          # all at the nest
 
 `.x` / `.y` on a mobile agent always mirror its current `.cell`.
 
-### Read the cell an agent is on — `abm_neighbours(within = )`
+### Read the cell an agent is on — `cell_<col>` (or `abm_neighbours(within = )`)
 
-Existing machinery. `within = .group == "patches" & .id == own_.cell` builds the
-(agent, its-patch) pair and aggregates over it:
+Mobile agents read the columns of the patch they stand on directly as read-only
+`cell_<col>` inside `abm_rules()`, `abm_tell()`, `abm_sequential()`, etc.:
 
 ```r
-abm_neighbours(grass_here ~ any(grass), food_here ~ sum(food),
-               within = .group == "patches" & .id == own_.cell)
+abm_rules(energy ~ energy + sheep_gain, when = .group == "sheep" & cell_grass)
 ```
 
-The reverse (a patch reads the agents standing on it) is the same join with the
-roles swapped. Semantically available today; needs to be an equijoin, not a full
-cross-product, to scale.
+For multi-agent aggregates over co-located agents (e.g., a patch reading all
+agents standing on it), `within = .id == own_.cell` remains hash-joined in
+linear time.
 
 ### Write into another agent's row by id — `abm_tell(to = <expr>)`
 
 `to =` accepts an expression yielding an agent id, typically `.cell`:
 
 ```r
-abm_tell(grass ~ FALSE, countdown ~ regrow, to = .cell, when = grass_here)
+abm_tell(grass ~ FALSE, countdown ~ regrow, to = .cell, when = .group == "sheep" & cell_grass)
+abm_tell(chemical ~ 60, to = .cell, .resolve = "add", when = .group == "ants" & carrying)
 ```
 
-Several senders to one target resolve with `.resolve =` as today.
+Several senders to one target resolve with `.resolve =` (`"add"` increments the
+recipient's existing value, `"sum"` replaces it with the sum of incoming messages).
 
-### Interact with co-located agents — `abm_match(.by = <column>)`
+### Interact with co-located agents — `abm_match(.by = <column>, ...)`
 
 `.by =` partitions the match within each distinct value of the column. `.by =
-.cell` confines a match to agents sharing a cell:
+.cell` confines a match to agents sharing a cell, and child steps in `...` scope
+the match cleanly:
 
 ```r
-abm_match(pair = "opposite_group", by = .group, .by = .cell,
-          eligible = .group %in% c("wolves", "sheep"))     # one prey per wolf, per cell
+abm_match(pair = "opposite_group", sides = .group, .by = .cell,
+          eligible = .group %in% c("wolves", "sheep"),
+          abm_rules(energy ~ energy + wolf_gain, when = .group == "wolves"),
+          abm_death(when = .group == "sheep" & !is.na(.partner)))
 ```
 
 Reuses `abm_rules(.by =)`'s grouping idea, applied to matching.
@@ -177,24 +182,25 @@ Reuses `abm_rules(.by =)`'s grouping idea, applied to matching.
 ### Move — `abm_move()` (the one new step)
 
 ```r
-abm_move(along = , to = , who = )
+abm_move(along = NULL, to = , who = , when = NULL)
 ```
 
 | arg | meaning |
 |---|---|
-| `along` | which lattice to move on — a group name (its grid network), or `"network"` for the model network |
-| `to` | `"random_neighbour"`; `uphill(expr)` / `downhill(expr)` — the adjacent cell maximising / minimising `expr` evaluated over the candidate cells; `"stay"` |
-| `who` | which agent groups move this step (others untouched) |
+| `along` | optional: defaults to the model's space/lattice, or a group name / `"space"` / `"network"` |
+| `to` | `"random_neighbour"`, `"random_empty_neighbour"`, `"random_empty"`, `"random_cell"`, `"stay"`, `uphill(expr)` / `downhill(expr)` (seeing `.dist`), or on continuous spaces `offset(dx, dy)` / `forward(by, heading)` |
+| `who` | which agent groups move this step (defaults to all mobile groups) |
+| `when` | optional condition selecting which agents move (others stay put and still occupy their cells) |
 
-Effect: each mover's `.cell` is reassigned to a lattice-neighbour of its current
-cell; `.x` / `.y` follow. Ties random. A mover with no legal target stays put.
+Effect: each mover's `.cell` is reassigned (or `.x` / `.y` on continuous space);
+`.x` / `.y` follow. Ties random. A mover with no legal target stays put.
 
 **L2+ arguments — add only when a model forces one:**
 
 | arg | forced by | meaning |
 |---|---|---|
 | `direction = <column>` | Langton's Ant | step one cell along a stored heading (needs L1 edge directions) |
-| `range = <n>` | Sugarscape | look up to `n` cells away, not just adjacent |
+| `range = <n \| col>` | Sugarscape | look up to `n` (or per-agent column `vision`) cells away |
 | `axes_only = TRUE` | Sugarscape | scan along the axes only |
 | `avoid_occupied = TRUE` | Sugarscape, Rebellion | never land on a cell already holding a `who` mover |
 
@@ -229,8 +235,8 @@ Analysis is ordinary dplyr / ggplot:
 w <- h <- 100
 
 life <- abm_setup(
-  agents  = abm_agents(alive = ~runif(n) < 0.10),
-  network = abm_network(type = "grid", dims = c(w, h))     # diagonals, torus default TRUE
+  agents = abm_agents(alive = ~runif(n) < 0.10),
+  space  = abm_space(type = "grid", dims = c(w, h))        # diagonals, torus default TRUE
 )
 
 go <- abm_go(
@@ -256,26 +262,26 @@ world <- abm_setup(
     sheep   = abm_agents(n = 100, energy = ~runif(n, 4, 8)),
     wolves  = abm_agents(n = 50,  energy = ~runif(n, 4, 8))
   ),
-  network = abm_network(type = "grid", dims = c(w, h), on = "patches",
-                        diagonals = TRUE, torus = TRUE),
+  space = abm_space(type = "grid", dims = c(w, h), on = "patches",
+                    diagonals = TRUE, torus = TRUE),
   globals = list(regrow = 30, sheep_gain = 4, wolf_gain = 20,
                  sheep_repro = 0.04, wolf_repro = 0.05)
 )
 
 go <- abm_go(
-  abm_move(along = "patches", to = "random_neighbour", who = c("sheep", "wolves")),
+  abm_move(to = "random_neighbour", who = c("sheep", "wolves")),
   abm_rules(energy ~ energy - 1),
 
-  abm_neighbours(grass_here ~ any(grass),
-                 within = .group == "patches" & .id == own_.cell),
-  abm_rules(energy ~ dplyr::if_else(grass_here, energy + sheep_gain, energy)),
-  abm_tell(grass ~ FALSE, countdown ~ regrow, to = .cell, when = grass_here),
+  abm_rules(energy ~ energy + sheep_gain, when = .group == "sheep" & cell_grass),
+  abm_tell(grass ~ FALSE, countdown ~ regrow, to = .cell,
+           when = .group == "sheep" & cell_grass),
 
-  abm_match(pair = "opposite_group", by = .group, .by = .cell,
-            eligible = .group %in% c("wolves", "sheep")),
-  abm_rules(energy ~ dplyr::if_else(.group == "wolves" & !is.na(.partner),
-                                    energy + wolf_gain, energy)),
-  abm_death(when = .group == "sheep" & !is.na(.partner)),
+  abm_match(
+    pair = "opposite_group", sides = .group, .by = .cell,
+    eligible = .group %in% c("wolves", "sheep"),
+    abm_rules(energy ~ energy + wolf_gain, when = .group == "wolves"),
+    abm_death(when = .group == "sheep" & !is.na(.partner))
+  ),
 
   abm_death(when = .group %in% c("sheep", "wolves") & energy < 0),
 
@@ -288,8 +294,7 @@ go <- abm_go(
     grass     ~ grass | countdown == 0,
     countdown ~ dplyr::case_when(grass          ~ countdown,
                                  countdown <= 0 ~ regrow,
-                                 TRUE           ~ countdown - 1),
-    .scope = "population")
+                                 TRUE           ~ countdown - 1))
 )
 
 result <- abm_run(world, go, ticks = 500, seed = 1, record = 10)

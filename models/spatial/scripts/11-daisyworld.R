@@ -20,8 +20,8 @@ run_one <- function(lum, w = 40, ticks = 300, seed = 1) {
     agents = abm_agents(
       kind = ~sample(c("white", "black", "none"), n, TRUE, c(0.2, 0.2, 0.6)),
       age  = 0L),
-    network = abm_network(type = "grid", dims = c(w, w),
-                          diagonals = TRUE, torus = TRUE),
+    space = abm_space(type = "grid", dims = c(w, w),
+                      diagonals = TRUE, torus = TRUE),
     globals = list(luminosity = lum, global_temp = 0), seed = seed)
 
   go <- abm_go(

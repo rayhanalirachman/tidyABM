@@ -15,13 +15,12 @@ empty_match <- function() .empty_match
 #' tick, and `tibble()`'s argument handling was a third of a simple model's
 #' run. `partner` and `role` may be a single value to recycle.
 #' @noRd
-new_match <- function(id, partner, role, group_id) {
+new_match <- function(id, partner, role, group_id, cost = NULL) {
   n <- length(id)
-  new_tbl(
-    list(.id = id, .partner = rep_len(partner, n), .role = rep_len(role, n),
-         .group_id = group_id),
-    n
-  )
+  cols <- list(.id = id, .partner = rep_len(partner, n), .role = rep_len(role, n),
+               .group_id = group_id)
+  if (!is.null(cost)) cols$.cost <- as.double(rep_len(cost, n))
+  new_tbl(cols, n)
 }
 
 #' Evaluate a condition quosure against the agent tibble + globals
@@ -90,9 +89,9 @@ assign_roles <- function(role_quo, agents, globals, a_idx, b_idx) {
 #' only. A match decides who meets whom; it never writes an agent column.
 #' @noRd
 run_match <- function(spec, agents, edges, globals, call = rlang::caller_env(),
-                      relations = NULL, eligible = NULL) {
+                      relations = NULL, eligible = NULL, space = NULL) {
   if (!is.null(spec$dot_by)) {
-    return(run_match_by(spec, agents, edges, globals, call, relations))
+    return(run_match_by(spec, agents, edges, globals, call, relations, space = space))
   }
   # `eligible` arrives precomputed from `run_match_by()`, which evaluates it
   # once over the population rather than once per partition
@@ -100,14 +99,14 @@ run_match <- function(spec, agents, edges, globals, call = rlang::caller_env(),
   pool <- agents$.id[eligible]
   # `eligible` says who takes part; `among` says who may be picked. They are
   # different questions for the directional modes, where choosing is one-way.
-  ch <- choice_set(spec, agents, globals, pool, call, relations)
+  ch <- choice_set(spec, agents, globals, pool, call, relations, space = space)
 
   res <- switch(
     spec$pair,
     random         = match_random(spec, agents, globals, pool),
     one_of         = match_one_of(spec, agents, globals, pool, ch),
     opposite_group = match_opposite(spec, agents, globals, pool, call),
-    nearest        = match_nearest(spec, agents, globals, pool, ch, call, relations),
+    nearest        = match_nearest(spec, agents, globals, pool, ch, call, relations, space = space),
     network        = match_network(spec, agents, edges, pool)
   )
   res
@@ -121,7 +120,8 @@ run_match <- function(spec, agents, edges, globals, call = rlang::caller_env(),
 #' one group per pair. `NA` is not a partition: an agent with no value sits the
 #' step out, the way it does in `abm_rules(.by =)`.
 #' @noRd
-run_match_by <- function(spec, agents, edges, globals, call, relations = NULL) {
+run_match_by <- function(spec, agents, edges, globals, call, relations = NULL,
+                         space = NULL) {
   by <- by_columns(spec$dot_by, call)
   if (length(by) != 1L || !by %in% names(agents)) {
     abm_abort(
@@ -160,7 +160,8 @@ run_match_by <- function(spec, agents, edges, globals, call, relations = NULL) {
     el <- eligible[idx]
     if (sum(el) < need) next
     sub <- vctrs::vec_slice(agents, idx)
-    m <- run_match(inner, sub, edges, globals, call, relations, eligible = el)
+    m <- run_match(inner, sub, edges, globals, call, relations, eligible = el,
+                   space = space)
     if (nrow(m) == 0L) next
     m$.group_id <- m$.group_id + offset
     offset <- max(m$.group_id)
@@ -226,7 +227,8 @@ match_by_opposite <- function(spec, agents, key, eligible) {
 #' @noRd
 mentions_pair <- function(quo, relations = NULL) {
   if (is.null(quo)) return(FALSE)
-  any(startsWith(all.vars(rlang::quo_get_expr(quo)), "own_")) ||
+  vars <- all.vars(rlang::quo_get_expr(quo))
+  any(startsWith(vars, "own_")) || ".dist" %in% vars ||
     mentions_relation(quo, relations)
 }
 
@@ -238,7 +240,7 @@ mentions_pair <- function(quo, relations = NULL) {
 #' matrix shaped like `ok`).
 #' @noRd
 choice_set <- function(spec, agents, globals, pool, call = rlang::caller_env(),
-                       relations = NULL) {
+                       relations = NULL, space = NULL) {
   if (!spec$pair %in% c("one_of", "nearest")) return(NULL)
   pairwise <- mentions_pair(spec$among, relations) ||
     mentions_pair(spec$weight, relations)
@@ -267,13 +269,15 @@ choice_set <- function(spec, agents, globals, pool, call = rlang::caller_env(),
   cand <- which(candidate_filter(spec$among, agents, globals))
   if (!length(cand)) return(list(ids = agents$.id[0], ok = NULL, w = NULL))
   ns <- length(focal); nc <- length(cand)
+  pvars <- unique(c(
+    if (!is.null(spec$among)) all.vars(rlang::quo_get_expr(spec$among)),
+    if (!is.null(spec$weight)) all.vars(rlang::quo_get_expr(spec$weight))))
   view <- pair_view(agents,
                     focal_idx = rep(focal, each = nc),
                     cand_idx  = rep(cand, times = ns),
                     relations = relations,
-                    vars = unique(c(
-                      if (!is.null(spec$among)) all.vars(rlang::quo_get_expr(spec$among)),
-                      if (!is.null(spec$weight)) all.vars(rlang::quo_get_expr(spec$weight)))))
+                    vars = pvars,
+                    space = space)
 
   ok <- if (is.null(spec$among)) rep(TRUE, nrow(view))
         else eval_over_view(spec$among, view, globals)
@@ -472,13 +476,23 @@ match_opposite <- function(spec, agents, globals, pool, call) {
             c(role_a[keep], role_b[keep]), rep(seq_len(sum(keep)), 2))
 }
 
-match_nearest <- function(spec, agents, globals, pool, ch, call, relations = NULL) {
+match_nearest <- function(spec, agents, globals, pool, ch, call, relations = NULL,
+                          space = NULL) {
   ch <- ch %||% list(ids = agents$.id, ok = NULL, w = NULL)
   if (!is.null(spec$cost)) {
-    return(match_cheapest(spec, agents, globals, pool, ch, call, relations))
+    return(match_cheapest(spec, agents, globals, pool, ch, call, relations, space = space))
   }
   candidates <- ch$ids
-  by <- by_columns(spec$by, call)
+  if (is.null(spec$by)) {
+    if (!is.null(space) && identical(space$type, "continuous")) {
+      by <- if (length(space$dims) == 1L) ".x" else c(".x", ".y")
+    } else {
+      abm_abort('{.arg coords} or {.arg cost} is required when {.code pair = "nearest"}.',
+                class = "tidyABM_missing_arg", call = call)
+    }
+  } else {
+    by <- by_columns(spec$by, call)
+  }
   missing <- setdiff(by, names(agents))
   if (length(missing)) {
     abm_abort("Column{?s} {.field {missing}} not found.",
@@ -490,7 +504,7 @@ match_nearest <- function(spec, agents, globals, pool, ch, call, relations = NUL
                         logical(1))]
   if (length(not_num)) {
     abm_abort(
-      c('{.code pair = "nearest"} measures distance, so {.arg by} must name numeric columns.',
+      c('{.code pair = "nearest"} measures distance, so {.arg coords} must name numeric columns.',
         "x" = "{.field {not_num}} {?is/are} {.cls {class(agents[[not_num[[1]]]])[[1]]}}.",
         "i" = "For a nearness that is not a distance, write it as {.arg cost}: {.code cost = <number the chooser minimises>}."),
       class = "tidyABM_bad_by", call = call
@@ -502,19 +516,27 @@ match_nearest <- function(spec, agents, globals, pool, ch, call, relations = NUL
     return(empty_match())
   }
 
-  a <- as.matrix(sub[, by, drop = FALSE])
-  b <- as.matrix(cand[, by, drop = FALSE])
-  # squared Euclidean distance from every chooser to every candidate; only the
-  # ordering matters, so the square root is not worth taking
-  d <- outer(rowSums(a^2), rowSums(b^2), "+") - 2 * (a %*% t(b))
+  use_torus <- !is.null(space) && is.null(spec$by) && any(space$torus)
+  d <- matrix(0, nrow = nrow(sub), ncol = nrow(cand))
+  for (k in seq_along(by)) {
+    diff_k <- abs(outer(as.double(sub[[by[[k]]]]), as.double(cand[[by[[k]]]]), "-"))
+    if (use_torus && space$torus[[k]]) {
+      L <- space$dims[[k]]
+      diff_k <- pmin(diff_k, L - diff_k)
+    }
+    d <- d + diff_k * diff_k
+  }
   d[outer(sub$.id, cand$.id, "==")] <- Inf   # never yourself
   # a candidate set of the chooser's own rules the rest out
   if (!is.null(ch$ok)) d[!ch$ok[, match(cand$.id, ch$ids), drop = FALSE]] <- Inf
-  ok <- is.finite(matrixStats_rowMins(d))
+  mins <- matrixStats_rowMins(d)
+  ok <- is.finite(mins)
   if (!any(ok)) return(empty_match())
   nearest <- max.col(-d, ties.method = "first")
+  win_cost <- sqrt(pmax(0, mins[ok]))
 
-  new_match(sub$.id[ok], cand$.id[nearest[ok]], NA_character_, seq_len(sum(ok)))
+  new_match(sub$.id[ok], cand$.id[nearest[ok]], NA_character_, seq_len(sum(ok)),
+            cost = win_cost)
 }
 
 #' `pair = "nearest"` with a cost expression rather than a coordinate
@@ -524,7 +546,8 @@ match_nearest <- function(spec, agents, globals, pool, ch, call, relations = NUL
 #' `abm_neighbours()` gives, and it is what lets the thing being minimised be a
 #' delivered price or an energy deficit rather than a distance.
 #' @noRd
-match_cheapest <- function(spec, agents, globals, pool, ch, call, relations = NULL) {
+match_cheapest <- function(spec, agents, globals, pool, ch, call, relations = NULL,
+                           space = NULL) {
   candidates <- ch$ids
   sub_idx  <- which(agents$.id %in% pool)
   cand_idx <- which(agents$.id %in% candidates)
@@ -537,7 +560,7 @@ match_cheapest <- function(spec, agents, globals, pool, ch, call, relations = NU
   # `.of` is the chooser and `.id` the candidate, as in every other pair view.
   ci <- rep(cand_idx, times = length(sub_idx))
   si <- rep(sub_idx,  each  = length(cand_idx))
-  view <- pair_view(agents, si, ci, relations)
+  view <- pair_view(agents, si, ci, relations, space = space)
 
   quo <- spec$cost
   quo <- rlang::quo_set_env(quo, abm_eval_env(quo, globals))
@@ -559,8 +582,10 @@ match_cheapest <- function(spec, agents, globals, pool, ch, call, relations = NU
   ord <- order(view$.of[keep], val[keep])
   ch  <- view$.of[keep][ord]
   cd  <- view$.id[keep][ord]
+  cv  <- val[keep][ord]
   first <- !duplicated(ch)
-  new_match(ch[first], cd[first], NA_character_, seq_len(sum(first)))
+  new_match(ch[first], cd[first], NA_character_, seq_len(sum(first)),
+            cost = cv[first])
 }
 
 #' Row minima of a matrix, without a dependency

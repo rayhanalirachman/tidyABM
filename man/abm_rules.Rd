@@ -4,13 +4,17 @@
 \alias{abm_rules}
 \title{Update agent columns}
 \usage{
-abm_rules(..., .scope = c("match", "population"), .by = NULL)
+abm_rules(..., when = NULL, .scope = c("match", "population"), .by = NULL)
 }
 \arguments{
 \item{...}{One or more \code{column ~ expression} rules. The expression can use
 any column of the agent tibble, any global, any \verb{partner_<col>} produced by
 a preceding \code{\link[=abm_match]{abm_match()}}, \code{.role}, and anything visible where the rule was
 written.}
+
+\item{when}{Optional row-level filter condition evaluated before the rules.
+Rows where \code{when} is \code{FALSE} or \code{NA} are left unchanged, and \code{n()} reflects
+the filtered subset.}
 
 \item{.scope}{\code{"match"} (the default) evaluates the rules within whatever
 grouping the preceding \code{\link[=abm_match]{abm_match()}} produced. \code{"population"} ignores it and
@@ -58,27 +62,18 @@ evaluates it against every agent at once, ignoring the standing match.
 
 A match stands until the next one or until the tick ends, and it decides
 \emph{who is written} as well as how the rules are grouped: an agent the match
-left out keeps the value it had, silently. That is the intended reading of
-"only the agents who met do this", and it is the wrong one for a rule that
-happens to sit after a match and is meant for everybody. When the pairing
-is partial or directional -- \code{"one_of"}, \code{"network"}, \code{"nearest"}, or any
-mode under an \code{eligible} -- say \code{.scope = "population"} on such a rule
-rather than relying on position.
-
-One case is different, and worth knowing before a population can go
-extinct or a tick can pass with nobody eligible. A match that ran and
-paired \emph{nobody} does not narrow the step: every agent is written, and
-every \verb{partner_<col>} and \code{.partner} is \code{NA}. So \code{fed ~ TRUE} after a
-match that found no prey feeds everyone, and \code{x ~ partner_x} sets every
-\code{x} to \code{NA}. Write such a rule so that it is correct with a missing
-partner -- \code{fed ~ !is.na(.partner)}, or a \code{case_when()} whose last branch
-keeps the old value -- and it is correct on every tick. (\code{\link[=abm_sequential]{abm_sequential()}}
-differs here: after a match that paired nobody it writes nobody.)
+left out keeps the value it had, silently. If a standing match paired
+\emph{nobody}, an \code{abm_rules()} step with \code{.scope = "match"} (the default) writes
+nobody either, consistent with partial matches and \code{\link[=abm_sequential]{abm_sequential()}}. When a
+rule sits after a match and is meant for everybody, pass \code{.scope = "population"} (or scope the match to its own child steps with
+\verb{abm_match(..., <steps>)}).
 
 Inside a rule, \code{n()} is the number of agents the rule is being evaluated
-over: the pair, the group, the \code{.by} partition or the whole population. It
-is a function here, where in an \code{\link[=abm_agents]{abm_agents()}} setup formula \code{n} is a
-number. The bare \code{n()} and \code{dplyr::n()} mean the same thing.
+over: the pair, the group, the \code{.by} partition, the \verb{when =} subset, or the
+whole population. The bare \code{n()} and \code{dplyr::n()} mean the same thing. Every
+rule also sees \code{.tick} (read-only integer tick number), \verb{cell_<col>} (read-only
+columns of the patch a mobile agent stands on), and \code{.cost} after
+\code{abm_match(pair = "nearest", size = 2)}.
 
 Under a pairing of two, a rule also sees the pair's \code{\link[=abm_relation]{abm_relation()}} values,
 \verb{R_<col>} for \code{(me -> .partner)} and \verb{R_<col>_back} for the reverse row, and

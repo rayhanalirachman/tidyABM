@@ -5,14 +5,12 @@
 # two-line idiom over existing steps, not a new one; `abm_move(to = uphill())`
 # is the argmax flavour of the same step Wolf-Sheep needs.
 #
-# Two things worth reading closely, because the design sketch gets both wrong:
+# Two things worth reading closely:
 #
-#  * `abm_tell()`'s right-hand side is evaluated in the SENDER's row. The ant
-#    has no `chemical` column, so `chemical ~ chemical + 60` reads NA. What an
-#    additive deposit wants is a per-tick mailbox: clear it at the top of the
-#    tick, have every ant on a cell add to it with `.resolve = "sum"`, then fold
-#    it into the field.
-#  * a pure lattice argmax makes brittle trails, because an ant climbs to a
+#  * Mobile agents read their current patch directly via `cell_<col>` and write
+#    additive deposits directly via `abm_tell(..., to = .cell, .resolve = "add")`
+#    (`+=`), with no per-tick mailbox columns needed.
+#  * A pure lattice argmax makes brittle trails, because an ant climbs to a
 #    local maximum and stops exploring. NetLogo's ants `wiggle`; the lattice
 #    analogue is a small random term inside `uphill()`, which is just an
 #    expression like any other.
@@ -28,38 +26,31 @@ world <- abm_setup(
       nest_scent = ~200 - sqrt((.x - cx)^2 + (.y - cy)^2),
       food = ~as.integer(((.x - cx - 9)^2 + (.y - cy)^2 < 7) |
                          ((.x - cx)^2 + (.y - cy + 11)^2 < 7)),
-      chemical = 0, deposit = 0, eaten = 0L),
+      chemical = 0),
     ants = abm_agents(n = 80, carrying = FALSE, at = ~which(nest)[1])),
-  network = abm_network(type = "grid", dims = c(w, h), on = "patches",
-                        diagonals = TRUE, torus = FALSE),
+  space = abm_space(type = "grid", dims = c(w, h), on = "patches",
+                    diagonals = TRUE, torus = FALSE),
   globals = list(evap = 0.10, diff = 0.30, wiggle = 4))
 
 go <- abm_go(
-  abm_rules(deposit ~ 0, eaten ~ 0L, .scope = "population"),
+  # pick up food or drop it at the nest, then decrement food on picked-up cells
+  abm_rules(picked   ~ !carrying & cell_food > 0,
+            carrying ~ case_when(!carrying & cell_food > 0 ~ TRUE,
+                                 carrying & cell_nest      ~ FALSE,
+                                 TRUE ~ carrying)),
+  abm_tell(food ~ -1L, to = .cell, .resolve = "add",
+           when = .group == "ants" & picked),
 
-  # what the ant is standing on
-  abm_neighbours(here_food ~ sum(food), here_nest ~ any(nest),
-                 here_chem ~ sum(chemical),
-                 within = .id == own_.cell & .group == "patches"),
-
-  # take a unit of food while `carrying` still says what it said on arrival
-  abm_tell(eaten ~ 1L, to = .cell, .resolve = "sum",
-           when = .group == "ants" & !carrying & here_food > 0),
-  abm_rules(carrying ~ case_when(!carrying & here_food > 0 ~ TRUE,
-                                 carrying & here_nest      ~ FALSE,
-                                 TRUE ~ carrying), .scope = "population"),
-  abm_tell(deposit ~ 60, to = .cell, .resolve = "sum",
+  # NetLogo `diffuse` + evaporation (using exact per-cell degree `deg` on bounded grid),
+  # then this tick's additive pheromone deposits
+  abm_neighbours(inflow ~ sum(chemical), deg ~ n()),
+  abm_rules(food     ~ pmax(0L, food),
+            chemical ~ (1 - evap) * ((1 - diff) * chemical + diff * inflow / deg)),
+  abm_tell(chemical ~ 60, to = .cell, .resolve = "add",
            when = .group == "ants" & carrying),
 
-  # NetLogo `diffuse` + evaporation, then this tick's deposits
-  abm_neighbours(inflow ~ sum(chemical)),
-  abm_rules(food     ~ pmax(0L, food - eaten),
-            chemical ~ (1 - evap) * ((1 - diff) * chemical + diff * inflow / 8) +
-                       deposit,
-            .scope = "population"),
-
   # head home if carrying, up the trail if not
-  abm_move(along = "patches", who = "ants",
+  abm_move(who = "ants",
            to = uphill(if_else(carrying, nest_scent,
                                chemical + runif(n()) * wiggle))),
 

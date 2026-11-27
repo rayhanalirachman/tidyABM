@@ -4,11 +4,19 @@
 \alias{abm_sequential}
 \title{Update agent columns one agent at a time}
 \usage{
-abm_sequential(..., .order = NULL)
+abm_sequential(
+  ...,
+  when = NULL,
+  .order = NULL,
+  .scope = c("match", "population")
+)
 }
 \arguments{
 \item{...}{One or more \code{column ~ expression} rules. The left-hand side may
 name either an agent column or a global.}
+
+\item{when}{Optional row-level filter condition; only matching agents run
+this step.}
 
 \item{.order}{Optional expression, evaluated over the whole population,
 whose ascending order is the order agents are processed in. The default is a
@@ -16,6 +24,10 @@ fresh shuffle every step, which is right when the order is meant to be
 arbitrary and wrong when it is part of the model: a queue at a counter, a
 sequential-service constraint, a fixed speaking order. \code{NA} sits the agent
 out of the step.}
+
+\item{.scope}{\code{"match"} (the default) narrows the step to agents in the
+standing \code{\link[=abm_match]{abm_match()}}; \code{"population"} ignores any standing match and runs
+over all agents.}
 }
 \value{
 An \code{abm_sequential} step object.

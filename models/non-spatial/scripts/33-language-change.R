@@ -12,8 +12,7 @@ pa_network <- function(n, seed = 1) {
     network = abm_network(type = "manual", edges = data.frame(from = 1, to = 2))
   )
   grow <- abm_go(
-    abm_birth(n = 1,
-              attach_via = abm_match(pair = "network", from = "random_edge")),
+    abm_birth(n = 1, attach = "random_edge"),
     abm_rules(dummy ~ dummy)
   )
   grown <- abm_run(seed_net, grow, ticks = n - 2, seed = seed)

@@ -17,17 +17,13 @@ start <- 61 + (61 - 1) * w
 langton <- abm_setup(
   agents = list(patches = abm_agents(white = TRUE),
                 ant     = abm_agents(n = 1, heading = 0L, at = ~start)),
-  network = abm_network(type = "grid", dims = c(w, h), on = "patches",
-                        diagonals = FALSE, torus = TRUE))
+  space  = abm_space(type = "grid", dims = c(w, h), on = "patches",
+                     diagonals = FALSE, torus = TRUE))
 
 go <- abm_go(
-  abm_neighbours(here_white ~ all(white),
-                 within = .id == own_.cell & .group == "patches"),
-  abm_rules(heading ~ (heading + if_else(here_white, 1L, 3L)) %% 4L,
-            .scope = "population"),
-  # the ant already knows the cell's colour, so it writes back what it read
-  abm_tell(white ~ !here_white, to = .cell),
-  abm_move(along = "patches", who = "ant", direction = heading)
+  abm_rules(heading ~ (heading + if_else(cell_white, 1L, 3L)) %% 4L),
+  abm_tell(white ~ !cell_white, to = .cell),
+  abm_move(who = "ant", direction = heading)
 )
 
 reference <- function(n_steps) {

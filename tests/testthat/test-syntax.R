@@ -17,16 +17,18 @@ test_that("a dot-prefixed qualifier written without its dot is named", {
   expect_error(abm_neighbours(x ~ sum(y), where = "north"), "\\.where")
   expect_error(abm_tell(x ~ 1, to = .partner, resolve = "sum"), "\\.resolve")
   expect_error(abm_draw(x ~ runif(n()), each = "endpoint"), "\\.each")
-  expect_error(abm_pairs(via = "r", x ~ 1, when = x > 0), "\\.when")
+  expect_s3_class(abm_pairs(via = "r", x ~ 1, when = x > 0), "abm_pairs")
   expect_error(abm_global(x ~ sum(y), by = task), "\\.by")
 })
 
 test_that("a named argument that is not a rule is reported, not evaluated", {
   # these used to fail with "object 'money' not found"
   expect_error(abm_rules(money = money - 1), class = "tidyABM_bad_arg")
-  expect_error(abm_rules(money ~ money - 1, when = money > 0),
+  expect_error(abm_rules(money ~ money - 1, cond = money > 0),
                class = "tidyABM_bad_arg")
-  expect_error(abm_rules(money ~ money - 1, when = money > 0), "abm_death")
+  expect_error(abm_global(total ~ sum(money), when = money > 0),
+               class = "tidyABM_bad_arg")
+  expect_error(abm_global(total ~ sum(money), when = money > 0), "abm_death")
   # named formulas, and names bound to formulas, still pass as they always did
   f <- x ~ x + 1
   expect_s3_class(abm_rules(r1 = f), "abm_rules")
@@ -128,8 +130,10 @@ test_that("a setup formula that fails says what it could see", {
   expect_match(msg, "columns declared before it: a")
   e <- expect_error(abm_setup(agents = abm_agents(n = 5, b = ~a * 2, a = ~runif(n))))
   expect_match(cli::ansi_strip(conditionMessage(e)), "declared after")
-  e <- expect_error(abm_setup(agents = abm_agents(n = 5, a = ~runif(n()))))
-  expect_match(cli::ansi_strip(conditionMessage(e)), "not `n\\(\\)`")
+  # both `n` and `n()` work in setup formulas
+  m_n1 <- abm_setup(agents = abm_agents(n = 5, a = ~runif(n)), seed = 1)
+  m_n2 <- abm_setup(agents = abm_agents(n = 5, a = ~runif(n())), seed = 1)
+  expect_identical(m_n1$groups$agents$a, m_n2$groups$agents$a)
   e <- expect_error(abm_setup(agents = abm_agents(n = 5, alpha = 1, b = ~alpah + 1)))
   expect_match(cli::ansi_strip(conditionMessage(e)), "Did you mean alpha")
 })

@@ -1,10 +1,11 @@
 # Rules, globals, births and deaths --------------------------------------
 
 new_rule_step <- function(rules, class, scope = "match", by = NULL,
-                          order = NULL) {
+                          order = NULL, when = NULL) {
   # `uses_match` is worked out here, once, rather than on every tick
+  quos <- c(lapply(rules, `[[`, "quo"), if (!is.null(when)) list(when))
   structure(list(rules = rules, scope = scope, by = by, order = order,
-                 uses_match = reads_match(lapply(rules, `[[`, "quo"))),
+                 when = when, uses_match = reads_match(quos)),
             class = c(class, "abm_step"))
 }
 
@@ -66,27 +67,19 @@ collect_rules <- function(dots, fn, call = rlang::caller_env()) {
 #'
 #' A match stands until the next one or until the tick ends, and it decides
 #' *who is written* as well as how the rules are grouped: an agent the match
-#' left out keeps the value it had, silently. That is the intended reading of
-#' "only the agents who met do this", and it is the wrong one for a rule that
-#' happens to sit after a match and is meant for everybody. When the pairing
-#' is partial or directional -- `"one_of"`, `"network"`, `"nearest"`, or any
-#' mode under an `eligible` -- say `.scope = "population"` on such a rule
-#' rather than relying on position.
-#'
-#' One case is different, and worth knowing before a population can go
-#' extinct or a tick can pass with nobody eligible. A match that ran and
-#' paired *nobody* does not narrow the step: every agent is written, and
-#' every `partner_<col>` and `.partner` is `NA`. So `fed ~ TRUE` after a
-#' match that found no prey feeds everyone, and `x ~ partner_x` sets every
-#' `x` to `NA`. Write such a rule so that it is correct with a missing
-#' partner -- `fed ~ !is.na(.partner)`, or a `case_when()` whose last branch
-#' keeps the old value -- and it is correct on every tick. ([abm_sequential()]
-#' differs here: after a match that paired nobody it writes nobody.)
+#' left out keeps the value it had, silently. If a standing match paired
+#' *nobody*, an `abm_rules()` step with `.scope = "match"` (the default) writes
+#' nobody either, consistent with partial matches and [abm_sequential()]. When a
+#' rule sits after a match and is meant for everybody, pass `.scope =
+#' "population"` (or scope the match to its own child steps with
+#' `abm_match(..., <steps>)`).
 #'
 #' Inside a rule, `n()` is the number of agents the rule is being evaluated
-#' over: the pair, the group, the `.by` partition or the whole population. It
-#' is a function here, where in an [abm_agents()] setup formula `n` is a
-#' number. The bare `n()` and `dplyr::n()` mean the same thing.
+#' over: the pair, the group, the `.by` partition, the `when =` subset, or the
+#' whole population. The bare `n()` and `dplyr::n()` mean the same thing. Every
+#' rule also sees `.tick` (read-only integer tick number), `cell_<col>` (read-only
+#' columns of the patch a mobile agent stands on), and `.cost` after
+#' `abm_match(pair = "nearest", size = 2)`.
 #'
 #' Under a pairing of two, a rule also sees the pair's [abm_relation()] values,
 #' `R_<col>` for `(me -> .partner)` and `R_<col>_back` for the reverse row, and
@@ -100,6 +93,9 @@ collect_rules <- function(dots, fn, call = rlang::caller_env()) {
 #'   any column of the agent tibble, any global, any `partner_<col>` produced by
 #'   a preceding [abm_match()], `.role`, and anything visible where the rule was
 #'   written.
+#' @param when Optional row-level filter condition evaluated before the rules.
+#'   Rows where `when` is `FALSE` or `NA` are left unchanged, and `n()` reflects
+#'   the filtered subset.
 #' @param .scope `"match"` (the default) evaluates the rules within whatever
 #'   grouping the preceding [abm_match()] produced. `"population"` ignores it and
 #'   evaluates across all agents, so aggregates like `sum()` and draws like
@@ -128,11 +124,13 @@ collect_rules <- function(dots, fn, call = rlang::caller_env()) {
 #'
 #' # every member of a firm is paid an equal share of what the firm produces
 #' abm_rules(pay ~ output(sum(effort)) / n(), .by = firm)
-abm_rules <- function(..., .scope = c("match", "population"), .by = NULL) {
+abm_rules <- function(..., when = NULL, .scope = c("match", "population"),
+                      .by = NULL) {
   check_rule_dots(rlang::enexprs(...), "abm_rules")
   .scope_given <- !missing(.scope)
   .scope <- rlang::arg_match(.scope)
   by <- enquo_or_null(rlang::enquo(.by))
+  when <- enquo_or_null(rlang::enquo(when))
   if (!is.null(by) && .scope_given && .scope == "population") {
     abm_abort(
       c("{.arg .by} and {.code .scope = \"population\"} are different groupings.",
@@ -141,7 +139,7 @@ abm_rules <- function(..., .scope = c("match", "population"), .by = NULL) {
     )
   }
   new_rule_step(collect_rules(rlang::list2(...), "abm_rules"), "abm_rules",
-                scope = .scope, by = by)
+                scope = .scope, by = by, when = when)
 }
 
 #' Update agent columns one agent at a time
@@ -177,12 +175,17 @@ abm_rules <- function(..., .scope = c("match", "population"), .by = NULL) {
 #'
 #' @param ... One or more `column ~ expression` rules. The left-hand side may
 #'   name either an agent column or a global.
+#' @param when Optional row-level filter condition; only matching agents run
+#'   this step.
 #' @param .order Optional expression, evaluated over the whole population,
 #'   whose ascending order is the order agents are processed in. The default is a
 #'   fresh shuffle every step, which is right when the order is meant to be
 #'   arbitrary and wrong when it is part of the model: a queue at a counter, a
 #'   sequential-service constraint, a fixed speaking order. `NA` sits the agent
 #'   out of the step.
+#' @param .scope `"match"` (the default) narrows the step to agents in the
+#'   standing [abm_match()]; `"population"` ignores any standing match and runs
+#'   over all agents.
 #'
 #' @return An `abm_sequential` step object.
 #' @seealso [abm_go()], which lists every step and fixes the order they run
@@ -201,10 +204,14 @@ abm_rules <- function(..., .scope = c("match", "population"), .by = NULL) {
 #'   money       ~ money - got * partner_price,
 #'   partner_stock ~ partner_stock - got
 #' )
-abm_sequential <- function(..., .order = NULL) {
+abm_sequential <- function(..., when = NULL, .order = NULL,
+                           .scope = c("match", "population")) {
   check_rule_dots(rlang::enexprs(...), "abm_sequential")
+  .scope <- rlang::arg_match(.scope)
   new_rule_step(collect_rules(rlang::list2(...), "abm_sequential"),
-                "abm_sequential", order = enquo_or_null(rlang::enquo(.order)))
+                "abm_sequential", scope = .scope,
+                order = enquo_or_null(rlang::enquo(.order)),
+                when = enquo_or_null(rlang::enquo(when)))
 }
 
 #' Update a shared, population-level value
@@ -279,9 +286,11 @@ abm_global <- function(..., .by = NULL) {
 
 # Population -------------------------------------------------------------
 
-new_abm_birth <- function(when, n, times, cost, inherit, attach_via, links) {
+new_abm_birth <- function(when, n, times, cost, inherit, attach_via, links,
+                          group = NULL) {
   structure(list(when = when, n = n, times = times, cost = cost,
-                 inherit = inherit, attach_via = attach_via, links = links),
+                 inherit = inherit, attach_via = attach_via, links = links,
+                 group = group),
             class = c("abm_birth", "abm_step"))
 }
 
@@ -320,6 +329,8 @@ new_abm_birth <- function(when, n, times, cost, inherit, attach_via, links) {
 #'   when an [abm_match()] is standing, the other parent's, as `partner_<col>`.
 #'   That is how two-parent inheritance is written: `inherit = trait ~ (trait +
 #'   partner_trait) / 2`.
+#' @param attach Shorthand for `attach_via`: `"none"`, `"parent"`,
+#'   `"random_edge"`, or `"neighbour"`. Cannot be combined with `attach_via`.
 #' @param attach_via An [abm_match()] object with `pair = "network"`, used to
 #'   connect each newborn to an existing agent. This is the only way the network
 #'   grows during a run; `from = "random_edge"` gives degree-proportional
@@ -334,6 +345,9 @@ new_abm_birth <- function(when, n, times, cost, inherit, attach_via, links) {
 #'   degree-proportional edges per node that preferential attachment is defined
 #'   with. Targets are distinct, and a newborn takes what there is when there
 #'   are fewer than `links` of them.
+#' @param group For `n =`: optional name of the agent group to add newborns to
+#'   in multi-group models (defaults to the single non-patch group when
+#'   unambiguous).
 #'
 #' @return An `abm_birth` step object.
 #' @seealso [abm_go()], which lists every step and fixes the order they run
@@ -345,12 +359,11 @@ new_abm_birth <- function(when, n, times, cost, inherit, attach_via, links) {
 #'
 #' # a clutch rather than a single offspring
 #' abm_birth(when = mature, times = rpois(n(), 2), inherit = age ~ 0)
-#' abm_birth(n = 1, attach_via = abm_match(pair = "network", from = "random_edge"))
+#' abm_birth(n = 1, attach = "random_edge")
 #'
 #' # the offspring takes a place beside its parent, with a neighbourhood of its
 #' # own rather than a single edge back to the parent
-#' abm_birth(when = runif(n()) < ptr, links = 4,
-#'           attach_via = abm_match(pair = "network", from = "parent"))
+#' abm_birth(when = runif(n()) < ptr, links = 4, attach = "parent")
 #'
 #' # a child of two parents, with its own age and a mutated trait
 #' abm_birth(
@@ -358,7 +371,8 @@ new_abm_birth <- function(when, n, times, cost, inherit, attach_via, links) {
 #'   inherit = list(age ~ 0, trait ~ (trait + partner_trait) / 2 + rnorm(n(), 0, 0.01))
 #' )
 abm_birth <- function(when = NULL, n = NULL, times = NULL, cost = NULL,
-                      inherit = NULL, attach_via = NULL, links = NULL) {
+                      inherit = NULL, attach = NULL, attach_via = NULL,
+                      links = NULL, group = NULL) {
   when <- enquo_or_null(rlang::enquo(when))
   times <- enquo_or_null(rlang::enquo(times))
 
@@ -380,6 +394,19 @@ abm_birth <- function(when = NULL, n = NULL, times = NULL, cost = NULL,
       class = "tidyABM_conflicting_args"
     )
   }
+  if (!is.null(group)) {
+    if (!is.null(when)) {
+      abm_abort(
+        c("{.arg group} names which group {.code abm_birth(n = )} adds to.",
+          "i" = "With {.arg when}, filter by {.code .group == \"...\"} in {.arg when} instead."),
+        class = "tidyABM_conflicting_args"
+      )
+    }
+    if (!rlang::is_string(group)) {
+      abm_abort("{.arg group} must be a single group name.",
+                class = "tidyABM_bad_arg")
+    }
+  }
   if (!is.null(n) && (!rlang::is_scalar_integerish(n) || is.na(n) || n < 0)) {
     abm_abort("{.arg n} must be a single non-negative whole number.",
               class = "tidyABM_bad_n")
@@ -392,6 +419,24 @@ abm_birth <- function(when = NULL, n = NULL, times = NULL, cost = NULL,
     if (is_formula2(inherit)) inherit <- list(inherit)
     inherit <- collect_rules(inherit, "abm_birth")
   }
+  if (!is.null(attach) && !is.null(attach_via)) {
+    abm_abort(
+      c("Supply either {.arg attach} or {.arg attach_via}, not both.",
+        "i" = "{.arg attach} is shorthand for {.code attach_via = abm_match(pair = \"network\", from = ...)}."),
+      class = "tidyABM_conflicting_args"
+    )
+  }
+  if (!is.null(attach)) {
+    if (!rlang::is_string(attach)) {
+      abm_abort('{.arg attach} must be one of {.val none}, {.val parent}, {.val random_edge} or {.val neighbour}.',
+                class = "tidyABM_bad_attach")
+    }
+    attach <- rlang::arg_match0(attach, c("none", "parent", "random_edge", "neighbour"),
+                                arg_nm = "attach")
+    if (attach != "none") {
+      attach_via <- abm_match(pair = "network", from = attach)
+    }
+  }
   if (!is.null(attach_via)) {
     if (!inherits(attach_via, "abm_match") || attach_via$pair != "network") {
       abm_abort(
@@ -403,8 +448,8 @@ abm_birth <- function(when = NULL, n = NULL, times = NULL, cost = NULL,
   if (!is.null(links)) {
     if (is.null(attach_via)) {
       abm_abort(
-        c("{.arg links} counts the edges {.arg attach_via} makes.",
-          "i" = "Supply {.arg attach_via} too, or drop {.arg links}."),
+        c("{.arg links} counts the edges {.arg attach} / {.arg attach_via} makes.",
+          "i" = "Supply {.arg attach} or {.arg attach_via} too, or drop {.arg links}."),
         class = "tidyABM_missing_arg"
       )
     }
@@ -415,7 +460,7 @@ abm_birth <- function(when = NULL, n = NULL, times = NULL, cost = NULL,
     links <- as.integer(links)
   }
   new_abm_birth(when, if (is.null(n)) NULL else as.integer(n), times, cost,
-                inherit, attach_via, links)
+                inherit, attach_via, links, group = group)
 }
 
 new_abm_death <- function(when, prune_edges) {
@@ -484,8 +529,11 @@ print_rule_step <- function(x, cls) {
   } else ""
   cli::cli_text("{.cls {cls}} {length(x$rules)} rule{?s}{scope}")
   labs <- rule_labels(x)
-  cli::cli_bullets(stats::setNames(paste0("{.code ", labs, "}"),
-                                   rep("*", length(labs))))
+  bits <- paste0("{.code ", labs, "}")
+  if (!is.null(x$when)) {
+    bits <- c(bits, "when = {.code {deparse1(rlang::quo_get_expr(x$when))}}")
+  }
+  cli::cli_bullets(stats::setNames(bits, rep("*", length(bits))))
   invisible(x)
 }
 
@@ -495,6 +543,7 @@ print.abm_birth <- function(x, ...) {
   bits <- c(
     if (!is.null(x$when)) "when = {.code {deparse1(rlang::quo_get_expr(x$when))}}",
     if (!is.null(x$n)) "n = {x$n}",
+    if (!is.null(x$group)) "group = {.field {x$group}}",
     if (!is.null(x$times)) "times = {.code {deparse1(rlang::quo_get_expr(x$times))}}",
     if (!is.null(x$cost)) "cost = {.code {rule_labels(list(rules = x$cost))}}",
     if (!is.null(x$inherit)) "inherit = {.code {rule_labels(list(rules = x$inherit))}}",

@@ -40,14 +40,21 @@ f_lhs_name <- function(x, arg = "rule", call = rlang::caller_env()) {
       class = "tidyABM_reserved_column", call = call
     )
   }
-  # the engine owns these: `.id` and `.group` say who an agent is, and the
-  # other three are rewritten by every match. A rule that targets one used to
-  # write it silently and have the write ignored or, for `.group`, mislabel
-  # the output without moving the agent.
-  if (name %in% c(".id", ".group", ".group_id", ".partner", ".role")) {
+  if (startsWith(name, "cell_")) {
+    abm_abort(
+      c("{.code {name}} is read-only and cannot be written by a {arg}.",
+        "i" = "{.code cell_<col>} reads the column of the patch an agent is standing on.",
+        "i" = "To write to the patch, use {.code abm_tell(..., to = .cell)}."),
+      class = "tidyABM_reserved_column", call = call
+    )
+  }
+  # the engine owns these: `.id` and `.group` say who an agent is, `.tick` is
+  # the current tick, `.dist` is spatial distance, and the rest are set by match
+  if (name %in% c(".id", ".group", ".group_id", ".partner", ".role",
+                  ".cost", ".tick", ".dist")) {
     abm_abort(
       c("{.code {name}} is managed by tidyABM and cannot be written by a {arg}.",
-        "i" = "{.code .id} and {.code .group} identify an agent; {.code .role}, {.code .partner} and {.code .group_id} are set by {.fn abm_match}.",
+        "i" = "{.code .id} and {.code .group} identify an agent; {.code .tick} is the current tick; {.code .role}, {.code .partner}, {.code .cost} and {.code .group_id} are set by {.fn abm_match}.",
         "i" = "To move an agent between kinds, keep the kind in an ordinary column (e.g. {.code state ~ \"infected\"})."),
       class = "tidyABM_reserved_column", call = call
     )
@@ -75,13 +82,13 @@ check_rule_dots <- function(exprs, fn, call = rlang::caller_env()) {
   if (is.null(nms)) return(invisible(NULL))
   # found through the namespace this helper lives in
   formals_fn <- names(formals(get(fn, mode = "function")))
-  conditionish <- c("when", "if", "where", "cond", "condition")
+  conditionish <- setdiff(c("when", "if", "where", "cond", "condition"), formals_fn)
   for (i in which(nzchar(nms))) {
     e <- exprs[[i]]
     if (rlang::is_formula(e) || rlang::is_call(e, "~")) next
     nm <- nms[[i]]
     dotted <- paste0(".", nm)
-    if (dotted %in% formals_fn) {
+    if (dotted %in% formals_fn && !nm %in% formals_fn) {
       abm_abort(
         c("{.arg {nm}} is not an argument of {.fn {fn}}.",
           "i" = "Did you mean {.arg {dotted}}? The qualifiers of a rule step are dot-prefixed, so they cannot collide with a column name.",
@@ -357,16 +364,19 @@ read_vars <- function(quos) {
   }), use.names = FALSE))
   if (any(c(mask_only_fns, ".data", "get", "mget", "eval") %in% nms)) return(NULL)
   pre <- startsWith(nms, "partner_") | startsWith(nms, "own_")
-  if (any(pre)) c(nms, sub("^(partner|own)_", "", nms[pre])) else nms
+  out <- if (any(pre)) c(nms, sub("^(partner|own)_", "", nms[pre])) else nms
+  if (any(startsWith(nms, "cell_"))) out <- c(out, ".cell")
+  if (".dist" %in% nms) out <- c(out, ".x", ".y", ".cell")
+  out
 }
 
 #' Could these formulas read what a match adds: `.partner`, `.role`,
-#' `.group_id` or a `partner_<col>`? If not, [augment_group()] is skipped.
+#' `.group_id`, `.cost` or a `partner_<col>`? If not, [augment_group()] is skipped.
 #' @noRd
 reads_match <- function(quos) {
   reads <- read_vars(quos)
   is.null(reads) || any(startsWith(reads, "partner_")) ||
-    any(c(".group_id", ".role", ".partner") %in% reads)
+    any(c(".group_id", ".role", ".partner", ".cost") %in% reads)
 }
 
 #' Which of the match columns a set of formulas reads, for [augment_group()]
@@ -375,7 +385,40 @@ reads_match <- function(quos) {
 match_cols_read <- function(quos, state) {
   reads <- read_vars(quos)
   if (is.null(reads) || length(state$relations)) return(NULL)
-  intersect(c(".group_id", ".role", ".partner"), reads)
+  intersect(c(".group_id", ".role", ".partner", ".cost"), reads)
+}
+
+#' The patch columns a set of quosures reads through `cell_<col>`
+#' @noRd
+cell_vars <- function(quos) {
+  vars <- unlist(lapply(Filter(Negate(is.null), quos), function(q) {
+    all.vars(rlang::quo_get_expr(q))
+  }), use.names = FALSE)
+  unique(sub("^cell_", "", grep("^cell_", vars, value = TRUE)))
+}
+
+#' Attach read-only `cell_<col>` columns for a mobile group or stacked tibble
+#' @noRd
+attach_cell_columns <- function(df, state, cvars) {
+  if (!length(cvars)) return(df)
+  lat <- state$lattice
+  if (is.null(lat) || is.null(lat$on) || !lat$on %in% names(state$groups)) {
+    return(df)
+  }
+  wired <- state$groups[[lat$on]]
+  cvars <- cvars[cvars %in% names(wired)]
+  if (!length(cvars) || !".cell" %in% names(df)) return(df)
+  n <- vctrs::vec_size(df)
+  idx <- if (identical(wired$.id, seq_len(nrow(wired)))) {
+    df$.cell
+  } else {
+    match(df$.cell, wired$.id)
+  }
+  cols <- as.list(df)
+  for (nm in cvars) {
+    cols[[paste0("cell_", nm)]] <- wired[[nm]][idx]
+  }
+  new_tbl(cols, n)
 }
 
 #' The columns a set of quosures reads through `partner_<col>`
@@ -438,6 +481,23 @@ in_rowwise <- function(x, table) {
          logical(1))
 }
 
+.run_ctx <- new.env(parent = emptyenv())
+.run_ctx$tick <- 0L
+
+#' Bind read-only `.tick` into an evaluation environment via active binding
+#' @noRd
+bind_tick <- function(env) {
+  makeActiveBinding(".tick", function() .run_ctx$tick, env)
+  env
+}
+
+#' Environment holding `globals` plus active `.tick` (for dplyr `reframe`/`mutate`)
+#' @noRd
+with_tick_env <- function(globals, parent) {
+  env <- if (length(globals)) list2env(globals, parent = parent) else new.env(parent = parent)
+  bind_tick(env)
+}
+
 #' The environment one formula is evaluated in
 #'
 #' The globals go in scope, and the grammar's own operators go innermost so a
@@ -454,7 +514,7 @@ abm_eval_env <- function(quo, globals, n = NULL) {
   # only in a large population: see [bind_groups()]
   if (isTRUE(.bound$on)) ops$`==` <- group_is
   if (!is.null(n)) ops$n <- function() n
-  list2env(ops, parent = env)
+  bind_tick(list2env(ops, parent = env))
 }
 
 #' [abm_eval_env()], kept while the formula's environment, the globals and `n`
@@ -479,7 +539,7 @@ eval_env_cached <- function(quo, globals, n) {
     ops <- list(`%in%` = in_rowwise)
     if (isTRUE(.bound$on)) ops$`==` <- group_is
     ops$n <- local({ m <- n; function() m })
-    env <- list2env(ops, parent = c$genv)
+    env <- bind_tick(list2env(ops, parent = c$genv))
     # ponytail: one scope per population size seen; reset past 64 sizes
     if (length(c$by_n) >= 64L) c$by_n <- list()
     c$by_n[[key]] <- env
@@ -549,9 +609,9 @@ base_eval_safe <- function(expr) {
 #' @noRd
 mark_steps <- function(steps) {
   lapply(steps, function(s) {
-    if (inherits(s, "abm_repeat")) {
+    if (inherits(s, "abm_repeat") || (inherits(s, "abm_match") && !is.null(s$steps))) {
       s$steps <- mark_steps(s$steps)
-      s
+      mark_quosures(s)
     } else {
       mark_quosures(s)
     }

@@ -162,6 +162,72 @@ run_seeds <- function(seed, n) {
   as.list(s)
 }
 
+#' Check `until` early-stopping formula for `abm_run()`
+#' @noRd
+check_until <- function(until, call = rlang::caller_env()) {
+  if (is.null(until)) return(NULL)
+  if (!is_formula1(until)) {
+    abm_abort(
+      c("{.arg until} must be a one-sided formula.",
+        "i" = "For example {.code until = ~sum(state == \"I\") == 0}."),
+      class = "tidyABM_bad_until", call = call
+    )
+  }
+  rlang::as_quosure(until)
+}
+
+#' Has an `abm_run(until =)` stopping condition been met at tick `t`?
+#' @noRd
+until_met <- function(until_quo, state, t, reads = read_vars(list(until_quo)),
+                      plan = NULL) {
+  pop <- population_evaluator(list(until = until_quo), state, reads, plan)
+  ok <- pop("until")
+  if (!is.logical(ok) || length(ok) != 1L) {
+    expr <- deparse1(rlang::quo_get_expr(until_quo))
+    abm_abort(
+      c("{.arg until} must return a single {.code TRUE} or {.code FALSE}.",
+        "x" = "{.code ~{expr}} returned {.cls {class(ok)[[1]]}} of length {length(ok)} at tick {t}."),
+      class = "tidyABM_bad_until", call = NULL
+    )
+  }
+  isTRUE(ok)
+}
+
+.setup_hint <- new.env(parent = emptyenv())
+
+#' Does a built `abm_model` have stochastic setup formulas or a random network?
+#' @noRd
+has_stochastic_setup <- function(model) {
+  if (!inherits(model, "abm_model")) return(FALSE)
+  ns <- model$network_spec
+  if (!is.null(ns) && !is.null(ns$type) &&
+      ns$type %in% c("random", "regular", "poisson", "scale_free")) {
+    return(TRUE)
+  }
+  if (isTRUE(model$had_formula_globals)) return(TRUE)
+  for (sp in model$agent_specs %||% list()) {
+    if (!is.null(sp$at)) return(TRUE)
+    if (any(vapply(sp$cols, is_formula1, logical(1)))) return(TRUE)
+  }
+  FALSE
+}
+
+#' Inform once per session when `reps > 1` reuses a stochastically built model
+#' @noRd
+inform_stochastic_setup <- function(model, reps) {
+  if (reps <= 1L || is.function(model) || !has_stochastic_setup(model)) {
+    return(invisible(NULL))
+  }
+  if (isTRUE(.setup_hint$shown)) return(invisible(NULL))
+  .setup_hint$shown <- TRUE
+  cli::cli_inform(
+    c("i" = "{.arg reps} = {reps} reuses the same built world across replicates.",
+      "i" = "To redraw starting columns or random networks per replicate, pass a function: {.code abm_run(function(...) abm_setup(...), ...)}.",
+      "i" = "This message is shown once per session."),
+    class = "tidyABM_stochastic_setup_hint"
+  )
+}
+
 #' Check `measures` (or `checks`) and return the quosures to evaluate
 #'
 #' The two arguments are the same shape -- a named list of one-sided formulas
@@ -218,7 +284,7 @@ eval_over_population <- function(quo, combined, globals) {
   }
   if (length(val) != 1L) {
     quo <- rlang::quo_set_env(
-      quo, rlang::new_environment(globals, parent = rlang::quo_get_env(quo)))
+      quo, with_tick_env(globals, parent = rlang::quo_get_env(quo)))
     val <- dplyr::pull(dplyr::reframe(combined, .abm_value = !!quo), ".abm_value")
   }
   val

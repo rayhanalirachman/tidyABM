@@ -20,27 +20,28 @@ rebel <- abm_setup(
     people  = abm_agents(n = 339, risk = ~runif(n),
                          hardship = ~runif(n), active = FALSE, jail = 0L),
     cops    = abm_agents(n = 19)),
-  network = abm_network(type = "grid", dims = c(22, 22), on = "patches",
-                        torus = TRUE),
+  space = abm_space(type = "grid", dims = c(22, 22), on = "patches",
+                    torus = TRUE),
   globals = list(legitimacy = 0.82, threshold = 0.1, vision = 3, max_jail = 30),
   seed = 1)
 
 go <- abm_go(
-  abm_move(along = "patches", to = "random_empty_neighbour",
-           who = c("people", "cops")),
+  abm_move(to = "random_empty_neighbour",
+           who = c("people", "cops"),
+           when = .group == "cops" | jail == 0L),
   abm_neighbours(
     C ~ sum(.group == "cops"),
     A ~ 1 + sum(.group == "people" & active),
-    within = .group != "patches" & .id != own_.id &
-             abs(.x - own_.x) <= vision & abs(.y - own_.y) <= vision),
+    within = .group != "patches" & .id != own_.id & .dist <= vision),
   abm_rules(active ~ jail == 0L &
-      (hardship * (1 - legitimacy) - risk * (1 - exp(-2.3 * C / A)) > threshold),
-    .scope = "population"),
-  abm_match(pair = "one_of", eligible = .group == "cops",
-            among = .group == "people" & active),
-  abm_tell(active ~ FALSE, jail ~ sample.int(max_jail, 1L), to = .partner,
-           when = .group == "cops" & !is.na(.partner)),
-  abm_rules(jail ~ pmax(0L, jail - 1L), .scope = "population"),
+      (hardship * (1 - legitimacy) - risk * (1 - exp(-2.3 * C / A)) > threshold)),
+  abm_match(
+    pair = "one_of", eligible = .group == "cops",
+    among = .group == "people" & active,
+    abm_tell(active ~ FALSE, jail ~ sample.int(max_jail, 1L), to = .partner,
+             when = .group == "cops" & !is.na(.partner))
+  ),
+  abm_rules(jail ~ pmax(0L, jail - 1L)),
   abm_global(n_active ~ sum(active, na.rm = TRUE),
              n_jail   ~ sum(jail > 0, na.rm = TRUE))
 )
@@ -50,21 +51,13 @@ result <- abm_run(rebel, go, ticks = 200, seed = 1, record = "globals")
 
 *L2+, and a canonical social-science model landing in the same bucket as
 Wolf–Sheep is the useful signal: the L2 bundle is not biology-specific.
-`abm_move(to = "random_empty_neighbour")` is the `avoid_occupied` flavour of the
-move step, and the arrest is `abm_match(pair = "one_of", among =)` plus
-`abm_tell(to = .partner)`, both of which already existed for the non-spatial
-corpus.*
+`abm_move(to = "random_empty_neighbour", when = ...)` keeps jailed citizens in
+place while free agents move, and the arrest uses a scoped
+`abm_match(pair = "one_of", among = ..., abm_tell(...))`.*
 
-*The vision count is a `within =` on `.x` / `.y`, which is why turtles need
-coordinates and not just a `.cell` id — the engine keeps `.x` / `.y` equal to
-the coordinates of `.cell` for any agent that has one.*
-
-*A cost note, because this one is the reason the run is kept small. A range
-condition inside `abm_neighbours(within =)` builds every (focal, candidate) pair
-and then filters, which is quadratic in the population. The co-location form
-`within = .group == "patches" & .id == own_.cell` is different: an equality
-against an `own_` column is recognised and resolved as a hash join, so
-Wolf–Sheep and Ants pay only a linear cost for theirs.*
+*The vision count uses torus-aware `.dist <= vision` inside
+`abm_neighbours(within = ...)`, which is AST-recognised and resolved via spatial
+cell bucketing rather than an $O(N^2)$ pair scan.*
 
 **Replication**
 

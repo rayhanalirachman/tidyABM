@@ -60,23 +60,25 @@ column so that the log stays one row per tick.
 
 ## 2. `abm_go()`: the tick
 
-`abm_go(...)` takes steps in order, dispatched by type and position. Validated
-once at construction: not empty, no two `abm_match()` adjacent, not ending on a
-bare `abm_match()`.
+`abm_go(...)` takes steps in order, dispatched by type and position (plain lists
+of steps are spliced automatically). Validated once at construction: not empty,
+no two bare `abm_match()` adjacent, not ending on a bare `abm_match()` (scoped
+`abm_match(..., <steps>)` blocks may appear anywhere).
 
 | step | what it does |
 |---|---|
-| `abm_match(pair =, size =, by =, cost =, role =, eligible =, among =, weight =, ...)` | decides who meets whom |
-| `abm_rules(col ~ expr, ..., .scope =, .by =)` | updates agent columns, simultaneously |
-| `abm_sequential(col ~ expr, ..., .order =)` | updates them one agent at a time, cascading |
-| `abm_neighbours(col ~ agg, within =)` | summarises each agent's neighbourhood, in the network or in attribute space |
-| `abm_draw(name ~ expr, .each =)` | attaches a value to every edge, readable from both ends |
-| `abm_tell(col ~ expr, to =, when =, .resolve =, .order =)` | writes into *another* agent's row |
+| `abm_match(pair =, ..., size =, sides =, coords =, cost =, role =, eligible =, among =, weight =, .by =)` | decides who meets whom (optional child steps in `...` scope the match) |
+| `abm_rules(col ~ expr, ..., when =, .scope =, .by =)` | updates agent columns, simultaneously |
+| `abm_sequential(col ~ expr, ..., when =, .order =, .scope =)` | updates them one agent at a time, cascading |
+| `abm_neighbours(col ~ agg, within =, .where =, .default =, via =)` | summarises each agent's neighbourhood, in space/network or in attribute space |
+| `abm_draw(name ~ expr, .each =, via =)` | attaches a value to every edge, readable from both ends |
+| `abm_tell(col ~ expr, to =, when =, .resolve =, .order =, via =)` | writes into *another* agent's row (including `.resolve = "add"` for `+=`) |
 | `abm_global(name ~ agg, .by =)` | updates a population-level value, or a table of them |
-| `abm_birth(when =, n =, times =, cost =, inherit =, attach_via =, links =)` | adds agents |
+| `abm_move(to =, along =, who =, when =, direction =, range =, axes_only =, avoid_occupied =)` | moves mobile agents across grid or continuous space |
+| `abm_birth(when =, n =, times =, cost =, inherit =, attach =, attach_via =, links =, group =)` | adds agents |
 | `abm_death(when =, prune_edges =)` | removes them |
 | `abm_link(when =, via =, to =, ...)` / `abm_unlink(when =, via =, to =)` | adds / removes network edges, or with `via` the pairs of a relation |
-| `abm_pairs(via =, v ~ expr, ..., .when =)` | updates every pair of a relation at once |
+| `abm_pairs(via =, v ~ expr, ..., when =)` | updates every pair of a relation at once |
 | `abm_repeat(..., until =, max =)` | replays a block of steps inside the tick |
 
 ### Matching modes
@@ -85,17 +87,19 @@ Two are *mutual*. They partition the eligible agents, so being matched is
 symmetric:
 
 - `"random"` shuffles into groups of `size` (default 2)
-- `"opposite_group"` pairs across a two-valued split named by `by`
+- `"opposite_group"` pairs across a two-valued split named by `sides` (alias `by`)
 
 Three are *directional*. Each agent gets a partner of its own, and your partner
 need not have picked you:
 
 - `"one_of"` draws a partner uniformly from the candidates (NetLogo's
   `one-of other turtles`)
-- `"nearest"` takes the closest candidate in the space named by `by`, or the one
-  that minimises the expression named by `cost`
-- `"network"` takes a neighbour from the model's network. `from = "random_edge"`
-  and `from = "parent"` work inside `abm_birth(attach_via =)`
+- `"nearest"` takes the closest candidate in the space named by `coords` (alias
+  `by`, defaulting to `.x`/`c(.x, .y)` on continuous space), or the one that
+  minimises `cost`; exposes the winning distance/value as `.cost` when `size = 2`
+- `"network"` takes a neighbour from the model's network. Inside `abm_birth()`,
+  `attach = "parent" | "random_edge" | "neighbour"` is shorthand for
+  `attach_via = abm_match(pair = "network", from = ...)`
 
 A newborn gets one edge unless `abm_birth(links =)` says otherwise, and one edge
 makes it a leaf. In a model that also kills agents that is not a detail: deaths
@@ -300,7 +304,7 @@ standing match.
 | `abm_rules()` / `abm_sequential()`, pairing of two | read `R_v`; a rule *targeting* `R_v` **writes the pair**, `sellers_unmet ~ sellers_unmet + (demand - got)` |
 | `abm_link(via = "R", to = , when = , v ~ expr)` | add `(me -> to)` rows -- `to` defaults to `.partner`; with `to =` no pairing is needed. Rules set the new rows' values; an existing pair is left alone |
 | `abm_unlink(via = "R", to = , when = )` | remove rows; `when` can read `R_v` |
-| `abm_pairs(via = "R", v ~ expr, .when = )` | update every pair at once, seeing `from_<col>` and `to_<col>` |
+| `abm_pairs(via = "R", v ~ expr, when = )` | update every pair at once, seeing `from_<col>` and `to_<col>` |
 | `abm_relations(result)` | the tables at the end of the run |
 
 The point is one home for the number. Before relations, Lengnick held
@@ -382,12 +386,15 @@ It fails hard rather than logging, because an identity that has stopped holding
 makes every later tick of that run wrong. See *Stock-flow consistency* below.
 
 **Package-managed columns** are dot-prefixed: `.id`, `.group`, `.role`,
-`.partner`, `.group_id`. Everything else is yours.
+`.partner`, `.group_id`, `.tick`, `.cost`, `.dist`, `.cell`, `.x`, `.y` (plus
+read-only `cell_<col>` on mobile agents). Everything else is yours.
 
-**Steps are ordinary objects.** `rep(step_list, 4)` gives four rounds,
-`do.call(abm_go, steps)` assembles a block whose length depends on a parameter,
-and `rlang::new_formula()` builds a rule whose target is computed. Models 30, 35,
-44, 45 and 47 are all the same trick.
+**Steps are ordinary objects.** Plain step lists passed into `abm_go()`,
+`abm_repeat()`, or scoped `abm_match()` are spliced automatically (no
+`do.call(abm_go, steps)` needed), and `rlang::new_formula()` builds a rule whose
+target is computed. `abm_run(..., until = ~expr)` stops a run early once a
+population/global condition holds, and `abm_setup(globals = list(g = ~expr))`
+evaluates tick-0 formula globals directly on setup.
 
 ## Stock-flow consistency
 

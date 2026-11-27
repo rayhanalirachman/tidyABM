@@ -16,14 +16,14 @@ town <- abm_setup(
     occ  = ~sample(c(rep(TRUE, n_occ), rep(FALSE, n - n_occ))),
     type = ~if_else(occ, sample(c("A", "B"), n, TRUE, c(0.7, 0.3)),
                     NA_character_)),
-  network = abm_network(type = "grid", dims = c(51, 51),
-                        diagonals = TRUE, torus = TRUE),
+  space = abm_space(type = "grid", dims = c(51, 51),
+                    diagonals = TRUE, torus = TRUE),
   globals = list(tol = 0.30), seed = 6)
 
 go <- abm_go(
   abm_neighbours(same ~ mean(type == own_type, na.rm = TRUE)),
   abm_rules(unhappy ~ occ & !is.na(same) & same < tol),
-  abm_match(pair = "opposite_group", by = occ, eligible = unhappy | !occ),
+  abm_match(pair = "opposite_group", sides = occ, eligible = unhappy | !occ),
   abm_rules(
     type ~ if_else(!occ & !is.na(partner_type), partner_type,
                    if_else(unhappy, NA_character_, type)),

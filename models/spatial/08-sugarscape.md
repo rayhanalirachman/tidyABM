@@ -27,45 +27,35 @@ sugarscape <- abm_setup(
                         vision     = ~sample.int(6, n, TRUE),
                         metabolism = ~sample.int(4, n, TRUE),
                         wealth     = ~sample(5:25, n, TRUE),
-                        at         = ~sample(prod(dims), n))),   # one per cell
-  network = abm_network(type = "grid", dims = c(w, w), on = "patches",
-                        diagonals = FALSE, torus = TRUE),
+                        at         = "unique")),                 # one per cell
+  space = abm_space(type = "grid", dims = c(w, w), on = "patches",
+                    diagonals = FALSE, torus = TRUE),
+  globals = list(pop = ~sum(.group == "people")),
   seed = 1)
 
 go <- abm_go(
   # rule M: the richest unoccupied cell within `vision` along the axes
-  abm_move(along = "patches", who = "people",
-           to = uphill(if_else(pmin(abs(.x - own_.x), w - abs(.x - own_.x)) +
-                               pmin(abs(.y - own_.y), w - abs(.y - own_.y)) <= vision,
-                               sugar, -Inf)),
-           range = 6, axes_only = TRUE, avoid_occupied = TRUE),
+  abm_move(who = "people", to = uphill(sugar),
+           range = vision, axes_only = TRUE, avoid_occupied = TRUE),
   # eat what is there, pay the metabolism
-  abm_neighbours(here ~ sum(sugar), within = .group == "patches" & .id == own_.cell),
-  abm_rules(wealth ~ wealth + here - metabolism, .scope = "population"),
+  abm_rules(wealth ~ wealth + cell_sugar - metabolism, when = .group == "people"),
   abm_tell(sugar ~ 0L, to = .cell, when = .group == "people"),
   abm_death(when = .group == "people" & wealth <= 0),
   # rule G1: constant growback
-  abm_rules(sugar ~ pmin(capacity, sugar + 1L), .scope = "population"),
+  abm_rules(sugar ~ pmin(capacity, sugar + 1L)),
   abm_global(pop ~ sum(.group == "people"))
 )
 
 result <- abm_run(sugarscape, go, ticks = 500, seed = 1, record = 100)
 ```
 
-*The **L2+** model that forced the three extra arguments of `abm_move()`, all
-at once: `axes_only = TRUE` is the four lines of sight, `avoid_occupied = TRUE`
-is the rule that no two agents share a cell, and `range` is how far the lines
-run. `range` is one number for the step, so it is the model's longest sight,
-and an agent's own `vision` does the rest inside `uphill()`: the expression
-sees the candidate cell's `.x` / `.y` and the mover's as `own_.x` / `own_.y`,
-and a cell further away than the agent can see scores `-Inf`. The cell the
-agent stands on is always a candidate, so an agent that sees nothing better
-stays put.*
-
-*One departure from Epstein & Axtell: they break a tie between equally rich
-cells towards the nearest, `abm_move()` breaks it at random. Eating is the
-co-location join plus a write back into the cell, exactly as sheep eat grass in
-[Wolf–Sheep–Grass](05-wolf-sheep.md).*
+*The **L2+** model that exercises the three extra arguments of `abm_move()`:
+`axes_only = TRUE` is the four lines of sight, `avoid_occupied = TRUE` ensures
+no two agents share a cell, and per-agent `range = vision` lets each agent look
+out to its own sight distance without hand-writing wrap-around arithmetic inside
+`uphill()`. The cell the agent stands on is always a candidate, so an agent that
+sees nothing better stays put. Eating reads `cell_sugar` directly and clears the
+cell with `abm_tell(to = .cell)`.*
 
 **Replication**
 

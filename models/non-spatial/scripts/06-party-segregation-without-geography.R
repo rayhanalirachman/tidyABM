@@ -12,9 +12,8 @@ library(tidyABM)
 party_run <- function(n, ticks = 100, seed = 6) {
   m <- abm_setup(agents = abm_agents(n = n, opinion = ~runif(n, 0, 1)))
   go <- abm_go(
-    abm_match(pair = "nearest", by = opinion),
-    abm_rules(opinion ~ if_else(abs(opinion - partner_opinion) > 0.05,
-                                runif(1), opinion))
+    abm_match(pair = "nearest", coords = opinion),
+    abm_rules(opinion ~ if_else(.cost > 0.05, runif(1), opinion))
   )
   abm_run(m, go, ticks = ticks, seed = seed)
 }

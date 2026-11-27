@@ -83,7 +83,7 @@ number), so the file grows with the lattice, the number of frames and the
 number of agents. Cell values are quantised to at most 64 levels and
 run-length encoded, and an agent costs a few bytes a tick, so a 50 x 50
 lattice over 200 frames is well under a megabyte. Thin a long run with
-\code{record =} or \code{tick =} rather than recording every tick of it.
+\verb{record =} or \verb{tick =} rather than recording every tick of it.
 }
 \examples{
 life <- abm_setup(agents = abm_grid(dims = c(30, 30), alive = ~runif(n) < 0.3))

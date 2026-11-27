@@ -16,9 +16,11 @@ rule_applies <- function(rule, g, all_cols, globals) {
   # plain `%in%` rather than `setdiff()` / `intersect()`: asked of every rule
   # for every group on every tick
   vars <- rule$vars
+  if (any(startsWith(vars, "cell_")) && !".cell" %in% names(g)) return(FALSE)
   vars <- vars[vars %in% all_cols & !startsWith(vars, "partner_") &
+                 !startsWith(vars, "cell_") &
                  !vars %in% c(".id", ".group", ".group_id", ".partner", ".role",
-                              names(globals))]
+                              ".cost", ".tick", ".dist", names(globals))]
   if (!all(vars %in% names(g))) return(FALSE)
   if (rule$target %in% all_cols && !(rule$target %in% names(g))) return(FALSE)
   TRUE
@@ -36,9 +38,11 @@ condition_applies <- function(quo, g, all_cols, globals) {
   if (is.null(quo)) return(TRUE)
   # plain `%in%`, as in [rule_applies()]: asked per group on every tick
   vars <- all.vars(rlang::quo_get_expr(quo))
+  if (any(startsWith(vars, "cell_")) && !".cell" %in% names(g)) return(FALSE)
   vars <- vars[vars %in% all_cols & !startsWith(vars, "partner_") &
+                 !startsWith(vars, "cell_") &
                  !vars %in% c(".id", ".group", ".group_id", ".partner", ".role",
-                              names(globals))]
+                              ".cost", ".tick", ".dist", names(globals))]
   all(vars %in% names(g))
 }
 
@@ -63,6 +67,7 @@ augment_group <- function(g, match_state, combined, relations = NULL,
     cols$.group_id <- seq_len(n)
     cols$.role <- rep(NA_character_, n)
     cols$.partner <- rep(NA_integer_, n)
+    if (is.null(match_cols) || ".cost" %in% match_cols) cols$.cost <- rep(NA_real_, n)
     return(new_tbl(cols, n))
   }
   pcols <- names(combined)
@@ -75,6 +80,7 @@ augment_group <- function(g, match_state, combined, relations = NULL,
     cols$.group_id <- rep(NA_integer_, n)
     cols$.role <- rep(NA_character_, n)
     cols$.partner <- rep(NA_integer_, n)
+    if (is.null(match_cols) || ".cost" %in% match_cols) cols$.cost <- rep(NA_real_, n)
     if (match_state$size == 2L) {
       for (nm in pcols) {
         cols[[paste0("partner_", nm)]] <- combined[[nm]][NA_integer_][rep(1L, n)]
@@ -93,6 +99,9 @@ augment_group <- function(g, match_state, combined, relations = NULL,
   if (is.null(match_cols) || ".partner" %in% match_cols) cols$.partner <- partner_ids
   if (is.null(match_cols) || ".role" %in% match_cols) cols$.role <- m$.role[idx]
   if (is.null(match_cols) || ".group_id" %in% match_cols) cols$.group_id <- m$.group_id[idx]
+  if (is.null(match_cols) || ".cost" %in% match_cols) {
+    cols$.cost <- if (".cost" %in% names(m)) m$.cost[idx] else rep(NA_real_, n)
+  }
 
   if (match_state$size == 2L) {
     pidx <- if (length(pcols)) match(partner_ids, combined$.id)
@@ -477,24 +486,53 @@ assign_rule <- function(g, target, value, rows) {
   g
 }
 
+#' Write a vector computed over `rows` only (`length(value) %in% c(1, sum(rows))`)
+#' @noRd
+assign_rule_subset <- function(g, target, value, rows) {
+  if (!is.list(value) && !is.null(names(value))) value <- unname(value)
+  n <- vctrs::vec_size(g)
+  k <- sum(rows)
+  if (length(value) == 1L) value <- rep(value, k)
+  cls <- oldClass(g)
+  g <- unclass(g)
+  if (is.null(g[[target]])) g[[target]] <- vctrs::vec_init(value, n)
+  common <- vctrs::vec_cast_common(g[[target]], value)
+  g[[target]] <- common[[1]]
+  g[[target]][rows] <- common[[2]]
+  oldClass(g) <- cls
+  g
+}
+
 #' Run one abm_rules step across every group
 #' @noRd
 run_rules <- function(step, state) {
   if (!is.null(step$by)) return(run_rules_by(step, state))
-  quos <- planned(step, "quos", lapply(step$rules, `[[`, "quo"))
+  quos <- planned(step, "quos", c(lapply(step$rules, `[[`, "quo"),
+                                  if (!is.null(step$when)) list(step$when)))
   uses_match <- step$uses_match %||% planned(step, "uses_match", reads_match(quos))
+  cvars <- planned(step, "cvars", cell_vars(quos))
+  scope_match <- (step$scope %||% "match") == "match"
+  # Empty standing match with match scope writes nobody (consistent with partial
+  # matches and abm_sequential()).
+  if (!is.null(state$match) && nrow(state$match$match) == 0L && scope_match) {
+    return(state)
+  }
   if (length(state$groups) == 1L && is.null(state$match) &&
-      !length(state$relations) && !uses_match) {
+      !length(state$relations) && !uses_match && is.null(step$when) &&
+      !length(cvars)) {
     return(run_rules_plain(step, state))
   }
   # only asked for when there is more than one group to route the rules to
   routes <- if (length(state$groups) > 1L) rule_routes(step, state)
+  when_routes <- if (!is.null(step$when) && length(state$groups) > 1L) {
+    condition_routes(step, state)
+  }
   active <- !is.null(state$match) && nrow(state$match$match) > 0L
   # When a match is standing, rules are evaluated group-by-group: per pair for
   # size 2, per group for size > 2, per agent for the directional modes. That is
   # what makes `sample(x, 1)` inside a rule mean "once per pair" rather than
   # "once for the whole population".
-  grouped <- active && (step$scope %||% "match") == "match"
+  grouped <- active && scope_match
   # a population-scope step that reads nothing of the pairing is not handed
   # it: looking every agent up in the match costs more than its rules do
   match <- if (grouped || length(state$relations) || uses_match) state$match
@@ -502,7 +540,7 @@ run_rules <- function(step, state) {
   # rule reads of another group
   pvars <- if (!is.null(match)) planned(step, "pvars", partner_vars(quos))
   combined <- if (length(pvars)) bind_groups(state$groups, pvars)
-  # with no match the three match columns are all `NA`: built only if read
+  # with no match the match columns are all `NA`: built only if read
   bare <- is.null(match) && !uses_match
   # of those, only what the rules read, and `.group_id`, which says who is paired
   mcols <- planned(step, "mcols", {
@@ -514,6 +552,7 @@ run_rules <- function(step, state) {
   for (nm in names(state$groups)) {
     g <- state$groups[[nm]]
     if (vctrs::vec_size(g) == 0L) next
+    if (!is.null(when_routes) && !when_routes[[nm]]) next
     # a lone group has every column there is, so every rule applies to it
     todo <- if (length(state$groups) == 1L) step$rules else routes[[nm]]
     if (!length(todo)) next
@@ -521,7 +560,19 @@ run_rules <- function(step, state) {
     aug <- if (bare) g else
       augment_group(g, match, combined, state$relations, partner = pvars,
                     match_cols = mcols)
-    rows <- if (active && grouped) !is.na(aug$.group_id) else TRUE
+    if (length(cvars)) aug <- attach_cell_columns(aug, state, cvars)
+    rows <- if (active && grouped) !is.na(aug$.group_id) else rep(TRUE, vctrs::vec_size(g))
+
+    narrowed <- FALSE
+    if (!is.null(step$when)) {
+      w <- eval_condition(step$when, aug, state$globals)
+      rows <- rows & w
+      if (!any(rows)) next
+      if (!all(rows)) {
+        aug <- vctrs::vec_slice(aug, rows)
+        narrowed <- TRUE
+      }
+    }
 
     # an elementwise rule gives the same answer per pair as over the whole
     # group, so it is evaluated once rather than once per pair
@@ -542,7 +593,10 @@ run_rules <- function(step, state) {
       hit <- resolve_relation_name(todo[[i]]$target, state$relations)
       if (!is.null(hit)) {
         state <- write_relation_rule(state, hit, todo[[i]]$target, values[[i]],
-                                     aug, rows, "abm_rules")
+                                     aug, if (narrowed) rep(TRUE, nrow(aug)) else rows,
+                                     "abm_rules")
+      } else if (narrowed) {
+        g <- assign_rule_subset(g, todo[[i]]$target, values[[i]], rows)
       } else {
         g <- assign_rule(g, todo[[i]]$target, values[[i]], rows)
       }
@@ -551,7 +605,7 @@ run_rules <- function(step, state) {
   }
 
   # an empty population is not an error: there was nobody to apply it to
-  if (!applied_anywhere && any(vapply(state$groups, nrow, 0L))) {
+  if (!applied_anywhere && is.null(step$when) && any(vapply(state$groups, nrow, 0L))) {
     abm_abort(
       c("An {.fn abm_rules} step applied to no agent group.",
         "x" = "Rule{?s} {.code {rule_labels(step)}} mention{?s/} columns that no group has.",
@@ -616,8 +670,9 @@ run_rules_plain <- function(step, state) {
 #' @noRd
 run_rules_by <- function(step, state) {
   by <- by_columns(step$by)
-  quos <- lapply(step$rules, `[[`, "quo")
+  quos <- c(lapply(step$rules, `[[`, "quo"), if (!is.null(step$when)) list(step$when))
   cols <- read_vars(quos)
+  cvars <- cell_vars(quos)
   combined <- bind_groups(state$groups, if (!is.null(cols))
     c(cols, by, vapply(step$rules, `[[`, "", "target")))
   if (nrow(combined) == 0L) return(state)
@@ -634,6 +689,7 @@ run_rules_by <- function(step, state) {
   } else {
     augment_group(combined, state$match, combined, state$relations)
   }
+  if (length(cvars)) aug <- attach_cell_columns(aug, state, cvars)
   for (r in step$rules) {
     if (!is.null(resolve_relation_name(r$target, state$relations))) {
       abm_abort(
@@ -646,11 +702,42 @@ run_rules_by <- function(step, state) {
   # `NA` is not a group. An agent with no value for the `.by` column sits the
   # step out and keeps what it had, the way `NA` does in `.order`.
   taking_part <- !is.na(combined[[by]])
+  narrowed <- FALSE
+  if (!is.null(step$when)) {
+    w <- eval_condition(step$when, aug, state$globals)
+    taking_part <- taking_part & w
+    if (!any(taking_part)) return(state)
+    if (!all(taking_part)) {
+      aug <- vctrs::vec_slice(aug, taking_part)
+      narrowed <- TRUE
+    }
+  }
   n_rules <- length(step$rules)
   for (k in seq_len(n_rules)) {
     r <- step$rules[[k]]
     value <- eval_rule(r, aug, state$globals, grouped = FALSE, by = by,
-                       cache = .subset2(step, "plan"))
+                       cache = if (narrowed) NULL else .subset2(step, "plan"))
+    if (narrowed) {
+      val_full <- if (r$target %in% names(combined)) combined[[r$target]]
+                  else vctrs::vec_init(value, nrow(combined))
+      if (length(value) == 1L) value <- rep(value, nrow(aug))
+      common <- vctrs::vec_cast_common(val_full, value)
+      val_full <- common[[1]]
+      val_full[taking_part] <- common[[2]]
+      at <- 0L
+      for (nm in names(state$groups)) {
+        g <- state$groups[[nm]]
+        idx <- at + seq_len(nrow(g))
+        at <- at + nrow(g)
+        if (nrow(g) == 0L) next
+        if (any(taking_part[idx])) {
+          g <- assign_rule(g, r$target, val_full[idx], taking_part[idx])
+          state$groups[[nm]] <- g
+        }
+      }
+      if (k < n_rules) aug[[r$target]] <- common[[2]]
+      next
+    }
     if (length(value) == nrow(combined) && !all(taking_part)) {
       value[!taking_part] <- if (r$target %in% names(combined))
         combined[[r$target]][!taking_part] else NA
@@ -685,8 +772,13 @@ run_rules_by <- function(step, state) {
 #' Run one abm_global step
 #' @noRd
 run_global <- function(step, state) {
-  if (!is.null(step$by)) return(run_global_by(step, state, bind_groups(state$groups)))
-  if (length(state$groups) > 1L &&
+  cvars <- planned(step, "cvars", cell_vars(lapply(step$rules, `[[`, "quo")))
+  if (!is.null(step$by)) {
+    comb <- bind_groups(state$groups)
+    if (length(cvars)) comb <- attach_cell_columns(comb, state, cvars)
+    return(run_global_by(step, state, comb))
+  }
+  if (length(state$groups) > 1L && !length(cvars) &&
       planned(step, "narrowable", narrowable(lapply(step$rules, `[[`, "quo")))) {
     np <- planned_for(step, "narrow", schema_key(state),
                       narrow_plan(lapply(step$rules, `[[`, "quo"), state$groups))
@@ -695,6 +787,7 @@ run_global <- function(step, state) {
   combined <- bind_groups(state$groups,
                           planned(step, "reads", read_vars(lapply(step$rules, `[[`, "quo"))),
                           ids = FALSE)
+  if (length(cvars)) combined <- attach_cell_columns(combined, state, cvars)
   ev <- if (length(step$rules) > 1L) shared_eval(combined, state$globals)
   masks <- planned(step, "masks", vapply(step$rules, function(r) {
     needs_mask(rlang::quo_get_expr(r$quo))
@@ -721,7 +814,7 @@ run_global <- function(step, state) {
       # population size here just as it does inside `abm_rules()`.
       quo <- rlang::quo_set_env(
         r$quo,
-        rlang::new_environment(state$globals, parent = rlang::quo_get_env(r$quo))
+        with_tick_env(state$globals, parent = rlang::quo_get_env(r$quo))
       )
       val <- dplyr::pull(dplyr::reframe(combined, .abm_value = !!quo),
                          ".abm_value")
@@ -787,7 +880,7 @@ run_global_narrow <- function(step, state, np) {
       }
       quo <- rlang::quo_set_env(
         r$quo,
-        rlang::new_environment(state$globals, parent = rlang::quo_get_env(r$quo))
+        with_tick_env(state$globals, parent = rlang::quo_get_env(r$quo))
       )
       val <- dplyr::pull(dplyr::reframe(full, .abm_value = !!quo), ".abm_value")
     }
@@ -877,7 +970,7 @@ run_global_by <- function(step, state, combined) {
       scope <- c(state$globals, stats::setNames(list(here, k),
                                                 c(r$target, ".key")))
       quo <- rlang::quo_set_env(
-        r$quo, rlang::new_environment(scope, parent = rlang::quo_get_env(r$quo))
+        r$quo, with_tick_env(scope, parent = rlang::quo_get_env(r$quo))
       )
       val <- dplyr::pull(dplyr::reframe(combined, .abm_value = !!quo),
                          ".abm_value")
@@ -915,16 +1008,48 @@ run_sequential <- function(step, state) {
   if (!length(order_ids)) return(state)
 
   # A standing match narrows the step to the agents it placed in a group, the
-  # way it narrows `abm_rules()`, and puts `.partner` and `partner_<col>` in
-  # scope. Read live from the working columns, so the second buyer at a shop
-  # sees the stock the first one left.
+  # way it narrows `abm_rules()`, unless `.scope = "population"`.
   m <- NULL
-  if (!is.null(state$match)) {
+  scope_match <- (step$scope %||% "match") == "match"
+  if (!is.null(state$match) && scope_match) {
     m <- state$match$match
-    # a match step that paired nobody leaves the step with nothing to do, the
-    # way it leaves `abm_rules()` with no rows to write
     if (nrow(m) == 0L) return(state)
     order_ids <- order_ids[order_ids %in% m$.id]
+    if (!length(order_ids)) return(state)
+  }
+
+  quos_all <- c(lapply(step$rules, `[[`, "quo"),
+                if (!is.null(step$when)) list(step$when),
+                if (!is.null(step$order)) list(step$order))
+  cvars <- cell_vars(quos_all)
+  wired_cols <- NULL
+  wired_ids <- NULL
+  if (length(cvars) && !is.null(state$lattice) && !is.null(state$lattice$on) &&
+      state$lattice$on %in% names(state$groups)) {
+    wg <- state$groups[[state$lattice$on]]
+    cvars <- cvars[cvars %in% names(wg)]
+    if (length(cvars)) {
+      wired_cols <- as.list(wg)[cvars]
+      wired_ids <- if (identical(wg$.id, seq_len(nrow(wg)))) NULL else wg$.id
+    }
+  }
+
+  if (!is.null(step$when)) {
+    all_cols <- model_columns(state$groups)
+    pvars_w <- if (!is.null(state$match)) partner_vars(list(step$when))
+    comb_w <- if (length(pvars_w)) bind_groups(state$groups, pvars_w)
+    keep_ids <- integer()
+    for (nm in names(state$groups)) {
+      g <- state$groups[[nm]]
+      if (!nrow(g) || !condition_applies(step$when, g, all_cols, state$globals)) next
+      aug_w <- if (is.null(m) && !reads_match(list(step$when))) g else
+        augment_group(g, state$match, comb_w %||% bind_groups(state$groups), state$relations,
+                      partner = pvars_w)
+      if (length(cvars)) aug_w <- attach_cell_columns(aug_w, state, cvars)
+      w <- eval_condition(step$when, aug_w, state$globals)
+      keep_ids <- c(keep_ids, g$.id[w])
+    }
+    order_ids <- order_ids[order_ids %in% keep_ids]
     if (!length(order_ids)) return(state)
   }
 
@@ -935,6 +1060,7 @@ run_sequential <- function(step, state) {
     # sequential-service constraint -- and a fresh shuffle is then the wrong
     # answer rather than an arbitrary one.
     combined <- bind_groups(state$groups)
+    if (length(cvars)) combined <- attach_cell_columns(combined, state, cvars)
     key <- eval_rule(list(quo = step$order), combined, state$globals,
                      grouped = FALSE)
     if (length(key) == 1L) key <- rep(key, nrow(combined))
@@ -997,9 +1123,11 @@ run_sequential <- function(step, state) {
   all_row <- sequence(sizes)
   pos <- match(order_ids, all_ids)
   pid_v <- rep(NA_integer_, length(order_ids))
+  cost_v <- rep(NA_real_, length(order_ids))
   if (!is.null(m)) {
     mi <- match(order_ids, m$.id)
     pid_v <- m$.partner[mi]; role_v <- m$.role[mi]; gid_v <- m$.group_id[mi]
+    if (".cost" %in% names(m)) cost_v <- m$.cost[mi]
     ppos <- match(pid_v, all_ids)
   }
   pair_row <- function(h) {
@@ -1030,12 +1158,20 @@ run_sequential <- function(step, state) {
     # is byte-compiled per agent
     data <- lapply(v, .subset2, i)
     if (!"n" %in% names(data)) data$n <- n_one
+    if (!is.null(wired_cols) && ".cell" %in% names(v)) {
+      ci <- v$.cell[[i]]
+      cidx <- if (is.null(wired_ids)) ci else match(ci, wired_ids)
+      for (cn in names(wired_cols)) {
+        data[[paste0("cell_", cn)]] <- if (is.na(cidx)) wired_cols[[cn]][NA_integer_] else wired_cols[[cn]][[cidx]]
+      }
+    }
 
     pid <- NA_integer_; pg <- NULL; pj <- NA_integer_
     if (!is.null(m)) {
       data$.partner  <- pid_v[[ai]]
       data$.role     <- role_v[[ai]]
       data$.group_id <- gid_v[[ai]]
+      data$.cost     <- cost_v[[ai]]
       pid <- data$.partner
       if (!is.na(pid)) {
         pg <- gnames[[all_g[[ppos[[ai]]]]]]

@@ -25,7 +25,7 @@ go <- abm_go(
   abm_rules(age ~ age + 1),
   abm_death(when = age > LONGEVITY),
   abm_death(when = runif(n()) < pmax(0, (n() - CAP) / n())),
-  abm_match(pair = "opposite_group", by = sex, eligible = age >= MATURITY),
+  abm_match(pair = "opposite_group", sides = sex, eligible = age >= MATURITY),
   abm_birth(
     when = sex == "female" & !is.na(.partner) & runif(n()) < MATING,
     inherit = list(

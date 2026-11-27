@@ -16,7 +16,7 @@ market <- abm_setup(agents = list(
 go <- abm_go(
   abm_rules(transacted ~ FALSE, deal_price ~ NA_real_),
 
-  abm_match(pair = "opposite_group", by = .group),
+  abm_match(pair = "opposite_group", sides = .group),
 
   abm_rules(
     transacted ~ case_when(

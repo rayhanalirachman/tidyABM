@@ -18,6 +18,7 @@ birth_by_condition <- function(step, state) {
   quos <- planned(step, "quos", c(list(step$when, step$times),
                                   lapply(c(step$cost, step$inherit), `[[`, "quo")))
   pvars <- planned(step, "pvars", partner_vars(quos))
+  cvars <- planned(step, "cvars", cell_vars(quos))
   combined <- if (!is.null(state$match) && length(pvars)) bind_groups(state$groups, pvars)
   # the match columns are looked up per agent, so only when they are read
   bare <- !length(state$relations) && !planned(step, "uses_match", reads_match(quos))
@@ -29,8 +30,17 @@ birth_by_condition <- function(step, state) {
     aug <- if (bare) g else
       augment_group(g, state$match, combined, state$relations, partner = pvars,
                     match_cols = planned(step, "mcols", match_cols_read(quos, state)))
+    if (length(cvars)) aug <- attach_cell_columns(aug, state, cvars)
     parents <- eval_condition(step$when, aug, state$globals)
     if (!any(parents)) next
+    if (!is.null(state$lattice) && !is.null(state$lattice$on) &&
+        identical(nm, state$lattice$on)) {
+      abm_abort(
+        c("{.fn abm_birth} cannot add agents to the grid-wired patch group {.field {nm}}.",
+          "i" = "Grid patches are fixed by the lattice geometry; target a mobile agent group instead."),
+        class = "tidyABM_bad_arg"
+      )
+    }
 
     pg <- vctrs::vec_slice(aug, parents)
     reps <- offspring_counts(step, pg, state$globals)
@@ -109,7 +119,43 @@ offspring_counts <- function(step, pg, globals) {
 
 birth_by_count <- function(step, state) {
   if (step$n == 0L) return(state)
-  nm <- names(state$groups)[[1]]
+  wired_on <- if (!is.null(state$lattice)) state$lattice$on else NULL
+  if (!is.null(step$group)) {
+    if (!step$group %in% names(state$groups)) {
+      abm_abort(
+        c("{.arg group} names a group that is not in the model.",
+          "x" = "No group {.field {step$group}}.",
+          "i" = "Groups: {.field {names(state$groups)}}."),
+        class = "tidyABM_bad_arg"
+      )
+    }
+    nm <- step$group
+  } else {
+    cand <- setdiff(names(state$groups), wired_on)
+    if (length(cand) == 1L) {
+      nm <- cand[[1]]
+    } else if (length(cand) == 0L) {
+      abm_abort(
+        c("{.fn abm_birth} cannot add agents to the grid-wired patch group {.field {wired_on}}.",
+          "i" = "Grid patches are fixed by the lattice geometry."),
+        class = "tidyABM_bad_arg"
+      )
+    } else {
+      abm_abort(
+        c("{.code abm_birth(n = )} needs {.arg group} when the model has several groups.",
+          "i" = "Available groups: {.field {cand}}.",
+          "i" = 'For example {.code abm_birth(n = {step$n}, group = "{cand[[1]]}")}.'),
+        class = "tidyABM_missing_arg"
+      )
+    }
+  }
+  if (!is.null(wired_on) && identical(nm, wired_on)) {
+    abm_abort(
+      c("{.fn abm_birth} cannot add agents to the grid-wired patch group {.field {nm}}.",
+        "i" = "Grid patches are fixed by the lattice geometry; target a mobile agent group instead."),
+      class = "tidyABM_bad_arg"
+    )
+  }
   g <- state$groups[[nm]]
 
   if (nrow(g) == 0L) {
@@ -210,6 +256,7 @@ run_death <- function(step, state) {
   removed <- integer()
   # the other groups are only read through `partner_<col>`, under a match
   pvars <- planned(step, "pvars", partner_vars(list(step$when)))
+  cvars <- planned(step, "cvars", cell_vars(list(step$when)))
   combined <- if (!is.null(state$match) && length(pvars)) bind_groups(state$groups, pvars)
   # the match columns are looked up per agent, so only when they are read
   bare <- !length(state$relations) &&
@@ -223,8 +270,17 @@ run_death <- function(step, state) {
     aug <- if (bare) g else
       augment_group(g, state$match, combined, state$relations, partner = pvars,
                     match_cols = planned(step, "mcols", match_cols_read(list(step$when), state)))
+    if (length(cvars)) aug <- attach_cell_columns(aug, state, cvars)
     dead <- eval_condition(step$when, aug, state$globals)
     if (!any(dead)) next
+    if (!is.null(state$lattice) && !is.null(state$lattice$on) &&
+        identical(nm, state$lattice$on)) {
+      abm_abort(
+        c("{.fn abm_death} cannot remove agents from the grid-wired patch group {.field {nm}}.",
+          "i" = "Grid patches are fixed by the lattice geometry; target a mobile agent group instead."),
+        class = "tidyABM_bad_arg"
+      )
+    }
     removed <- c(removed, g$.id[dead])
     state$groups[[nm]] <- vctrs::vec_slice(g, !dead)
   }

@@ -15,96 +15,67 @@ new_abm_network <- function(type, degree, edges, dims = NULL, diagonals = NULL,
 #' append one edge per newborn agent, and [abm_death()] prunes the edges of
 #' agents that are removed.
 #'
-#' `type = "random"` builds a `degree`-regular random graph with
-#' [igraph::sample_k_regular()], so every agent ends up with *exactly* `degree`
-#' neighbours and every edge is symmetric. `degree = 1` therefore gives a fixed
-#' one-to-one pairing of the whole population.
+#' `type = "regular"` (or its alias `"random"`) builds a `degree`-regular random
+#' graph with [igraph::sample_k_regular()], so every agent ends up with
+#' *exactly* `degree` neighbours and every edge is symmetric. `degree = 1`
+#' therefore gives a fixed one-to-one pairing of the whole population.
 #'
 #' `type = "complete"` connects every agent to every other one. That is the
 #' well-mixed population written as a graph, and it is what lets
 #' [abm_neighbours()] mean "over everybody else" in a model with no spatial or
 #' social structure at all.
 #'
-#' The degree distribution is not a detail. `"random"` is *regular*, every
-#' agent has exactly `degree` neighbours, and a threshold model on a regular
-#' graph behaves quite differently from the same model on a graph with the same
-#' mean degree but a spread of degrees, because the low-degree agents are the
-#' ones a cascade can get started on. `"poisson"` is the Erdos-Renyi graph
-#' `G(n, p)` with `p` chosen to give mean degree `degree`, and it is what the
-#' random-graph literature means by "a random graph". `"scale_free"` grows a
+#' The degree distribution is not a detail. `"regular"` (`"random"`) is *regular*,
+#' every agent has exactly `degree` neighbours, and a threshold model on a
+#' regular graph behaves quite differently from the same model on a graph with
+#' the same mean degree but a spread of degrees, because the low-degree agents
+#' are the ones a cascade can get started on. `"poisson"` is the Erdos-Renyi
+#' graph `G(n, p)` with `p` chosen to give mean degree `degree`, and it is what
+#' the random-graph literature means by "a random graph". `"scale_free"` grows a
 #' Barabasi-Albert graph attaching `degree` edges per new agent, giving the
 #' heavy tail. `"ring"` is the one-dimensional lattice, each agent joined to
 #' the `degree / 2` agents on either side of it.
 #'
-#' # Lattices
+#' # Spatial grids
 #'
-#' `type = "grid"` and `type = "line"` build a lattice, and a lattice **is a
-#' network**: it produces the same `from`/`to` edge tibble every other type
-#' produces, so patches are ordinary agents and [abm_neighbours()],
-#' [abm_match()] with `pair = "network"`, [abm_link()] and [abm_edges()] all
-#' work on it with no change. There is no second medium and no patch-specific
-#' rule syntax.
+#' Spatial geometry now lives in [abm_space()] (`space = abm_space(type = "grid", ...)`
+#' or `type = "continuous"`), which also lets a model combine geography and a
+#' social network at the same time. `type = "grid"` and `type = "line"` remain
+#' supported on `abm_network()` as backward-compatible aliases.
 #'
-#' Two things are injected. The wired group gains `.x` and `.y` (a line gains
-#' `.x` only), integer cell coordinates, 1-based, with `.id = .x + (.y - 1) * w`
-#' and `.y` increasing upward. Every *other* group gains `.cell`, an integer
-#' holding the wired group's `.id` for the cell that agent is standing on, plus
-#' `.x` / `.y` mirroring it. All three are reserved: a model reads them, it does
-#' not declare them. A rule may write `.cell` (that is a move, and `.x` / `.y`
-#' follow); `.x` and `.y` themselves are read-only.
-#'
-#' The wired group also **inherits its count**, so it omits `n` in
-#' [abm_agents()] and gets `prod(dims)`. `n` is still usable inside that group's
-#' formulas, and a matching `n` is allowed; a mismatch is an error. The lattice
-#' is built before the agent columns are materialised, so `.x` and `.y` are in
-#' scope in setup formulas as well as in the go block.
-#'
-#' @param type How the network is built. `"random"` for a `degree`-regular
-#'   random graph, `"poisson"` for an Erdos-Renyi graph of mean degree `degree`,
-#'   `"scale_free"` for a Barabasi-Albert graph, `"ring"` for a one-dimensional
-#'   lattice, `"complete"` for every possible edge, `"grid"` for a 2-D lattice,
-#'   `"line"` for a 1-D one, `"manual"` to supply `edges` yourself, or `"empty"`
-#'   for a network that starts with no edges (useful with [abm_birth()]).
-#' @param degree Number of neighbours per agent, exactly, for `"random"` and
-#'   `"ring"`; on average, for `"poisson"`; per newly attached agent, for
-#'   `"scale_free"`. Required for all four. `n * degree` must be even for
-#'   `"random"`, and `degree` must be even for `"ring"`.
+#' @param type How the network is built. `"regular"` (or `"random"`) for a
+#'   `degree`-regular random graph, `"poisson"` for an Erdos-Renyi graph of mean
+#'   degree `degree`, `"scale_free"` for a Barabasi-Albert graph, `"ring"` for a
+#'   one-dimensional ring, `"complete"` for every possible edge, `"manual"` to
+#'   supply `edges` yourself, or `"empty"` for a network that starts with no
+#'   edges (useful with [abm_birth()]). `"grid"` and `"line"` are deprecated
+#'   aliases for [abm_space()].
+#' @param degree Number of neighbours per agent, exactly, for `"regular"`
+#'   (`"random"`) and `"ring"`; on average, for `"poisson"`; per newly attached
+#'   agent, for `"scale_free"`. Required for all four. `n * degree` must be even
+#'   for `"regular"` / `"random"`, and `degree` must be even for `"ring"`.
 #' @param edges A two-column data frame of `from`/`to` agent ids. Required for
 #'   `type = "manual"`.
-#' @param dims The shape of a lattice: `c(width, height)` for `type = "grid"`,
-#'   a single width for `type = "line"`. The cell count is `prod(dims)`.
-#'   Required for both lattice types and used by neither of the others.
-#' @param diagonals For `type = "grid"`, whether a cell's neighbourhood includes
-#'   the diagonals. `TRUE` (the default) is the 8-neighbour Moore neighbourhood
-#'   and matches NetLogo's unmarked `neighbors`; `FALSE` is the 4-neighbour von
-#'   Neumann one. An error for `type = "line"`, which has no diagonals.
-#' @param torus For a lattice, whether the edges wrap. `TRUE` is the default.
-#'   `FALSE` gives a bounded lattice whose border cells simply have fewer
-#'   neighbours, which needs no special-casing in a rule: `sum()` and `any()`
-#'   see the shorter neighbourhood directly.
-#' @param on For a lattice, the name of the agent group to wire. The rest of the
-#'   population is not on the lattice; it stands *on* it, via `.cell`. Defaults
-#'   to the whole population, which is what a patch-only model wants.
+#' @param dims Deprecated lattice shape; prefer [abm_space()].
+#' @param diagonals Deprecated lattice option; prefer [abm_space()].
+#' @param torus Deprecated lattice option; prefer [abm_space()].
+#' @param on Optional name of the agent group to wire. In multi-group models
+#'   this restricts the network (or deprecated lattice) to that group; defaults
+#'   to the whole population.
 #'
 #' @return An `abm_network` specification object.
 #' @export
 #' @examples
-#' abm_network(type = "random", degree = 4)
+#' abm_network(type = "regular", degree = 4)
 #' abm_network(type = "poisson", degree = 3)
 #' abm_network(type = "ring", degree = 2)
 #' abm_network(type = "complete")
 #' abm_network(type = "manual", edges = data.frame(from = 1, to = 2))
 #'
-#' # a 100x100 torus with the Moore neighbourhood
-#' abm_network(type = "grid", dims = c(100, 100))
-#'
-#' # a bounded von Neumann grid, wired to the patches of a turtle model
-#' abm_network(type = "grid", dims = c(50, 50), diagonals = FALSE,
-#'             torus = FALSE, on = "patches")
-#'
-#' # a 1-D ring of cells
-#' abm_network(type = "line", dims = 401)
-abm_network <- function(type = c("random", "poisson", "scale_free", "ring",
+#' # For spatial grids and continuous worlds, use abm_space():
+#' abm_space(type = "grid", dims = c(50, 50), diagonals = FALSE,
+#'           torus = FALSE, on = "patches")
+abm_network <- function(type = c("regular", "random", "poisson", "scale_free", "ring",
                                  "complete", "grid", "line", "manual", "empty"),
                         degree = NULL, edges = NULL, dims = NULL,
                         diagonals = NULL, torus = NULL, on = NULL) {
@@ -126,8 +97,7 @@ abm_network <- function(type = c("random", "poisson", "scale_free", "ring",
 
   lattice_args <- c(if (!is.null(dims)) "dims",
                     if (!is.null(diagonals)) "diagonals",
-                    if (!is.null(torus)) "torus",
-                    if (!is.null(on)) "on")
+                    if (!is.null(torus)) "torus")
   if (length(lattice_args)) {
     abm_abort(
       c('{.arg {lattice_args}} {?is/are} only used by {.code type = "grid"} and {.code type = "line"}.',
@@ -135,8 +105,12 @@ abm_network <- function(type = c("random", "poisson", "scale_free", "ring",
       class = "tidyABM_irrelevant_arg"
     )
   }
+  if (!is.null(on) && !rlang::is_string(on)) {
+    abm_abort("{.arg on} must be a single group name.",
+              class = "tidyABM_bad_arg")
+  }
 
-  relevant <- list(random = "degree", poisson = "degree",
+  relevant <- list(regular = "degree", random = "degree", poisson = "degree",
                    scale_free = "degree", ring = "degree",
                    complete = character(), manual = "edges",
                    empty = character())
@@ -152,7 +126,7 @@ abm_network <- function(type = c("random", "poisson", "scale_free", "ring",
     )
   }
 
-  if (type %in% c("random", "poisson", "scale_free", "ring")) {
+  if (type %in% c("regular", "random", "poisson", "scale_free", "ring")) {
     if (is.null(degree)) {
       abm_abort(
         '{.arg degree} is required when {.code type = "{type}"}.',
@@ -210,13 +184,32 @@ abm_network <- function(type = c("random", "poisson", "scale_free", "ring",
                             to   = as.integer(edges$to))
   }
 
-  new_abm_network(type, degree, edges)
+  new_abm_network(type, degree, edges, on = on)
 }
 
 #' Turn a network spec into an edge tibble for `n` agents
 #' @noRd
-materialise_network <- function(spec, n, call = rlang::caller_env()) {
+materialise_network <- function(spec, n, groups = NULL, call = rlang::caller_env()) {
   if (is.null(spec)) return(NULL)
+  if (!is.null(spec$on) && !is.null(groups)) {
+    if (!spec$on %in% names(groups)) {
+      abm_abort(
+        c("{.arg on} names a group that is not in {.arg agents}.",
+          "x" = "No group {.field {spec$on}}.",
+          "i" = "Groups: {.field {names(groups)}}."),
+        class = "tidyABM_bad_arg", call = call
+      )
+    }
+    ids <- groups[[spec$on]]$.id
+    sub_spec <- spec
+    sub_spec$on <- NULL
+    e <- materialise_network(sub_spec, n = length(ids), groups = NULL, call = call)
+    if (nrow(e)) {
+      e$from <- ids[e$from]
+      e$to <- ids[e$to]
+    }
+    return(e)
+  }
 
   if (spec$type == "empty") {
     return(tibble::tibble(from = integer(), to = integer()))

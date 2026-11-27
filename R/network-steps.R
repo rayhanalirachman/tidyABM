@@ -153,6 +153,8 @@ linked_pairs <- function(step, state) {
   }
   combined <- bind_groups(state$groups)
   aug <- augment_group(combined, state$match, combined, state$relations)
+  cvars <- cell_vars(list(step$when))
+  if (length(cvars)) aug <- attach_cell_columns(aug, state, cvars)
   keep <- eval_condition(step$when, aug, state$globals)
 
   if (state$match$size == 2L) {
@@ -211,6 +213,8 @@ relation_pairs <- function(step, state, fn) {
     if (nrow(state$match$match) == 0L) return(empty)
   }
   aug <- augment_group(combined, state$match, combined, state$relations)
+  cvars <- cell_vars(c(list(step$when, step$to), lapply(step$rules, `[[`, "quo")))
+  if (length(cvars)) aug <- attach_cell_columns(aug, state, cvars)
   keep <- eval_condition(step$when, aug, state$globals)
   keep[is.na(keep)] <- FALSE
 
@@ -395,6 +399,11 @@ run_unlink <- function(step, state) {
 #'   single neighbour: `"north"`, `"south"`, `"east"` or `"west"` on a grid;
 #'   `"left"` / `"right"` (or `"west"` / `"east"`) on a line. Needs a lattice,
 #'   and cannot be combined with `within`.
+#' @param .default Optional atomic scalar value to use for agents with zero
+#'   neighbours instead of `NA` (other than bare `n()`, which already returns
+#'   `0L`).
+#' @param via Optional `"space"` or `"network"` when a model has both a spatial
+#'   lattice and a social network, selecting which topology defines neighbours.
 #'
 #' @return An `abm_neighbours` step object.
 #' @seealso [abm_go()], which lists every step and fixes the order they run
@@ -414,12 +423,31 @@ run_unlink <- function(step, state) {
 #' # what is on the cell I am standing on
 #' abm_neighbours(grass_here ~ any(grass),
 #'                within = .group == "patches" & .id == own_.cell)
-abm_neighbours <- function(..., within = NULL, .where = NULL) {
+abm_neighbours <- function(..., within = NULL, .where = NULL,
+                           .default = NULL, via = NULL) {
   check_rule_dots(rlang::enexprs(...), "abm_neighbours")
   step <- new_rule_step(collect_rules(rlang::list2(...), "abm_neighbours"),
                         "abm_neighbours")
   step$within <- enquo_or_null(rlang::enquo(within))
   step$where <- .where
+  if (!is.null(.default)) {
+    if (!is.atomic(.default) || length(.default) != 1L) {
+      abm_abort(
+        c("{.arg .default} must be a single atomic value.",
+          "x" = "Got {.cls {class(.default)[[1]]}} of length {length(.default)}."),
+        class = "tidyABM_bad_arg"
+      )
+    }
+  }
+  step$default <- .default
+  if (!is.null(via)) {
+    if (!rlang::is_string(via)) {
+      abm_abort('{.arg via} must be {.val space} or {.val network}.',
+                class = "tidyABM_bad_arg")
+    }
+    via <- rlang::arg_match0(via, c("space", "network"), arg_nm = "via")
+  }
+  step$via <- via
   if (!is.null(.where)) {
     if (!rlang::is_string(.where)) {
       abm_abort("{.arg .where} must be a single direction name.",
@@ -433,6 +461,13 @@ abm_neighbours <- function(..., within = NULL, .where = NULL) {
       )
     }
   }
+  if (!is.null(via) && !is.null(step$within)) {
+    abm_abort(
+      c("{.arg via} and {.arg within} are different neighbourhoods.",
+        "i" = "{.arg via} picks between the model's space and network; {.arg within} is a condition."),
+      class = "tidyABM_conflicting_args"
+    )
+  }
   step
 }
 
@@ -444,7 +479,7 @@ abm_neighbours <- function(..., within = NULL, .where = NULL) {
 #' over, so a comparison written for one means the same thing in the other.
 #' @noRd
 pair_view <- function(combined, focal_idx, cand_idx, relations = NULL,
-                      vars = NULL) {
+                      vars = NULL, space = NULL) {
   # `vars` are the names the caller's expressions read; only those columns
   # are copied into the view, which for a lattice is tens of thousands of
   # rows wide. `NULL` copies every column.
@@ -462,6 +497,14 @@ pair_view <- function(combined, focal_idx, cand_idx, relations = NULL,
                     sprintf("own_%s", own_cols)),
     list(.of = combined$.id[focal_idx])
   )
+  if ((is.null(vars) || ".dist" %in% vars) && !is.null(space) &&
+      ".x" %in% names(cols)) {
+    view$.dist <- space_distance(
+      cols$.x[cand_idx], if (".y" %in% names(cols)) cols$.y[cand_idx] else NULL,
+      cols$.x[focal_idx], if (".y" %in% names(cols)) cols$.y[focal_idx] else NULL,
+      space
+    )
+  }
   view <- attach_relation_columns(view, relations, view$.of, view$.id)
   new_tbl(view, length(cand_idx))
 }
@@ -484,8 +527,9 @@ eval_over_view <- function(quo, view, globals) {
 
 #' The (focal, neighbour) view for a network neighbourhood
 #' @noRd
-network_view <- function(combined, state, vars = NULL) {
-  nb <- state$nb_cache$nb
+network_view <- function(combined, state, vars = NULL, edges = state$edges,
+                         cache_name = "nb_cache") {
+  nb <- state[[cache_name]]$nb
   ids <- combined$.id
   if (identical(ids, seq_along(ids))) {
     # the ids are the row numbers, which is every patch-only lattice model:
@@ -498,8 +542,9 @@ network_view <- function(combined, state, vars = NULL) {
     focal_idx <- match(nb$.id, ids)
     cand_idx <- match(nb$.neighbour, ids)
   }
-  view <- pair_view(combined, focal_idx, cand_idx, state$relations, vars)
-  attach_edge_columns(view, state$edges, nb)
+  view <- pair_view(combined, focal_idx, cand_idx, state$relations, vars,
+                    space = state$space %||% state$lattice)
+  attach_edge_columns(view, edges, nb)
 }
 
 #' The (focal, candidate) view for `within = .R` or `within = .R_back`
@@ -524,13 +569,42 @@ relation_view <- function(step, combined, relations) {
 #' The (focal, candidate) view for a neighbourhood in attribute space
 #' @noRd
 attribute_view <- function(step, combined, globals, relations = NULL,
-                           vars = NULL) {
+                           vars = NULL, space = NULL) {
   n <- nrow(combined)
+  # AST-recognised spatial cell bucketing for `.dist <= r` / `.dist < r`
+  if (!is.null(space) && n > 64L) {
+    db <- dist_bound_key(rlang::quo_get_expr(step$within))
+    if (!is.null(db)) {
+      env <- rlang::quo_get_env(step$within)
+      rq <- rlang::new_quosure(db$radius_expr, env)
+      bp <- spatial_radius_pairs(combined, seq_len(n), seq_len(n), rq, db$strict,
+                                 globals, space)
+      if (!is.null(bp)) {
+        view <- pair_view(combined, bp$focal_idx, bp$cand_idx, relations, vars,
+                          space = space)
+        if (length(db$rest) && nrow(view) > 0L) {
+          rest_expr <- Reduce(function(a, b) rlang::call2("&", a, b), db$rest)
+          keep <- eval_over_view(rlang::new_quosure(rest_expr, env), view, globals)
+          if (!is.logical(keep)) {
+            abm_abort(
+              c("{.arg within} must be a condition.",
+                "x" = "{.code {deparse1(rlang::quo_get_expr(step$within))}} returned {.cls {class(keep)[[1]]}}."),
+              class = "tidyABM_bad_within"
+            )
+          }
+          if (length(keep) == 1L) keep <- rep(keep, nrow(view))
+          keep[is.na(keep)] <- FALSE
+          view <- vctrs::vec_slice(view, keep)
+        }
+        return(view)
+      }
+    }
+  }
   ci <- rep(seq_len(n), times = n)
   si <- rep(seq_len(n), each = n)
   # every (focal, candidate) pair, so only the columns the rules read are
   # copied in: on a lattice the cross product is the population squared
-  view <- pair_view(combined, si, ci, relations, vars)
+  view <- pair_view(combined, si, ci, relations, vars, space = space)
   keep <- eval_over_view(step$within, view, globals)
   if (!is.logical(keep)) {
     abm_abort(
@@ -553,6 +627,7 @@ run_neighbours <- function(step, state) {
   vars <- planned(step, "vars", unique(c(
     unlist(lapply(step$rules, `[[`, "vars"), use.names = FALSE),
     if (!is.null(step$within)) all.vars(rlang::quo_get_expr(step$within)))))
+  sp <- state$space %||% state$lattice
 
   one <- NULL
   if (!is.null(step$where)) {
@@ -561,12 +636,13 @@ run_neighbours <- function(step, state) {
   } else if (!is.null(step$within)) {
     one <- nb_one(step, combined, state)
     # `within = .R` walks the relation's rows; a `<col> == own_<col>` condition
-    # is a join; anything else is the cross product
+    # is a join; anything else is the cross product (or spatial bucket join)
     if (is.null(one)) view <- relation_view(step, combined, state$relations) %||%
-      equijoin_view(step, combined, state$globals, state$relations, vars) %||%
-      attribute_view(step, combined, state$globals, state$relations, vars)
+      equijoin_view(step, combined, state$globals, state$relations, vars, space = sp) %||%
+      attribute_view(step, combined, state$globals, state$relations, vars, space = sp)
   } else {
-    if (is.null(state$edges)) {
+    topo <- resolve_topology_edges(step$via, state, "abm_neighbours")
+    if (is.null(topo)) {
       abm_abort(
         c("{.fn abm_neighbours} needs a network.",
           "i" = "Add one with {.code abm_setup(..., network = abm_network(...))}.",
@@ -574,14 +650,18 @@ run_neighbours <- function(step, state) {
         class = "tidyABM_no_network"
       )
     }
-    check_stale_draws(step, state)
+    edges <- topo$edges
+    cname <- topo$cache
+    if (cname == "nb_cache") check_stale_draws(step, state)
     # the neighbour table only changes when the edges do, and edges rarely do
-    if (!identical(state$nb_cache$edges, state$edges)) {
-      state$nb_cache <- list(edges = state$edges, nb = neighbour_table(state$edges))
+    if (!identical(state[[cname]]$edges, edges)) {
+      state[[cname]] <- list(edges = edges, nb = neighbour_table(edges))
     }
-    fast <- neighbour_fast(step, combined, state)
-    if (!is.null(fast)) return(fast)
-    view <- network_view(combined, state, vars)
+    if (cname == "nb_cache") {
+      fast <- neighbour_fast(step, combined, state)
+      if (!is.null(fast)) return(fast)
+    }
+    view <- network_view(combined, state, vars, edges = edges, cache_name = cname)
   }
 
   counts <- planned(step, "counts", vapply(step$rules, function(r) is_bare_count(r$quo), NA))
@@ -624,7 +704,16 @@ run_neighbours <- function(step, state) {
         out
       }
       value <- agg$.abm_value[idx]
-      if (count_rule && anyNA(idx)) value[is.na(idx)] <- 0L
+      miss <- is.na(idx)
+      if (any(miss)) {
+        if (!is.null(step$default)) {
+          common <- vctrs::vec_cast_common(value, step$default)
+          value <- common[[1]]
+          value[miss] <- common[[2]]
+        } else if (count_rule) {
+          value[miss] <- 0L
+        }
+      }
       state$groups[[nm]] <- assign_rule(g, r$target, value, TRUE)
     }
   }
@@ -778,8 +867,14 @@ neighbour_fast <- function(step, combined, state) {
   vals <- vector("list", length(shapes))
   for (i in seq_along(shapes)) {
     x <- xs[[i]]
-    vals[[i]] <- if (is.double(x)) nb_fold(shapes[[i]]$fn, x, ix)
-                 else nb_fold_int(shapes[[i]]$fn, as.integer(x), ix)
+    v <- if (is.double(x)) nb_fold(shapes[[i]]$fn, x, ix)
+         else nb_fold_int(shapes[[i]]$fn, as.integer(x), ix)
+    if (!is.null(step$default) && any(ix$none)) {
+      common <- vctrs::vec_cast_common(v, step$default)
+      v <- common[[1]]
+      v[ix$none] <- common[[2]]
+    }
+    vals[[i]] <- v
   }
   for (i in seq_along(shapes)) {
     for (nm in names(state$groups)) {

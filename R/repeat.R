@@ -56,7 +56,7 @@ new_abm_repeat <- function(steps, until, max) {
 #'   max = 20
 #' )
 abm_repeat <- function(..., until = NULL, max) {
-  steps <- rlang::list2(...)
+  steps <- flatten_step_dots(rlang::list2(...))
   if (missing(max)) {
     abm_abort(
       c("{.fn abm_repeat} needs a {.arg max}.",
@@ -95,10 +95,12 @@ repeat_until <- function(step, state) {
   # partner's ask"), so `until` sees `.role` and `partner_<col>` as a rule does
   combined <- bind_groups(state$groups)
   combined <- augment_group(combined, state$match, combined, state$relations)
+  cvars <- cell_vars(list(step$until))
+  if (length(cvars)) combined <- attach_cell_columns(combined, state, cvars)
+  .run_ctx$tick <- as.integer(state$tick %||% 0L)
   quo <- rlang::quo_set_env(
     step$until,
-    rlang::new_environment(state$globals,
-                           parent = rlang::quo_get_env(step$until))
+    with_tick_env(state$globals, parent = rlang::quo_get_env(step$until))
   )
   val <- dplyr::pull(dplyr::reframe(combined, .abm_value = !!quo),
                      ".abm_value")

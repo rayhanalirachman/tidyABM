@@ -451,33 +451,33 @@ Each offspring is a row of its own before `inherit` is evaluated, so a mutation
 drawn there differs from sibling to sibling rather than being drawn once and
 copied.
 
-In a model with a network, a newborn is nowhere until `attach_via` puts it
-somewhere: an `abm_match(pair = "network")` spec that names who it attaches to,
-where `from = "parent"` is next to the agent it was cloned from and
-`from = "random_edge"` is degree-proportional. `links` says how many edges it
-arrives with, one by default. That default is worth thinking about whenever
-agents also die, because a death prunes a full degree's worth of edges and a
-one-edge birth puts back a single link, which erodes the network over a long
-run. With `from = "parent"`, `links` takes the parent and a sample of the
-parent's own neighbours, so the newborn arrives in a neighbourhood rather than
-on the end of a single thread.
+In a model with a network, a newborn is nowhere until `attach` (or
+`attach_via` for custom `eligible` filters) puts it somewhere: `attach =
+"parent"` places it next to the agent it was cloned from, `attach =
+"random_edge"` is degree-proportional, and `attach = "neighbour"` attaches to a
+random existing node. `links` says how many edges it arrives with, one by
+default. That default is worth thinking about whenever agents also die, because
+a death prunes a full degree's worth of edges and a one-edge birth puts back a
+single link, which erodes the network over a long run. With `attach = "parent"`,
+`links` takes the parent and a sample of the parent's own neighbours, so the
+newborn arrives in a neighbourhood rather than on the end of a single thread.
 
 ## Space
 
-A lattice **is a network**. `abm_network(type = "grid")` produces the same
-edge list every other network type produces, so patches are ordinary agents and
-everything that already reads a network — `abm_neighbours()`,
-`abm_match(pair = "network")`, `abm_link()`, `abm_edges()` — works on a grid
-with no change. Nothing about the grammar is spatial; you just get coordinates
-to pivot on.
+Spatial geometry lives in `abm_space()`, separate from undirected social graphs
+in `abm_network()`, so a model can have a discrete 1-D or 2-D grid, a continuous
+coordinate box (`type = "continuous"`), or both a space and a network at the
+same time (disambiguated with `via = "space"` or `via = "network"`).
 
-The group the grid is wired to gains `.x` and `.y`, and **inherits its count**
-from `dims`, so it does not say `n`. That is a whole cellular automaton:
+On a grid, the wired patch group gains `.x` and `.y` and **inherits its count**
+from `dims`, so it omits `n`. Every step that reads a topology —
+`abm_neighbours()`, `abm_match(pair = "network")`, `abm_edges()` — works on the
+grid directly. That is a whole cellular automaton:
 
 ```{r}
 life <- abm_setup(
-  agents  = abm_agents(alive = ~seq_len(n) %in% (c(5, 6, 7) + 5 * 12)),
-  network = abm_network(type = "grid", dims = c(12, 12))
+  agents = abm_agents(alive = ~seq_len(n) %in% (c(5, 6, 7) + 5 * 12)),
+  space  = abm_space(type = "grid", dims = c(12, 12))
 )
 
 life_go <- abm_go(
@@ -496,17 +496,19 @@ boundary handling either: a border cell simply has fewer neighbour rows, and
 `sum()` and `any()` see that directly.
 
 `diagonals = FALSE` gives the 4-neighbour von Neumann lattice instead of the
-default 8-neighbour Moore one, and `abm_grid()` is sugar for the group plus its
-network in one call. For a rule that needs an *ordered* neighbour — a 1-D
-cellular automaton reads (left, self, right) — `abm_neighbours(.where = )` picks
-out the single neighbour in a named direction.
+default 8-neighbour Moore one, and `abm_grid()` is sugar for the patch group
+plus its grid space in one call. For a rule that needs an *ordered* neighbour —
+a 1-D cellular automaton reads (left, self, right) — `abm_neighbours(.where = )`
+picks out the single neighbour in a named direction.
 
 ### Agents that are not patches
 
-`on =` wires one named group, and every other group is then standing *on* the
-lattice rather than being part of it: each gets a `.cell` holding a patch `.id`,
-with `.x` / `.y` kept in sync with it. Moving is writing that column, which is
-what `abm_move()` does.
+`on =` wires one named patch group (or omit `on` with explicit `n` on all groups
+for a patchless grid), and every other group stands *on* the grid: each gets a
+`.cell` holding its cell id, with `.x` / `.y` kept in sync. Mobile agents read
+their current patch's columns directly as read-only `cell_<col>` and write back
+explicitly with `abm_tell(..., to = .cell)`. Moving updates `.cell` via
+`abm_move()`.
 
 ```{r}
 world <- abm_setup(
@@ -514,33 +516,31 @@ world <- abm_setup(
     patches = abm_agents(grass = ~runif(n) < 0.5),
     sheep   = abm_agents(n = 20, energy = 10)
   ),
-  network = abm_network(type = "grid", dims = c(10, 10), on = "patches"),
+  space = abm_space(type = "grid", dims = c(10, 10), on = "patches"),
   seed = 1
 )
 
 graze_go <- abm_go(
-  abm_move(along = "patches", to = "random_neighbour", who = "sheep"),
-  # what is on the cell I am standing on
-  abm_neighbours(grass_here ~ any(grass),
-                 within = .group == "patches" & .id == own_.cell),
-  abm_rules(energy ~ if_else(grass_here, energy + 1, energy - 1)),
+  abm_move(to = "random_neighbour", who = "sheep"),
+  abm_rules(energy ~ if_else(cell_grass, energy + 1, energy - 1),
+            when = .group == "sheep"),
   # eat it
-  abm_tell(grass ~ FALSE, to = .cell, when = .group == "sheep" & grass_here)
+  abm_tell(grass ~ FALSE, to = .cell, when = .group == "sheep" & cell_grass)
 )
 
 grazed <- abm_run(world, graze_go, ticks = 10, seed = 1)
 subset(grazed, tick == 10 & .group == "sheep", select = c(.id, .cell, energy))[1:5, ]
 ```
 
-Three things there are worth naming. `within = .id == own_.cell` is the
-co-location join, and an equality against an `own_` column is recognised and
-resolved as a hash join rather than by building every pair. `abm_tell(to = .cell)`
-writes into the patch the sheep is standing on — note that the right-hand side
-is evaluated in the **sender's** row, so an additive deposit wants a mailbox
-column and `.resolve = "sum"` rather than reading the recipient's value. And
-`abm_move(to = )` also takes `uphill(<expr>)` / `downhill(<expr>)` to follow a
-gradient, plus `direction`, `range`, `axes_only` and `avoid_occupied` for the
-models that need them.
+Three things there are worth naming. `cell_<col>` reads the patch each mobile
+agent is standing on without a separate `abm_neighbours()` lookup, and `when =`
+narrows `abm_rules()` to just the rows that should change. `abm_tell(to = .cell)`
+writes into the patch the sheep is standing on — use `.resolve = "add"` for
+additive deposits (`+=`) or `.resolve = "sum"` to replace with the sum of
+incoming messages. And `abm_move(to = )` also takes `"random_empty"`,
+`"random_cell"`, `uphill(<expr>)` / `downhill(<expr>)` (with torus-aware `.dist`
+and scalar or per-agent `range`), `direction`, `when`, `axes_only`,
+`avoid_occupied`, and on continuous spaces `offset(dx, dy)` / `forward(by, heading)`.
 
 Results need no special handling: `.x`, `.y` and `.cell` are ordinary columns in
 the output tibble, so `filter(tick == t)` with `geom_raster(aes(.x, .y))` is a
@@ -668,12 +668,14 @@ wrong in a way that is easy to miss: a global is model state, so every rule in
 the model could then read the spread of the wealth distribution. A measure goes
 to `abm_measures()` and nowhere else.
 
-Two limits are worth knowing before you reach for this. A parameter is a global,
-so `n`, `abm_network()`'s `degree` and a lattice's `dims` are out of reach —
-they are fixed when `abm_setup()` builds the world, and sweeping one still means
-a world per value. And `reps` replicates the *run*, not the population: the
-starting columns were drawn when the world was built, so every replicate begins
-from the same agents and what differs is what the run itself draws.
+Two limits are worth knowing when you pass a built `abm_model`. A parameter is a
+global, so `n`, `abm_network()`'s `degree` and `abm_space()`'s `dims` are fixed
+when `abm_setup()` builds the world; and `reps` replicates the *run*, reusing
+the same starting population across replicates. To sweep structural parameters
+or redraw stochastic starting columns and random networks on every replicate,
+pass a *function* `function(...) abm_setup(...)` as `model` instead. You can
+also pass `until = ~expr` to `abm_run()` to stop early as soon as a
+population/global condition holds.
 
 ## Where to go next
 

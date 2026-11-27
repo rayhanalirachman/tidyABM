@@ -11,7 +11,7 @@ library(tidyABM)
 ca <- function(rule_number, w = 121) {
   abm_setup(
     agents  = abm_agents(s = ~as.integer(seq_len(n) == n %/% 2 + 1)),
-    network = abm_network(type = "line", dims = w, torus = TRUE),
+    space   = abm_space(type = "grid", dims = w, torus = TRUE),
     globals = list(rule = as.integer(intToBits(rule_number))[1:8])
   )
 }

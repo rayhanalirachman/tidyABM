@@ -22,28 +22,29 @@ run_one <- function(legitimacy, w = 22, ticks = 200, seed = 1, record = "globals
       people  = abm_agents(n = round(w * w * 0.70), risk = ~runif(n),
                            hardship = ~runif(n), active = FALSE, jail = 0L),
       cops    = abm_agents(n = round(w * w * 0.04))),
-    network = abm_network(type = "grid", dims = c(w, w), on = "patches",
-                          torus = TRUE),
+    space = abm_space(type = "grid", dims = c(w, w), on = "patches",
+                      torus = TRUE),
     globals = list(legitimacy = legitimacy, threshold = 0.1,
                    vision = 3, max_jail = 30),
     seed = seed)
 
   go <- abm_go(
-    abm_move(along = "patches", to = "random_empty_neighbour",
-             who = c("people", "cops")),
+    abm_move(to = "random_empty_neighbour",
+             who = c("people", "cops"),
+             when = .group == "cops" | jail == 0L),
     abm_neighbours(
       C ~ sum(.group == "cops"),
       A ~ 1 + sum(.group == "people" & active),
-      within = .group != "patches" & .id != own_.id &
-               abs(.x - own_.x) <= vision & abs(.y - own_.y) <= vision),
+      within = .group != "patches" & .id != own_.id & .dist <= vision),
     abm_rules(active ~ jail == 0L &
-        (hardship * (1 - legitimacy) - risk * (1 - exp(-2.3 * C / A)) > threshold),
-      .scope = "population"),
-    abm_match(pair = "one_of", eligible = .group == "cops",
-              among = .group == "people" & active),
-    abm_tell(active ~ FALSE, jail ~ sample.int(max_jail, 1L), to = .partner,
-             when = .group == "cops" & !is.na(.partner)),
-    abm_rules(jail ~ pmax(0L, jail - 1L), .scope = "population"),
+        (hardship * (1 - legitimacy) - risk * (1 - exp(-2.3 * C / A)) > threshold)),
+    abm_match(
+      pair = "one_of", eligible = .group == "cops",
+      among = .group == "people" & active,
+      abm_tell(active ~ FALSE, jail ~ sample.int(max_jail, 1L), to = .partner,
+               when = .group == "cops" & !is.na(.partner))
+    ),
+    abm_rules(jail ~ pmax(0L, jail - 1L)),
     abm_global(n_active ~ sum(active, na.rm = TRUE),
                n_jail   ~ sum(jail > 0, na.rm = TRUE)))
 
@@ -51,8 +52,7 @@ run_one <- function(legitimacy, w = 22, ticks = 200, seed = 1, record = "globals
 }
 series <- function(r) abm_globals(r)[-1, ]
 
-cat("22x22 torus, 339 people, 19 cops, 200 ticks\n")
-cat("(kept small: the vision-radius `within` is an O(n^2) pair scan)\n\n")
+cat("22x22 torus, 339 people, 19 cops, 200 ticks\n\n")
 traces <- list()
 for (leg in c(0.88, 0.82, 0.70)) {
   # the middle regime keeps every frame, for the lattice figure and the viewer
@@ -73,11 +73,6 @@ for (leg in c(0.88, 0.82, 0.70)) {
 }
 cat("  High legitimacy gives long quiet stretches broken by short bursts;\n")
 cat("  lowering it past a threshold flips the system to sustained rebellion.\n")
-
-cat("\n  `abm_neighbours(within =)` builds every (focal, candidate) pair and\n")
-cat("  then filters, so a vision-radius count is quadratic in the population.\n")
-cat("  An equality against an own_ column (the co-location join) is recognised\n")
-cat("  and hash-joined instead; a range condition like this one cannot be.\n")
 
 # --- figures --------------------------------------------------------------
 # Time series: rebels active per tick at three levels of legitimacy. The

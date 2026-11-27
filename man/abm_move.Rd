@@ -5,9 +5,10 @@
 \title{Move agents across a lattice}
 \usage{
 abm_move(
-  along,
+  along = NULL,
   to = "random_neighbour",
   who = NULL,
+  when = NULL,
   direction = NULL,
   range = NULL,
   axes_only = FALSE,
@@ -15,17 +16,22 @@ abm_move(
 )
 }
 \arguments{
-\item{along}{Which lattice to move on: the name of the grid-wired group (for
-example \code{"patches"}), or \code{"network"} to use the model's edge list as the
-adjacency directly.}
+\item{along}{Optional lattice to move on: the name of the grid-wired group
+(for example \code{"patches"}), \code{"space"}, or \code{"network"} to use the model's
+edge list directly. Defaults to the model's space/lattice when omitted.}
 
 \item{to}{How the destination is chosen. \code{"random_neighbour"},
-\code{"random_empty_neighbour"}, \code{"stay"}, or \verb{uphill(<expr>)} /
-\verb{downhill(<expr>)}. Ignored when \code{direction} is given.}
+\code{"random_empty_neighbour"}, \code{"random_empty"}, \code{"random_cell"}, \code{"stay"},
+\verb{uphill(<expr>)} / \verb{downhill(<expr>)}, or on continuous spaces
+\code{offset(...)} / \code{forward(...)}. Ignored when \code{direction} is given.}
 
 \item{who}{Character vector of the agent groups that move this step; the
 rest of the population is untouched. Defaults to every group that has a
-\code{.cell}.}
+\code{.cell} (or continuous coordinates).}
+
+\item{when}{Optional condition selecting which agents move this step. Agents
+where \code{when} is \code{FALSE} stay put and still occupy their cells for
+\code{avoid_occupied}.}
 
 \item{direction}{A column holding a per-agent heading. The mover steps one
 cell along it, rather than choosing a cell by value. Cannot be combined

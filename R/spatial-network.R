@@ -88,16 +88,17 @@ lattice_network_spec <- function(type, dims, diagonals, torus, on,
 build_lattice <- function(spec, group_name) {
   type <- spec$type
   dims <- spec$dims
-  torus <- spec$torus %||% TRUE
-  diagonals <- if (type == "grid") spec$diagonals %||% TRUE else FALSE
+  is_1d <- type == "line" || length(dims) == 1L
+  torus <- rep_len(if (is.null(spec$torus)) TRUE else as.logical(spec$torus), length(dims))
+  diagonals <- if (!is_1d) spec$diagonals %||% TRUE else FALSE
 
-  if (type == "line") {
+  if (is_1d) {
     w <- dims[[1]]
     ncell <- w
     x <- seq_len(w)
     y <- NULL
-    west <- shift_line(x, -1L, w, torus)
-    east <- shift_line(x, 1L, w, torus)
+    west <- shift_line(x, -1L, w, torus[[1]])
+    east <- shift_line(x, 1L, w, torus[[1]])
     dir_nb <- list(west = west, east = east,
                    left = west, right = east)
     nb <- lapply(seq_len(ncell), function(i) {
@@ -108,32 +109,29 @@ build_lattice <- function(spec, group_name) {
     ncell <- w * h
     x <- rep(seq_len(w), times = h)
     y <- rep(seq_len(h), each = w)
-    north <- grid_shift(x, y, 0L,  1L, w, h, torus)
-    south <- grid_shift(x, y, 0L, -1L, w, h, torus)
-    east  <- grid_shift(x, y, 1L,  0L, w, h, torus)
-    west  <- grid_shift(x, y, -1L, 0L, w, h, torus)
+    north <- grid_shift(x, y, 0L,  1L, w, h, torus[[1]], torus[[2]])
+    south <- grid_shift(x, y, 0L, -1L, w, h, torus[[1]], torus[[2]])
+    east  <- grid_shift(x, y, 1L,  0L, w, h, torus[[1]], torus[[2]])
+    west  <- grid_shift(x, y, -1L, 0L, w, h, torus[[1]], torus[[2]])
     dir_nb <- list(north = north, south = south, east = east, west = west)
     offs <- list(c(0L, 1L), c(0L, -1L), c(1L, 0L), c(-1L, 0L))
     if (diagonals) {
       offs <- c(offs, list(c(1L, 1L), c(1L, -1L), c(-1L, 1L), c(-1L, -1L)))
     }
-    cols <- lapply(offs, function(o) grid_shift(x, y, o[[1]], o[[2]], w, h, torus))
+    cols <- lapply(offs, function(o) grid_shift(x, y, o[[1]], o[[2]], w, h, torus[[1]], torus[[2]]))
     nb <- lapply(seq_len(ncell), function(i) {
       v <- vapply(cols, function(cc) cc[[i]], integer(1))
       v[!is.na(v)]
     })
   }
-  # On a torus one or two cells wide a cell's east and west neighbours are the
-  # same cell, or the cell itself. A neighbourhood is a set of other cells, so
-  # each one is listed once and the cell is never its own neighbour; the
-  # directional lookups in `dir_nb` are left as they are, since "the cell to
-  # the east" on a one-wide torus genuinely is the cell itself.
-  if (torus && any(dims <= 2L)) {
+  if (any(torus) && any(dims <= 2L)) {
     nb <- lapply(seq_len(ncell), function(i) setdiff(unique(nb[[i]]), i))
   }
 
   list(
-    type = type, dims = dims, torus = torus, diagonals = diagonals,
+    type = if (is_1d) "line" else "grid",
+    dims = dims, torus = if (length(unique(torus)) == 1L) torus[[1]] else torus,
+    diagonals = diagonals,
     on = group_name, ncell = ncell,
     x = as.integer(x), y = if (is.null(y)) NULL else as.integer(y),
     nb = nb, dir_nb = dir_nb
@@ -151,13 +149,11 @@ shift_line <- function(x, d, w, torus) {
 
 #' Grid neighbour cell id after moving (dx, dy), NA past a bounded edge
 #' @noRd
-grid_shift <- function(x, y, dx, dy, w, h, torus) {
+grid_shift <- function(x, y, dx, dy, w, h, torus_x, torus_y = torus_x) {
   nx <- x + dx; ny <- y + dy
-  if (torus) {
-    nx <- ((nx - 1L) %% w) + 1L
-    ny <- ((ny - 1L) %% h) + 1L
-    return(as.integer(nx + (ny - 1L) * w))
-  }
+  if (torus_x) nx <- ((nx - 1L) %% w) + 1L
+  if (torus_y) ny <- ((ny - 1L) %% h) + 1L
+  if (torus_x && torus_y) return(as.integer(nx + (ny - 1L) * w))
   ok <- nx >= 1L & nx <= w & ny >= 1L & ny <= h
   out <- rep(NA_integer_, length(x))
   out[ok] <- as.integer(nx[ok] + (ny[ok] - 1L) * w)
@@ -182,19 +178,37 @@ lattice_edges <- function(lat) {
 #' so `.x` / `.y` are in scope in the wired group's column formulas, and the
 #' wired group inherits its count from `prod(dims)`.
 #' @noRd
-setup_lattice <- function(specs, network, globals, call = rlang::caller_env()) {
+setup_lattice <- function(specs, network, globals, extra_network = NULL,
+                          from_space = FALSE, call = rlang::caller_env()) {
   on <- network$on
   if (is.null(on)) {
-    if (length(specs) != 1L) {
-      abm_abort(
-        c("A lattice network needs {.arg on} to say which group to wire.",
-          "i" = 'For example {.code abm_network(type = "grid", dims = ..., on = "patches")}.'),
-        class = "tidyABM_missing_arg", call = call
-      )
+    if (from_space) {
+      # Under `abm_space(type = "grid")`, implicitly wire a lone group ONLY if
+      # it omits `n`; if all groups specify `n`, build a patchless grid (`on = NULL`).
+      has_n <- vapply(specs, function(s) !is.null(s$n), logical(1))
+      if (length(specs) == 1L && !has_n[[1]]) {
+        on <- names(specs)[[1]]
+      } else if (all(has_n)) {
+        on <- NULL
+      } else {
+        abm_abort(
+          c("A grid space with an unsized group needs {.arg on} to say which group to wire.",
+            "i" = 'Pass {.code on = "<group>"} in {.fn abm_space}, or give every group an {.arg n} for a patchless grid.'),
+          class = "tidyABM_missing_arg", call = call
+        )
+      }
+    } else {
+      if (length(specs) != 1L) {
+        abm_abort(
+          c("A lattice network needs {.arg on} to say which group to wire.",
+            "i" = 'For example {.code abm_network(type = "grid", dims = ..., on = "patches")}.'),
+          class = "tidyABM_missing_arg", call = call
+        )
+      }
+      on <- names(specs)[[1]]
     }
-    on <- names(specs)[[1]]
   }
-  if (!on %in% names(specs)) {
+  if (!is.null(on) && !on %in% names(specs)) {
     abm_abort(
       c("{.arg on} names a group that is not in {.arg agents}.",
         "x" = "No group {.field {on}}.",
@@ -204,36 +218,40 @@ setup_lattice <- function(specs, network, globals, call = rlang::caller_env()) {
   }
 
   lat <- build_lattice(network, on)
-
-  wired_spec <- specs[[on]]
-  if (!is.null(wired_spec$n) && wired_spec$n != lat$ncell) {
-    abm_abort(
-      c("The wired group's {.arg n} does not match the lattice.",
-        "x" = "{.code n = {wired_spec$n}} but {.code prod(dims) = {lat$ncell}}.",
-        "i" = "Omit {.arg n} for a grid-wired group; it is inherited."),
-      class = "tidyABM_bad_n", call = call
-    )
-  }
-  if (!is.null(wired_spec$at)) {
-    abm_abort(
-      c("{.arg at} places mobile agents on the lattice; the wired group *is* the lattice.",
-        "i" = "Drop {.arg at} from group {.field {on}}."),
-      class = "tidyABM_irrelevant_arg", call = call
-    )
-  }
-
-  # wired group first, always, so cell ids are 1..prod(dims) == the group's .id
-  wired <- materialise_lattice_group(wired_spec, on, lat)
   groups <- list()
-  groups[[on]] <- wired
-  offset <- lat$ncell
+  wired <- NULL
+  offset <- 0L
 
-  for (nm in setdiff(names(specs), on)) {
+  if (!is.null(on)) {
+    wired_spec <- specs[[on]]
+    if (!is.null(wired_spec$n) && wired_spec$n != lat$ncell) {
+      abm_abort(
+        c("The wired group's {.arg n} does not match the lattice.",
+          "x" = "{.code n = {wired_spec$n}} but {.code prod(dims) = {lat$ncell}}.",
+          "i" = "Omit {.arg n} for a grid-wired group; it is inherited."),
+        class = "tidyABM_bad_n", call = call
+      )
+    }
+    if (!is.null(wired_spec$at)) {
+      abm_abort(
+        c("{.arg at} places mobile agents on the lattice; the wired group *is* the lattice.",
+          "i" = "Drop {.arg at} from group {.field {on}}."),
+        class = "tidyABM_irrelevant_arg", call = call
+      )
+    }
+    # wired group first, always, so cell ids are 1..prod(dims) == the group's .id
+    wired <- materialise_lattice_group(wired_spec, on, lat)
+    groups[[on]] <- wired
+    offset <- lat$ncell
+  }
+
+  other_names <- if (is.null(on)) names(specs) else setdiff(names(specs), on)
+  for (nm in other_names) {
     s <- specs[[nm]]
     if (is.null(s$n)) {
       abm_abort(
         c("Group {.field {nm}} needs an {.arg n}.",
-          "i" = "Only the grid-wired group ({.field {on}}) inherits its count."),
+          "i" = "Only the grid-wired group inherits its count."),
         class = "tidyABM_bad_n", call = call
       )
     }
@@ -243,9 +261,24 @@ setup_lattice <- function(specs, network, globals, call = rlang::caller_env()) {
     offset <- offset + s$n
   }
 
-  edges <- lattice_edges(lat)
-  model <- new_abm_model(groups, as.list(globals), edges, network)
-  model$lattice <- lat
+  lat_edges <- if (!is.null(on)) lattice_edges(lat) else NULL
+  net_edges <- if (!is.null(extra_network)) {
+    materialise_network(extra_network, n = offset, groups = groups, call = call)
+  } else NULL
+
+  if (!is.null(extra_network)) {
+    edges <- net_edges
+    space_edges <- lat_edges
+    net_spec <- extra_network
+  } else {
+    edges <- lat_edges
+    space_edges <- NULL
+    net_spec <- if (from_space) NULL else network
+  }
+
+  model <- new_abm_model(groups, as.list(globals), edges, net_spec,
+                         lattice = lat, space = if (from_space) network else NULL,
+                         space_edges = space_edges)
   model
 }
 
@@ -261,8 +294,9 @@ materialise_lattice_group <- function(spec, group_name, lat) {
   for (nm in names(spec$cols)) {
     val <- spec$cols[[nm]]
     if (is_formula1(val)) {
-      value <- rlang::eval_tidy(rlang::as_quosure(val),
-                                data = c(as.list(out), mask_extra))
+      quo <- rlang::as_quosure(val)
+      quo <- rlang::quo_set_env(quo, setup_eval_env(quo, n))
+      value <- rlang::eval_tidy(quo, data = c(as.list(out), mask_extra))
     } else {
       value <- val
     }
@@ -287,20 +321,33 @@ place_on_lattice <- function(g, spec, group_name, lat, wired,
                              call = rlang::caller_env()) {
   n <- nrow(g)
   if (!is.null(spec$at)) {
-    # evaluated once, like a column formula: sees the group's own columns, `n`,
-    # `dims`, and the wired group's columns (so `at = ~which(nest)[1]` works).
-    mask <- c(as.list(wired), list(n = n, dims = lat$dims), as.list(g))
-    # both sides carry `.id` and `.group`; the moving group's win, so `at` reads
-    # as a column formula of *this* group that happens to see the cells too
-    mask <- mask[!duplicated(names(mask), fromLast = TRUE)]
-    cell <- rlang::eval_tidy(spec$at, data = mask)
-    if (length(cell) == 1L) cell <- rep(cell, n)
-    if (length(cell) != n) {
-      abm_abort(
-        c("{.arg at} for group {.field {group_name}} has the wrong length.",
-          "x" = "It returned {length(cell)} value{?s}, but there {?is/are} {n} agent{?s}."),
-        class = "tidyABM_bad_column_length", call = call
-      )
+    at_expr <- rlang::quo_get_expr(spec$at)
+    if (identical(at_expr, "unique")) {
+      if (n > lat$ncell) {
+        abm_abort(
+          c('{.code at = "unique"} requires at least as many cells as agents.',
+            "x" = "Group {.field {group_name}} has {n} agent{?s}, but the grid has only {lat$ncell} cell{?s}."),
+          class = "tidyABM_bad_arg", call = call
+        )
+      }
+      cell <- sample.int(lat$ncell, n, replace = FALSE)
+    } else {
+      # evaluated once, like a column formula: sees the group's own columns, `n`,
+      # `dims`, and the wired group's columns (when present).
+      mask <- c(if (!is.null(wired)) as.list(wired), list(n = n, dims = lat$dims), as.list(g))
+      # both sides carry `.id` and `.group`; the moving group's win, so `at` reads
+      # as a column formula of *this* group that happens to see the cells too
+      mask <- mask[!duplicated(names(mask), fromLast = TRUE)]
+      at_quo <- rlang::quo_set_env(spec$at, setup_eval_env(spec$at, n))
+      cell <- rlang::eval_tidy(at_quo, data = mask)
+      if (length(cell) == 1L) cell <- rep(cell, n)
+      if (length(cell) != n) {
+        abm_abort(
+          c("{.arg at} for group {.field {group_name}} has the wrong length.",
+            "x" = "It returned {length(cell)} value{?s}, but there {?is/are} {n} agent{?s}."),
+          class = "tidyABM_bad_column_length", call = call
+        )
+      }
     }
   } else {
     cell <- sample.int(lat$ncell, n, replace = TRUE)
@@ -369,9 +416,9 @@ sync_cell_coords <- function(state) {
 #' A grid of patches, as a single declaration
 #'
 #' `abm_grid()` is sugar for a patch-heavy model. It desugars to an
-#' [abm_agents()] group plus an [abm_network()] of `type = "grid"` wired to it,
+#' [abm_agents()] group plus an [abm_space()] of `type = "grid"` wired to it,
 #' so the [abm_go()] block is identical either way. Use the explicit two-line
-#' form instead when the network should be visible in the setup, or when another
+#' form instead when the space should be visible in the setup, or when another
 #' network sits alongside it.
 #'
 #' ```r
@@ -382,9 +429,9 @@ sync_cell_coords <- function(state) {
 #' desugars to
 #'
 #' ```r
-#' agents  = list(patches = abm_agents(state = ~...)),
-#' network = abm_network(type = "grid", dims = c(w, h),
-#'                       diagonals = FALSE, torus = FALSE, on = "patches")
+#' agents = list(patches = abm_agents(state = ~...)),
+#' space  = abm_space(type = "grid", dims = c(w, h),
+#'                    diagonals = FALSE, torus = FALSE, on = "patches")
 #' ```
 #'
 #' @param dims `c(width, height)`. The cell count is `prod(dims)`, and the
@@ -418,6 +465,14 @@ abm_grid <- function(dims, diagonals = TRUE, torus = TRUE, ...) {
       class = "tidyABM_reserved_column"
     )
   }
+  bad_cell <- grep("^cell_", names(cols), value = TRUE)
+  if (length(bad_cell)) {
+    abm_abort(
+      c("Column names beginning with {.code cell_} are reserved for reading patch columns.",
+        "x" = "Rename {.field {bad_cell}}."),
+      class = "tidyABM_reserved_column"
+    )
+  }
   # `...` are patch columns, so an `n` or `at` here would silently become one
   if ("n" %in% names(cols)) {
     abm_abort(
@@ -444,13 +499,13 @@ abm_grid <- function(dims, diagonals = TRUE, torus = TRUE, ...) {
 #' Returns `list(agents = <named list of abm_agents>, network = <abm_network>)`.
 #' Called at the top of [abm_setup()].
 #' @noRd
-expand_abm_grid <- function(agents, network, call = rlang::caller_env()) {
+expand_abm_grid <- function(agents, network, space = NULL, call = rlang::caller_env()) {
   if (inherits(agents, "abm_grid")) {
     agents <- list(patches = agents)
   }
-  if (!is.list(agents)) return(list(agents = agents, network = network))
+  if (!is.list(agents)) return(list(agents = agents, network = network, space = space))
   is_grid <- vapply(agents, inherits, logical(1), "abm_grid")
-  if (!any(is_grid)) return(list(agents = agents, network = network))
+  if (!any(is_grid)) return(list(agents = agents, network = network, space = space))
   if (sum(is_grid) > 1L) {
     abm_abort(
       c("A model can have one {.fn abm_grid} group.",
@@ -465,10 +520,10 @@ expand_abm_grid <- function(agents, network, call = rlang::caller_env()) {
       class = "tidyABM_unnamed_group", call = call
     )
   }
-  if (!is.null(network)) {
+  if (!is.null(network) || !is.null(space)) {
     abm_abort(
-      c("{.fn abm_grid} builds its own grid network.",
-        "i" = "Drop {.arg network}, or use {.fn abm_agents} + {.fn abm_network} throughout."),
+      c("{.fn abm_grid} builds its own grid space/network.",
+        "i" = "Drop {.arg network}/{.arg space}, or use {.fn abm_agents} + {.fn abm_space} throughout."),
       class = "tidyABM_conflicting_args", call = call
     )
   }
@@ -479,7 +534,7 @@ expand_abm_grid <- function(agents, network, call = rlang::caller_env()) {
   network <- abm_network(type = "grid", dims = gr$dims,
                          diagonals = gr$diagonals, torus = gr$torus,
                          on = gname)
-  list(agents = agents, network = network)
+  list(agents = agents, network = network, space = space)
 }
 
 #' @export
@@ -590,7 +645,7 @@ equijoin_key <- function(within_expr) {
 #' [attribute_view()].
 #' @noRd
 equijoin_view <- function(step, combined, globals, relations = NULL,
-                          vars = NULL) {
+                          vars = NULL, space = NULL) {
   key <- planned(step, "equijoin", equijoin_key(rlang::quo_get_expr(step$within)))
   if (is.null(key)) return(NULL)
   if (!key$focal %in% names(combined) || !key$cand %in% names(combined)) {
@@ -626,8 +681,8 @@ equijoin_view <- function(step, combined, globals, relations = NULL,
     cand_idx <- ord[sequence(reps[hit], from = starts[j[hit]])]
     focal_idx <- rep(seq_len(n), reps)
   }
-  if (!length(cand_idx)) return(pair_view(combined, integer(), integer(), relations))
-  view <- pair_view(combined, focal_idx, cand_idx, relations, vars)
+  if (!length(cand_idx)) return(pair_view(combined, integer(), integer(), relations, vars, space = space))
+  view <- pair_view(combined, focal_idx, cand_idx, relations, vars, space = space)
   if (length(key$rest)) {
     env <- rlang::quo_get_env(step$within)
     rest_expr <- Reduce(function(a, b) rlang::call2("&", a, b), key$rest)

@@ -216,10 +216,10 @@ validate_relations <- function(relations, n, agent_cols, globals,
       abm_abort("{.arg relations${rn}} must be built with {.fn abm_relation}.",
                 class = "tidyABM_bad_relation", call = call)
     }
-    if (rn %in% c("partner", "own") || startsWith(rn, ".") || !nzchar(rn)) {
+    if (rn %in% c("partner", "own", "cell") || startsWith(rn, ".") || !nzchar(rn)) {
       abm_abort(
         c("{.val {rn}} cannot be a relation name.",
-          "i" = "{.code partner_} and {.code own_} are the grammar's prefixes, and names starting with {.code .} are reserved."),
+          "i" = "{.code partner_}, {.code own_} and {.code cell_} are the grammar's prefixes, and names starting with {.code .} are reserved."),
         class = "tidyABM_bad_relation", call = call
       )
     }
@@ -395,8 +395,9 @@ relation_or_abort <- function(state, via, fn, call = rlang::caller_env()) {
 #'
 #' @param via The relation's name, a string.
 #' @param ... One or more `value ~ expr` rules.
-#' @param .when Optional condition, evaluated per row; rows where it does not
+#' @param when Optional condition, evaluated per row; rows where it does not
 #'   hold are left as they are.
+#' @param .when Deprecated alias for `when`.
 #'
 #' @return An `abm_pairs` step object.
 #' @seealso [abm_relation()], [abm_rules()], [abm_go()].
@@ -404,12 +405,21 @@ relation_or_abort <- function(state, via, fn, call = rlang::caller_env()) {
 #' @examples
 #' abm_pairs(via = "loans", balance ~ balance * 1.004)
 #' abm_pairs(via = "sellers", unmet ~ 0)
-#' abm_pairs(via = "loans", balance ~ 0, .when = to_bankrupt)
-abm_pairs <- function(via, ..., .when = NULL) {
+#' abm_pairs(via = "loans", balance ~ 0, when = to_bankrupt)
+abm_pairs <- function(via, ..., when = NULL, .when = NULL) {
   check_rule_dots(rlang::enexprs(...), "abm_pairs")
   if (!rlang::is_string(via)) {
     abm_abort("{.arg via} must be the name of one relation, as a string.",
               class = "tidyABM_no_relation")
+  }
+  when_q <- enquo_or_null(rlang::enquo(when))
+  dot_when_q <- enquo_or_null(rlang::enquo(.when))
+  if (!is.null(when_q) && !is.null(dot_when_q)) {
+    abm_abort(
+      c("Supply either {.arg when} or {.arg .when}, not both.",
+        "i" = "{.arg .when} is a deprecated alias for {.arg when}."),
+      class = "tidyABM_conflicting_args"
+    )
   }
   rules <- collect_rules(rlang::list2(...), "abm_pairs")
   for (r in rules) {
@@ -422,8 +432,7 @@ abm_pairs <- function(via, ..., .when = NULL) {
       )
     }
   }
-  structure(list(via = via, rules = rules,
-                 when = enquo_or_null(rlang::enquo(.when))),
+  structure(list(via = via, rules = rules, when = when_q %||% dot_when_q),
             class = c("abm_pairs", "abm_step"))
 }
 
@@ -490,7 +499,7 @@ print.abm_pairs <- function(x, ...) {
     cli::cli_bullets(c("*" = "{.field {r$target}} ~ {.code {deparse1(rlang::quo_get_expr(r$quo))}}"))
   }
   if (!is.null(x$when)) {
-    cli::cli_bullets(c("*" = ".when = {.code {deparse1(rlang::quo_get_expr(x$when))}}"))
+    cli::cli_bullets(c("*" = "when = {.code {deparse1(rlang::quo_get_expr(x$when))}}"))
   }
   invisible(x)
 }

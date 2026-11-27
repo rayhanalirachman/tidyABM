@@ -24,16 +24,15 @@ sweep <- function(side) list(
     if_else(black == side & accept, -spin, spin)
   })
 )
-go <- do.call(abm_go, c(sweep(TRUE), sweep(FALSE),
-                        list(abm_global(mag ~ abs(mean(spin))))))
+go <- abm_go(sweep(TRUE), sweep(FALSE), abm_global(mag ~ abs(mean(spin))))
 
 # one run per temperature; the last frame is kept for the figure
 run_one <- function(temp, w = 50, ticks = 400, seed = 1) {
   m <- abm_setup(
     agents  = abm_agents(spin  = ~rep(1L, n),   # ordered start
                          black = ~(.x + .y) %% 2 == 0),
-    network = abm_network(type = "grid", dims = c(w, w),
-                          diagonals = FALSE, torus = TRUE),
+    space   = abm_space(type = "grid", dims = c(w, w),
+                        diagonals = FALSE, torus = TRUE),
     globals = list(temp = temp), seed = seed)
   abm_run(m, go, ticks = ticks, seed = seed, record = "final", progress = FALSE)
 }

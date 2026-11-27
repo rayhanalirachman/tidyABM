@@ -1,12 +1,11 @@
 # 5. Wolf-Sheep-Grass  (Wolf Sheep Predation, Wilensky 1997)
 #
 # The model that forces the whole L2 bundle:
-#   abm_network(on = "patches")   wire the patch group only, not the turtles
-#   .cell                          an engine-owned location column
-#   within = .id == own_.cell      the co-location join (an equijoin, not a scan)
+#   abm_space(on = "patches")      wire the patch group only, not the turtles
+#   .cell & cell_<col>             location column and read-only patch access
 #   abm_tell(to = .cell)           write into the patch you are standing on
-#   abm_match(.by = .cell)         match *inside* each patch
-#   abm_move()                     the one new step
+#   abm_match(.by = .cell, ...)    scoped co-located match *inside* each patch
+#   abm_move()                     move across the grid
 #
 # The NetLogo original moves continuously (`fd 1` after a random turn); this is
 # the faithful discrete analogue, which drops the heading.
@@ -23,30 +22,28 @@ run_one <- function(wolf_gain, w = 40, ticks = 400, seed = 1, record = "globals"
                            countdown = ~sample.int(30, n, TRUE)),
       sheep   = abm_agents(n = 120, energy = ~runif(n, 4, 8)),
       wolves  = abm_agents(n = 40,  energy = ~runif(n, 4, 8))),
-    network = abm_network(type = "grid", dims = c(w, w), on = "patches",
-                          diagonals = TRUE, torus = TRUE),
+    space = abm_space(type = "grid", dims = c(w, w), on = "patches",
+                      diagonals = TRUE, torus = TRUE),
     globals = list(regrow = 30, sheep_gain = 4, wolf_gain = wolf_gain,
                    sheep_repro = 0.04, wolf_repro = 0.05),
     seed = seed)
 
   go <- abm_go(
-    abm_move(along = "patches", to = "random_neighbour", who = c("sheep", "wolves")),
+    abm_move(to = "random_neighbour", who = c("sheep", "wolves")),
     abm_rules(energy ~ energy - 1),
 
     # sheep eat the grass on their cell
-    abm_neighbours(grass_here ~ any(grass),
-                   within = .group == "patches" & .id == own_.cell),
-    abm_rules(energy ~ if_else(.group == "sheep" & grass_here,
-                               energy + sheep_gain, energy)),
+    abm_rules(energy ~ energy + sheep_gain, when = .group == "sheep" & cell_grass),
     abm_tell(grass ~ FALSE, countdown ~ regrow, to = .cell,
-             when = .group == "sheep" & grass_here),
+             when = .group == "sheep" & cell_grass),
 
     # wolves eat a sheep sharing their cell: one prey per predator, per cell
-    abm_match(pair = "opposite_group", by = .group, .by = .cell,
-              eligible = .group %in% c("wolves", "sheep")),
-    abm_rules(energy ~ if_else(.group == "wolves" & !is.na(.partner),
-                               energy + wolf_gain, energy)),
-    abm_death(when = .group == "sheep" & !is.na(.partner)),
+    abm_match(
+      pair = "opposite_group", sides = .group, .by = .cell,
+      eligible = .group %in% c("wolves", "sheep"),
+      abm_rules(energy ~ energy + wolf_gain, when = .group == "wolves"),
+      abm_death(when = .group == "sheep" & !is.na(.partner))
+    ),
     abm_death(when = .group %in% c("sheep", "wolves") & energy < 0),
 
     abm_birth(when = .group == "sheep"  & runif(n()) < sheep_repro,
@@ -57,8 +54,7 @@ run_one <- function(wolf_gain, w = 40, ticks = 400, seed = 1, record = "globals"
     abm_rules(grass     ~ grass | countdown == 0,
               countdown ~ case_when(grass          ~ countdown,
                                     countdown <= 0 ~ regrow,
-                                    TRUE           ~ countdown - 1),
-              .scope = "population"),
+                                    TRUE           ~ countdown - 1)),
     abm_global(n_sheep  ~ sum(.group == "sheep"),
                n_wolves ~ sum(.group == "wolves")))
 

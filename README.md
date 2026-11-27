@@ -25,9 +25,9 @@ Every tidyABM model is the same three functions, written as three statements:
 
 | part | function | what it holds |
 |------|----------|---------------|
-| 1. the world | `abm_setup()` | the agents, the network, the globals |
+| 1. the world | `abm_setup()` | the agents, space, network, relations, and globals |
 | 2. the tick  | `abm_go()`    | the ordered steps replayed once per tick |
-| 3. the run   | `abm_run()`   | the two above, plus `ticks`, `seed` and `record` |
+| 3. the run   | `abm_run()`   | the two above, plus `ticks`, `until`, `seed` and `record` |
 
 ``` r
 world  <- abm_setup(...)                                # 1
@@ -84,22 +84,27 @@ five things that trip people up, on one page.
 
 ## The grammar
 
-`abm_setup()` declares the world, out of two other specifications and a list:
+`abm_setup()` declares the world, out of specifications and a list:
 
 | argument    | built with      | what it declares                                  |
 |-------------|-----------------|---------------------------------------------------|
-| `agents =`  | `abm_agents()`  | how many agents, and what columns they start with |
-| `network =` | `abm_network()` | a persistent set of connections between them      |
+| `agents =`  | `abm_agents()` / `abm_grid()` | how many agents, and what columns they start with |
+| `space =`   | `abm_space()`   | spatial geometry: discrete 1-D/2-D grids or continuous boxes |
+| `network =` | `abm_network()` | a persistent undirected graph between agents      |
 | `relations =` | `abm_relation()` | directed, valued tables of agent pairs: state that belongs to two agents together |
-| `globals =` | a plain `list()`| values the whole population can read              |
+| `globals =` | a plain `list()`| values (or tick-0 `~expr` formulas) the whole population can read |
 
 `abm_go()` declares what happens each tick, as a sequence of steps dispatched by
-type and position rather than by argument name. There are thirteen of them, in six
-groups. The [reference index](https://rayhanalirachman.github.io/tidyABM/reference/index.html) uses the same six, in the
-same order, which is the order a tick works through them.
+type and position rather than by argument name. Plain lists of steps passed into
+`abm_go()` are spliced automatically. There are fourteen steps, in seven groups.
+The [reference index](https://rayhanalirachman.github.io/tidyABM/reference/index.html)
+uses the same groups, in the same order, which is the order a tick works through
+them.
 
 **1. Interaction and matching.** Who interacts with whom this tick. It comes
-first, because everything below reads the pairing it leaves standing.
+first, because everything below reads the pairing it leaves standing — or pass
+child steps directly inside `abm_match(..., <steps>)` to scope the match to
+those steps alone.
 
 | step               | what it does                                        |
 |--------------------|-----------------------------------------------------|
@@ -112,35 +117,41 @@ agent, everybody.
 
 | step               | what it does                                        |
 |--------------------|-----------------------------------------------------|
-| `abm_rules()`      | updates agent columns, all agents simultaneously    |
-| `abm_sequential()` | updates them one at a time, in shuffled order or an order you name |
-| `abm_neighbours()` | summarises each agent's neighbourhood, either the network or everyone `within` a condition |
-| `abm_tell()`       | writes a value into *another* agent's row           |
+| `abm_rules()`      | updates agent columns, all agents simultaneously (with optional `when =`) |
+| `abm_sequential()` | updates them one at a time, in shuffled order or `.order` (with `when =`, `.scope =`) |
+| `abm_neighbours()` | summarises each agent's neighbourhood, over `space`/`network` (`via =`) or `within =` (with `.default =`) |
+| `abm_tell()`       | writes a value into *another* agent's row (with `.resolve = "add"`, `"sum"`, etc.) |
 | `abm_global()`     | updates a value shared by the whole population, or a table of them indexed by a category |
 
-**3. Network topology.** What is connected to what.
+**3. Movement.** Where agents sit in space.
+
+| step               | what it does                                        |
+|--------------------|-----------------------------------------------------|
+| `abm_move()`       | moves mobile agents across a grid (`random_neighbour`, `random_empty`, `uphill()`, `range =`) or continuous space (`offset()`, `forward()`), with optional `when =` |
+
+**4. Network topology.** What is connected to what.
 
 | step               | what it does                                        |
 |--------------------|-----------------------------------------------------|
 | `abm_link()`       | adds an edge between matched agents, or with `via =` a pair of a relation |
 | `abm_unlink()`     | removes one                                         |
 
-**4. Edge data.** A value carried by edges that already exist. The topology is
+**5. Edge data.** A value carried by edges that already exist. The topology is
 left alone, which is why this is not part of the group above.
 
 | step               | what it does                                        |
 |--------------------|-----------------------------------------------------|
 | `abm_draw()`       | attaches a value to every edge, readable from both ends |
-| `abm_pairs()`      | updates the values on every pair of a relation at once; a rule under a match writes one pair as `R_v ~ expr` |
+| `abm_pairs()`      | updates the values on every pair of a relation at once (with `when =`); a rule under a match writes one pair as `R_v ~ expr` |
 
-**5. Demographics.** The only steps that change how many agents there are.
+**6. Demographics.** The only steps that change how many agents there are.
 
 | step               | what it does                                        |
 |--------------------|-----------------------------------------------------|
-| `abm_birth()`      | adds agents, one or `times` many                    |
+| `abm_birth()`      | adds agents, one or `times` many (with `attach = "parent" | "random_edge" | "neighbour"` and `group =`) |
 | `abm_death()`      | removes them                                        |
 
-**6. Control flow.** Replaying a block of the steps above inside a single tick.
+**7. Control flow.** Replaying a block of the steps above inside a single tick.
 
 | step               | what it does                                        |
 |--------------------|-----------------------------------------------------|
@@ -219,11 +230,11 @@ same columns it always returned. One seed covers the whole thing, a seed per run
 being derived from it, so an experiment reproduces at once rather than run by
 run.
 
-A parameter is a global and only a global. `n`, `abm_network()`'s `degree` and a
-lattice's `dims` are fixed when `abm_setup()` builds the world, so sweeping one
-of those still means one world per value. `reps` replicates the run, not the
-population: a starting column drawn with `~runif(n)` was drawn before `abm_run()`
-ever saw it, and what varies across replicates is what the run itself draws.
+A parameter is a global when you pass a built `abm_model`. To sweep `n`,
+`degree`, or `dims` — or to redraw stochastic starting columns and random
+networks on each replicate — pass a *function* `function(...) abm_setup(...)` as
+`model` instead. `abm_run()` also accepts `until = ~expr` to stop early once a
+population/global condition is reached.
 
 `measures` is how you get numbers out of sixty runs without keeping sixty
 populations. Each one is a one-sided formula evaluated over the whole population

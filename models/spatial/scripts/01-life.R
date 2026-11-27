@@ -17,8 +17,8 @@ life_go <- abm_go(
 )
 
 seeded <- function(w, h, cells) {
-  abm_setup(agents  = abm_agents(alive = ~seq_len(n) %in% cells),
-            network = abm_network(type = "grid", dims = c(w, h)))
+  abm_setup(agents = abm_agents(alive = ~seq_len(n) %in% cells),
+            space  = abm_space(type = "grid", dims = c(w, h)))
 }
 cid <- function(x, y, w) x + (y - 1) * w
 
@@ -55,8 +55,8 @@ cat(sprintf("  velocity: (%+.2f, %+.2f) per tick -- one cell diagonally per 4\n"
 # the others only their last.
 cat("\nRandom soup, 100x100 torus, density 0.10 at t = 0\n")
 soups <- lapply(1:3, function(s) {
-  m <- abm_setup(agents  = abm_agents(alive = ~runif(n) < 0.10),
-                 network = abm_network(type = "grid", dims = c(100, 100)),
+  m <- abm_setup(agents = abm_agents(alive = ~runif(n) < 0.10),
+                 space  = abm_space(type = "grid", dims = c(100, 100)),
                  seed = s)
   abm_run(m, life_go, ticks = 1500, seed = s, record = if (s == 1) 50 else "final",
           progress = FALSE)
@@ -131,8 +131,8 @@ ggsave(fig_file("01-life-strip.png"), p3, width = 11, height = 2.8, dpi = 150,
 # --- viewer ---------------------------------------------------------------
 # A denser soup on a smaller torus, every tick: gliders, blinkers and the
 # rest are easier to follow at this scale.
-small <- abm_setup(agents  = abm_agents(alive = ~runif(n) < 0.30),
-                   network = abm_network(type = "grid", dims = c(60, 60)),
+small <- abm_setup(agents = abm_agents(alive = ~runif(n) < 0.30),
+                   space  = abm_space(type = "grid", dims = c(60, 60)),
                    seed = 1)
 r_small <- abm_run(small, life_go, ticks = 200, seed = 1, progress = FALSE)
 abm_view_lattice(

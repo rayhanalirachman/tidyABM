@@ -27,21 +27,16 @@ run_one <- function(local = TRUE, seed = 1, ticks = 400) {
     seed    = seed)
 
   # the only difference between the two conditions: where a newborn is put
-  birth_attach <- if (local) {
-    abm_match(pair = "network", from = "parent")
-  } else {
-    abm_match(pair = "network")
-  }
+  birth_attach <- if (local) "parent" else "neighbour"
 
   go <- abm_go(
     abm_match(pair = "network"),
     abm_rules(give ~ if_else(partner_tag == tag, coop_in, coop_out)),
     abm_rules(ptr ~ BASE_PTR - COST * give + BENEFIT * partner_give),
-    abm_birth(when = runif(n()) < ptr, links = 4, attach_via = birth_attach),
+    abm_birth(when = runif(n()) < ptr, links = 4, attach = birth_attach),
     abm_death(when = runif(n()) <
                 DEATH + 0.25 * pmax(0, (n() - CAPACITY) / CAPACITY)),
-    abm_birth(n = 8, links = 4, inherit = random_traits,
-              attach_via = abm_match(pair = "network"))
+    abm_birth(n = 8, links = 4, inherit = random_traits, attach = "neighbour")
   )
   abm_run(pop, go, ticks = ticks, seed = seed)
 }

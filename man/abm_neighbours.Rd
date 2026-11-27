@@ -4,7 +4,7 @@
 \alias{abm_neighbours}
 \title{Summarise each agent's neighbourhood}
 \usage{
-abm_neighbours(..., within = NULL, .where = NULL)
+abm_neighbours(..., within = NULL, .where = NULL, .default = NULL, via = NULL)
 }
 \arguments{
 \item{...}{One or more \code{column ~ aggregate_expression} rules. The expression
@@ -33,6 +33,13 @@ with \code{\link[=abm_pairs]{abm_pairs()}}.}
 single neighbour: \code{"north"}, \code{"south"}, \code{"east"} or \code{"west"} on a grid;
 \code{"left"} / \code{"right"} (or \code{"west"} / \code{"east"}) on a line. Needs a lattice,
 and cannot be combined with \code{within}.}
+
+\item{.default}{Optional atomic scalar value to use for agents with zero
+neighbours instead of \code{NA} (other than bare \code{n()}, which already returns
+\code{0L}).}
+
+\item{via}{Optional \code{"space"} or \code{"network"} when a model has both a spatial
+lattice and a social network, selecting which topology defines neighbours.}
 }
 \value{
 An \code{abm_neighbours} step object.

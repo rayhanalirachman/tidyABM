@@ -20,10 +20,10 @@ wolfsheep <- function(response = c("mass_action", "ratio"),
   # min(S, W) encounters, which is ratio-dependent; filtering the hunters by
   # sheep density first makes S*W/area of them, which is mass action.
   hunt <- if (response == "mass_action") {
-    abm_match(pair = "opposite_group", by = .group,
+    abm_match(pair = "opposite_group", sides = .group,
               eligible = .group == "sheep" | runif(n()) < n_sheep / area)
   } else {
-    abm_match(pair = "opposite_group", by = .group)
+    abm_match(pair = "opposite_group", sides = .group)
   }
   go <- abm_go(
     abm_global(n_sheep  ~ sum(.group == "sheep"),

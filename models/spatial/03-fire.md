@@ -12,9 +12,9 @@
 
 ```r
 fire <- abm_setup(
-  agents  = abm_agents(state = ~if_else(runif(n) < density, "tree", "empty")),
-  network = abm_network(type = "grid", dims = c(100, 100),
-                        diagonals = FALSE, torus = FALSE),
+  agents = abm_agents(state = ~if_else(runif(n) < density, "tree", "empty")),
+  space  = abm_space(type = "grid", dims = c(100, 100),
+                     diagonals = FALSE, torus = FALSE),
   seed = 1)
 
 go <- abm_go(

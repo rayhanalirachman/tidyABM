@@ -7,6 +7,7 @@
 abm_setup(
   agents,
   network = NULL,
+  space = NULL,
   relations = NULL,
   globals = list(),
   seed = NULL
@@ -23,6 +24,10 @@ may be an \code{\link[=abm_grid]{abm_grid()}}, which is sugar for a group plus t
 (\code{type = "grid"} or \code{"line"}) is built before the agent columns are
 materialised, so the wired group's formulas can read \code{.x} and \code{.y} and its
 count is inherited from \code{dims}.}
+
+\item{space}{Optionally an \code{\link[=abm_space]{abm_space()}} specification describing discrete
+grid or continuous coordinate geometry, separate from social connections in
+\code{network}.}
 
 \item{relations}{Optional named list of \code{\link[=abm_relation]{abm_relation()}} objects: directed,
 valued tables of agent pairs, for state that belongs to two agents

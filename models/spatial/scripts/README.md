@@ -43,13 +43,12 @@ it side by side, and a viewer is the recorded run written to
 
 ## A note on cost
 
-Two of these are dominated by one step. Rebellion's vision-radius count is
-`abm_neighbours(within = ...)` with a *range* condition, which builds every
-(focal, candidate) pair and then filters — quadratic in the population, and the
-reason that script is kept small. The co-location form
-`within = .group == "patches" & .id == own_.cell` is different: an equality
-against an `own_` column is recognised and resolved as a hash join, so
-Wolf–Sheep and Ants pay only a linear cost for it.
+Rebellion's vision-radius count uses torus-aware `.dist <= vision` inside
+`abm_neighbours(within = ...)`, which is AST-recognised and resolved via spatial
+cell bucketing rather than an $O(N^2)$ scan. Mobile agents reading their current
+patch use `cell_<col>` directly (linear in agent count), and co-location joins
+of the shape `within = .id == own_.cell` remain hash-joined in linear time.
 
 Models 7 (Flocking) and 12 (Traffic) from the design probe are continuous-space
-and need nothing from the spatial grammar, so they have no scripts here.
+models (now also directly supported via `abm_space(type = "continuous", ...)`
+and `abm_move(to = offset(...) | forward(...))`).

@@ -16,15 +16,15 @@ schelling <- function(tol, w = 51, vacancy = 0.10, minority = 0.30, seed = 6) {
       occ  = ~sample(c(rep(TRUE, n_occ), rep(FALSE, n - n_occ))),
       type = ~if_else(occ, sample(c("A", "B"), n, TRUE, c(1 - minority, minority)),
                       NA_character_)),
-    network = abm_network(type = "grid", dims = c(w, w),
-                          diagonals = TRUE, torus = TRUE),
+    space = abm_space(type = "grid", dims = c(w, w),
+                      diagonals = TRUE, torus = TRUE),
     globals = list(tol = tol), seed = seed)
 }
 
 go <- abm_go(
   abm_neighbours(same ~ mean(type == own_type, na.rm = TRUE)),
   abm_rules(unhappy ~ occ & !is.na(same) & same < tol),
-  abm_match(pair = "opposite_group", by = occ, eligible = unhappy | !occ),
+  abm_match(pair = "opposite_group", sides = occ, eligible = unhappy | !occ),
   abm_rules(
     type ~ if_else(!occ & !is.na(partner_type), partner_type,
                    if_else(unhappy, NA_character_, type)),

@@ -1,11 +1,12 @@
 # Model setup ------------------------------------------------------------
 
 new_abm_model <- function(groups, globals, edges, network_spec,
-                          lattice = NULL, relations = NULL) {
+                          lattice = NULL, relations = NULL,
+                          space = NULL, space_edges = NULL) {
   structure(
     list(groups = groups, globals = globals, edges = edges,
          network_spec = network_spec, lattice = lattice,
-         relations = relations),
+         relations = relations, space = space, space_edges = space_edges),
     class = "abm_model"
   )
 }
@@ -31,6 +32,9 @@ new_abm_model <- function(groups, globals, edges, network_spec,
 #'   (`type = "grid"` or `"line"`) is built before the agent columns are
 #'   materialised, so the wired group's formulas can read `.x` and `.y` and its
 #'   count is inherited from `dims`.
+#' @param space Optionally an [abm_space()] specification describing discrete
+#'   grid or continuous coordinate geometry, separate from social connections in
+#'   `network`.
 #' @param relations Optional named list of [abm_relation()] objects: directed,
 #'   valued tables of agent pairs, for state that belongs to two agents
 #'   together. They sit alongside the network, which is unchanged. See
@@ -61,7 +65,7 @@ new_abm_model <- function(groups, globals, edges, network_spec,
 #' )
 #'
 #' abm_run(economy, go, ticks = 10, seed = 1)
-abm_setup <- function(agents, network = NULL, relations = NULL,
+abm_setup <- function(agents, network = NULL, space = NULL, relations = NULL,
                       globals = list(), seed = NULL) {
   if (!is.null(seed)) {
     if (!rlang::is_scalar_integerish(seed) || is.na(seed)) {
@@ -71,10 +75,11 @@ abm_setup <- function(agents, network = NULL, relations = NULL,
     local_seed(seed)
   }
 
-  # `abm_grid()` is sugar for a group plus the grid network wired to it
-  expanded <- expand_abm_grid(agents, network)
+  # `abm_grid()` is sugar for a group plus the grid wired to it
+  expanded <- expand_abm_grid(agents, network, space)
   agents <- expanded$agents
   network <- expanded$network
+  space <- expanded$space
 
   specs <- normalise_agent_specs(agents)
 
@@ -87,12 +92,39 @@ abm_setup <- function(agents, network = NULL, relations = NULL,
     abm_abort("{.arg network} must be built with {.fn abm_network}.",
               class = "tidyABM_bad_network")
   }
+  if (!is.null(space) && !inherits(space, "abm_space")) {
+    abm_abort("{.arg space} must be built with {.fn abm_space}.",
+              class = "tidyABM_bad_space")
+  }
+  if (!is.null(space) && is_lattice_spec(network)) {
+    abm_abort(
+      c("Supply either {.arg space} or a grid/line {.arg network}, not both.",
+        "i" = 'Put spatial geometry in {.code space = abm_space(...)} and social connections in {.code network = abm_network(...)}.'),
+      class = "tidyABM_conflicting_args"
+    )
+  }
 
-  # A lattice is built *before* the agent columns, so `.x` / `.y` are in scope
-  # in the wired group's formulas and its count can be inherited. Every other
-  # network keeps the current order.
-  if (is_lattice_spec(network)) {
-    model <- with_agent_specs(setup_lattice(specs, network, globals), specs)
+  had_fg <- any(vapply(globals, is_formula1, logical(1)))
+
+  if (!is.null(space) && identical(space$type, "continuous")) {
+    model <- with_agent_specs(setup_continuous(specs, space, network, globals), specs)
+    model$had_formula_globals <- had_fg
+    model$globals <- materialise_globals(model$globals, model$groups)
+    return(attach_relations(model, relations))
+  }
+
+  # A lattice (`space = abm_space("grid", ...)` or deprecated `network = abm_network("grid"|"line")`)
+  # is built *before* the agent columns, so `.x` / `.y` are in scope.
+  if ((!is.null(space) && identical(space$type, "grid")) || is_lattice_spec(network)) {
+    lat_spec <- if (!is.null(space)) space else network
+    extra_net <- if (!is.null(space)) network else NULL
+    model <- with_agent_specs(
+      setup_lattice(specs, lat_spec, globals, extra_network = extra_net,
+                    from_space = !is.null(space)),
+      specs
+    )
+    model$had_formula_globals <- had_fg
+    model$globals <- materialise_globals(model$globals, model$groups)
     return(attach_relations(model, relations))
   }
 
@@ -104,14 +136,14 @@ abm_setup <- function(agents, network = NULL, relations = NULL,
         c("Group {.field {nm}} needs an {.arg n}.",
           if ("N" %in% names(specs[[nm]]$cols))
             c("x" = "It has a column called {.field N}: R is case-sensitive, so {.code N = } became a column rather than the count. Write {.code n = }."),
-          "i" = 'Only the group a {.code type = "grid"} or {.code "line"} network is wired to inherits its count.'),
+          "i" = 'Only a grid-wired group inherits its count.'),
         class = "tidyABM_bad_n"
       )
     }
     if (!is.null(specs[[nm]]$at)) {
       abm_abort(
-        c("{.arg at} places agents on a lattice, and this model has none.",
-          "i" = 'Add {.code abm_network(type = "grid", dims = ...)}, or drop {.arg at}.'),
+        c("{.arg at} places agents in a space, and this model has none.",
+          "i" = 'Add {.code space = abm_space(...)}, or drop {.arg at}.'),
         class = "tidyABM_no_lattice"
       )
     }
@@ -119,11 +151,48 @@ abm_setup <- function(agents, network = NULL, relations = NULL,
     offset <- offset + specs[[nm]]$n
   }
 
-  edges <- materialise_network(network, n = offset)
+  edges <- materialise_network(network, n = offset, groups = groups)
+  globals <- materialise_globals(globals, groups)
 
-  model <- with_agent_specs(new_abm_model(groups, as.list(globals), edges, network),
+  model <- with_agent_specs(new_abm_model(groups, globals, edges, network),
                             specs)
+  model$had_formula_globals <- had_fg
   attach_relations(model, relations)
+}
+
+#' Evaluate any one-sided formula entries in `globals` over the tick-0 population
+#' @noRd
+materialise_globals <- function(globals, groups, call = rlang::caller_env()) {
+  out <- as.list(globals)
+  if (!length(out)) return(out)
+  bad <- names(out)[vapply(out, is_formula2, logical(1))]
+  if (length(bad)) {
+    abm_abort(
+      c("Global {.field {bad[[1]]}} was given a two-sided formula.",
+        "i" = "Use a one-sided formula, e.g. {.code {bad[[1]]} = ~sum(x)}."),
+      class = "tidyABM_bad_globals", call = call
+    )
+  }
+  is_f <- vapply(out, is_formula1, logical(1))
+  if (!any(is_f)) return(out)
+  combined <- bind_groups(groups)
+  n_all <- nrow(combined)
+  for (nm in names(out)) {
+    val <- out[[nm]]
+    if (!is_formula1(val)) next
+    quo <- rlang::as_quosure(val)
+    expr <- rlang::quo_get_expr(quo)
+    env <- abm_eval_env(quo, out[!is_f | match(names(out), names(out)) < match(nm, names(out))],
+                        n = n_all)
+    if (!needs_mask(expr)) {
+      res <- rlang::eval_tidy(expr, data = combined, env = env)
+    } else {
+      res <- dplyr::pull(dplyr::reframe(combined, .abm_value = !!rlang::quo_set_env(quo, env)),
+                         ".abm_value")
+    }
+    out[[nm]] <- res
+  }
+  out
 }
 
 #' Validate the declared relations against the built population and keep them
@@ -205,8 +274,18 @@ print.abm_model <- function(x, ...) {
   }
   if (!is.null(x$lattice)) {
     l <- x$lattice
+    on_txt <- if (is.null(l$on)) " (patchless)" else cli::format_inline(" on {.field {l$on}}")
+    t_txt <- if (all(l$torus)) ", torus" else if (!any(l$torus)) ", bounded" else
+      paste0(", torus = (", paste(l$torus, collapse = ", "), ")")
     cli::cli_bullets(c(
-      "*" = "lattice: {.val {l$type}} {paste(l$dims, collapse = ' x ')} on {.field {l$on}}{if (l$torus) ', torus' else ', bounded'}"
+      "*" = "lattice: {.val {l$type}} {paste(l$dims, collapse = ' x ')}{on_txt}{t_txt}"
+    ))
+  } else if (!is.null(x$space)) {
+    sp <- x$space
+    t_txt <- if (all(sp$torus)) ", torus" else if (!any(sp$torus)) ", bounded" else
+      paste0(", torus = (", paste(sp$torus, collapse = ", "), ")")
+    cli::cli_bullets(c(
+      "*" = "space: {.val {sp$type}} {paste(sp$dims, collapse = ' x ')}{t_txt}"
     ))
   }
   invisible(x)

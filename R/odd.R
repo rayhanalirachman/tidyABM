@@ -135,10 +135,17 @@ describe_step <- function(step, ctx) {
     class(step)[[1]],
     abm_match = {
       d <- describe_match(step, ctx)
-      # the pairing stands until the tick ends, which is what makes the steps
-      # after it about pairs rather than about agents
-      ctx$match <- d
-      list(desc = d, ctx = ctx)
+      if (length(step$steps)) {
+        inner_ctx <- ctx
+        inner_ctx$match <- d
+        d$steps <- describe_block(step$steps, inner_ctx)$descs
+        list(desc = d, ctx = ctx)
+      } else {
+        # the pairing stands until the tick ends, which is what makes the steps
+        # after it about pairs rather than about agents
+        ctx$match <- d
+        list(desc = d, ctx = ctx)
+      }
     },
     abm_repeat = {
       inner <- describe_block(step$steps, ctx)
@@ -285,29 +292,44 @@ describe_neighbours <- function(step, ctx) {
 
 #' @noRd
 describe_move <- function(step, ctx) {
-  quos <- list(step$expr, step$direction)
+  quos <- c(list(step$expr, step$direction, step$when, step$range_quo),
+            if (is.list(step$move_args)) unname(step$move_args) else list())
   dest <- switch(
     step$mode,
     random_neighbour       = "a cell drawn from those adjacent",
     random_empty_neighbour = "an unoccupied cell drawn from those adjacent",
+    random_empty           = "an unoccupied cell drawn anywhere on the lattice",
+    random_cell            = "a cell drawn anywhere on the lattice",
     stay                   = "the cell it is already on",
     direction              = paste0("one cell along ", odd_expr(step$direction)),
     uphill                 = paste0("the reachable cell maximising ", odd_expr(step$expr)),
-    downhill               = paste0("the reachable cell minimising ", odd_expr(step$expr))
+    downhill               = paste0("the reachable cell minimising ", odd_expr(step$expr)),
+    offset                 = "continuous displacement by offset",
+    forward                = "continuous step along heading"
   )
+  range_label <- if (!is.null(step$range_quo)) {
+    paste0("range = ", odd_expr(step$range_quo))
+  } else if (!is.null(step$range) && step$range != 1L) {
+    paste0("range = ", step$range)
+  } else {
+    NULL
+  }
   list(
     type = "abm_move", kind = "movement",
     who = step$who %||% "every group not wired to the lattice",
     along = step$along, mode = step$mode, destination = dest,
     range = step$range, axes_only = step$axes_only,
     avoid_occupied = step$avoid_occupied,
-    random = step$mode %in% c("random_neighbour", "random_empty_neighbour"),
-    writes = ".cell", reads = odd_vars(quos), rng = odd_rng(quos),
-    exprs = c(sprintf('along = "%s"', step$along),
+    random = step$mode %in% c("random_neighbour", "random_empty_neighbour",
+                              "random_empty", "random_cell"),
+    writes = if (step$mode %in% c("offset", "forward")) c(".x", ".y") else ".cell",
+    reads = odd_vars(quos), rng = odd_rng(quos),
+    exprs = c(if (!is.null(step$along)) sprintf('along = "%s"', step$along),
               if (!is.null(step$to)) sprintf('to = "%s"', step$to),
               if (!is.null(step$expr)) paste0("to = ", step$mode, "(", odd_expr(step$expr), ")"),
               if (!is.null(step$direction)) paste0("direction = ", odd_expr(step$direction)),
-              if (step$range != 1L) paste0("range = ", step$range),
+              if (!is.null(step$when)) paste0("when = ", odd_expr(step$when)),
+              range_label,
               if (isTRUE(step$axes_only)) "axes_only = TRUE",
               if (isTRUE(step$avoid_occupied)) "avoid_occupied = TRUE")
   )
@@ -497,7 +519,11 @@ odd_space <- function(model) {
   if (!is.null(lat)) {
     return(list(kind = "lattice", type = lat$type, dims = lat$dims,
                 cells = lat$ncell, torus = lat$torus, diagonals = lat$diagonals,
-                on = lat$on, edges = n_edges))
+                on = lat$on, edges = if (!is.null(model$space_edges)) nrow(model$space_edges) else n_edges))
+  }
+  if (!is.null(model$space) && identical(model$space$type, "continuous")) {
+    return(list(kind = "continuous", type = "continuous", dims = model$space$dims,
+                torus = model$space$torus, edges = n_edges))
   }
   spec <- model$network_spec
   if (!is.null(spec)) {

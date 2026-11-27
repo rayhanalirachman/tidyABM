@@ -4,15 +4,17 @@
 \alias{abm_pairs}
 \title{Update every pair of a relation}
 \usage{
-abm_pairs(via, ..., .when = NULL)
+abm_pairs(via, ..., when = NULL, .when = NULL)
 }
 \arguments{
 \item{via}{The relation's name, a string.}
 
 \item{...}{One or more \code{value ~ expr} rules.}
 
-\item{.when}{Optional condition, evaluated per row; rows where it does not
+\item{when}{Optional condition, evaluated per row; rows where it does not
 hold are left as they are.}
+
+\item{.when}{Deprecated alias for \code{when}.}
 }
 \value{
 An \code{abm_pairs} step object.
@@ -33,7 +35,7 @@ the relation is created.
 \examples{
 abm_pairs(via = "loans", balance ~ balance * 1.004)
 abm_pairs(via = "sellers", unmet ~ 0)
-abm_pairs(via = "loans", balance ~ 0, .when = to_bankrupt)
+abm_pairs(via = "loans", balance ~ 0, when = to_bankrupt)
 }
 \seealso{
 \code{\link[=abm_relation]{abm_relation()}}, \code{\link[=abm_rules]{abm_rules()}}, \code{\link[=abm_go]{abm_go()}}.

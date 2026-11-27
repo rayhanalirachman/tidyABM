@@ -34,10 +34,14 @@ The sequence is validated once, here, rather than on every tick. Three rules
 apply:
 \itemize{
 \item it cannot be empty;
-\item no two \code{\link[=abm_match]{abm_match()}} steps may sit next to each other, since the first
-would be discarded unused;
-\item it cannot end on an \code{\link[=abm_match]{abm_match()}}, for the same reason.
+\item no two bare \code{\link[=abm_match]{abm_match()}} steps may sit next to each other, since the first
+would be discarded unused (scoped \verb{abm_match(..., <steps>)} blocks may sit
+anywhere);
+\item it cannot end on a bare \code{\link[=abm_match]{abm_match()}}, for the same reason.
 }
+
+Plain lists of steps passed into \code{...} are spliced recursively, so reusable
+step helpers can be included directly without \code{do.call()}.
 
 Everything else is allowed. In particular a model may use no matching at all
 (El Farol, or a pure redistribution model), and several update steps may

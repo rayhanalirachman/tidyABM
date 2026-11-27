@@ -40,7 +40,7 @@ active_kernels <- function(engine) {
 #' run with a step a native kernel takes (`native` in the registry) has its tick
 #' loop in Rust ([run_once_loop()]); otherwise the R-driven [run_once_rust()].
 #' @noRd
-engine_run_once <- function(engine, steps) {
+engine_run_once <- function(engine, steps, has_until = FALSE) {
   kernels <- if (engine != "r") active_kernels(engine)
   # the steps inside `abm_repeat()` blocks count: the loop runs them itself
   leaves <- rl_flatten(steps)
@@ -74,21 +74,25 @@ store_special <- c(".id", ".group", "tick", "")
 #' Keep in step with [run_once()] (decision D12: R first, Rust follows).
 #' @noRd
 run_once_rust <- function(model, go, ticks, seed, keep, measures, checks = NULL,
-                          bar = NULL, both = FALSE, kernels = active_kernels("rust")) {
+                          bar = NULL, until = NULL, record = "all",
+                          both = FALSE, kernels = active_kernels("rust")) {
   if (!is.null(seed)) local_seed(seed)
   rm(list = ls(.bound), envir = .bound)
   rm(list = ls(.eval_env), envir = .eval_env)
   rm(list = ls(.std_memo, all.names = TRUE), envir = .std_memo)
   .bound$on <- n_agents(model) >= 5000L
+  .run_ctx$tick <- 0L
 
   state <- list(
-    groups    = model$groups,
-    globals   = model$globals,
-    edges     = model$edges,
-    lattice   = model$lattice,
-    relations = model$relations,
-    match     = NULL,
-    next_id   = n_agents(model) + 1L
+    groups      = model$groups,
+    globals     = model$globals,
+    edges       = model$edges,
+    lattice     = model$lattice,
+    space       = model$space,
+    space_edges = model$space_edges,
+    relations   = model$relations,
+    match       = NULL,
+    next_id     = n_agents(model) + 1L
   )
   # "both" exports fresh copies, so every step tests the conversion itself
   store <- rust_call(AgentStore$new(state$groups, store_special, !both))
@@ -114,13 +118,17 @@ run_once_rust <- function(model, go, ticks, seed, keep, measures, checks = NULL,
   has_kernel <- vapply(steps, function(s) class(s)[[1]] %in% names(kernels), NA)
   measure_reads <- read_vars(measures)
   check_reads <- read_vars(checks)
+  until_reads <- if (!is.null(until)) read_vars(list(until))
   measure_plan <- new.env(parent = emptyenv())
   check_plan <- new.env(parent = emptyenv())
+  until_plan <- new.env(parent = emptyenv())
   at <- 0L
+  ran_ticks <- 0L
   withCallingHandlers({
     for (t in seq_len(ticks)) {
       state$match <- NULL
       state$tick <- t
+      .run_ctx$tick <- t
       for (i in seq_along(steps)) {
         at <- i
         if (both) {
@@ -134,29 +142,35 @@ run_once_rust <- function(model, go, ticks, seed, keep, measures, checks = NULL,
         }
       }
       at <- 0L
-      if (keep[[t + 1L]]) {
+      ran_ticks <- t
+      stop_now <- !is.null(until) && until_met(until, state, t, until_reads, until_plan)
+      keep_now <- keep[[t + 1L]] || (stop_now && !identical(record, "globals"))
+      if (keep_now) {
         if (!both && !sync$ok) {
           store$load(state$groups)
           sync$ok <- TRUE
         }
         store$snapshot(t, TRUE)
       }
-      if (both && keep[[t + 1L]]) snapshots[[t + 1L]] <- snapshot(state, t)
+      if (both && keep_now) snapshots[[t + 1L]] <- snapshot(state, t)
       global_log[[t + 1L]] <- global_cells(state, t)
       if (!is.null(measure_log)) {
         measure_log[[t + 1L]] <- measure_row(measures, state, t, measure_reads, measure_plan)
       }
       if (length(checks)) check_row(checks, state, t, check_reads, check_plan)
       if (!is.null(bar)) cli::cli_progress_update(id = bar)
+      if (stop_now) break
     }
   }, error = function(e) {
     if (at == 0L || inherits(e, "tidyABM_error")) return()
     rethrow_step_error(e, steps[[at]], state, at)
   })
 
+  global_log <- global_log[seq_len(ran_ticks + 1L)]
+  if (!is.null(measure_log)) measure_log <- measure_log[seq_len(ran_ticks + 1L)]
   population <- store_population(store)
   if (both) {
-    snapshots <- Filter(Negate(is.null), snapshots)
+    snapshots <- Filter(Negate(is.null), snapshots[seq_len(ran_ticks + 1L)])
     ref <- if (length(snapshots)) dplyr::bind_rows(snapshots) else first[0, , drop = FALSE]
     front <- c("tick", ".id", ".group")
     cols <- names(ref)
@@ -175,7 +189,8 @@ run_once_rust <- function(model, go, ticks, seed, keep, measures, checks = NULL,
     globals    = global_table(global_log),
     measures   = if (is.null(measure_log)) NULL else dplyr::bind_rows(measure_log),
     network    = strip_draws(state$edges),
-    relations  = relation_tables(state$relations)
+    relations  = relation_tables(state$relations),
+    ticks      = ran_ticks
   )
 }
 

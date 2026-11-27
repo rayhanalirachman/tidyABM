@@ -8,10 +8,16 @@ test_that("each mode rejects arguments it does not use", {
                class = "tidyABM_irrelevant_arg")
 })
 
-test_that("`by` is required where the mode needs it", {
+test_that("`sides` / `coords` is required where the mode needs it", {
   withr::local_seed(1002)
-  expect_error(abm_match(pair = "nearest"), class = "tidyABM_missing_arg")
   expect_error(abm_match(pair = "opposite_group"), class = "tidyABM_missing_arg")
+  # `pair = "nearest"` without `coords` or `cost` defaults to `.x`/`.y` on a
+  # continuous space and errors at run time when there is none
+  m <- abm_setup(agents = abm_agents(n = 4, x = 1:4))
+  expect_error(
+    abm_run(m, abm_go(abm_match(pair = "nearest"), abm_rules(x ~ 1)), ticks = 1),
+    class = "tidyABM_missing_arg"
+  )
 })
 
 test_that("size > 2 is refused by the modes that cannot support it", {

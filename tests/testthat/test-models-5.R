@@ -328,7 +328,7 @@ test_that("cost = names what a chooser minimises, and NA means unacceptable", {
   none <- abm_run(m, abm_go(
     abm_match(pair = "nearest", cost = NA_real_,
               eligible = .group == "b", among = .group == "s"),
-    abm_rules(chose ~ .partner)), ticks = 1, seed = 1)
+    abm_rules(chose ~ .partner, .scope = "population")), ticks = 1, seed = 1)
   expect_true(all(is.na(none$chose[none$tick == 1])))
 
   expect_error(abm_match(pair = "nearest", by = x, cost = price),

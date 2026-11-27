@@ -142,9 +142,9 @@ test_that("births and deaths can see the standing match", {
 
 test_that("opposite_group tolerates a population that is briefly all one kind", {
   withr::local_seed(2008)
-  m <- abm_setup(agents = abm_agents(n = 10, sex = "female"))
+  m <- abm_setup(agents = abm_agents(n = 10, sex = "female", mated = FALSE))
   r <- abm_run(m, abm_go(abm_match(pair = "opposite_group", by = sex),
-                         abm_rules(mated ~ !is.na(.partner))),
+                         abm_rules(mated ~ TRUE)),
                ticks = 1, seed = 1)
   expect_true(all(!r$mated[r$tick == 1]))
   # three values is still a specification error

@@ -5,17 +5,17 @@
 match_relevant_args <- list(
   random          = c("size", "role", "eligible"),
   one_of          = c("role", "eligible", "among", "weight"),
-  opposite_group  = c("size", "by", "role", "eligible"),
-  nearest         = c("by", "cost", "size", "eligible", "among"),
+  opposite_group  = c("size", "by", "sides", "role", "eligible"),
+  nearest         = c("by", "coords", "cost", "size", "eligible", "among"),
   network         = c("from", "eligible")
 )
 
 new_abm_match <- function(pair, size, by, role, eligible, from, among, cost,
-                          weight, dot_by = NULL) {
+                          weight, dot_by = NULL, steps = NULL) {
   structure(
     list(pair = pair, size = size, by = by, role = role, eligible = eligible,
          from = from, among = among, cost = cost, weight = weight,
-         dot_by = dot_by),
+         dot_by = dot_by, steps = steps),
     class = c("abm_match", "abm_step")
   )
 }
@@ -34,13 +34,15 @@ new_abm_match <- function(pair, size, by, role, eligible, from, among, cost,
 #'   so `!is.na(.partner)` is "I met someone this tick";
 #' * grouped-mutate semantics when `size > 2`, so `sum(contribution)` inside a
 #'   rule means "sum across this agent's group" and `n()` is its size;
-#' * `.role`, when `role` is supplied (`NA` otherwise).
+#' * `.role`, when `role` is supplied (`NA` otherwise);
+#' * `.cost`, after `pair = "nearest"` with `size = 2`: the winning `cost =`
+#'   value or Euclidean distance (`NA_real_` when unmatched).
 #'
-#' Who an [abm_rules()] step that follows is *written for* is decided by the
-#' match too: an agent it left out keeps its values, unless the match paired
-#' nobody at all, in which case every agent is written with `NA` partner
-#' columns ([abm_sequential()] then writes nobody). See [abm_rules()] for the
-#' two cases and how to write a rule that is right in both.
+#' Who an [abm_rules()] or [abm_sequential()] step that follows is *written for*
+#' is decided by the match too: an agent it left out keeps its values, and if
+#' the match paired nobody at all, `.scope = "match"` writes nobody. Pass child
+#' steps directly in `...` to scope the match to those steps only and restore
+#' any outer match on exit.
 #'
 #' Each `pair` mode uses a fixed set of the other arguments, and passing one
 #' that the chosen mode does not use is an error rather than being ignored:
@@ -49,8 +51,8 @@ new_abm_match <- function(pair, size, by, role, eligible, from, among, cost,
 #' |--------------------|-----------------------------------------------------------------------|
 #' | `"random"`         | `size`, `role`, `eligible`                                            |
 #' | `"one_of"`         | `role`, `eligible`, `among`, `weight`                                 |
-#' | `"opposite_group"` | `by`, `role`, `eligible`                                              |
-#' | `"nearest"`        | `by` *or* `cost`, `size`, `eligible`, `among`                         |
+#' | `"opposite_group"` | `sides` (or `by`), `role`, `eligible`                                 |
+#' | `"nearest"`        | `coords` (or `by`) *or* `cost`, `size`, `eligible`, `among`           |
 #' | `"network"`        | `from`, `eligible`                                                    |
 #'
 #' `eligible` and `among` ask different questions, and the difference only has
@@ -71,15 +73,20 @@ new_abm_match <- function(pair, size, by, role, eligible, from, among, cost,
 #' @param pair The pairing mode. `"random"` shuffles agents into groups of
 #'   `size`; `"one_of"` gives each agent one partner drawn uniformly from the
 #'   whole population; `"opposite_group"` pairs each agent with one from the
-#'   other group named by `by`; `"nearest"` gives each agent its closest other
-#'   agent in the space defined by `by`; `"network"` draws the partner from the
-#'   agent's neighbours in the model's [abm_network()].
+#'   other group named by `sides` (or `by`); `"nearest"` gives each agent its
+#'   closest other agent in the space defined by `coords` (or `by`); `"network"`
+#'   draws the partner from the agent's neighbours in the model's [abm_network()].
+#' @param ... Optional child steps scoped to this match. When supplied, the
+#'   match is active for those steps and any outer standing match is restored
+#'   afterwards.
 #' @param size Group size. Defaults to 2 (a pair). Only `"random"` and
 #'   `"nearest"` support `size > 2`; `"opposite_group"` is undefined above 2.
-#' @param by Column(s) defining the space or the split. For `"opposite_group"`
-#'   a single column that takes exactly two values (use `.group` for a
-#'   multi-group model); for `"nearest"` one or more numeric columns, compared by
-#'   Euclidean distance.
+#' @param by Deprecated alias for `sides` (in `"opposite_group"`) or `coords`
+#'   (in `"nearest"`).
+#' @param sides For `"opposite_group"`, a single column that takes at most two
+#'   values defining the two sides (use `.group` for a multi-group model).
+#' @param coords For `"nearest"`, one or more numeric columns compared by
+#'   Euclidean distance (defaults to `.x` or `c(.x, .y)` on a continuous space).
 #' @param role A named list of two conditions, e.g. `list(giver = money > 0,
 #'   receiver = TRUE)`. Within each pair, roles are assigned so that each member
 #'   satisfies its own role's condition; if no assignment works the pair is
@@ -129,7 +136,7 @@ new_abm_match <- function(pair, size, by, role, eligible, from, among, cost,
 #'   only ever matched with agents sharing its value. This is
 #'   [abm_rules()]'s `.by` grouping applied to matching, and on a lattice
 #'   `.by = .cell` is what makes every co-located interaction -- predation,
-#'   mating, combat -- expressible: `abm_match(pair = "opposite_group", by =
+#'   mating, combat -- expressible: `abm_match(pair = "opposite_group", sides =
 #'   .group, .by = .cell)` gives each wolf one sheep from *its own cell*, and
 #'   never pairs one sheep with two wolves. `NA` sits an agent out.
 #' @param from For `"network"`, `"neighbour"` (the default) picks a random
@@ -148,8 +155,8 @@ new_abm_match <- function(pair, size, by, role, eligible, from, among, cost,
 #' abm_match(pair = "random")
 #' abm_match(pair = "one_of")
 #' abm_match(pair = "random", size = 4)
-#' abm_match(pair = "nearest", by = opinion)
-#' abm_match(pair = "nearest", by = position, among = .group == "shops")
+#' abm_match(pair = "nearest", coords = opinion)
+#' abm_match(pair = "nearest", coords = position, among = .group == "shops")
 #'
 #' # a firm I do not already buy from, noticed in proportion to its size
 #' abm_match(pair = "one_of", among = .group == "firms" & !.id %in% own_sellers,
@@ -158,17 +165,20 @@ new_abm_match <- function(pair, size, by, role, eligible, from, among, cost,
 #'           among = .group == "shops")
 #' abm_match(pair = "random", role = list(giver = money > 0, receiver = TRUE))
 #'
-#' # one prey per predator, per cell
-#' abm_match(pair = "opposite_group", by = .group, .by = .cell,
-#'           eligible = .group %in% c("wolves", "sheep"))
+#' # one prey per predator, per cell (scoped to its child steps)
+#' abm_match(pair = "opposite_group", sides = .group, .by = .cell,
+#'           eligible = .group %in% c("wolves", "sheep"),
+#'           abm_rules(energy ~ energy + 20, when = .group == "wolves"))
 abm_match <- function(pair = c("random", "one_of", "opposite_group", "nearest",
                                 "network"),
-                      size = NULL, by = NULL, role = NULL, eligible = NULL,
-                      from = NULL, among = NULL, cost = NULL, weight = NULL,
-                      .by = NULL) {
+                      ..., size = NULL, by = NULL, sides = NULL, coords = NULL,
+                      role = NULL, eligible = NULL, from = NULL, among = NULL,
+                      cost = NULL, weight = NULL, .by = NULL) {
   pair <- rlang::arg_match(pair)
 
   by        <- enquo_or_null(rlang::enquo(by))
+  sides     <- enquo_or_null(rlang::enquo(sides))
+  coords    <- enquo_or_null(rlang::enquo(coords))
   dot_by    <- enquo_or_null(rlang::enquo(.by))
   cost      <- enquo_or_null(rlang::enquo(cost))
   role      <- enquo_or_null(rlang::enquo(role))
@@ -179,6 +189,8 @@ abm_match <- function(pair = c("random", "one_of", "opposite_group", "nearest",
   supplied <- c(
     if (!is.null(size))      "size",
     if (!is.null(by))        "by",
+    if (!is.null(sides))     "sides",
+    if (!is.null(coords))    "coords",
     if (!is.null(role))      "role",
     if (!is.null(eligible))  "eligible",
     if (!is.null(from))      "from",
@@ -202,19 +214,35 @@ abm_match <- function(pair = c("random", "one_of", "opposite_group", "nearest",
   }
   size <- as.integer(size)
 
-  if (pair == "nearest" && !is.null(by) && !is.null(cost)) {
-    abm_abort(
-      c('Supply either {.arg by} or {.arg cost}, not both.',
-        "i" = "{.arg by} is a coordinate to be close to; {.arg cost} is a number to be minimised."),
-      class = "tidyABM_conflicting_args")
+  if (pair == "opposite_group") {
+    if (!is.null(by) && !is.null(sides)) {
+      abm_abort(
+        c("Supply either {.arg sides} or {.arg by}, not both.",
+          "i" = "{.arg by} is a deprecated alias for {.arg sides}."),
+        class = "tidyABM_conflicting_args"
+      )
+    }
+    by <- sides %||% by
+    if (is.null(by)) {
+      abm_abort('{.arg sides} is required when {.code pair = "opposite_group"}.',
+                class = "tidyABM_missing_arg")
+    }
   }
-  if (pair == "opposite_group" && is.null(by)) {
-    abm_abort('{.arg by} is required when {.code pair = "{pair}"}.',
-              class = "tidyABM_missing_arg")
-  }
-  if (pair == "nearest" && is.null(by) && is.null(cost)) {
-    abm_abort('{.arg by} or {.arg cost} is required when {.code pair = "nearest"}.',
-              class = "tidyABM_missing_arg")
+  if (pair == "nearest") {
+    if (!is.null(by) && !is.null(coords)) {
+      abm_abort(
+        c("Supply either {.arg coords} or {.arg by}, not both.",
+          "i" = "{.arg by} is a deprecated alias for {.arg coords}."),
+        class = "tidyABM_conflicting_args"
+      )
+    }
+    by <- coords %||% by
+    if (!is.null(by) && !is.null(cost)) {
+      abm_abort(
+        c('Supply either {.arg coords} or {.arg cost}, not both.',
+          "i" = "{.arg coords} is a coordinate to be close to; {.arg cost} is a number to be minimised."),
+        class = "tidyABM_conflicting_args")
+    }
   }
   if (pair == "nearest" && size > 2L) {
     abm_abort(
@@ -256,8 +284,14 @@ abm_match <- function(pair = c("random", "one_of", "opposite_group", "nearest",
     )
   }
 
+  dots <- flatten_step_dots(rlang::list2(...))
+  steps <- if (length(dots)) {
+    validate_steps(dots, "abm_match")
+    dots
+  } else NULL
+
   new_abm_match(pair, size, by, role, eligible, from, among, cost, weight,
-                dot_by)
+                dot_by, steps = steps)
 }
 
 #' @export

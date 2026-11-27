@@ -22,8 +22,7 @@ pa <- abm_setup(
   agents  = abm_agents(n = 2),
   network = abm_network(type = "manual", edges = data.frame(from = 1, to = 2)))
 
-go <- abm_go(abm_birth(
-  n = 1, attach_via = abm_match(pair = "network", from = "random_edge")))
+go <- abm_go(abm_birth(n = 1, attach = "random_edge"))
 
 result <- abm_run(pa, go, ticks = 300, seed = 11)
 ```

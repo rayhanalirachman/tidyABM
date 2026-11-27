@@ -23,12 +23,11 @@ sweep <- function(side) list(
 ising <- abm_setup(
   agents  = abm_agents(spin  = ~rep(1L, n),          # ordered start
                        black = ~(.x + .y) %% 2 == 0),
-  network = abm_network(type = "grid", dims = c(50, 50),
-                        diagonals = FALSE, torus = TRUE),
+  space   = abm_space(type = "grid", dims = c(50, 50),
+                      diagonals = FALSE, torus = TRUE),
   globals = list(temp = 2.27), seed = 1)
 
-go <- do.call(abm_go, c(sweep(TRUE), sweep(FALSE),
-                        list(abm_global(mag ~ abs(mean(spin))))))
+go <- abm_go(sweep(TRUE), sweep(FALSE), abm_global(mag ~ abs(mean(spin))))
 
 result <- abm_run(ising, go, ticks = 400, seed = 1, record = "globals")
 ```

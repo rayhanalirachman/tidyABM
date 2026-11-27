@@ -12,6 +12,7 @@ abm_run(
   reps = 1,
   measures = NULL,
   checks = NULL,
+  until = NULL,
   seed = NULL,
   record = "all",
   progress = NULL,
@@ -41,6 +42,11 @@ measure cannot be read by any step. See \emph{Measures} below.}
 \item{checks}{Optional named list of one-sided formulas, evaluated like
 \code{measures} at tick 0 and after every tick, each of which must return a
 single \code{TRUE}. The first that does not stops the run. See \emph{Checks} below.}
+
+\item{until}{Optional one-sided formula evaluated after each tick over the
+whole population (with globals and \code{.tick} in scope). When it evaluates to
+\code{TRUE}, the run stops early at that tick, keeping the stopping tick in the
+recorded output.}
 
 \item{seed}{Optional integer seed. Set locally, so the caller's random state
 is left untouched. With more than one run this seeds the experiment and a

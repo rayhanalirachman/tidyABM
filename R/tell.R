@@ -1,8 +1,8 @@
 # Writing into other agents' rows ----------------------------------------
 
-new_abm_tell <- function(rules, to, to_quo, when, resolve, order) {
+new_abm_tell <- function(rules, to, to_quo, when, resolve, order, via = NULL) {
   structure(list(rules = rules, to = to, to_quo = to_quo, when = when,
-                 resolve = resolve, order = order),
+                 resolve = resolve, order = order, via = via),
             class = c("abm_tell", "abm_step"))
 }
 
@@ -56,10 +56,12 @@ new_abm_tell <- function(rules, to, to_quo, when, resolve, order) {
 #' @param when Optional condition on the sender. Only agents for which it holds
 #'   send anything.
 #' @param .resolve What to do when several senders write to the same recipient
-#'   in one step: `"last"` (an arbitrary one wins), `"first"`, `"sum"`, `"mean"`,
-#'   `"max"`, `"min"`, `"collect"`, which hands the recipient a list of
-#'   everything it was told, so the recipient's own rule decides what to make of
-#'   them, or `"error"` to stop.
+#'   in one step: `"last"` (an arbitrary one wins), `"first"`, `"sum"` (replaces
+#'   the column with the sum of incoming messages), `"add"` (adds the sum of
+#'   incoming messages to the recipient's existing value), `"mean"`, `"max"`,
+#'   `"min"`, `"collect"`, which hands the recipient a list of everything it was
+#'   told, so the recipient's own rule decides what to make of them, or `"error"`
+#'   to stop.
 #' @param .order Optional expression, evaluated in the **sender's** row, whose
 #'   ascending order is the order the messages are considered in. Without it a
 #'   recipient's messages arrive in whatever order the senders happened to be
@@ -68,6 +70,8 @@ new_abm_tell <- function(rules, to, to_quo, when, resolve, order) {
 #'   `.resolve = "first"` is *the first person to reach the counter*, and
 #'   `"collect"` hands the recipient its messages already in that order. `NA`
 #'   sits the sender out of the step.
+#' @param via For `to = "neighbours"`, optional `"space"` or `"network"` when a
+#'   model has both a spatial lattice and a social network.
 #'
 #' @return An `abm_tell` step object.
 #' @seealso [abm_go()], which lists every step and fixes the order they run
@@ -88,9 +92,9 @@ new_abm_tell <- function(rules, to, to_quo, when, resolve, order) {
 #' abm_tell(serving ~ .id, to = counter, when = queueing,
 #'          .resolve = "first", .order = arrived_at)
 abm_tell <- function(..., to, when = NULL,
-                     .resolve = c("last", "first", "sum", "mean", "max", "min",
+                     .resolve = c("last", "first", "sum", "add", "mean", "max", "min",
                                   "collect", "error"),
-                     .order = NULL) {
+                     .order = NULL, via = NULL) {
   check_rule_dots(rlang::enexprs(...), "abm_tell")
   .resolve <- rlang::arg_match(.resolve)
   rules <- collect_rules(rlang::list2(...), "abm_tell")
@@ -113,10 +117,21 @@ abm_tell <- function(..., to, when = NULL,
       class = "tidyABM_bad_to"
     )
   }
+  if (!is.null(via)) {
+    if (mode != "neighbours") {
+      abm_abort('{.arg via} is only used with {.code to = "neighbours"}.',
+                class = "tidyABM_irrelevant_arg")
+    }
+    if (!rlang::is_string(via)) {
+      abm_abort('{.arg via} must be {.val space} or {.val network}.',
+                class = "tidyABM_bad_arg")
+    }
+    via <- rlang::arg_match0(via, c("space", "network"), arg_nm = "via")
+  }
 
   new_abm_tell(rules, mode, if (mode == "id") to_quo else NULL,
                enquo_or_null(rlang::enquo(when)), .resolve,
-               enquo_or_null(rlang::enquo(.order)))
+               enquo_or_null(rlang::enquo(.order)), via = via)
 }
 
 #' Collapse several messages to the same recipient into one value
@@ -174,6 +189,8 @@ run_tell <- function(step, state) {
     augment_group(combined, state$match, combined, state$relations,
                   partner = planned(step, "pvars", partner_vars(quos)),
                   match_cols = mcols)
+  cvars <- planned(step, "cvars", cell_vars(quos))
+  if (length(cvars)) aug <- attach_cell_columns(aug, state, cvars)
 
   speaks <- eval_condition(step$when, aug, state$globals)
   if (anyNA(speaks)) speaks[is.na(speaks)] <- FALSE
@@ -181,14 +198,15 @@ run_tell <- function(step, state) {
 
   # who each sender is addressing: one row per (sender, recipient)
   if (step$to == "neighbours") {
-    if (is.null(state$edges)) {
+    topo <- resolve_topology_edges(step$via, state, "abm_tell")
+    if (is.null(topo)) {
       abm_abort(
         c('{.code abm_tell(to = "neighbours")} needs a network.',
           "i" = "Add one with {.code abm_setup(..., network = abm_network(...))}."),
         class = "tidyABM_no_network"
       )
     }
-    nb <- neighbour_table(state$edges)
+    nb <- neighbour_table(topo$edges)
     nb <- nb[nb$.id %in% aug$.id[speaks] & nb$.neighbour %in% combined$.id, ,
              drop = FALSE]
     sender_row <- match(nb$.id, aug$.id)
@@ -271,7 +289,8 @@ run_tell <- function(step, state) {
   for (r in step$rules) {
     value <- eval_rule(r, aug, state$globals, grouped = FALSE)
     if (length(value) == 1L) value <- rep(value, nrow(aug))
-    msg <- resolve_messages(value[sender_row], recipient, step$resolve,
+    res_mode <- if (step$resolve == "add") "sum" else step$resolve
+    msg <- resolve_messages(value[sender_row], recipient, res_mode,
                             r$target, first, grp)
     for (j in seq_along(state$groups)) {
       nm <- names(state$groups)[[j]]
@@ -287,9 +306,9 @@ run_tell <- function(step, state) {
           class = "tidyABM_tell_new_column"
         )
       }
-      g <- assign_rule(g, r$target,
-                       replace_at(g[[r$target]], at[sel] - start, msg[sel]),
-                       TRUE)
+      rows_j <- at[sel] - start
+      vals_j <- if (step$resolve == "add") g[[r$target]][rows_j] + msg[sel] else msg[sel]
+      g <- assign_rule(g, r$target, replace_at(g[[r$target]], rows_j, vals_j), TRUE)
       state$groups[[nm]] <- g
     }
   }

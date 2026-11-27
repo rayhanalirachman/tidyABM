@@ -8,8 +8,9 @@ abm_tell(
   ...,
   to,
   when = NULL,
-  .resolve = c("last", "first", "sum", "mean", "max", "min", "collect", "error"),
-  .order = NULL
+  .resolve = c("last", "first", "sum", "add", "mean", "max", "min", "collect", "error"),
+  .order = NULL,
+  via = NULL
 )
 }
 \arguments{
@@ -25,10 +26,12 @@ the sender writes to all of them.}
 send anything.}
 
 \item{.resolve}{What to do when several senders write to the same recipient
-in one step: \code{"last"} (an arbitrary one wins), \code{"first"}, \code{"sum"}, \code{"mean"},
-\code{"max"}, \code{"min"}, \code{"collect"}, which hands the recipient a list of
-everything it was told, so the recipient's own rule decides what to make of
-them, or \code{"error"} to stop.}
+in one step: \code{"last"} (an arbitrary one wins), \code{"first"}, \code{"sum"} (replaces
+the column with the sum of incoming messages), \code{"add"} (adds the sum of
+incoming messages to the recipient's existing value), \code{"mean"}, \code{"max"},
+\code{"min"}, \code{"collect"}, which hands the recipient a list of everything it was
+told, so the recipient's own rule decides what to make of them, or \code{"error"}
+to stop.}
 
 \item{.order}{Optional expression, evaluated in the \strong{sender's} row, whose
 ascending order is the order the messages are considered in. Without it a
@@ -38,6 +41,9 @@ over arbitrary. With it they are determinate: \code{.order = arrival} with
 \code{.resolve = "first"} is \emph{the first person to reach the counter}, and
 \code{"collect"} hands the recipient its messages already in that order. \code{NA}
 sits the sender out of the step.}
+
+\item{via}{For \code{to = "neighbours"}, optional \code{"space"} or \code{"network"} when a
+model has both a spatial lattice and a social network.}
 }
 \value{
 An \code{abm_tell} step object.

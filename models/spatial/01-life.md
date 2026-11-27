@@ -12,8 +12,8 @@
 
 ```r
 life <- abm_setup(
-  agents  = abm_agents(alive = ~runif(n) < 0.10),
-  network = abm_network(type = "grid", dims = c(100, 100)))
+  agents = abm_agents(alive = ~runif(n) < 0.10),
+  space  = abm_space(type = "grid", dims = c(100, 100)))
 
 go <- abm_go(
   abm_neighbours(live_n ~ sum(alive)),
@@ -27,9 +27,9 @@ result <- abm_run(life, go, ticks = 1500, seed = 1, record = "globals")
 *L0, and nothing else. `abm_neighbours()` is the first `ask patches` and
 `abm_rules()` is the second, and `abm_rules()`'s simultaneity **is** the
 two-`ask` structure — the synchronous update cannot be written wrongly here.
-The lattice is an ordinary network: `abm_network(type = "grid")` produces the
-same `from`/`to` edge tibble a random graph does, patches are ordinary agents,
-and `abm_agents()` takes no `n =` because the grid says how many there are.*
+`abm_space(type = "grid")` wires the patch group onto a grid whose patches are
+ordinary agents, and `abm_agents()` omits `n =` because the grid sets the cell
+count from `dims`.*
 
 **Replication**
 

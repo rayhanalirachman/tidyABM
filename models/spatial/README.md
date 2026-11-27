@@ -10,19 +10,22 @@ the surface it settled on is [`grammar-spec.md`](grammar-spec.md).
 
 ## The idea
 
-A lattice **is a network**. `abm_network(type = "grid")` produces the same
-`from`/`to` edge tibble every other network type produces, so patches are
-ordinary agents and `abm_neighbours()`, `abm_match(pair = "network")`,
-`abm_link()` and `abm_edges()` all work on a grid unchanged. A mobile agent's
-location is a patch `.id` held in a reserved `.cell` column; moving is writing
-that column. There is no second medium and no patch-specific rule syntax.
+Spatial geometry lives in `abm_space()` (`type = "grid"` for 1-D/2-D discrete
+lattices, or `type = "continuous"` for 1-D/2-D coordinate boxes), separate from
+undirected social connections in `abm_network()`, so a model can combine space
+and a network at once (disambiguated via `via = "space"` / `"network"`). On a
+grid with patches, patches are ordinary agents so `abm_neighbours()`,
+`abm_match(pair = "network")`, and `abm_edges()` work unchanged. Mobile agents
+carry `.cell` (and `.x` / `.y`), read their current patch's columns directly as
+read-only `cell_<col>`, write back explicitly via `abm_tell(..., to = .cell)`
+(including `.resolve = "add"` for `+=`), and move via `abm_move()`.
 
 | tier | adds | unlocks |
 |---|---|---|
-| **L0** | `abm_network(type = "grid" \| "line", dims, diagonals, torus, on)`, `.x` / `.y`, count inheritance, `abm_grid()` | every patch-only model |
+| **L0** | `abm_space(type = "grid", dims, diagonals, torus, on)`, `.x` / `.y`, count inheritance, `abm_grid()` | every patch-only model (1-D and 2-D) |
 | **L1** | `abm_neighbours(..., .where = "west")` | ordered-neighbour lattices (1-D CA) |
-| **L2** | `.cell`, `at =`, the `within =` equijoin, `abm_tell(to = <id col>)`, `abm_match(.by = <col>)`, `abm_move()` | turtle-≠-patch models |
-| **L2+** | `abm_move(direction =, range =, axes_only =, avoid_occupied =)`, a rule writing `.cell` | Sugarscape, Langton's Ant, Rebellion |
+| **L2** | `.cell`, `cell_<col>`, `at =` (`"unique"`, formulas), `abm_tell(to = .cell, .resolve = "add")`, scoped `abm_match(.by = .cell, ...)`, `abm_move()` | turtle-≠-patch models |
+| **L2+** | `abm_move(direction =, range = <scalar|col>, when =, axes_only =, avoid_occupied =, to = "random_empty" | offset() | forward())`, torus-aware `.dist` (with cell bucketing for `.dist <= r`) | Sugarscape, Langton's Ant, Rebellion, continuous space |
 
 ## The models
 

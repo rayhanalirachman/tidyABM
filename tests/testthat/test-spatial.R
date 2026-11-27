@@ -704,7 +704,10 @@ test_that("Langton's Ant matches a reference implementation exactly", {
 })
 
 test_that("abm_move refuses arguments it cannot honour", {
-  expect_error(abm_move(to = "random_neighbour"), class = "tidyABM_missing_arg")
+  # `along` is optional when a lattice exists, but errors at run time without one
+  m_nolat <- abm_setup(agents = abm_agents(n = 3, x = 1))
+  expect_error(abm_run(m_nolat, abm_go(abm_move(to = "random_neighbour")), ticks = 1),
+               class = "tidyABM_no_lattice")
   expect_error(abm_move(along = "p", to = "sideways"), "must be one of")
   expect_error(abm_move(along = "p", direction = heading, range = 3),
                class = "tidyABM_conflicting_args")

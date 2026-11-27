@@ -146,6 +146,10 @@
 #' @param checks Optional named list of one-sided formulas, evaluated like
 #'   `measures` at tick 0 and after every tick, each of which must return a
 #'   single `TRUE`. The first that does not stops the run. See *Checks* below.
+#' @param until Optional one-sided formula evaluated after each tick over the
+#'   whole population (with globals and `.tick` in scope). When it evaluates to
+#'   `TRUE`, the run stops early at that tick, keeping the stopping tick in the
+#'   recorded output.
 #' @param seed Optional integer seed. Set locally, so the caller's random state
 #'   is left untouched. With more than one run this seeds the experiment and a
 #'   seed per run is derived from it, so the whole thing reproduces at once. See
@@ -192,8 +196,8 @@
 #'                 measures = list(richest = ~max(money)))
 #' abm_measures(many)
 abm_run <- function(model, go, ticks, params = NULL, reps = 1, measures = NULL,
-                    checks = NULL, seed = NULL, record = "all", progress = NULL,
-                    cores = 1) {
+                    checks = NULL, until = NULL, seed = NULL, record = "all",
+                    progress = NULL, cores = 1) {
   if (!is.function(model) && !inherits(model, "abm_model")) {
     abm_abort(
       c("{.arg model} must come from {.fn abm_setup}, or be a function that returns one.",
@@ -229,6 +233,8 @@ abm_run <- function(model, go, ticks, params = NULL, reps = 1, measures = NULL,
   params <- check_params(params, model)
   measures <- check_measures(measures)
   checks <- check_measures(checks, "checks", "tidyABM_bad_checks")
+  until <- check_until(until)
+  inform_stochastic_setup(model, reps)
   engine <- engine_resolve()
 
   if (!is.null(progress) && !rlang::is_bool(progress)) {
@@ -270,12 +276,12 @@ abm_run <- function(model, go, ticks, params = NULL, reps = 1, measures = NULL,
 
   # the formulas marked for [eval_rule()] once, not once per run
   go$steps <- mark_steps(go$steps)
-  run_fn <- engine_run_once(engine, go$steps)  # run_once() unless a Rust path is asked for
+  run_fn <- engine_run_once(engine, go$steps, has_until = !is.null(until))  # run_once() unless a Rust path is asked for
   one_run <- function(i) {
     o <- withCallingHandlers({
       start <- build_run(model, runs[[i]]$values, seeds[[i]])
       run_fn(start$model, go, ticks, start$seed, keep, measures, checks,
-             bar = if (by_run) NULL else bar)
+             bar = if (by_run) NULL else bar, until = until, record = record)
     },
       # one run of many failing says which one, and with what it would rerun
       tidyABM_check_failed = function(e) {
@@ -315,8 +321,9 @@ abm_run <- function(model, go, ticks, params = NULL, reps = 1, measures = NULL,
 
   if (!by_run) {
     one <- out[[1]]
+    actual_ticks <- one$ticks %||% ticks
     return(new_abm_result(one$population, one$globals, one$measures,
-                          one$network, one$relations, ticks, record, 1L))
+                          one$network, one$relations, actual_ticks, record, 1L))
   }
 
   meta <- lapply(runs, run_meta)
@@ -364,7 +371,7 @@ new_abm_result <- function(population, globals, measures, network, relations,
 #' one run to tell apart.
 #' @noRd
 run_once <- function(model, go, ticks, seed, keep, measures, checks = NULL,
-                     bar = NULL) {
+                     bar = NULL, until = NULL, record = "all") {
   if (!is.null(seed)) local_seed(seed)
   # nothing stacked carries over from another run; see [bind_groups()]
   # ponytail: a fixed size, decided at the start; below it the bookkeeping
@@ -373,15 +380,18 @@ run_once <- function(model, go, ticks, seed, keep, measures, checks = NULL,
   rm(list = ls(.eval_env), envir = .eval_env)
   rm(list = ls(.std_memo, all.names = TRUE), envir = .std_memo)
   .bound$on <- n_agents(model) >= 5000L
+  .run_ctx$tick <- 0L
 
   state <- list(
-    groups    = model$groups,
-    globals   = model$globals,
-    edges     = model$edges,
-    lattice   = model$lattice,
-    relations = model$relations,
-    match     = NULL,
-    next_id   = n_agents(model) + 1L
+    groups      = model$groups,
+    globals     = model$globals,
+    edges       = model$edges,
+    lattice     = model$lattice,
+    space       = model$space,
+    space_edges = model$space_edges,
+    relations   = model$relations,
+    match       = NULL,
+    next_id     = n_agents(model) + 1L
   )
 
   snapshots <- vector("list", ticks + 1L)
@@ -398,30 +408,38 @@ run_once <- function(model, go, ticks, seed, keep, measures, checks = NULL,
   # what the measures and checks read, worked out once rather than per tick
   measure_reads <- read_vars(measures)
   check_reads <- read_vars(checks)
+  until_reads <- if (!is.null(until)) read_vars(list(until))
   # their group aggregates, planned once per schema
   measure_plan <- new.env(parent = emptyenv())
   check_plan <- new.env(parent = emptyenv())
+  until_plan <- new.env(parent = emptyenv())
   # one handler for every step of every tick, rather than one set up per
   # step: what [run_step_reporting()] does, for the step running when it fails
   at <- 0L
+  ran_ticks <- 0L
   withCallingHandlers({
     for (t in seq_len(ticks)) {
       state$match <- NULL
       state$tick <- t
+      .run_ctx$tick <- t
       for (i in seq_along(steps)) {
         at <- i
         state <- run_step(steps[[i]], state)
       }
       at <- 0L
+      ran_ticks <- t
+      stop_now <- !is.null(until) && until_met(until, state, t, until_reads, until_plan)
+      keep_now <- keep[[t + 1L]] || (stop_now && !identical(record, "globals"))
       # a population that is not recorded is not kept, which is the whole point:
       # the run then slows down rather than filling memory
-      if (keep[[t + 1L]]) snapshots[[t + 1L]] <- snapshot(state, t)
+      if (keep_now) snapshots[[t + 1L]] <- snapshot(state, t)
       global_log[[t + 1L]] <- global_cells(state, t)
       if (!is.null(measure_log)) {
         measure_log[[t + 1L]] <- measure_row(measures, state, t, measure_reads, measure_plan)
       }
       if (length(checks)) check_row(checks, state, t, check_reads, check_plan)
       if (!is.null(bar)) cli::cli_progress_update(id = bar)
+      if (stop_now) break
     }
   }, error = function(e) {
     # outside a step (a measure, a check) the error goes on as it is
@@ -429,7 +447,9 @@ run_once <- function(model, go, ticks, seed, keep, measures, checks = NULL,
     rethrow_step_error(e, steps[[at]], state, at)
   })
 
-  snapshots <- Filter(Negate(is.null), snapshots)
+  global_log <- global_log[seq_len(ran_ticks + 1L)]
+  if (!is.null(measure_log)) measure_log <- measure_log[seq_len(ran_ticks + 1L)]
+  snapshots <- Filter(Negate(is.null), snapshots[seq_len(ran_ticks + 1L)])
   population <- if (length(snapshots)) dplyr::bind_rows(snapshots) else empty
   # `tick`, `.id` and `.group` first: what `dplyr::relocate()` does, without
   # its tidyselect machinery once per run
@@ -442,7 +462,8 @@ run_once <- function(model, go, ticks, seed, keep, measures, checks = NULL,
     globals    = global_table(global_log),
     measures   = if (is.null(measure_log)) NULL else dplyr::bind_rows(measure_log),
     network    = strip_draws(state$edges),
-    relations  = relation_tables(state$relations)
+    relations  = relation_tables(state$relations),
+    ticks      = ran_ticks
   )
 }
 
@@ -570,17 +591,29 @@ rethrow_step_error <- function(e, step, state, at, call = rlang::caller_env()) {
 }
 
 run_step <- function(step, state) {
+  .run_ctx$tick <- as.integer(state$tick %||% 0L)
   state <- switch(
     class(step)[[1]],
     abm_match = {
       # these modes read agents only through their conditions and `by` columns
+      mquos <- step[c("role", "eligible", "among", "weight", "cost")]
       cols <- planned(step, "cols", if (step$pair %in% c("random", "one_of", "opposite_group")) {
-        reads <- read_vars(step[c("role", "eligible", "among", "weight")])
+        reads <- read_vars(mquos)
         if (!is.null(reads)) c(reads, by_columns(step$by), by_columns(step$dot_by))
       })
-      m <- run_match(step, bind_groups(state$groups, cols), state$edges, state$globals,
-                     relations = state$relations)
-      state$match <- list(match = m, size = step$size)
+      comb <- bind_groups(state$groups, cols)
+      cvars <- planned(step, "cvars", cell_vars(mquos))
+      if (length(cvars)) comb <- attach_cell_columns(comb, state, cvars)
+      m <- run_match(step, comb, state$edges, state$globals,
+                     relations = state$relations, space = state$space %||% state$lattice)
+      if (!is.null(step$steps)) {
+        outer_match <- state$match
+        state$match <- list(match = m, size = step$size)
+        for (s in step$steps) state <- run_step_reporting(s, state)
+        state$match <- outer_match
+      } else {
+        state$match <- list(match = m, size = step$size)
+      }
       state
     },
     abm_rules      = run_rules(step, state),
@@ -624,7 +657,9 @@ run_step <- function(step, state) {
 #' @noRd
 plan_steps <- function(steps) {
   lapply(steps, function(s) {
-    if (inherits(s, "abm_repeat")) s$steps <- plan_steps(s$steps)
+    if (inherits(s, "abm_repeat") || (inherits(s, "abm_match") && !is.null(s$steps))) {
+      s$steps <- plan_steps(s$steps)
+    }
     s$plan <- new.env(parent = emptyenv())
     s
   })

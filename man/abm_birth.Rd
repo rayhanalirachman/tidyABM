@@ -10,8 +10,10 @@ abm_birth(
   times = NULL,
   cost = NULL,
   inherit = NULL,
+  attach = NULL,
   attach_via = NULL,
-  links = NULL
+  links = NULL,
+  group = NULL
 )
 }
 \arguments{
@@ -39,6 +41,9 @@ are evaluated in the parent's row, so they can use the parent's columns and,
 when an \code{\link[=abm_match]{abm_match()}} is standing, the other parent's, as \verb{partner_<col>}.
 That is how two-parent inheritance is written: \code{inherit = trait ~ (trait + partner_trait) / 2}.}
 
+\item{attach}{Shorthand for \code{attach_via}: \code{"none"}, \code{"parent"},
+\code{"random_edge"}, or \code{"neighbour"}. Cannot be combined with \code{attach_via}.}
+
 \item{attach_via}{An \code{\link[=abm_match]{abm_match()}} object with \code{pair = "network"}, used to
 connect each newborn to an existing agent. This is the only way the network
 grows during a run; \code{from = "random_edge"} gives degree-proportional
@@ -54,6 +59,10 @@ parent" means on a lattice; with \code{from = "random_edge"} it is the \emph{m}
 degree-proportional edges per node that preferential attachment is defined
 with. Targets are distinct, and a newborn takes what there is when there
 are fewer than \code{links} of them.}
+
+\item{group}{For \verb{n =}: optional name of the agent group to add newborns to
+in multi-group models (defaults to the single non-patch group when
+unambiguous).}
 }
 \value{
 An \code{abm_birth} step object.
@@ -80,12 +89,11 @@ abm_birth(when = resource > 20, cost = resource ~ resource / 2)
 
 # a clutch rather than a single offspring
 abm_birth(when = mature, times = rpois(n(), 2), inherit = age ~ 0)
-abm_birth(n = 1, attach_via = abm_match(pair = "network", from = "random_edge"))
+abm_birth(n = 1, attach = "random_edge")
 
 # the offspring takes a place beside its parent, with a neighbourhood of its
 # own rather than a single edge back to the parent
-abm_birth(when = runif(n()) < ptr, links = 4,
-          attach_via = abm_match(pair = "network", from = "parent"))
+abm_birth(when = runif(n()) < ptr, links = 4, attach = "parent")
 
 # a child of two parents, with its own age and a mutated trait
 abm_birth(

@@ -4,6 +4,20 @@ new_abm_go <- function(steps) {
   structure(list(steps = steps), class = "abm_go")
 }
 
+#' Flatten plain lists of steps passed into `abm_go()`, `abm_repeat()`, etc.
+#' @noRd
+flatten_step_dots <- function(dots) {
+  out <- list()
+  for (x in dots) {
+    if (is.list(x) && !is.object(x)) {
+      out <- c(out, flatten_step_dots(x))
+    } else {
+      out[[length(out) + 1L]] <- x
+    }
+  }
+  out
+}
+
 #' Declare what happens each tick
 #'
 #' `abm_go()` is the second of the three functions a model is made of --
@@ -23,9 +37,13 @@ new_abm_go <- function(steps) {
 #' apply:
 #'
 #' * it cannot be empty;
-#' * no two [abm_match()] steps may sit next to each other, since the first
-#'   would be discarded unused;
-#' * it cannot end on an [abm_match()], for the same reason.
+#' * no two bare [abm_match()] steps may sit next to each other, since the first
+#'   would be discarded unused (scoped `abm_match(..., <steps>)` blocks may sit
+#'   anywhere);
+#' * it cannot end on a bare [abm_match()], for the same reason.
+#'
+#' Plain lists of steps passed into `...` are spliced recursively, so reusable
+#' step helpers can be included directly without `do.call()`.
 #'
 #' Everything else is allowed. In particular a model may use no matching at all
 #' (El Farol, or a pure redistribution model), and several update steps may
@@ -52,7 +70,7 @@ new_abm_go <- function(steps) {
 #'
 #' abm_run(rumour, go, ticks = 10, seed = 1)
 abm_go <- function(...) {
-  steps <- rlang::list2(...)
+  steps <- flatten_step_dots(rlang::list2(...))
   validate_steps(steps, "abm_go")
   new_abm_go(steps)
 }
@@ -95,8 +113,10 @@ validate_steps <- function(steps, fn, call = rlang::caller_env()) {
   }
 
   kinds <- vapply(steps, function(s) class(s)[[1]], character(1))
+  bare_match <- vapply(steps, function(s) inherits(s, "abm_match") && is.null(s$steps),
+                       logical(1))
 
-  dup <- which(kinds[-1] == "abm_match" & kinds[-length(kinds)] == "abm_match")
+  dup <- which(kinds[-1] == "abm_match" & bare_match[-length(kinds)])
   if (length(dup)) {
     abm_abort(
       c("Two {.fn abm_match} steps in a row.",
@@ -106,7 +126,7 @@ validate_steps <- function(steps, fn, call = rlang::caller_env()) {
     )
   }
 
-  if (kinds[[length(kinds)]] == "abm_match") {
+  if (bare_match[[length(kinds)]]) {
     abm_abort(
       c("The sequence ends on an {.fn abm_match}.",
         "x" = "Step {length(kinds)} is the last one, and nothing uses its pairing.",
@@ -136,7 +156,7 @@ print.abm_go <- function(x, ...) {
       abm_neighbours = paste0("nbrs   ", step_targets(s),
                               if (!is.null(s$within)) " (within)" else "",
                               if (!is.null(s$where)) paste0(" (", s$where, ")") else ""),
-      abm_move       = paste0("move   along ", s$along),
+      abm_move       = paste0("move  ", if (!is.null(s$along)) paste0(" along ", s$along) else paste0(" ", s$mode)),
       abm_tell       = paste0("tell   ", step_targets(s), " to ",
                               if (s$to == "neighbours") "neighbours" else deparse1(rlang::quo_get_expr(s$to_quo))),
       abm_birth      = paste0("birth  ", if (!is.null(s$when)) paste0("when ", deparse1(rlang::quo_get_expr(s$when))) else paste0("n = ", s$n)),

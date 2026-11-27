@@ -4,13 +4,16 @@
 \alias{abm_draw}
 \title{Attach a value to every edge, visible from both ends}
 \usage{
-abm_draw(..., .each = c("edge", "endpoint"))
+abm_draw(..., .each = c("edge", "endpoint"), via = NULL)
 }
 \arguments{
 \item{...}{One or more \code{name ~ expression} rules, evaluated once per edge.}
 
 \item{.each}{\code{"edge"} for one value per edge, shared by both endpoints;
 \code{"endpoint"} for one value per endpoint, read as \code{name} and \code{name_back}.}
+
+\item{via}{Optional \code{"space"} or \code{"network"} when a model has both a spatial
+lattice and a social network, selecting which edge table receives the draw.}
 }
 \value{
 An \code{abm_draw} step object.

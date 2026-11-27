@@ -24,5 +24,5 @@
     Message
       <abm_pairs> via sellers
       * unmet ~ `0`
-      * .when = `to_price > 1`
+      * when = `to_price > 1`
 

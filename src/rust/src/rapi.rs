@@ -34,6 +34,9 @@ extern "C" {
     pub fn Rf_rpois(mu: f64) -> f64;
     pub fn Rf_rbinom(size: f64, prob: f64) -> f64;
     pub fn R_pow(x: f64, y: f64) -> f64;
+
+    // R_ext/Utils.h ("Writing R Extensions", 6.7.2): in-place descending sort with index
+    pub fn Rf_revsort(a: *mut f64, ib: *mut c_int, n: c_int);
 }
 
 /// Run `f` inside `R_UnwindProtect` (through `savvy::unwind_protect`): an R error or

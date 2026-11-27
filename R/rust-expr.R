@@ -253,7 +253,7 @@ rx_walk_fr3 <- function(fn, e, args, nms, walk, no, add_head) {
   }
   if (fn == "sample.int") {
     m <- tryCatch(as.list(match.call(rx_fns()[[fn]], e))[-1], error = function(err) NULL)
-    if (is.null(m) || is.null(m$n) || !all(names(m) %in% c("n", "size", "replace"))) {
+    if (is.null(m) || is.null(m$n) || !all(names(m) %in% c("n", "size", "replace", "prob"))) {
       no("`sample.int()` with unsupported arguments")
     }
     rep_flag <- if (is.null(m$replace)) FALSE else m$replace
@@ -261,7 +261,8 @@ rx_walk_fr3 <- function(fn, e, args, nms, walk, no, add_head) {
       no("`sample.int()` with non-literal `replace`")
     }
     sz <- if (is.null(m$size)) NULL else walk(m$size)
-    return(list("sample_int", walk(m$n), sz, rep_flag))
+    pr <- if (is.null(m$prob)) NULL else walk(m$prob)
+    return(list("sample_int", walk(m$n), sz, rep_flag, pr))
   }
   if (fn %in% c("rbinom", "rpois", "rexp", "rlnorm")) {
     m <- tryCatch(as.list(match.call(rx_fns()[[fn]], e))[-1], error = function(err) NULL)
@@ -296,10 +297,16 @@ rx_walk_fr3 <- function(fn, e, args, nms, walk, no, add_head) {
     if (is.null(m)) no(paste0("`", fn, "()` arguments that do not match"))
     first <- names(m)[[1]]
     if (fn == "sample") {
-      if (!setequal(names(m), c("x", "size", "replace")) || !isTRUE(m$replace)) {
-        no("`sample()` other than `sample(x, size, replace = TRUE)`")
+      if (is.null(m$x) || !all(names(m) %in% c("x", "size", "replace", "prob"))) {
+        no("`sample()` with unsupported arguments")
       }
-      return(list("sample", walk(m$x), walk(m$size)))
+      rep_flag <- if (is.null(m$replace)) FALSE else m$replace
+      if (!(is.logical(rep_flag) && length(rep_flag) == 1L && !is.na(rep_flag))) {
+        no("`sample()` with non-literal `replace`")
+      }
+      sz <- if (is.null(m$size)) NULL else walk(m$size)
+      pr <- if (is.null(m$prob)) NULL else walk(m$prob)
+      return(list("sample", walk(m$x), sz, rep_flag, pr))
     }
     # `n()` draws one per row; a literal 1 (FR8) draws one value
     one <- is.numeric(m$n) && length(m$n) == 1L && is.null(attributes(m$n)) &&

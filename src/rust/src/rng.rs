@@ -92,4 +92,15 @@ impl RDraws for RRng {
         // SAFETY: as for `unif`; callers pass dn >= 1.
         unsafe { rapi::R_unif_index(dn) }
     }
+
+    fn revsort(&mut self, a: &mut [f64], ib: &mut [i32]) {
+        assert_eq!(a.len(), ib.len());
+        let n = std::os::raw::c_int::try_from(a.len()).expect("revsort length fits c_int");
+        // SAFETY: pure C sort over live slices of length `n` (never allocates or raises).
+        unsafe { rapi::Rf_revsort(a.as_mut_ptr(), ib.as_mut_ptr(), n) };
+    }
+
+    fn sum_f64(&self, x: &[f64]) -> f64 {
+        crate::reduce::sum(x, false)
+    }
 }

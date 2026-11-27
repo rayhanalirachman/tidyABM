@@ -15,9 +15,9 @@ grammar. For build setup, toolchain versions, and everyday commands, see
 ## Core Invariants
 
 1. **MIT Licence / No R GPL Code (D13)**: Nothing is copied or ported from R's
-   C sources. Random draws and powers call R's public C API (`unif_rand`,
-   `norm_rand`, `exp_rand`, `R_unif_index`, `Rf_r*`, `R_pow`) declared by hand
-   in `rapi.rs`.
+   C sources. Random draws, powers, and reverse sorting call R's public C API
+   (`unif_rand`, `norm_rand`, `exp_rand`, `R_unif_index`, `Rf_r*`, `R_pow`,
+   `Rf_revsort`) declared by hand in `rapi.rs`.
 2. **Main-Thread RNG & Unwind Protection**: `rng::with_rng()` pairs
    `GetRNGstate()`/`PutRNGstate()` with a `!Send`/`!Sync` `RRng` token and
    restores state on error or panic. Any R API call that can allocate, warn, or

@@ -140,8 +140,8 @@ pub enum Node {
     /// `x %in% table` (the engine's `in_rowwise()`, base `match()` for an atomic
     /// table)
     In(Box<Node>, Box<Node>),
-    /// `sample(x, size, replace = TRUE)`
-    Sample(Box<Node>, Box<Node>),
+    /// `sample(x, size, replace, prob)`
+    Sample(Box<Node>, Option<Box<Node>>, bool, Option<Box<Node>>),
     /// `runif(n(), a, b)` (`false`) / `rnorm(n(), a, b)` (`true`)
     Rand(bool, Box<Node>, Box<Node>),
     /// `x[i]`, `i` positive whole numbers or `NA`
@@ -166,8 +166,8 @@ pub enum Node {
     SeqAlong(Box<Node>),
     /// base lazy `ifelse(test, yes, no)`
     BaseIfElse(Box<Node>, Box<Node>, Box<Node>),
-    /// base `sample.int(n, size, replace)`
-    SampleInt(Box<Node>, Option<Box<Node>>, bool),
+    /// base `sample.int(n, size, replace, prob)`
+    SampleInt(Box<Node>, Option<Box<Node>>, bool, Option<Box<Node>>),
     /// `rbinom` (0), `rpois` (1), `rexp` (2), `rlnorm` (3); `one` = scalar draw (1 vs n())
     RDist(u8, bool, Box<Node>, Option<Box<Node>>),
 }
@@ -200,6 +200,14 @@ pub trait Host {
     fn unif_index(&mut self, dn: f64, n: usize) -> Result<Vec<i32>, Decline>;
     /// `sample.int(n, size, replace)` from R's generator.
     fn sample_int(&mut self, n: usize, size: usize, replace: bool) -> Result<Vec<i32>, Decline>;
+    /// `sample.int(n, size, replace, prob)` from R's generator.
+    fn sample_int_prob(
+        &mut self,
+        n: usize,
+        size: usize,
+        replace: bool,
+        prob: &[f64],
+    ) -> Result<Vec<i32>, Decline>;
     /// Rmath variate draws: 0 `rbinom(a, b)`, 1 `rpois(a)`, 2 `rexp(a)`, 3 `rlnorm(a, b)`.
     fn rdist(&mut self, kind: u8, a: f64, b: f64, n: usize) -> Result<Vals<'static>, Decline>;
 }
@@ -396,10 +404,17 @@ pub fn eval<'a>(node: &Node, inputs: &[Vals<'a>], n: usize, h: &mut dyn Host) ->
             let t = eval(t, inputs, n, h)?;
             is_in(&x, &t, h)
         }
-        Node::Sample(x, size) => {
+        Node::Sample(x, size, replace, prob) => {
             let x = eval(x, inputs, n, h)?;
-            let size = whole(&eval(size, inputs, n, h)?, 0.0)?;
-            sample(x, size, h)
+            let sz = match size {
+                Some(s) => Some(whole(&eval(s, inputs, n, h)?, 0.0)?),
+                None => None,
+            };
+            let pr = match prob {
+                Some(p) => Some(prob_vec(&eval(p, inputs, n, h)?)?),
+                None => None,
+            };
+            sample(x, sz, *replace, pr.as_deref(), h)
         }
         Node::Rand(norm, a, b) => {
             let a = scalar_dbl(eval(a, inputs, n, h)?, h)?;
@@ -604,12 +619,18 @@ fn eval_fr8<'a>(node: &Node, inputs: &[Vals<'a>], n: usize, h: &mut dyn Host) ->
                 }
             }
         }
-        Node::SampleInt(nv, size, replace) => {
+        Node::SampleInt(nv, size, replace, prob) => {
             let nv = whole(&eval(nv, inputs, n, h)?, 0.0)?;
             let sz = match size {
                 Some(s) => whole(&eval(s, inputs, n, h)?, 0.0)?,
                 None => nv,
             };
+            if let Some(p) = prob {
+                let pr = prob_vec(&eval(p, inputs, n, h)?)?;
+                return Ok(Vals::Int(Cow::Owned(
+                    h.sample_int_prob(nv, sz, *replace, &pr)?,
+                )));
+            }
             if !*replace && sz > nv {
                 return Err(Decline("sample.int() size > n without replace"));
             }
@@ -992,9 +1013,27 @@ fn is_in<'a>(x: &Vals, t: &Vals, h: &dyn Host) -> R<Vals<'a>> {
     Ok(Vals::Lgl(Cow::Owned(out)))
 }
 
-/// `sample(x, size, replace = TRUE)`: `sample.int(x, ...)` for one whole number
+/// Coerce a `prob` vector (double, integer, or logical) to `Vec<f64>` (`NA_INT` -> `NaN`).
+fn prob_vec(v: &Vals) -> R<Vec<f64>> {
+    match v {
+        Vals::Dbl(x) => Ok(x.to_vec()),
+        Vals::Int(x) | Vals::Lgl(x) => Ok(x
+            .iter()
+            .map(|&k| if k == NA_INT { f64::NAN } else { f64::from(k) })
+            .collect()),
+        Vals::Str(_) => Err(Decline("sample() prob of strings")),
+    }
+}
+
+/// `sample(x, size, replace, prob)`: `sample.int(x, ...)` for one whole number
 /// `x >= 1`, else `x[sample.int(length(x), ...)]`.
-fn sample<'a>(x: Vals<'a>, size: usize, h: &mut dyn Host) -> R<Vals<'a>> {
+fn sample<'a>(
+    x: Vals<'a>,
+    size: Option<usize>,
+    replace: bool,
+    prob: Option<&[f64]>,
+    h: &mut dyn Host,
+) -> R<Vals<'a>> {
     let one_num = x.len() == 1 && matches!(x, Vals::Int(_) | Vals::Dbl(_));
     if one_num {
         let v = match &x {
@@ -1006,13 +1045,26 @@ fn sample<'a>(x: Vals<'a>, size: usize, h: &mut dyn Host) -> R<Vals<'a>> {
             if v.fract() != 0.0 || v > i32::MAX as f64 {
                 return Err(Decline("sample() of a number that is not whole"));
             }
-            return Ok(Vals::Int(Cow::Owned(h.unif_index(v, size)?)));
+            let nv = v as usize;
+            let sz = size.unwrap_or(nv);
+            let idx = match prob {
+                Some(p) => h.sample_int_prob(nv, sz, replace, p)?,
+                None if replace => h.unif_index(v, sz)?,
+                None => h.sample_int(nv, sz, false)?,
+            };
+            return Ok(Vals::Int(Cow::Owned(idx)));
         }
     }
     if x.is_empty() || x.len() > i32::MAX as usize {
         return Err(Decline("sample() of an empty vector"));
     }
-    let idx = h.unif_index(x.len() as f64, size)?;
+    let m = x.len();
+    let sz = size.unwrap_or(m);
+    let idx = match prob {
+        Some(p) => h.sample_int_prob(m, sz, replace, p)?,
+        None if replace => h.unif_index(m as f64, sz)?,
+        None => h.sample_int(m, sz, false)?,
+    };
     let ix = Vals::Int(Cow::Owned(idx));
     index(x, &ix, h)
 }
@@ -1559,6 +1611,15 @@ mod tests {
         fn sample_int(&mut self, n: usize, size: usize, _replace: bool) -> R<Vec<i32>> {
             self.unif_index(n as f64, size)
         }
+        fn sample_int_prob(
+            &mut self,
+            n: usize,
+            size: usize,
+            _replace: bool,
+            _prob: &[f64],
+        ) -> R<Vec<i32>> {
+            self.unif_index(n as f64, size)
+        }
         fn rdist(&mut self, kind: u8, a: f64, _b: f64, n: usize) -> R<Vals<'static>> {
             let v: Vec<f64> = self.draws.drain(..n).map(|u| a + u).collect();
             Ok(if kind <= 1 {
@@ -1652,10 +1713,12 @@ mod tests {
         assert_eq!(*v, [1, 0, 0]);
         assert!(is_in(&dbl(&[na_real()]), &dbl(&[1.0]), &h).is_err());
         // sample(c(10, 20), 3, TRUE) and sample(5, 0, TRUE)
-        let s = sample(dbl(&[10.0, 20.0]), 3, &mut h).unwrap();
+        let s = sample(dbl(&[10.0, 20.0]), Some(3), true, None, &mut h).unwrap();
         assert!(matches!(s, Vals::Dbl(v) if *v == [10.0, 20.0, 20.0]));
-        assert!(matches!(sample(dbl(&[5.0]), 0, &mut h).unwrap(), Vals::Int(v) if v.is_empty()));
-        assert!(sample(dbl(&[2.5]), 1, &mut h).is_err());
+        assert!(
+            matches!(sample(dbl(&[5.0]), Some(0), true, None, &mut h).unwrap(), Vals::Int(v) if v.is_empty())
+        );
+        assert!(sample(dbl(&[2.5]), Some(1), true, None, &mut h).is_err());
         // x[i]: NA and past the end give NA; 0 declines
         let i = Vals::Int(Cow::Owned(vec![2, NA_INT, 9]));
         let Vals::Dbl(v) = index(dbl(&[1.0, 2.0]), &i, &h).unwrap() else {

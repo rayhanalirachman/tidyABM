@@ -82,8 +82,8 @@ scalar or per-agent `range =`, `axes_only`, `when =`, wired and patchless
 A step or individual rule stays on the R engine when it uses:
 
 * User-defined R functions, `Map()`/`lapply()`, or list-column manipulation
-* Weighted `sample(..., prob =)`, pair-level `abm_match(weight =)` / `among =`
-  expressions (other than bare `.R`/`.R_back`), or tied candidate weights
+* Pair-level `abm_match(weight =)` / `among =` expressions (other than bare
+  `.R`/`.R_back`), or tied candidate weights in `abm_match(pair = "one_of", weight =)`
 * Non-default `RNGkind()` combinations outside the verified set
 * Relation writes that introduce brand-new columns on `rel$edges`
 
@@ -110,14 +110,13 @@ results `identical()`):
 
 | Model | R | Rust (`"auto"`) | Speedup |
 |---|---:|---:|---:|
-| Hawks and Doves (2,000 agents, 200 ticks, weighted `sample()`) | 1.19 s | 0.19 s | **6.3×** |
+| Hawks and Doves (2,000 agents, 200 ticks, pair-scoped rules) | 1.19 s | 0.21 s | **5.8×** |
 | Rebellion (22×22 torus, 842 agents, 200 ticks) | 11.72 s | 0.49 s | **24.1×** |
 | Kirman's ants (60 agents, 4,000 ticks) | 19.69 s | 0.69 s | **28.7×** |
 | Continuous flocking (20×20 torus, 200 agents, 100 ticks) | 1.24 s | 0.04 s | **31.7×** |
 | Ants pheromone foraging (35×35 grid, 400 ticks) | 3.70 s | 0.11 s | **35.3×** |
 | Relational trade economy (550 agents, 100 ticks) | 2.05 s | 0.02 s | **107.8×** |
 
-Models with steps that stay on R (such as weighted `sample(..., prob =)` in
-Hawks and Doves or user-defined R functions) see smaller gains because those
-steps still execute in R; models expressed in the built-in grammar typically run
-**20–100×** faster with zero code changes.
+Models with steps that stay on R (such as user-defined R functions) or many
+tiny per-pair groups see smaller gains; models expressed in the built-in
+grammar typically run **6–100×** faster with zero code changes.

@@ -19,6 +19,19 @@ pub trait RDraws {
     fn unif(&mut self) -> f64;
     /// One index draw in `0..dn` (as a double), R's `R_unif_index(dn)`.
     fn unif_index(&mut self, dn: f64) -> f64;
+    /// Reverse-sort `a` descending, permuting `ib` alongside (matches R's `Rf_revsort`).
+    fn revsort(&mut self, a: &mut [f64], ib: &mut [i32]) {
+        let mut pairs: Vec<(f64, i32)> = a.iter().copied().zip(ib.iter().copied()).collect();
+        pairs.sort_by(|x, y| y.0.total_cmp(&x.0));
+        for (i, (v, idx)) in pairs.into_iter().enumerate() {
+            a[i] = v;
+            ib[i] = idx;
+        }
+    }
+    /// Sum of finite non-negative doubles (bridge uses R's platform `long double` sum).
+    fn sum_f64(&self, x: &[f64]) -> f64 {
+        x.iter().sum()
+    }
 }
 
 /// `sample.int(n, size, replace)`: `size` 1-based indices into `1..=n`.
@@ -75,6 +88,144 @@ pub fn check_sample(n: usize, size: usize, replace: bool) -> Result<(), String> 
         return Err("cannot take a sample larger than the population without replacement".into());
     }
     Ok(())
+}
+
+/// Argument checks for weighted [`sample_int_prob`], returning the positive weight sum
+/// (accumulated via `sum_fn`) before any draw is made.
+pub fn check_sample_prob(
+    n: usize,
+    size: usize,
+    replace: bool,
+    prob: &[f64],
+    sum_fn: impl FnOnce(&[f64]) -> f64,
+) -> Result<f64, String> {
+    if n > i32::MAX as usize {
+        return Err("`n` is larger than the largest integer".into());
+    }
+    if prob.len() != n {
+        return Err("incorrect number of probabilities".into());
+    }
+    if !replace && size > n {
+        return Err("cannot take a sample larger than the population without replacement".into());
+    }
+    let mut n_pos = 0usize;
+    for &p in prob {
+        if !p.is_finite() {
+            return Err("NA in probability vector".into());
+        }
+        if p < 0.0 {
+            return Err("negative probability".into());
+        }
+        if p > 0.0 {
+            n_pos += 1;
+        }
+    }
+    let sum = sum_fn(prob);
+    if n_pos == 0 || !sum.is_finite() || sum <= 0.0 {
+        return Err("too few positive probabilities".into());
+    }
+    if !replace && size > n_pos {
+        return Err("too few positive probabilities".into());
+    }
+    Ok(sum)
+}
+
+/// Weighted `sample.int(n, size, replace, prob)`: `size` 1-based indices into `1..=n`.
+///
+/// Follows the textbook algorithms verified differentially against R:
+/// * `replace = true` and more than 200 reasonably probable items (`p_norm * n > 0.1`):
+///   Walker's alias method (Walker 1977; Kronmal & Peterson 1979 / Ripley 1987);
+/// * `replace = true` otherwise: descending sort (`revsort`) + cumulative scan;
+/// * `replace = false`: descending sort (`revsort`) + sequential mass-removal scan.
+pub fn sample_int_prob(
+    src: &mut impl RDraws,
+    n: usize,
+    size: usize,
+    replace: bool,
+    prob: &[f64],
+) -> Result<Vec<i32>, String> {
+    let sum = check_sample_prob(n, size, replace, prob, |x| src.sum_f64(x))?;
+    if size == 0 {
+        return Ok(Vec::new());
+    }
+    let mut p: Vec<f64> = prob.iter().map(|&v| v / sum).collect();
+    if replace {
+        let dn = n as f64;
+        let n_rp = p.iter().filter(|&&v| v * dn > 0.1).count();
+        if n_rp > 200 {
+            // Walker's alias table: short = FIFO queue, long = LIFO stack
+            let mut q: Vec<f64> = p.iter().map(|&v| v * dn).collect();
+            let mut alias: Vec<usize> = (0..n).collect();
+            let mut short: Vec<usize> = Vec::with_capacity(n);
+            let mut long: Vec<usize> = Vec::with_capacity(n);
+            for (i, &qi) in q.iter().enumerate() {
+                if qi < 1.0 {
+                    short.push(i);
+                } else {
+                    long.push(i);
+                }
+            }
+            let mut sh = 0usize;
+            while sh < short.len() && !long.is_empty() {
+                let j = short[sh];
+                sh += 1;
+                let k = *long.last().unwrap();
+                alias[j] = k;
+                q[k] -= 1.0 - q[j];
+                if q[k] < 1.0 {
+                    long.pop();
+                    short.push(k);
+                }
+            }
+            let mut out = Vec::with_capacity(size);
+            for _ in 0..size {
+                let k = src.unif_index(dn) as usize;
+                let u = src.unif();
+                out.push((if u < q[k] { k } else { alias[k] }) as i32 + 1);
+            }
+            return Ok(out);
+        }
+        let mut perm: Vec<i32> = (1..=n as i32).collect();
+        src.revsort(&mut p, &mut perm);
+        for i in 1..n {
+            p[i] += p[i - 1];
+        }
+        let mut out = Vec::with_capacity(size);
+        for _ in 0..size {
+            let r = src.unif();
+            let mut j = 0;
+            while j < n - 1 && r > p[j] {
+                j += 1;
+            }
+            out.push(perm[j]);
+        }
+        return Ok(out);
+    }
+    let mut perm: Vec<i32> = (1..=n as i32).collect();
+    src.revsort(&mut p, &mut perm);
+    let mut totalmass = 1.0f64;
+    let mut n_cur = n;
+    let mut out = Vec::with_capacity(size);
+    for _ in 0..size {
+        let r = totalmass * src.unif();
+        let mut mass = 0.0f64;
+        let mut j = 0;
+        while j < n_cur - 1 {
+            mass += p[j];
+            if r <= mass {
+                break;
+            }
+            j += 1;
+        }
+        out.push(perm[j]);
+        totalmass -= p[j];
+        if j + 1 < n_cur {
+            p.copy_within(j + 1..n_cur, j);
+            perm.copy_within(j + 1..n_cur, j);
+        }
+        n_cur -= 1;
+    }
+    Ok(out)
 }
 
 /// `runif(n) < p` as an R logical vector: `p` has length 1 or `n`; a `NaN` (or NA)
@@ -196,5 +347,40 @@ mod tests {
         );
         assert_eq!(s.at, 3, "a NaN probability still consumes its draw");
         assert!(bernoulli(&mut s, 3, &[0.1, 0.2]).is_err());
+    }
+
+    #[test]
+    fn weighted_sample_covers_small_walker_and_without_replacement() {
+        // small replace = true (cumulative scan over descending weights)
+        let mut s = Scripted::new(&[0.1, 0.5, 0.95]);
+        let v = sample_int_prob(&mut s, 3, 3, true, &[1.0, 2.0, 7.0]).unwrap();
+        assert_eq!(v, vec![3, 3, 1]);
+        assert!(s.calls.is_empty());
+
+        // replace = false (sequential removal, no duplicates)
+        let mut s = Scripted::new(&[0.0, 0.0, 0.0]);
+        let v = sample_int_prob(&mut s, 3, 3, false, &[1.0, 2.0, 7.0]).unwrap();
+        assert_eq!(v, vec![3, 2, 1]);
+
+        // Walker alias path (> 200 reasonably probable items)
+        let mut s = Scripted::new(&[0.0, 0.0, 0.5, 0.99]);
+        let w = vec![1.0; 201];
+        let v = sample_int_prob(&mut s, 201, 2, true, &w).unwrap();
+        assert_eq!(v.len(), 2);
+        assert_eq!(s.calls, vec![201.0, 201.0]);
+
+        // validation errors come before any draw
+        let mut s = Scripted::new(&[0.5]);
+        assert!(sample_int_prob(&mut s, 3, 0, true, &[0.0, 0.0, 0.0]).is_err());
+        assert!(sample_int_prob(&mut s, 3, 1, true, &[1.0, -1.0, 2.0]).is_err());
+        assert!(sample_int_prob(&mut s, 3, 1, true, &[1.0, f64::NAN, 2.0]).is_err());
+        assert!(sample_int_prob(&mut s, 3, 1, true, &[1.0, f64::INFINITY, 2.0]).is_err());
+        assert!(sample_int_prob(&mut s, 3, 2, false, &[0.0, 0.0, 1.0]).is_err());
+        assert!(sample_int_prob(&mut s, 3, 1, true, &[1.0, 2.0]).is_err());
+        assert_eq!(s.at, 0);
+        assert_eq!(
+            sample_int_prob(&mut s, 3, 0, true, &[1.0, 2.0, 3.0]).unwrap(),
+            Vec::<i32>::new()
+        );
     }
 }

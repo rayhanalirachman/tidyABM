@@ -145,7 +145,21 @@ fn decode(x: SEXP) -> savvy::Result<Node> {
         }
         "coalesce" => Node::Coalesce((1..l.len()).map(arg).collect::<savvy::Result<Vec<_>>>()?),
         "%in%" => Node::In(boxed(1)?, boxed(2)?),
-        "sample" => Node::Sample(boxed(1)?, boxed(2)?),
+        "sample" => {
+            let sz = match l.get_by_index(2) {
+                Some(s) if !s.is_null() => Some(Box::new(decode(s.0)?)),
+                _ => None,
+            };
+            let rep = logicals_of(l.get_by_index(3).ok_or_else(|| bad("sample replace"))?.0)?
+                .first()
+                .copied()
+                == Some(1);
+            let prob = match l.get_by_index(4) {
+                Some(s) if !s.is_null() => Some(Box::new(decode(s.0)?)),
+                _ => None,
+            };
+            Node::Sample(boxed(1)?, sz, rep, prob)
+        }
         "runif_ab" => Node::Rand(false, boxed(1)?, boxed(2)?),
         "rnorm_ab" => Node::Rand(true, boxed(1)?, boxed(2)?),
         "[" => Node::Index(boxed(1)?, boxed(2)?),
@@ -184,7 +198,11 @@ fn decode(x: SEXP) -> savvy::Result<Node> {
             .first()
             .copied()
                 == Some(1);
-            Node::SampleInt(boxed(1)?, sz, rep)
+            let prob = match l.get_by_index(4) {
+                Some(s) if !s.is_null() => Some(Box::new(decode(s.0)?)),
+                _ => None,
+            };
+            Node::SampleInt(boxed(1)?, sz, rep, prob)
         }
         "rdist" => {
             let k = l.get_by_index(1).ok_or_else(|| bad("rdist kind"))?.0;
@@ -438,6 +456,26 @@ impl Host for RHost<'_> {
         };
         tidyabm_core::sample::sample_int(r, n, size, replace)
             .map_err(|_| Decline("sample.int() failed"))
+    }
+    fn sample_int_prob(
+        &mut self,
+        n: usize,
+        size: usize,
+        replace: bool,
+        prob: &[f64],
+    ) -> Result<Vec<i32>, Decline> {
+        if tidyabm_core::sample::check_sample_prob(n, size, replace, prob, |x| {
+            reduce::sum(x, false)
+        })
+        .is_err()
+        {
+            return Err(Decline("sample() invalid prob or size"));
+        }
+        let Some(r) = self.rng.as_deref_mut() else {
+            return Err(Decline("a draw outside the RNG scope"));
+        };
+        tidyabm_core::sample::sample_int_prob(r, n, size, replace, prob)
+            .map_err(|_| Decline("sample() with prob failed"))
     }
     fn rdist(&mut self, kind: u8, a: f64, b: f64, n: usize) -> Result<Vals<'static>, Decline> {
         let Some(r) = self.rng.as_deref_mut() else {

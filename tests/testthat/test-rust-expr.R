@@ -302,3 +302,66 @@ test_that("Tier 1 expression built-ins match R bit-for-bit", {
   go_bad <- abm_go(abm_rules(z ~ suppressWarnings(rexp(n(), 0))))
   expect_engines_agree(m_rng, go_bad, ticks = 1, seed = 1, what = "Tier 1 rdist decline")
 })
+
+test_that("weighted sample() and sample.int() match R bit-for-bit across all paths", {
+  # Small replace = TRUE (descending sort + cumulative scan), ties and zeros
+  m_small <- abm_setup(agents = abm_agents(
+    n = 20, x = ~letters[1:20],
+    w = ~c(0, 5, 0, 5, 5, 1, 1, 1, rep(2, 12)),
+    wi = ~c(0L, 2L, 2L, 1L, rep(3L, 16))
+  ), seed = 1)
+  go_small <- abm_go(abm_rules(
+    y1 ~ sample(x, n(), replace = TRUE, prob = w),
+    y2 ~ sample.int(n(), n(), replace = TRUE, prob = w),
+    y3 ~ sample(n(), n(), replace = TRUE, prob = wi),
+    y4 ~ sample(x, 18L, replace = FALSE, prob = w)[1L]
+  ))
+  expect_engines_agree(m_small, go_small, ticks = 4, seed = 11, what = "weighted sample small")
+  expect_identical(.rl_last$stats[[2]], 0L)
+  expect_identical(.rl_last$stats[[4]], 0L)
+
+  # Boundary n = 200 (cumulative scan) vs n = 201 and 500 (Walker alias)
+  for (N in c(200L, 201L, 500L)) {
+    mN <- abm_setup(agents = abm_agents(
+      n = N, w = ~seq_len(n), w2 = ~c(rep(0, 20), rep(1, n - 20))
+    ), seed = 1)
+    goN <- abm_go(abm_rules(
+      a ~ sample(w, n(), replace = TRUE, prob = w),
+      b ~ sample.int(n(), n(), replace = TRUE, prob = w2)
+    ))
+    expect_engines_agree(mN, goN, ticks = 2, seed = 13, what = paste("weighted sample N =", N))
+    expect_identical(.rl_last$stats[[2]], 0L)
+    expect_identical(.rl_last$stats[[4]], 0L)
+  }
+
+  # replace = FALSE with ties, zeros, omitted size, and 1e-15 rounding edge
+  m_nr <- abm_setup(agents = abm_agents(
+    n = 5, w = c(1e-15, 1, 0, 0, 0), w2 = c(1, 2, 2, 1, 3),
+    tag = c("a", "b", "c", "d", "e")
+  ), seed = 1)
+  go_nr <- abm_go(abm_rules(
+    p1 ~ sample(tag, n(), replace = FALSE, prob = w2),
+    p2 ~ sample(tag, prob = w2),
+    p3 ~ sample(tag),
+    p4 ~ sample.int(5L, 2L, replace = FALSE, prob = w)[1L]
+  ))
+  expect_engines_agree(m_nr, go_nr, ticks = 8, seed = 6, what = "weighted sample replace=FALSE")
+  expect_identical(.rl_last$stats[[2]], 0L)
+  expect_identical(.rl_last$stats[[4]], 0L)
+
+  # Invalid prob vectors decline cleanly to R and raise R's own errors
+  for (expr in list(
+    quote(sample(tag, n(), replace = TRUE, prob = c(1, -1, 1, 1, 1))),
+    quote(sample(tag, n(), replace = TRUE, prob = c(1, NA, 1, 1, 1))),
+    quote(sample(tag, n(), replace = TRUE, prob = c(0, 0, 0, 0, 0))),
+    quote(sample(tag, n(), replace = FALSE, prob = c(1, 0, 0, 0, 0))),
+    quote(sample(tag, n(), replace = TRUE, prob = c(1, 2)))
+  )) {
+    go_err <- abm_go(abm_rules(z ~ !!expr))
+    e_r <- tryCatch({ options(tidyABM.engine = "r"); abm_run(m_nr, go_err, ticks = 1, seed = 1); NULL },
+                    error = function(e) conditionMessage(e))
+    e_rs <- tryCatch({ options(tidyABM.engine = "auto"); abm_run(m_nr, go_err, ticks = 1, seed = 1); NULL },
+                     error = function(e) conditionMessage(e))
+    expect_identical(e_rs, e_r)
+  }
+})

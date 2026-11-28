@@ -54,3 +54,53 @@ test_that("agents must be an abm_agents object or a named list of them", {
     class = "tidyABM_unnamed_group"
   )
 })
+
+test_that("setup formulas read plain globals", {
+  base <- -1 # an R variable of the same name loses to the global
+  m <- abm_setup(
+    abm_agents(n = 3, x = ~rep(base, n), y = ~x + step, step = 100, z = ~step),
+    globals = list(base = 2, step = 1, x = 99))
+  expect_equal(m$groups$agents$x, rep(2, 3))
+  expect_equal(m$groups$agents$y, rep(3, 3)) # earlier column beats global x
+  expect_equal(m$groups$agents$z, rep(100, 3)) # and, once declared, global step
+})
+
+test_that("lattice, grid and continuous setup formulas read plain globals", {
+  g <- list(level = 7, home = 5L, px = 0.25)
+  m <- abm_setup(
+    agents = list(patches = abm_agents(v = ~rep(level, n)),
+                  ant = abm_agents(n = 2, e = ~rep(level, n), at = ~home)),
+    space = abm_space(type = "grid", dims = c(3, 3), on = "patches"),
+    globals = g)
+  expect_equal(m$groups$patches$v, rep(7, 9))
+  expect_equal(m$groups$ant$e, rep(7, 2))
+  expect_equal(m$groups$ant$.cell, rep(5L, 2))
+
+  m <- abm_setup(abm_grid(dims = c(2, 2), v = ~level), globals = g)
+  expect_equal(m$groups$patches$v, rep(7, 4))
+
+  m <- abm_setup(abm_agents(n = 2, at = ~px),
+                 space = abm_space(type = "continuous", dims = 1), globals = g)
+  expect_equal(m$groups$agents$.x, rep(0.25, 2))
+
+  m <- abm_setup(abm_agents(n = 2, at = list(x = ~px, y = ~px * 2)),
+                 space = abm_space(type = "continuous", dims = c(1, 1)),
+                 globals = g)
+  expect_equal(m$groups$agents$.y, rep(0.5, 2))
+})
+
+test_that("formula globals stay out of setup formulas, and say why", {
+  err <- expect_error(
+    abm_setup(abm_agents(n = 2, a = 1, b = ~tot), globals = list(tot = ~sum(a))),
+    class = "tidyABM_missing_column")
+  expect_match(conditionMessage(err), "formula global")
+})
+
+test_that("params changes a global but not the population built from it", {
+  m <- abm_setup(abm_agents(n = 2, x = ~rep(base, n), y = 0),
+                 globals = list(base = 1))
+  r <- abm_run(m, abm_go(abm_rules(y ~ base)), ticks = 1,
+               params = list(base = c(5, 9)))
+  expect_equal(unique(r$x), 1)
+  expect_setequal(r$y[r$tick == 1], c(5, 9))
+})

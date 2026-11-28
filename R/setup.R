@@ -41,7 +41,10 @@ new_abm_model <- function(groups, globals, edges, network_spec,
 #'   [abm_relation()] for what a rule can read and write on one.
 #' @param globals A named list of population-level values shared by every agent,
 #'   for example `list(last_attendance = 60)`. Globals are readable inside every
-#'   rule and are updated by [abm_global()].
+#'   rule and are updated by [abm_global()]. Plain values are also readable in
+#'   setup formulas (see [abm_agents()]). Those formulas run here, once, so
+#'   overriding such a global later with [abm_run()]'s `params` changes what the
+#'   rules see but not the starting population.
 #' @param seed Optional integer. Sets the random seed for setup only, so the
 #'   starting population is reproducible independently of the run. Note that this
 #'   and [abm_run()]'s `seed` do different jobs: this one fixes *who the agents
@@ -147,7 +150,8 @@ abm_setup <- function(agents, network = NULL, space = NULL, relations = NULL,
         class = "tidyABM_no_lattice"
       )
     }
-    groups[[nm]] <- materialise_agents(specs[[nm]], nm, id_offset = offset)
+    groups[[nm]] <- materialise_agents(specs[[nm]], nm, id_offset = offset,
+                                       globals = globals)
     offset <- offset + specs[[nm]]$n
   }
 

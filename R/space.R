@@ -114,8 +114,9 @@ setup_continuous <- function(specs, space, network, globals,
         class = "tidyABM_bad_n", call = call
       )
     }
-    g <- materialise_agents(s, nm, id_offset = offset, call = call)
-    g <- place_in_continuous(g, s, nm, space, call = call)
+    g <- materialise_agents(s, nm, id_offset = offset, globals = globals,
+                            call = call)
+    g <- place_in_continuous(g, s, nm, space, globals, call = call)
     groups[[nm]] <- g
     offset <- offset + s$n
   }
@@ -127,7 +128,7 @@ setup_continuous <- function(specs, space, network, globals,
 
 #' Assign `.x` (and `.y` in 2-D) in `[0, dims)` to a group in continuous space
 #' @noRd
-place_in_continuous <- function(g, spec, group_name, space,
+place_in_continuous <- function(g, spec, group_name, space, globals,
                                 call = rlang::caller_env()) {
   n <- nrow(g)
   dims <- space$dims
@@ -135,10 +136,10 @@ place_in_continuous <- function(g, spec, group_name, space,
   eval_coord <- function(val, env, axis_name, bound) {
     if (is_formula1(val)) {
       q <- rlang::as_quosure(val)
-      q <- rlang::quo_set_env(q, setup_eval_env(q, n))
+      q <- rlang::quo_set_env(q, setup_eval_env(q, n, globals))
       v <- rlang::eval_tidy(q, data = c(as.list(g), list(n = n, dims = dims)))
     } else if (rlang::is_quosure(val)) {
-      q <- rlang::quo_set_env(val, setup_eval_env(val, n))
+      q <- rlang::quo_set_env(val, setup_eval_env(val, n, globals))
       v <- rlang::eval_tidy(q, data = c(as.list(g), list(n = n, dims = dims)))
     } else {
       v <- val
@@ -171,7 +172,7 @@ place_in_continuous <- function(g, spec, group_name, space,
   at_env <- rlang::quo_get_env(spec$at)
   if (nd == 2L) {
     val <- rlang::eval_tidy(
-      rlang::quo_set_env(spec$at, setup_eval_env(spec$at, n)),
+      rlang::quo_set_env(spec$at, setup_eval_env(spec$at, n, globals)),
       data = c(as.list(g), list(n = n, dims = dims))
     )
     if (!is.list(val) || !all(c("x", "y") %in% names(val))) {

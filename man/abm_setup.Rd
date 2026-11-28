@@ -36,7 +36,10 @@ together. They sit alongside the network, which is unchanged. See
 
 \item{globals}{A named list of population-level values shared by every agent,
 for example \code{list(last_attendance = 60)}. Globals are readable inside every
-rule and are updated by \code{\link[=abm_global]{abm_global()}}.}
+rule and are updated by \code{\link[=abm_global]{abm_global()}}. Plain values are also readable in
+setup formulas (see \code{\link[=abm_agents]{abm_agents()}}). Those formulas run here, once, so
+overriding such a global later with \code{\link[=abm_run]{abm_run()}}'s \code{params} changes what the
+rules see but not the starting population.}
 
 \item{seed}{Optional integer. Sets the random seed for setup only, so the
 starting population is reproducible independently of the run. Note that this

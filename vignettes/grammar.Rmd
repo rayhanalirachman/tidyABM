@@ -37,14 +37,14 @@ to `abm_setup()`, and every other `abm_*()` function is a *step* handed to
 | write | meaning |
 |---|---|
 | `abm_agents(n = 100, money = 100)` | 100 agents; a plain value is recycled |
-| `abm_agents(n = 100, x = ~runif(n))` | a one-sided formula, evaluated once, sees `n` (or `n()`) and earlier columns |
+| `abm_agents(n = 100, x = ~runif(n))` | a one-sided formula, evaluated once, sees `n` (or `n()`), earlier columns and plain `globals` |
 | `abm_agents(n = 50, at = "unique")` | grid placement on distinct cells; `at = list(x = ~..., y = ~...)` in 2-D continuous space |
 | `list(buyers = abm_agents(...), sellers = abm_agents(...))` | several kinds; each row carries its kind in `.group` |
 | `abm_space(type = "grid", dims = c(40, 40), on = "patches")` | 1-D or 2-D discrete grid (omit `on` with explicit `n` for a patchless grid) |
 | `abm_space(type = "continuous", dims = c(100, 100), torus = c(TRUE, FALSE))` | continuous 1-D or 2-D coordinate box `[0, dims)` |
 | `abm_grid(dims = c(40, 40), alive = ~runif(n) < 0.3)` | patches plus their grid space, in one call |
 | `abm_network(type = "regular", degree = 4)` | a fixed undirected graph; also `"poisson"`, `"scale_free"`, `"ring"`, `"complete"`, `"manual"`, `"empty"` (`on =` for multi-group) |
-| `globals = list(price = 1, total = ~sum(money))` | values (or tick-0 formulas) every rule can read; `abm_global()` writes them |
+| `globals = list(price = 1, total = ~sum(money))` | values (or tick-0 formulas) every rule can read; plain values are readable in setup formulas too; `abm_global()` writes them |
 | `relations = list(owes = abm_relation(edges, amount = 0))` | a directed, valued table of agent pairs |
 
 ## The steps, in the order a tick uses them

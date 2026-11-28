@@ -240,7 +240,7 @@ setup_lattice <- function(specs, network, globals, extra_network = NULL,
       )
     }
     # wired group first, always, so cell ids are 1..prod(dims) == the group's .id
-    wired <- materialise_lattice_group(wired_spec, on, lat)
+    wired <- materialise_lattice_group(wired_spec, on, lat, globals)
     groups[[on]] <- wired
     offset <- lat$ncell
   }
@@ -255,8 +255,8 @@ setup_lattice <- function(specs, network, globals, extra_network = NULL,
         class = "tidyABM_bad_n", call = call
       )
     }
-    g <- materialise_agents(s, nm, id_offset = offset)
-    g <- place_on_lattice(g, s, nm, lat, wired, call)
+    g <- materialise_agents(s, nm, id_offset = offset, globals = globals)
+    g <- place_on_lattice(g, s, nm, lat, wired, globals, call)
     groups[[nm]] <- g
     offset <- offset + s$n
   }
@@ -284,7 +284,7 @@ setup_lattice <- function(specs, network, globals, extra_network = NULL,
 
 #' Materialise the wired group, with `.x` / `.y` visible to its formulas
 #' @noRd
-materialise_lattice_group <- function(spec, group_name, lat) {
+materialise_lattice_group <- function(spec, group_name, lat, globals) {
   n <- lat$ncell
   out <- tibble::tibble(.id = seq_len(n))
   out$.x <- lat$x
@@ -295,7 +295,7 @@ materialise_lattice_group <- function(spec, group_name, lat) {
     val <- spec$cols[[nm]]
     if (is_formula1(val)) {
       quo <- rlang::as_quosure(val)
-      quo <- rlang::quo_set_env(quo, setup_eval_env(quo, n))
+      quo <- rlang::quo_set_env(quo, setup_eval_env(quo, n, globals))
       value <- rlang::eval_tidy(quo, data = c(as.list(out), mask_extra))
     } else {
       value <- val
@@ -317,7 +317,7 @@ materialise_lattice_group <- function(spec, group_name, lat) {
 
 #' Give a mobile group its `.cell` (and the `.x` / `.y` that mirror it)
 #' @noRd
-place_on_lattice <- function(g, spec, group_name, lat, wired,
+place_on_lattice <- function(g, spec, group_name, lat, wired, globals,
                              call = rlang::caller_env()) {
   n <- nrow(g)
   if (!is.null(spec$at)) {
@@ -338,7 +338,7 @@ place_on_lattice <- function(g, spec, group_name, lat, wired,
       # both sides carry `.id` and `.group`; the moving group's win, so `at` reads
       # as a column formula of *this* group that happens to see the cells too
       mask <- mask[!duplicated(names(mask), fromLast = TRUE)]
-      at_quo <- rlang::quo_set_env(spec$at, setup_eval_env(spec$at, n))
+      at_quo <- rlang::quo_set_env(spec$at, setup_eval_env(spec$at, n, globals))
       cell <- rlang::eval_tidy(at_quo, data = mask)
       if (length(cell) == 1L) cell <- rep(cell, n)
       if (length(cell) != n) {

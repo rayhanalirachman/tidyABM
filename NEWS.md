@@ -11,6 +11,14 @@ with the Rust engine and verified bit-for-bit against the R reference engine:
 * **Matching & relation cleanups:** `abm_match()` splits `by =` into `sides =` (`"opposite_group"`) and `coords =` (`"nearest"`, defaulting to `.x`/`c(.x, .y)` on continuous space; `by =` kept as a deprecated alias), exposes read-only `.cost` for `pair = "nearest"` (`size = 2`), accepts optional child steps `abm_match(..., <steps>)` that automatically restore outer match state on exit, and narrows empty standing matches in `abm_rules()` so `.scope = "match"` writes nobody (consistent with `abm_sequential()`). `abm_pairs()` renames `.when` to `when` (`.when` kept as a deprecated alias).
 * **Demography, messages, setup, and run ergonomics:** `abm_birth()` adds `attach = c("none", "parent", "random_edge", "neighbour")` shorthand, `group =` for `n =` in multi-group models, and patch-group guards on `abm_birth()` / `abm_death()`. `abm_tell()` adds `.resolve = "add"` (`+=`), `abm_neighbours()` adds `.default =`, setup formulas accept both `n` and `n()`, `abm_setup(globals =)` supports tick-0 `~expr` formulas, `abm_run()` adds early-stopping `until = ~expr` and a once-per-session hint when `reps > 1` reuses a stochastic built model, and `abm_go()` / `abm_repeat()` / scoped `abm_match()` recursively splice plain step lists.
 
+## Setup formulas read globals
+
+* Column formulas and `at =` in `abm_setup()` now see the plain values in
+  `globals`, so a model's constants can be declared there instead of as R
+  variables outside it. A global takes precedence over an R variable of the same
+  name; formula globals are still computed after the agents are built, and
+  `abm_run(params =)` does not rebuild the starting population.
+
 ## Rust engine (now the default)
 
 The simulation engine now runs in compiled Rust under the unchanged R grammar,

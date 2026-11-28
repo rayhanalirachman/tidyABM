@@ -40,6 +40,14 @@ must return either a length-\code{n} vector or a length-1 value to recycle.
 
 Formulas are evaluated in order, and each one can see \code{n} (or \code{n()}) as well
 as any column defined before it, so \code{abm_agents(n = 200, wtp = ~rnorm(n, 50, 10), offer = ~wtp * 0.8)} works as written.
+
+Formulas, \code{at} included, can also read the plain values in \code{\link[=abm_setup]{abm_setup()}}'s
+\code{globals}: \code{money = ~runif(n, 0, max_money)} with
+\code{globals = list(max_money = 50)}. A column of the same name wins over a
+global, and a global wins over an R variable of the same name. A global that is
+itself a formula is computed from the finished population, so no column can
+read it. Only a formula reaches a global: \code{money = max_money} is evaluated by
+R before the model exists.
 }
 \section{In space}{
 When the model has a spatial geometry (see \code{\link[=abm_space]{abm_space()}}), a grid-wired

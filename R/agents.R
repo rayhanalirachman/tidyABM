@@ -21,6 +21,14 @@ new_abm_agents <- function(n, cols, at = NULL) {
 #' as any column defined before it, so `abm_agents(n = 200, wtp = ~rnorm(n, 50,
 #' 10), offer = ~wtp * 0.8)` works as written.
 #'
+#' Formulas, `at` included, can also read the plain values in [abm_setup()]'s
+#' `globals`: `money = ~runif(n, 0, max_money)` with
+#' `globals = list(max_money = 50)`. A column of the same name wins over a
+#' global, and a global wins over an R variable of the same name. A global that is
+#' itself a formula is computed from the finished population, so no column can
+#' read it. Only a formula reaches a global: `money = max_money` is evaluated by
+#' R before the model exists.
+#'
 #' # In space
 #'
 #' When the model has a spatial geometry (see [abm_space()]), a grid-wired
@@ -122,16 +130,21 @@ validate_abm_agents <- function(x, call = rlang::caller_env()) {
   x
 }
 
-#' Parent environment for setup formulas: binds `n()` alongside `n` in the mask
+#' Parent environment for setup formulas: the plain `globals`, and `n()`
+#' alongside `n` in the mask
 #' @noRd
-setup_eval_env <- function(quo, n) {
-  rlang::new_environment(list(n = function() n), parent = rlang::quo_get_env(quo))
+setup_eval_env <- function(quo, n, globals = list()) {
+  env <- rlang::quo_get_env(quo)
+  # formula globals do not exist yet: they are computed from the built agents
+  plain <- Filter(Negate(rlang::is_formula), as.list(globals))
+  if (length(plain)) env <- list2env(plain, parent = env)
+  rlang::new_environment(list(n = function() n), parent = env)
 }
 
 #' Build the tibble for one agent group
 #' @noRd
 materialise_agents <- function(spec, group_name, id_offset = 0L,
-                               call = rlang::caller_env()) {
+                               globals = list(), call = rlang::caller_env()) {
   n <- spec$n
   out <- tibble::tibble(.id = id_offset + seq_len(n))
   mask_extra <- list(n = n)
@@ -140,12 +153,12 @@ materialise_agents <- function(spec, group_name, id_offset = 0L,
     val <- spec$cols[[nm]]
     if (is_formula1(val)) {
       quo <- rlang::as_quosure(val)
-      quo <- rlang::quo_set_env(quo, setup_eval_env(quo, n))
+      quo <- rlang::quo_set_env(quo, setup_eval_env(quo, n, globals))
       value <- withCallingHandlers(
         rlang::eval_tidy(quo, data = c(as.list(out), mask_extra)),
         error = function(e) {
           if (inherits(e, "tidyABM_error")) return()
-          rethrow_column_error(e, nm, group_name, spec, names(out), call)
+          rethrow_column_error(e, nm, group_name, spec, names(out), globals, call)
         })
     } else {
       value <- val
@@ -168,11 +181,11 @@ materialise_agents <- function(spec, group_name, id_offset = 0L,
 
 #' Say which setup formula failed, and what it could have read
 #'
-#' A column formula is evaluated with `n` and the columns declared before it
-#' in scope. The bare "object 'x' not found" does not say that, nor that a
+#' A column formula is evaluated with `n`, the plain globals and the columns
+#' declared before it in scope. The bare "object 'x' not found" does not say that, nor that a
 #' column declared *after* this one is not yet visible.
 #' @noRd
-rethrow_column_error <- function(e, nm, group_name, spec, before, call) {
+rethrow_column_error <- function(e, nm, group_name, spec, before, globals, call) {
   before <- setdiff(before, ".id")
   after <- names(spec$cols)[seq_along(spec$cols) > match(nm, names(spec$cols))]
   bullets <- c("Column {.field {nm}} of group {.field {group_name}} could not be computed.",
@@ -189,14 +202,16 @@ rethrow_column_error <- function(e, nm, group_name, spec, before, call) {
     class <- c("tidyABM_missing_column", class)
     if (name %in% after) {
       bullets <- c(bullets, "i" = "{.field {name}} is declared after {.field {nm}}. Formulas run in order, so move it up.")
+    } else if (name %in% names(globals)[vapply(globals, rlang::is_formula, logical(1))]) {
+      bullets <- c(bullets, "i" = "{.field {name}} is a formula global, computed after the agents are built. Give it a plain value to read it here.")
     } else if (!miss$fn) {
-      near <- near_names(name, c(before, "n", if (!is.null(spec$lattice_cols)) spec$lattice_cols))
+      near <- near_names(name, c(before, "n", names(globals), if (!is.null(spec$lattice_cols)) spec$lattice_cols))
       if (length(near)) bullets <- c(bullets, "i" = "Did you mean {.field {near}}?")
     }
   }
   bullets <- c(bullets,
-               "i" = if (length(before)) "A setup formula sees {.code n} and the columns declared before it: {.field {before}}."
-                     else "A setup formula sees {.code n}; no column is declared before this one.")
+               "i" = if (length(before)) "A setup formula sees {.code n}, plain {.arg globals} and the columns declared before it: {.field {before}}."
+                     else "A setup formula sees {.code n} and plain {.arg globals}; no column is declared before this one.")
   abm_abort(bullets, class = class, call = call, .envir = environment())
 }
 

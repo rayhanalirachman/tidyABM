@@ -20,47 +20,55 @@ way to attract better offers.
 **Package**
 
 ```r
-w <- 1; rounds <- 8; mu <- 0.005
+ultimatum <- function(w = 1, n = 100, generations = 350, rounds = 8,
+                      mu = 0.005, seed = 1) {
+  m <- abm_setup(
+    agents = abm_agents(
+      n = n,
+      p = ~runif(n, 0, 0.5),
+      q = ~runif(n, 0, 0.5),
+      payoff = 0,
+      pick   = 1L
+    ),
+    seed = seed
+  )
 
-m <- abm_setup(
-  agents = abm_agents(n = 100, p = ~runif(n, 0, 0.5), q = ~runif(n, 0, 0.5),
-                      payoff = 0, pick = 1L),
-  seed   = 1)
+  # one encounter: proposer offers, responder takes it or leaves it
+  play <- abm_match(
+    pair = "random", role = list(proposer = TRUE, responder = TRUE),
+    abm_rules(payoff ~ {
+      pr <- which(.role == "proposer")[[1]]
+      re <- which(.role == "responder")[[1]]
+      # with probability w the proposer knows this responder's demand
+      informed <- runif(1) < w
+      offer <- if (informed && q[[re]] > p[[pr]] && q[[re]] < 1) q[[re]] else p[[pr]]
+      out <- payoff
+      if (offer >= q[[re]]) {
+        out[[pr]] <- out[[pr]] + (1 - offer)
+        out[[re]] <- out[[re]] + offer
+      }
+      out
+    })
+  )
 
-play <- list(
-  abm_match(pair = "random", role = list(proposer = TRUE, responder = TRUE)),
-  abm_rules(payoff ~ {
-    pr <- which(.role == "proposer")[[1]]
-    re <- which(.role == "responder")[[1]]
-    informed <- runif(1) < w
-    offer <- if (informed && q[[re]] > p[[pr]] && q[[re]] < 1) q[[re]] else p[[pr]]
-    out <- payoff
-    if (offer >= q[[re]]) {
-      out[[pr]] <- out[[pr]] + (1 - offer)
-      out[[re]] <- out[[re]] + offer
-    }
-    out
-  })
-)
-
-go <- do.call(abm_go, c(
-  rep(play, rounds),
-  list(
+  go <- abm_go(
+    rep(list(play), rounds),
     abm_global(mean_p ~ mean(p), mean_q ~ mean(q)),
     # reproduction proportional to payoff: the index is drawn once...
-    abm_rules(pick ~ sample(n(), n(), replace = TRUE, prob = payoff + 1e-9),
-              .scope = "population"),
+    abm_rules(pick ~ sample(n(), n(), replace = TRUE, prob = payoff + 1e-9)),
     # ...and both traits of the surviving genome travel by it
     abm_rules(p ~ p[pick] + runif(n(), -mu, mu),
-              q ~ q[pick] + runif(n(), -mu, mu), .scope = "population"),
-    abm_rules(p ~ pmax(0, pmin(1, p)), q ~ pmax(0, pmin(1, q)),
-              .scope = "population"),
-    abm_rules(p ~ pmin(p, 1 - q), .scope = "population"),
-    abm_rules(payoff ~ 0, .scope = "population")
-  )
-))
+              q ~ q[pick] + runif(n(), -mu, mu)),
+    # strategies live in the simplex p >= 0, q >= 0, p + q <= 1
+    abm_rules(p ~ pmax(0, pmin(1, p)), q ~ pmax(0, pmin(1, q))),
+    abm_rules(p ~ pmin(p, 1 - q)),
+    abm_rules(payoff ~ 0))
 
-result <- abm_run(m, go, ticks = 350, seed = 1)
+  g <- abm_globals(abm_run(m, go, ticks = generations, seed = seed))
+  g[g$tick > 0, ]
+}
+
+result <- ultimatum(w = 1)
 ```
 
 **Result** (3 runs each, 350 generations, mean over the last 50)
@@ -92,7 +100,7 @@ work, a genome with two traits cannot be resampled with two independent
 `sample()` calls, or p and q get shuffled apart and the population inherits
 combinations that never existed. The index is drawn in a step of its own and both
 traits are indexed by it. What it adds to that idiom is the composition trick:
-`rep(play, rounds)` inside `do.call(abm_go, ...)` turns "eight rounds a
+`rep(list(play), rounds)` inside `abm_go()` turns "eight rounds a
 generation" into a parameter rather than eight copies of two lines.*
 
 **Replication**

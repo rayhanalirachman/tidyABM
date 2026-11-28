@@ -75,12 +75,8 @@ if (sys.nframe() == 0L) {
   # claim is that this is U-shaped when c < 1 and single-peaked when c > 1.
   library(ggplot2)
 
-  fig_file <- function(name) {
-    a <- grep("^--file=", commandArgs(), value = TRUE)
-    d <- if (length(a)) dirname(sub("^--file=", "", a[1])) else "."
-    dir.create(file.path(d, "..", "figures"), showWarnings = FALSE)
-    file.path(d, "..", "figures", name)
-  }
+  .file <- grep("^--file=", commandArgs(), value = TRUE)
+  source(file.path(dirname(sub("^--file=", "", c(.file, "x")[1])), "../../fig_file.R"))
 
   d <- do.call(rbind, collected)
 

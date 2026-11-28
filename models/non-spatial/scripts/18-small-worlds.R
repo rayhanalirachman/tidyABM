@@ -6,15 +6,14 @@
 # R edges and gain only R/2, and the network bleeds edges every tick.
 library(tidyABM)
 
-N <- 300
-ring <- do.call(rbind, lapply(1:2, function(d)
-  data.frame(from = 1:N, to = ((1:N + d - 1) %% N) + 1)))
+ring_edges <- function(n = 300) do.call(rbind, lapply(1:2, function(d)
+  data.frame(from = 1:n, to = ((1:n + d - 1) %% n) + 1)))
 
-sw <- abm_setup(agents = abm_agents(n = N, rewiring = FALSE),
-                network = abm_network(type = "manual", edges = ring))
+sw <- abm_setup(agents = abm_agents(n = 300, rewiring = FALSE),
+                network = abm_network(type = "manual", edges = ring_edges()))
 
 go <- function(p) abm_go(
-  abm_rules(rewiring ~ runif(n()) < p, .scope = "population"),
+  abm_rules(rewiring ~ runif(n()) < p),
   abm_match(pair = "network", eligible = rewiring), abm_unlink(),
   abm_match(pair = "one_of",  eligible = rewiring), abm_link()
 )
@@ -56,7 +55,7 @@ path_length <- function(a) {   # mean geodesic, BFS from every node
   tot / cnt
 }
 report <- function(e, label) {
-  a <- adj(N, e)
+  a <- adj(300, e)
   cat(sprintf("%-22s %8d %12.2f %14.1f\n", label, nrow(e), clustering(a),
               path_length(a)))
   data.frame(label = label, edges = nrow(e), clustering = clustering(a),
@@ -65,11 +64,11 @@ report <- function(e, label) {
 
 cat("300 nodes, ring lattice of degree 4, 20 ticks of rewiring\n\n")
 cat(sprintf("%-22s %8s %12s %14s\n", "", "edges", "clustering", "path length"))
-rows <- list(report(ring, "ring lattice"))
-for (p in c(0.001, 0.005, 0.02, 0.05)) {
-  r <- abm_run(sw, go(p), ticks = 20, seed = 2)
-  rows[[length(rows) + 1]] <- report(abm_edges(r), sprintf("p = %.3f", p))
-}
+rows <- c(list(report(ring_edges(), "ring lattice")),
+          lapply(c(0.001, 0.005, 0.02, 0.05), function(p) {
+            r <- abm_run(sw, go(p), ticks = 20, seed = 2)
+            report(abm_edges(r), sprintf("p = %.3f", p))
+          }))
 sweep <- do.call(rbind, rows)
 cat("\nthe edge count holds at 600 throughout, which is what `one_of` buys;\n")
 cat("`pair = \"random\"` here loses roughly half the rewired edges every tick\n")
@@ -79,12 +78,8 @@ cat("`pair = \"random\"` here loses roughly half the rewired edges every tick\n"
 # figure Watts and Strogatz actually drew.
 library(ggplot2)
 
-fig_file <- function(name) {
-  a <- grep("^--file=", commandArgs(), value = TRUE)
-  d <- if (length(a)) dirname(sub("^--file=", "", a[1])) else "."
-  dir.create(file.path(d, "..", "figures"), showWarnings = FALSE)
-  file.path(d, "..", "figures", name)
-}
+.file <- grep("^--file=", commandArgs(), value = TRUE)
+source(file.path(dirname(sub("^--file=", "", c(.file, "x")[1])), "../../fig_file.R"))
 
 s <- sweep[-1, ]
 s$p <- c(0.001, 0.005, 0.02, 0.05)

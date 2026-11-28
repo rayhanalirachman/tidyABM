@@ -57,7 +57,7 @@ non-spatial corpus.
 Rscript models/spatial/scripts/01-life.R
 ```
 
-Each script is self-contained — its own `library(tidyABM)` — prints its table
+Each script has its own `library(tidyABM)` and model, prints its table
 and writes its page's figures into `figures/`. It needs `tidyABM` and `ggplot2`
 installed. See [`scripts/README.md`](scripts/README.md) for runtimes. A frame
 of the lattice is drawn with `abm_plot_lattice()` — the patches shaded by a

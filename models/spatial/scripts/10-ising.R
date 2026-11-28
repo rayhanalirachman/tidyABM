@@ -63,12 +63,8 @@ cat("  finite-size artifact of the model, not of the grammar.\n")
 # (domains at every scale), disordered.
 library(ggplot2)
 
-fig_file <- function(name) {
-  a <- grep("^--file=", commandArgs(), value = TRUE)
-  d <- if (length(a)) dirname(sub("^--file=", "", a[1])) else "."
-  dir.create(file.path(d, "..", "figures"), showWarnings = FALSE)
-  file.path(d, "..", "figures", name)
-}
+.file <- grep("^--file=", commandArgs(), value = TRUE)
+source(file.path(dirname(sub("^--file=", "", c(.file, "x")[1])), "../../fig_file.R"))
 # Okabe-Ito, colour-blind safe; the same series colours in every script
 pal <- c("#0072B2", "#E69F00", "#009E73")
 fig_theme <- theme_minimal(base_size = 12) +

@@ -16,17 +16,18 @@
 world <- abm_setup(
   agents = list(
     patches = abm_agents(
-      nest       = ~sqrt((.x - 18)^2 + (.y - 18)^2) < 3,
-      nest_scent = ~200 - sqrt((.x - 18)^2 + (.y - 18)^2),
-      food = ~as.integer(((.x - 27)^2 + (.y - 18)^2 < 7) |
-                         ((.x - 18)^2 + (.y - 7)^2 < 7)),
+      nest       = ~sqrt((.x - cx)^2 + (.y - cy)^2) < 3,
+      nest_scent = ~200 - sqrt((.x - cx)^2 + (.y - cy)^2),
+      food = ~as.integer(((.x - cx - 9)^2 + (.y - cy)^2 < 7) |
+                         ((.x - cx)^2 + (.y - cy + 11)^2 < 7)),
       chemical = 0),
     ants = abm_agents(n = 80, carrying = FALSE, at = ~which(nest)[1])),
   space = abm_space(type = "grid", dims = c(35, 35), on = "patches",
                     diagonals = TRUE, torus = FALSE),
-  globals = list(evap = 0.10, diff = 0.30, wiggle = 4))
+  globals = list(cx = 18, cy = 18, evap = 0.10, diff = 0.30, wiggle = 4))
 
 go <- abm_go(
+  # pick up food or drop it at the nest, then decrement food on picked-up cells
   abm_rules(picked   ~ !carrying & cell_food > 0,
             carrying ~ case_when(!carrying & cell_food > 0 ~ TRUE,
                                  carrying & cell_nest      ~ FALSE,
@@ -34,7 +35,7 @@ go <- abm_go(
   abm_tell(food ~ -1L, to = .cell, .resolve = "add",
            when = .group == "ants" & picked),
 
-  # NetLogo `diffuse` + evaporation (exact per-cell degree `deg` on bounded grid),
+  # NetLogo `diffuse` + evaporation (using exact per-cell degree `deg` on bounded grid),
   # then this tick's additive pheromone deposits
   abm_neighbours(inflow ~ sum(chemical), deg ~ n()),
   abm_rules(food     ~ pmax(0L, food),
@@ -42,11 +43,13 @@ go <- abm_go(
   abm_tell(chemical ~ 60, to = .cell, .resolve = "add",
            when = .group == "ants" & carrying),
 
+  # head home if carrying, up the trail if not
   abm_move(who = "ants",
            to = uphill(if_else(carrying, nest_scent,
                                chemical + runif(n()) * wiggle))),
 
-  abm_global(food_left ~ sum(food, na.rm = TRUE),
+  abm_global(food_left  ~ sum(food, na.rm = TRUE),
+             carrying_n ~ sum(carrying, na.rm = TRUE),
              chem_total ~ round(sum(chemical, na.rm = TRUE)))
 )
 

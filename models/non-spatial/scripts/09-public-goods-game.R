@@ -41,12 +41,8 @@ cat("the dilemma: the pot is worth having and nobody wants to pay into it.\n")
 # Final-state comparison: what a contributor and a free-rider take home.
 library(ggplot2)
 
-fig_file <- function(name) {
-  a <- grep("^--file=", commandArgs(), value = TRUE)
-  d <- if (length(a)) dirname(sub("^--file=", "", a[1])) else "."
-  dir.create(file.path(d, "..", "figures"), showWarnings = FALSE)
-  file.path(d, "..", "figures", name)
-}
+.file <- grep("^--file=", commandArgs(), value = TRUE)
+source(file.path(dirname(sub("^--file=", "", c(.file, "x")[1])), "../../fig_file.R"))
 
 d <- data.frame(
   who = factor(rep(c("free-rider", "contributor"), 2),

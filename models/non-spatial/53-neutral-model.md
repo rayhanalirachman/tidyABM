@@ -12,23 +12,22 @@
 **Package**
 
 ```r
-n <- 500; mu <- 0.01
+neutral <- function(n = 500, mu = 0.01, ticks = 2000, seed = 1) {
+  m <- abm_setup(
+    agents  = abm_agents(n = n, variant = ~seq_len(n)),
+    globals = list(coined = n),
+    seed    = seed
+  )
+  go <- abm_go(
+    abm_rules(copied   ~ sample(variant, n(), replace = TRUE),
+              innovate ~ runif(n()) < mu),
+    abm_rules(variant ~ if_else(innovate, coined + cumsum(innovate), copied)),
+    abm_global(coined ~ coined + sum(innovate))
+  )
+  abm_run(m, go, ticks = ticks, seed = seed)
+}
 
-m <- abm_setup(
-  agents  = abm_agents(n = n, variant = ~seq_len(n)),
-  globals = list(coined = n),
-  seed    = 1)
-
-go <- abm_go(
-  abm_rules(copied   ~ sample(variant, n(), replace = TRUE),
-            innovate ~ runif(n()) < mu,
-            .scope = "population"),
-  abm_rules(variant ~ if_else(innovate, coined + cumsum(innovate), copied),
-            .scope = "population"),
-  abm_global(coined ~ coined + sum(innovate))
-)
-
-result <- abm_run(m, go, ticks = 3000, seed = 1)
+result <- neutral(ticks = 3000)
 ```
 
 **Result** (3000 ticks, measured over the last 1000)

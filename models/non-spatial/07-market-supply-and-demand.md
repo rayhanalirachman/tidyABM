@@ -27,26 +27,18 @@ go <- abm_go(
 
   abm_match(pair = "opposite_group", sides = .group),
 
-  abm_rules(
-    transacted ~ case_when(
-      .group == "seller" & partner_expected_price >= expected_price ~ TRUE,
-      .group == "buyer"  & expected_price >= partner_expected_price ~ TRUE,
-      TRUE ~ FALSE
-    ),
-    deal_price ~ if_else(
-      (.group == "seller" & partner_expected_price >= expected_price) |
-      (.group == "buyer"  & expected_price >= partner_expected_price),
-      (expected_price + partner_expected_price) / 2, NA_real_
-    )
-  ),
+  abm_rules(transacted ~ if_else(.group == "seller",
+                                 partner_expected_price >= expected_price,
+                                 expected_price >= partner_expected_price)),
+  abm_rules(deal_price ~ if_else(
+    transacted, (expected_price + partner_expected_price) / 2, NA_real_)),
 
   abm_rules(
     expected_price ~ case_when(
       .group == "seller" &  transacted ~ expected_price + 2,
       .group == "seller" & !transacted ~ pmax(expected_price - 1, limit_price),
       .group == "buyer"  &  transacted ~ expected_price - 1,
-      .group == "buyer"  & !transacted ~ pmin(expected_price + 1, limit_price),
-      TRUE ~ expected_price
+      .group == "buyer"  & !transacted ~ pmin(expected_price + 1, limit_price)
     ),
     .scope = "population"
   )
@@ -73,14 +65,13 @@ the step that has to reach every agent. Both `case_when()` blocks branch on
 separate agent-`type` field to keep in step. `opposite_group` matching partitions
 the two groups into pairs, and with one seller and two buyers it forms exactly one
 pair per tick: one buyer is left unmatched and gets no `partner_expected_price`,
-so it falls to the `TRUE ~ FALSE` branch of the `transacted` rule.*
+so the `transacted` rule leaves it at `FALSE`.*
 
 *The first `abm_rules()` step clears `transacted` and `deal_price` before the
 match, so a tick where nobody trades reads as `NA` rather than carrying last
-tick's number. The two rules inside the price step are evaluated against the same
-start-of-step state, so `deal_price` recomputes the agreement condition instead of
-reading `transacted`; splitting them into two `abm_rules()` calls would let the
-second read the first's result. The `pmax`/`pmin` clamps hold each agent's
+tick's number. `transacted` and `deal_price` are two `abm_rules()` calls because
+rules inside one call all read the state as it stood when the call began; the
+second call can read the `transacted` the first one wrote. The `pmax`/`pmin` clamps hold each agent's
 `expected_price` on its own side of its `limit_price`.*
 
 *The last step carries `.scope = "population"` because the match from earlier in

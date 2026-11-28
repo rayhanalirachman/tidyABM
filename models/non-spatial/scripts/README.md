@@ -12,8 +12,8 @@ directory:
 Rscript models/non-spatial/scripts/43-zero-intelligence-traders.R
 ```
 
-Every script is self-contained: its own `library(tidyABM)`, its own parameters,
-no shared setup file.
+Every script carries its own `library(tidyABM)` and model. The one shared file
+is [`../../fig_file.R`](../../fig_file.R), which says where a figure goes.
 
 The `testthat` cases in `../../../tests/testthat/test-models-3.R`,
 `test-models-4.R` and `test-models-5.R` run the same models at reduced scale so
@@ -58,7 +58,7 @@ the suite stays quick. These scripts are what reproduce the published tables.
 | `23-divide-the-cake.R` | 23. Divide the Cake | 20 s |
 | `24-sex-ratio-equilibrium.R` | 24. Sex Ratio, from 25% and 75% male | 3 min |
 | `25-axelrod-s-cultural-dissemination.R` | 25. Cultural dissemination, 3 values of q | 90 s |
-| `26-pd-n-person-iterated.R` | 26. PD N-Person, 4 matchups | 3 min |
+| `26-pd-n-person-iterated.R` | 26. PD N-Person, 4 matchups | 3 s |
 
 ## Part 4: the second stress test
 

@@ -10,32 +10,23 @@
 # with and without the transfer.
 library(tidyABM)
 
-NISAB <- 100
-
 zakah_run <- function(transfer = TRUE, ticks = 300, seed = 12) {
   pop <- abm_setup(
     agents  = abm_agents(n = 500, wealth = ~rlnorm(n, 4, 0.5),
                          income = ~rlnorm(n, 3, 0.4)),
-    globals = list(zakah_pool = 0, poverty_line = 30))
+    globals = list(zakah_pool = 0, poverty_line = 30, nisab = 100))
 
-  shocks <- abm_rules(
-    income ~ exp(0.9 * log(income) + 0.1 * 3 + rnorm(n(), 0, 0.15)),  # AR(1) in logs
-    wealth ~ wealth - if_else(runif(n()) < 0.03, wealth * 0.6, 0))    # occasional hit
-
-  steps <- list(
-    shocks,
+  go <- abm_go(
+    abm_rules(
+      income ~ exp(0.9 * log(income) + 0.1 * 3 + rnorm(n(), 0, 0.15)),  # AR(1) in logs
+      wealth ~ wealth - if_else(runif(n()) < 0.03, wealth * 0.6, 0)),   # occasional hit
     abm_rules(wealth ~ pmax(0.01, wealth + income - (0.6 * income + 0.02 * wealth))),
-    abm_global(poverty_line ~ 0.5 * median(wealth)))                  # relative
-  if (transfer) {
-    steps <- c(steps, list(
-      abm_global(zakah_pool ~ sum(if_else(wealth > NISAB, wealth * 0.025, 0))),
-      abm_rules(wealth ~ if_else(wealth > NISAB, wealth * 0.975, wealth)),
-      abm_rules(wealth ~ if_else(wealth < poverty_line,
-                                 wealth + zakah_pool /
-                                   pmax(1, sum(wealth < poverty_line)),
-                                 wealth))))
-  }
-  abm_run(pop, do.call(abm_go, steps), ticks = ticks, seed = seed)
+    abm_global(poverty_line ~ 0.5 * median(wealth)),                    # relative
+    if (transfer) list(
+      abm_global(zakah_pool ~ sum(if_else(wealth > nisab, wealth * 0.025, 0))),
+      abm_rules(wealth ~ wealth * 0.975, when = wealth > nisab),
+      abm_rules(wealth ~ wealth + zakah_pool / n(), when = wealth < poverty_line)))
+  abm_run(pop, go, ticks = ticks, seed = seed)
 }
 
 gini <- function(x) {
@@ -76,12 +67,8 @@ cat("relative poverty is eliminated rather than merely reduced.\n")
 # effect is visible tick by tick rather than only at the end.
 library(ggplot2)
 
-fig_file <- function(name) {
-  a <- grep("^--file=", commandArgs(), value = TRUE)
-  d <- if (length(a)) dirname(sub("^--file=", "", a[1])) else "."
-  dir.create(file.path(d, "..", "figures"), showWarnings = FALSE)
-  file.path(d, "..", "figures", name)
-}
+.file <- grep("^--file=", commandArgs(), value = TRUE)
+source(file.path(dirname(sub("^--file=", "", c(.file, "x")[1])), "../../fig_file.R"))
 
 series <- function(r, lab) data.frame(
   tick = sort(unique(r$tick)), condition = lab,

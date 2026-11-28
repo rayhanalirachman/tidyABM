@@ -17,8 +17,6 @@
 
 library(tidyABM)
 
-w <- h <- 35; cx <- cy <- 18
-
 world <- abm_setup(
   agents = list(
     patches = abm_agents(
@@ -28,9 +26,9 @@ world <- abm_setup(
                          ((.x - cx)^2 + (.y - cy + 11)^2 < 7)),
       chemical = 0),
     ants = abm_agents(n = 80, carrying = FALSE, at = ~which(nest)[1])),
-  space = abm_space(type = "grid", dims = c(w, h), on = "patches",
+  space = abm_space(type = "grid", dims = c(35, 35), on = "patches",
                     diagonals = TRUE, torus = FALSE),
-  globals = list(evap = 0.10, diff = 0.30, wiggle = 4))
+  globals = list(cx = 18, cy = 18, evap = 0.10, diff = 0.30, wiggle = 4))
 
 go <- abm_go(
   # pick up food or drop it at the nest, then decrement food on picked-up cells
@@ -83,12 +81,8 @@ cat(sprintf("  trail strength at the end: %.0f  (spent piles evaporate)\n",
 # the field through the run, and the whole run as an interactive viewer.
 library(ggplot2)
 
-fig_file <- function(name, dir = "figures") {
-  a <- grep("^--file=", commandArgs(), value = TRUE)
-  d <- if (length(a)) dirname(sub("^--file=", "", a[1])) else "."
-  dir.create(file.path(d, "..", dir), showWarnings = FALSE)
-  file.path(d, "..", dir, name)
-}
+.file <- grep("^--file=", commandArgs(), value = TRUE)
+source(file.path(dirname(sub("^--file=", "", c(.file, "x")[1])), "../../fig_file.R"))
 # Okabe-Ito, colour-blind safe; the same series colours in every script
 pal <- c("#0072B2", "#E69F00", "#009E73")
 fig_theme <- theme_minimal(base_size = 12) +

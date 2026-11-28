@@ -36,8 +36,8 @@ ultimatum <- function(w = 1, n = 100, generations = 350, rounds = 8,
   )
 
   # one encounter: proposer offers, responder takes it or leaves it
-  play <- list(
-    abm_match(pair = "random", role = list(proposer = TRUE, responder = TRUE)),
+  play <- abm_match(
+    pair = "random", role = list(proposer = TRUE, responder = TRUE),
     abm_rules(payoff ~ {
       pr <- which(.role == "proposer")[[1]]
       re <- which(.role == "responder")[[1]]
@@ -53,24 +53,18 @@ ultimatum <- function(w = 1, n = 100, generations = 350, rounds = 8,
     })
   )
 
-  go <- do.call(abm_go, c(
-    rep(play, rounds),
-    list(
-      abm_global(mean_p ~ mean(p), mean_q ~ mean(q)),
-      # reproduction proportional to payoff: the index is drawn once...
-      abm_rules(pick ~ sample(n(), n(), replace = TRUE, prob = payoff + 1e-9),
-                .scope = "population"),
-      # ...and both traits of the surviving genome travel by it
-      abm_rules(p ~ p[pick] + runif(n(), -mu, mu),
-                q ~ q[pick] + runif(n(), -mu, mu),
-                .scope = "population"),
-      # strategies live in the simplex p >= 0, q >= 0, p + q <= 1
-      abm_rules(p ~ pmax(0, pmin(1, p)), q ~ pmax(0, pmin(1, q)),
-                .scope = "population"),
-      abm_rules(p ~ pmin(p, 1 - q), .scope = "population"),
-      abm_rules(payoff ~ 0, .scope = "population")
-    )
-  ))
+  go <- abm_go(
+    rep(list(play), rounds),
+    abm_global(mean_p ~ mean(p), mean_q ~ mean(q)),
+    # reproduction proportional to payoff: the index is drawn once...
+    abm_rules(pick ~ sample(n(), n(), replace = TRUE, prob = payoff + 1e-9)),
+    # ...and both traits of the surviving genome travel by it
+    abm_rules(p ~ p[pick] + runif(n(), -mu, mu),
+              q ~ q[pick] + runif(n(), -mu, mu)),
+    # strategies live in the simplex p >= 0, q >= 0, p + q <= 1
+    abm_rules(p ~ pmax(0, pmin(1, p)), q ~ pmax(0, pmin(1, q))),
+    abm_rules(p ~ pmin(p, 1 - q)),
+    abm_rules(payoff ~ 0))
 
   g <- abm_globals(abm_run(m, go, ticks = generations, seed = seed))
   g[g$tick > 0, ]
@@ -94,12 +88,8 @@ if (sys.nframe() == 0L) {
   # rational and fair solutions marked.
   library(ggplot2)
 
-  fig_file <- function(name) {
-    a <- grep("^--file=", commandArgs(), value = TRUE)
-    d <- if (length(a)) dirname(sub("^--file=", "", a[1])) else "."
-    dir.create(file.path(d, "..", "figures"), showWarnings = FALSE)
-    file.path(d, "..", "figures", name)
-  }
+  .file <- grep("^--file=", commandArgs(), value = TRUE)
+  source(file.path(dirname(sub("^--file=", "", c(.file, "x")[1])), "../../fig_file.R"))
 
   d <- rbind(data.frame(w = sweep$w, trait = "offer p",  value = sweep$p),
              data.frame(w = sweep$w, trait = "demand q", value = sweep$q))

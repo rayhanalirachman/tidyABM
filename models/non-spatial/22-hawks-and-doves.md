@@ -11,24 +11,26 @@
 **Package**
 
 ```r
-V <- 50; C <- 100
+hd_run <- function(C, n = 2000, ticks = 200, seed = 4) {
+  m <- abm_setup(
+    agents  = abm_agents(
+      n = n, strategy = ~sample(c("hawk", "dove"), n, replace = TRUE), payoff = 0),
+    globals = list(V = 50))
+  go <- abm_go(
+    abm_match(pair = "random"),
+    abm_rules(payoff ~ case_when(
+      strategy == "hawk" & partner_strategy == "hawk" ~ (V - C) / 2,
+      strategy == "hawk" & partner_strategy == "dove" ~ V,
+      strategy == "dove" & partner_strategy == "hawk" ~ 0,
+      TRUE                                           ~ V / 2)),
+    abm_rules(fitness ~ payoff - min((V - C) / 2, 0) + 1),
+    abm_rules(strategy ~ sample(strategy, n(), replace = TRUE, prob = fitness),
+              .scope = "population")
+  )
+  abm_run(m, go, ticks = ticks, seed = seed)
+}
 
-hd <- abm_setup(agents = abm_agents(
-  n = 2000, strategy = ~sample(c("hawk", "dove"), n, replace = TRUE), payoff = 0))
-
-go <- abm_go(
-  abm_match(pair = "random"),
-  abm_rules(payoff ~ case_when(
-    strategy == "hawk" & partner_strategy == "hawk" ~ (V - C) / 2,
-    strategy == "hawk" & partner_strategy == "dove" ~ V,
-    strategy == "dove" & partner_strategy == "hawk" ~ 0,
-    TRUE                                           ~ V / 2)),
-  abm_rules(fitness ~ payoff - min((V - C) / 2, 0) + 1),
-  abm_rules(strategy ~ sample(strategy, n(), replace = TRUE, prob = fitness),
-            .scope = "population")
-)
-
-result <- abm_run(hd, go, ticks = 200, seed = 4)
+result <- hd_run(C = 100)
 ```
 
 **Result.** Quantitative, not just qualitative:

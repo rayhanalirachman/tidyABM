@@ -31,10 +31,8 @@ virus_run <- function(gain_resistance, ticks = 500, seed = 1,
     abm_neighbours(exposure ~ sum(state == "infected")),
 
     # k independent Bernoulli(spread) draws, one per infected neighbour
-    abm_rules(state ~ if_else(
-      state == "susceptible" & runif(n()) < 1 - (1 - spread)^coalesce(exposure, 0L),
-      "infected", state
-    )),
+    abm_rules(state ~ "infected", when = state == "susceptible" &
+                runif(n()) < 1 - (1 - spread)^coalesce(exposure, 0L)),
 
     # a check only happens on the tick the clock comes round
     abm_rules(state ~ if_else(
@@ -65,12 +63,8 @@ if (sys.nframe() == 0L) {
   # switch. SIS stays endemic; SIR burns out.
   library(ggplot2)
 
-  fig_file <- function(name) {
-    a <- grep("^--file=", commandArgs(), value = TRUE)
-    d <- if (length(a)) dirname(sub("^--file=", "", a[1])) else "."
-    dir.create(file.path(d, "..", "figures"), showWarnings = FALSE)
-    file.path(d, "..", "figures", name)
-  }
+  .file <- grep("^--file=", commandArgs(), value = TRUE)
+  source(file.path(dirname(sub("^--file=", "", c(.file, "x")[1])), "../../fig_file.R"))
 
   d <- rbind(data.frame(tick = sis$tick, model = "SIS (gain = 0)",
                         infected = sis$infected),

@@ -22,8 +22,8 @@ go <- abm_go(
   abm_rules(s ~ rule[4 * s_l + 2 * s + s_r + 1])
 )
 
+r <- abm_run(ca(90), go, ticks = 60, seed = 1)
 w <- 121; centre <- w %/% 2 + 1
-r <- abm_run(ca(90, w), go, ticks = 60, seed = 1)
 
 cat("Rule 90, first 16 rows (the space-time diagram is the result tibble)\n")
 for (t in 0:15) {
@@ -52,12 +52,8 @@ cat(sprintf("Rule 30 centre column, first 60 bits: %s\n",
 # same seed is the one that looks random.
 library(ggplot2)
 
-fig_file <- function(name) {
-  a <- grep("^--file=", commandArgs(), value = TRUE)
-  d <- if (length(a)) dirname(sub("^--file=", "", a[1])) else "."
-  dir.create(file.path(d, "..", "figures"), showWarnings = FALSE)
-  file.path(d, "..", "figures", name)
-}
+.file <- grep("^--file=", commandArgs(), value = TRUE)
+source(file.path(dirname(sub("^--file=", "", c(.file, "x")[1])), "../../fig_file.R"))
 
 d <- rbind(
   data.frame(rule = "rule 90", x = r$.x, t = r$tick, s = r$s),

@@ -24,28 +24,35 @@ end
 **Package**
 
 ```r
-K <- 300                                   # carrying capacity
+birth_rates <- function(red_fertility, blue_fertility, K = 300,
+                        generations = 60, seed = 1) {
+  pop <- abm_setup(
+    agents = abm_agents(
+      n      = K,
+      colour = ~rep(c("red", "blue"), length.out = n),
+      fert   = ~if_else(rep(c("red", "blue"), length.out = n) == "red",
+                        red_fertility, blue_fertility),
+      parent = FALSE
+    ),
+    globals = list(K = K),
+    seed = seed
+  )
 
-pop <- abm_setup(
-  agents  = abm_agents(n = K,
-                       colour = ~rep(c("red", "blue"), length.out = n),
-                       fert   = ~if_else(rep(c("red", "blue"), length.out = n) == "red",
-                                         3.4, 3.0),
-                       parent = FALSE),
-  globals = list(K = K),
-  seed    = 1)
+  go <- abm_go(
+    abm_rules(parent ~ TRUE, born ~ 0),
+    # one clone per whole unit of fertility, plus one more with the leftover
+    # probability. `parent` keeps the newborns out of the later birth steps, so
+    # nobody becomes a grandparent within a single generation.
+    rep(list(abm_birth(when    = parent & runif(n()) < pmin(fert - born, 1),
+                       cost    = born ~ born + 1,
+                       inherit = list(parent ~ FALSE, born ~ 0))),
+        ceiling(max(red_fertility, blue_fertility))),
+    abm_death(when = rank(runif(n()), ties.method = "random") > K))
 
-child <- abm_birth(when    = parent & runif(n()) < pmin(fert - born, 1),
-                   cost    = born ~ born + 1,
-                   inherit = list(parent ~ FALSE, born ~ 0))
+  abm_run(pop, go, ticks = generations, seed = seed)
+}
 
-go <- do.call(abm_go, c(
-  list(abm_rules(parent ~ TRUE, born ~ 0)),
-  rep(list(child), 4),
-  list(abm_death(when = rank(runif(n()), ties.method = "random") > K))
-))
-
-result <- abm_run(pop, go, ticks = 40, seed = 1)
+result <- birth_rates(3.4, 3.0, generations = 40)
 ```
 
 **Result.** Carrying capacity 300, reds on 3.4 against blues on 3.0, starting

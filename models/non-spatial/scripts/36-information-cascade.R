@@ -51,12 +51,8 @@ sweep <- do.call(rbind, lapply(c(0.55, 0.6, 0.7, 0.8, 0.9), function(p) {
 # Bikhchandani, Hirshleifer and Welch's closed form.
 library(ggplot2)
 
-fig_file <- function(name) {
-  a <- grep("^--file=", commandArgs(), value = TRUE)
-  d <- if (length(a)) dirname(sub("^--file=", "", a[1])) else "."
-  dir.create(file.path(d, "..", "figures"), showWarnings = FALSE)
-  file.path(d, "..", "figures", name)
-}
+.file <- grep("^--file=", commandArgs(), value = TRUE)
+source(file.path(dirname(sub("^--file=", "", c(.file, "x")[1])), "../../fig_file.R"))
 
 d <- rbind(
   data.frame(p = sweep$p, what = "observed",        value = sweep$observed),

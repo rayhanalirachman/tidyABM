@@ -18,18 +18,16 @@ birth_rates <- function(red_fertility, blue_fertility, K = 300,
     seed = seed
   )
 
-  # one clone per whole unit of fertility, plus one more with the leftover
-  # probability. `parent` keeps the newborns out of the later birth steps, so
-  # nobody becomes a grandparent within a single generation.
-  child <- abm_birth(when    = parent & runif(n()) < pmin(fert - born, 1),
-                     cost    = born ~ born + 1,
-                     inherit = list(parent ~ FALSE, born ~ 0))
-
-  go <- do.call(abm_go, c(
-    list(abm_rules(parent ~ TRUE, born ~ 0)),
-    rep(list(child), ceiling(max(red_fertility, blue_fertility))),
-    list(abm_death(when = rank(runif(n()), ties.method = "random") > K))
-  ))
+  go <- abm_go(
+    abm_rules(parent ~ TRUE, born ~ 0),
+    # one clone per whole unit of fertility, plus one more with the leftover
+    # probability. `parent` keeps the newborns out of the later birth steps, so
+    # nobody becomes a grandparent within a single generation.
+    rep(list(abm_birth(when    = parent & runif(n()) < pmin(fert - born, 1),
+                       cost    = born ~ born + 1,
+                       inherit = list(parent ~ FALSE, born ~ 0))),
+        ceiling(max(red_fertility, blue_fertility))),
+    abm_death(when = rank(runif(n()), ties.method = "random") > K))
 
   abm_run(pop, go, ticks = generations, seed = seed)
 }
@@ -54,12 +52,8 @@ cat("equal fertility, reds after 60 generations:", tr2[["60"]], "\n")
 # which is drift rather than selection.
 library(ggplot2)
 
-fig_file <- function(name) {
-  a <- grep("^--file=", commandArgs(), value = TRUE)
-  d <- if (length(a)) dirname(sub("^--file=", "", a[1])) else "."
-  dir.create(file.path(d, "..", "figures"), showWarnings = FALSE)
-  file.path(d, "..", "figures", name)
-}
+.file <- grep("^--file=", commandArgs(), value = TRUE)
+source(file.path(dirname(sub("^--file=", "", c(.file, "x")[1])), "../../fig_file.R"))
 
 curve_of <- function(tr, lab) data.frame(
   case = lab, generation = as.integer(names(tr)), reds = as.numeric(tr) / 300)

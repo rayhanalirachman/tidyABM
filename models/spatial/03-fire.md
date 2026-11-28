@@ -11,24 +11,27 @@
 **Package**
 
 ```r
-fire <- abm_setup(
-  agents = abm_agents(state = ~if_else(runif(n) < density, "tree", "empty")),
-  space  = abm_space(type = "grid", dims = c(100, 100),
-                     diagonals = FALSE, torus = FALSE),
-  seed = 1)
+forest <- function(density, w = 100, seed = 1) {
+  abm_setup(
+    agents = abm_agents(state = ~if_else(runif(n) < density, "tree", "empty")),
+    space  = abm_space(type = "grid", dims = c(w, w),
+                       diagonals = FALSE, torus = FALSE),
+    seed = seed)
+}
 
-go <- abm_go(
-  abm_rules(state ~ if_else(state == "tree" & .x == 1, "burning", state)),
+fire_go <- function(w = 100) abm_go(
+  abm_rules(state ~ "burning", when = state == "tree" & .x == 1),
   abm_repeat(
     abm_neighbours(hot ~ any(state == "burning")),
     abm_rules(state ~ case_when(state == "burning"    ~ "burnt",
                                 state == "tree" & hot ~ "burning",
                                 TRUE                  ~ state)),
     until = !any(state == "burning"),
-    max   = 400)
+    max   = 4 * w)
 )
 
-result <- abm_run(fire, go, ticks = 1, seed = 1, record = "final")
+result <- abm_run(forest(0.59), fire_go(), ticks = 1, seed = 1,
+                  record = "final")
 ```
 
 *L0. `diagonals = FALSE` is load-bearing rather than cosmetic: it is what puts

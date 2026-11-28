@@ -16,7 +16,6 @@
 
 library(tidyABM)
 
-w <- 50
 peak <- function(x, y, px, py) 4 * exp(-((x - px)^2 + (y - py)^2) / (2 * 9^2))
 gini <- function(x) {
   x <- sort(x); n <- length(x)
@@ -35,7 +34,7 @@ sugarscape <- abm_setup(
                         metabolism = ~sample.int(4, n, TRUE),
                         wealth     = ~sample(5:25, n, TRUE),
                         at         = "unique")),                # one per cell
-  space = abm_space(type = "grid", dims = c(w, w), on = "patches",
+  space = abm_space(type = "grid", dims = c(50, 50), on = "patches",
                     diagonals = FALSE, torus = TRUE),
   globals = list(pop    = ~sum(.group == "people"),
                  wealth = ~mean(wealth[.group == "people"]),
@@ -102,12 +101,8 @@ cat("  wealth Gini converges on the Gini of those income rates.\n")
 # a strip of the die-off, and the run as a viewer.
 library(ggplot2)
 
-fig_file <- function(name, dir = "figures") {
-  a <- grep("^--file=", commandArgs(), value = TRUE)
-  d <- if (length(a)) dirname(sub("^--file=", "", a[1])) else "."
-  dir.create(file.path(d, "..", dir), showWarnings = FALSE)
-  file.path(d, "..", dir, name)
-}
+.file <- grep("^--file=", commandArgs(), value = TRUE)
+source(file.path(dirname(sub("^--file=", "", c(.file, "x")[1])), "../../fig_file.R"))
 # Okabe-Ito, colour-blind safe; the same series colours in every script
 pal <- c("#0072B2", "#E69F00", "#009E73")
 fig_theme <- theme_minimal(base_size = 12) +

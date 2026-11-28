@@ -21,65 +21,92 @@ rationality.
 **Package**
 
 ```r
-n_each <- 12; rounds <- 25; max_price <- 200
-values <- seq(max_price * 0.95, max_price * 0.15, length.out = n_each)
-costs  <- seq(max_price * 0.05, max_price * 0.85, length.out = n_each)
+zi_market <- function(constrained = TRUE, n_each = 12, rounds = 25,
+                      max_price = 200, seed = 1) {
+  values <- seq(max_price * 0.95, max_price * 0.15, length.out = n_each)
+  costs  <- seq(max_price * 0.05, max_price * 0.85, length.out = n_each)
 
-m <- abm_setup(
-  agents = list(
-    buyers  = abm_agents(n = n_each, value = values, cap = values,   # ZI-C
-                         bid = 0, buy_cross = FALSE, buy_improves = FALSE,
-                         traded = FALSE, price = NA_real_),
-    sellers = abm_agents(n = n_each, cost = costs, floor_ = costs,
-                         ask = 0, sell_cross = FALSE, sell_improves = FALSE,
-                         traded = FALSE, price = NA_real_)),
-  globals = list(best_bid = -Inf, best_bid_id = NA_integer_,
-                 best_ask =  Inf, best_ask_id = NA_integer_,
-                 buyer_id = NA_integer_, seller_id = NA_integer_,
-                 trade_price = NA_real_),
-  seed = 1)
+  # the competitive equilibrium: the most a market of these traders could earn
+  best <- sum(pmax(sort(values, decreasing = TRUE) - sort(costs), 0))
 
-shout <- abm_go(
-  # a fresh book each round, and no trade recorded yet
-  abm_global(best_bid ~ -Inf, best_bid_id ~ NA_integer_,
-             best_ask ~ Inf,  best_ask_id ~ NA_integer_,
-             buyer_id ~ NA_integer_, seller_id ~ NA_integer_,
-             trade_price ~ NA_real_),
+  m <- abm_setup(
+    agents = list(
+      buyers = abm_agents(
+        n = n_each, value = values,
+        cap = if (constrained) values else max_price,   # ZI-C vs ZI-U
+        bid = 0, buy_cross = FALSE, buy_improves = FALSE,
+        traded = FALSE, price = NA_real_
+      ),
+      sellers = abm_agents(
+        n = n_each, cost = costs,
+        floor_ = if (constrained) costs else 0,
+        ask = 0, sell_cross = FALSE, sell_improves = FALSE,
+        traded = FALSE, price = NA_real_
+      )
+    ),
+    globals = list(best_bid = -Inf, best_bid_id = NA_integer_,
+                   best_ask =  Inf, best_ask_id = NA_integer_,
+                   buyer_id = NA_integer_, seller_id = NA_integer_,
+                   trade_price = NA_real_),
+    seed = seed
+  )
 
-  # everybody shouts once, in a shuffled order. Each rule reads what the rule
-  # above it wrote, which is what makes "draw, then check the book" sayable.
-  abm_sequential(
-    bid          ~ if (traded) 0 else runif(1, 0, cap),
-    buy_cross    ~ !traded & bid >= best_ask,
-    buy_improves ~ !traded & !buy_cross & bid > best_bid,
-    trade_price  ~ if (buy_cross) best_ask else trade_price,
-    seller_id    ~ if (buy_cross) best_ask_id else seller_id,
-    buyer_id     ~ if (buy_cross) .id else buyer_id,
-    best_bid     ~ if (buy_cross) -Inf else if (buy_improves) bid else best_bid,
-    best_bid_id  ~ if (buy_cross) NA_integer_ else if (buy_improves) .id else best_bid_id,
-    best_ask     ~ if (buy_cross) Inf else best_ask,
-    best_ask_id  ~ if (buy_cross) NA_integer_ else best_ask_id,
+  shout <- abm_go(
+    # a fresh book each round, and no trade recorded yet
+    abm_global(best_bid ~ -Inf, best_bid_id ~ NA_integer_,
+               best_ask ~ Inf,  best_ask_id ~ NA_integer_,
+               buyer_id ~ NA_integer_, seller_id ~ NA_integer_,
+               trade_price ~ NA_real_),
 
-    ask           ~ if (traded) 0 else runif(1, floor_, max_price),
-    sell_cross    ~ !traded & ask <= best_bid,
-    sell_improves ~ !traded & !sell_cross & ask < best_ask,
-    trade_price   ~ if (sell_cross) best_bid else trade_price,
-    buyer_id      ~ if (sell_cross) best_bid_id else buyer_id,
-    seller_id     ~ if (sell_cross) .id else seller_id,
-    best_ask      ~ if (sell_cross) Inf else if (sell_improves) ask else best_ask,
-    best_ask_id   ~ if (sell_cross) NA_integer_ else if (sell_improves) .id else best_ask_id,
-    best_bid      ~ if (sell_cross) -Inf else best_bid,
-    best_bid_id   ~ if (sell_cross) NA_integer_ else best_bid_id
-  ),
+    # everybody shouts once, in a shuffled order. Each rule below reads what the
+    # rule above it wrote, which is what makes "draw, then check the book"
+    # expressible at all.
+    abm_sequential(
+      bid          ~ if (traded) 0 else runif(1, 0, cap),
+      buy_cross    ~ !traded & bid >= best_ask,
+      buy_improves ~ !traded & !buy_cross & bid > best_bid,
+      trade_price  ~ if (buy_cross) best_ask else trade_price,
+      seller_id    ~ if (buy_cross) best_ask_id else seller_id,
+      buyer_id     ~ if (buy_cross) .id else buyer_id,
+      best_bid     ~ if (buy_cross) -Inf else if (buy_improves) bid else best_bid,
+      best_bid_id  ~ if (buy_cross) NA_integer_ else if (buy_improves) .id else best_bid_id,
+      best_ask     ~ if (buy_cross) Inf else best_ask,
+      best_ask_id  ~ if (buy_cross) NA_integer_ else best_ask_id,
 
-  # the trade itself: each side reaches across and fills the other
-  abm_tell(traded ~ TRUE, price ~ trade_price,
-           to = buyer_id,  when = .id == seller_id),
-  abm_tell(traded ~ TRUE, price ~ trade_price,
-           to = seller_id, when = .id == buyer_id)
-)
+      ask           ~ if (traded) 0 else runif(1, floor_, max_price),
+      sell_cross    ~ !traded & ask <= best_bid,
+      sell_improves ~ !traded & !sell_cross & ask < best_ask,
+      trade_price   ~ if (sell_cross) best_bid else trade_price,
+      buyer_id      ~ if (sell_cross) best_bid_id else buyer_id,
+      seller_id     ~ if (sell_cross) .id else seller_id,
+      best_ask      ~ if (sell_cross) Inf else if (sell_improves) ask else best_ask,
+      best_ask_id   ~ if (sell_cross) NA_integer_ else if (sell_improves) .id else best_ask_id,
+      best_bid      ~ if (sell_cross) -Inf else best_bid,
+      best_bid_id   ~ if (sell_cross) NA_integer_ else best_bid_id
+    ),
 
-result <- abm_run(m, shout, ticks = rounds, seed = 1)
+    # the trade itself: each side of it reaches across and fills the other
+    abm_tell(traded ~ TRUE, price ~ trade_price,
+             to = buyer_id,  when = .id == seller_id),
+    abm_tell(traded ~ TRUE, price ~ trade_price,
+             to = seller_id, when = .id == buyer_id),
+
+    abm_global(volume ~ sum(traded) / 2)
+  )
+
+  r <- abm_run(m, shout, ticks = rounds, seed = seed)
+  final <- r[r$tick == max(r$tick), ]
+
+  b <- final[final$.group == "buyers"  & final$traded, ]
+  s <- final[final$.group == "sellers" & final$traded, ]
+  earned <- sum(b$value - b$price) + sum(s$price - s$cost)
+
+  list(efficiency = earned / best, trades = nrow(b),
+       max_trades = sum(sort(values, decreasing = TRUE) > sort(costs)),
+       mean_price = mean(c(b$price, s$price)))
+}
+
+result <- zi_market(constrained = TRUE)
 ```
 
 `cap` is the buyer's value and `floor_` the seller's cost under ZI-C. Under ZI-U

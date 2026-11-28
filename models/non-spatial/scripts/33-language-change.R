@@ -8,13 +8,10 @@ library(tidyABM)
 # the network comes from running the package's preferential-attachment model
 pa_network <- function(n, seed = 1) {
   seed_net <- abm_setup(
-    agents  = abm_agents(n = 2, dummy = 0),
+    agents  = abm_agents(n = 2),
     network = abm_network(type = "manual", edges = data.frame(from = 1, to = 2))
   )
-  grow <- abm_go(
-    abm_birth(n = 1, attach = "random_edge"),
-    abm_rules(dummy ~ dummy)
-  )
+  grow <- abm_go(abm_birth(n = 1, attach = "random_edge"))
   grown <- abm_run(seed_net, grow, ticks = n - 2, seed = seed)
   abm_edges(grown)
 }
@@ -30,9 +27,9 @@ language <- function(algorithm = c("threshold", "reward"), n = 200,
     seed    = seed
   )
   update <- if (algorithm == "threshold") {
-    abm_rules(w ~ if_else(is.na(heard), w, as.numeric(heard >= alpha)))
+    abm_rules(w ~ as.numeric(heard >= alpha), when = !is.na(heard))
   } else {
-    abm_rules(w ~ if_else(is.na(heard), w, (1 - rate) * w + rate * heard))
+    abm_rules(w ~ (1 - rate) * w + rate * heard, when = !is.na(heard))
   }
   go <- abm_go(
     abm_rules(utterance ~ as.numeric(runif(n()) < w)),   # speak
@@ -63,12 +60,8 @@ sweep <- do.call(rbind, lapply(c("threshold", "reward"), function(alg)
 # two update algorithms. The threshold rule is a step; the reward rule is not.
 library(ggplot2)
 
-fig_file <- function(name) {
-  a <- grep("^--file=", commandArgs(), value = TRUE)
-  d <- if (length(a)) dirname(sub("^--file=", "", a[1])) else "."
-  dir.create(file.path(d, "..", "figures"), showWarnings = FALSE)
-  file.path(d, "..", "figures", name)
-}
+.file <- grep("^--file=", commandArgs(), value = TRUE)
+source(file.path(dirname(sub("^--file=", "", c(.file, "x")[1])), "../../fig_file.R"))
 
 fig <- ggplot(sweep, aes(start, end, colour = algorithm)) +
   geom_abline(slope = 1, intercept = 0, linetype = "dashed",

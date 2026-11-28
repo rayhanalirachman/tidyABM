@@ -16,42 +16,50 @@ holds a strategy table. Crossover then says what it means: take the first
 `cross` bits from one parent and the rest from the other.
 
 ```r
-L <- 20; N <- 100                      # 20 bits, 100 individuals
-mutation <- 0.03; crossover <- 0.7
+library(rlang)
 
-pop <- abm_setup(
-  agents  = abm_agents(n = N, genome = ~lapply(seq_len(n), function(i)
-                                          sample(0:1, L, replace = TRUE))),
-  globals = list(mut = mutation, xover = crossover, L = L),
-  seed    = 1)
+ga <- function(L = 20, N = 100, mutation = 0.03, crossover = 0.7,
+               generations = 100, seed = 1) {
+  pop <- abm_setup(
+    agents  = abm_agents(n = N, genome = ~lapply(seq_len(n), function(i)
+                                            sample(0:1, L, replace = TRUE))),
+    globals = list(mut = mutation, xover = crossover, L = L),
+    seed    = seed
+  )
 
-fitness_rule <- abm_rules(fitness ~ vapply(genome, sum, numeric(1)))
+  fitness_rule <- abm_rules(fitness ~ vapply(genome, sum, numeric(1)))
 
-tournament <- function(out) list(
-  abm_rules(t1 ~ sample(n(), n(), replace = TRUE),
-            t2 ~ sample(n(), n(), replace = TRUE),
-            t3 ~ sample(n(), n(), replace = TRUE)),
-  abm_rules(new_formula(sym(out), expr(
-    if_else(fitness[t1] >= fitness[t2] & fitness[t1] >= fitness[t3], t1,
-            if_else(fitness[t2] >= fitness[t3], t2, t3)))))
-)
+  # tournament of three: the fittest of three random draws becomes a parent
+  tournament <- function(out) {
+    list(
+      abm_rules(t1 ~ sample(n(), n(), replace = TRUE),
+                t2 ~ sample(n(), n(), replace = TRUE),
+                t3 ~ sample(n(), n(), replace = TRUE)),
+      abm_rules(new_formula(sym(out), expr(
+        if_else(fitness[t1] >= fitness[t2] & fitness[t1] >= fitness[t3], t1,
+                if_else(fitness[t2] >= fitness[t3], t2, t3)))))
+    )
+  }
 
-go <- do.call(abm_go, c(
-  list(fitness_rule),
-  tournament("p1"), tournament("p2"),
-  list(abm_rules(cross  ~ sample(L, n(), replace = TRUE),
-                 sexual ~ runif(n()) < xover)),
-  # genome[p1] and genome[p2] are the parents' genomes, so the whole generation
-  # is bred in one rule and every child reads the *old* one.
-  list(abm_rules(genome ~ Map(
-    function(g1, g2, s, k) if (!s) g1 else c(g1[seq_len(k)], g2[-seq_len(k)]),
-    genome[p1], genome[p2], sexual, cross))),
-  list(abm_rules(genome ~ lapply(genome, function(g)
-    if_else(runif(L) < mut, 1L - g, g)))),
-  list(fitness_rule)
-))
+  go <- abm_go(
+    fitness_rule,
+    tournament("p1"), tournament("p2"),
+    abm_rules(cross  ~ sample(L, n(), replace = TRUE),
+              sexual ~ runif(n()) < xover),
+    # single-point crossover: the first `cross` bits from one parent, the rest
+    # from the other. genome[p1] and genome[p2] are the parents' genomes, so
+    # the whole generation is bred in one rule and reads the *old* one.
+    abm_rules(genome ~ Map(
+      function(g1, g2, s, k) if (!s) g1 else c(g1[seq_len(k)], g2[-seq_len(k)]),
+      genome[p1], genome[p2], sexual, cross)),
+    abm_rules(genome ~ lapply(genome, function(g)
+      if_else(runif(L) < mut, 1L - g, g))),
+    fitness_rule)
 
-result <- abm_run(pop, go, ticks = 100, seed = 1)
+  abm_run(pop, go, ticks = generations, seed = seed)
+}
+
+result <- ga()
 ```
 
 **Result.** 20 bits, 100 individuals, 100 generations. With mutation 0.03 the
@@ -83,7 +91,7 @@ random stream is therefore different.
 
 *What did still work cleanly, and is why `L` is no longer in the shape of the
 model: formula objects built with `rlang::new_formula()` go straight into
-`abm_rules()` and `do.call(abm_go, ...)`. Only the tournament needs it now, and
+`abm_rules()` and `abm_go()`. Only the tournament needs it now, and
 only because the target column is computed.*
 
 **Replication**

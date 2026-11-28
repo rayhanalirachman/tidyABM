@@ -15,61 +15,78 @@
 **Package**
 
 ```r
-n_choices <- 10; n_problems <- 20; n_dms <- 10
-n_kinds <- 3; need <- 1; power <- 0.1; base <- 1
+garbage_can <- function(load = 1.1, access = c("unsegmented", "specialized"),
+                        n_choices = 10, n_problems = 20, n_kinds = 3,
+                        n_dms = 10, periods = 20, power = 0.55, seed = 1) {
+  access <- match.arg(access)
+  need <- load * n_dms * power * periods / n_problems
+  open <- access == "unsegmented"
+  base <- 1L
+  m <- abm_setup(
+    agents = list(
+      choices = abm_agents(
+        n = n_choices, entry = ~seq_len(n), energy = 0, added = 0,
+        kind = ~rep(seq_len(n_kinds), length.out = n),
+        n_att = 0L, ever = 0L, deficit = need, made = FALSE, fresh = FALSE,
+        members = ~vector("list", n), style = NA_character_, made_at = NA_integer_),
+      problems = abm_agents(
+        n = n_problems, entry = ~rep(seq_len(n_choices), length.out = n),
+        kind = ~sample(seq_len(n_kinds), n, replace = TRUE),
+        solved = FALSE, att = NA_integer_),
+      dms = abm_agents(n = n_dms, power = power,
+                       kind = ~rep(seq_len(n_kinds), length.out = n))
+    ),
+    seed = seed
+  )
+  live_choice  <- rlang::expr(.group == "choices"  & !made   & entry <= .tick)
+  live_problem <- rlang::expr(.group == "problems" & !solved & entry <= .tick)
 
-m <- abm_setup(
-  agents = list(
-    choices  = abm_agents(n = n_choices, entry = ~seq_len(n), energy = 0, added = 0,
-                          kind = ~rep(seq_len(n_kinds), length.out = n),
-                          n_att = 0L, ever = 0L, deficit = need,
-                          made = FALSE, fresh = FALSE,
-                          members = ~vector("list", n),
-                          style = NA_character_, made_at = NA_integer_),
-    problems = abm_agents(n = n_problems,
-                          entry = ~rep(seq_len(n_choices), length.out = n),
-                          kind  = ~sample(seq_len(n_kinds), n, replace = TRUE),
-                          solved = FALSE, att = NA_integer_),
-    dms      = abm_agents(n = n_dms, power = power,
-                          kind = ~rep(seq_len(n_kinds), length.out = n))),
-  globals = list(now = 0),
-  seed    = 1)
+  go <- abm_go(
+    abm_rules(n_att ~ 0L, added ~ 0, fresh ~ FALSE,
+              members ~ vector("list", n())),
 
-go <- abm_go(
-  abm_global(now ~ now + 1),
-  abm_rules(n_att ~ 0L, added ~ 0, fresh ~ FALSE,
-            members ~ vector("list", n()), .scope = "population"),
+    # every live problem attaches to the accessible choice that is closest to
+    # being made -- the cost is an energy deficit, not a distance
+    abm_match(
+      pair = "nearest",
+      cost = if_else(open | kind == own_kind, deficit, NA_real_),
+      eligible = !!live_problem, among = !!live_choice,
+      abm_rules(att ~ .partner),
+      abm_tell(n_att ~ 1L, to = .partner, when = !!live_problem & !is.na(.partner),
+               .resolve = "sum"),
+      # ...and tells the choice who it is, so the choice can answer back later
+      abm_tell(members ~ .id, to = .partner,
+               when = !!live_problem & !is.na(.partner), .resolve = "collect")),
 
-  # every live problem attaches to the accessible choice that is closest to
-  # being made: the thing being minimised is an energy deficit, not a distance
-  abm_match(pair = "nearest",
-            cost = if_else(open | kind == own_kind, deficit, NA_real_),
-            eligible = !!live_problem, among = !!live_choice),
-  abm_tell(n_att ~ 1L, to = .partner, .resolve = "sum",
-           when = !!live_problem & !is.na(.partner)),
-  # ...and tells the choice who it is, so the choice can answer back later
-  abm_tell(members ~ .id, to = .partner, .resolve = "collect",
-           when = !!live_problem & !is.na(.partner)),
+    # every decision maker puts its energy where it will make most difference
+    abm_match(
+      pair = "nearest",
+      cost = if_else(open | kind == own_kind, deficit, NA_real_),
+      eligible = .group == "dms", among = !!live_choice,
+      abm_tell(added ~ power, to = .partner,
+               when = .group == "dms" & !is.na(.partner), .resolve = "sum")),
+    abm_rules(energy ~ energy + added, ever ~ ever + n_att),
 
-  abm_match(pair = "nearest",
-            cost = if_else(open | kind == own_kind, deficit, NA_real_),
-            eligible = .group == "dms", among = !!live_choice),
-  abm_tell(added ~ power, to = .partner, .resolve = "sum",
-           when = .group == "dms" & !is.na(.partner)),
-  abm_rules(energy ~ energy + added, ever ~ ever + n_att, .scope = "population"),
+    abm_rules(fresh ~ !made & energy >= need * (base + n_att)),
+    abm_rules(
+      made ~ made | fresh,
+      made_at ~ if_else(fresh, .tick, made_at),
+      style ~ dplyr::case_when(
+        !fresh      ~ style,
+        n_att > 0L  ~ "resolution",
+        ever > 0L   ~ "flight",
+        TRUE        ~ "oversight")),
+    # a choice that has just been made solves everything still attached to it
+    abm_tell(solved ~ TRUE, to = lapply(members, function(v) unlist(v)),
+             when = .group == "choices" & fresh),
+    abm_rules(deficit ~ pmax(0, need * (base + n_att) - energy)),
+    abm_global(n_made ~ sum(made, na.rm = TRUE),
+               n_solved ~ sum(solved, na.rm = TRUE))
+  )
+  abm_run(m, go, ticks = periods, seed = seed)
+}
 
-  abm_rules(fresh ~ !made & energy >= need * (base + n_att), .scope = "population"),
-  abm_rules(made ~ made | fresh,
-            style ~ case_when(!fresh ~ style, n_att > 0L ~ "resolution",
-                              ever > 0L ~ "flight", TRUE ~ "oversight"),
-            .scope = "population"),
-  # a choice that has just been made solves everything still attached to it
-  abm_tell(solved ~ TRUE, to = lapply(members, unlist),
-           when = .group == "choices" & fresh),
-  abm_rules(deficit ~ pmax(0, need * (base + n_att) - energy), .scope = "population")
-)
-
-result <- abm_run(m, go, ticks = 20, seed = 1)
+result <- garbage_can()
 ```
 
 **Result** (20 periods, 20 seeds. Counts out of 10 choices and 20 problems)

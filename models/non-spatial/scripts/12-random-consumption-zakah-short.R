@@ -8,20 +8,16 @@
 # The corrected version is model 16.
 library(tidyABM)
 
-NISAB <- 100; poverty_line <- 30
-
 zakah <- abm_setup(
   agents  = abm_agents(n = 300, wealth = ~rlnorm(n, 4, 0.5),
                        income = ~rlnorm(n, 3, 0.4)),
-  globals = list(zakah_pool = 0))
+  globals = list(zakah_pool = 0, nisab = 100, poverty_line = 30))
 
 go <- abm_go(
   abm_rules(wealth ~ wealth + income - (0.6 * income + 0.02 * wealth)),
-  abm_global(zakah_pool ~ sum(if_else(wealth > NISAB, wealth * 0.025, 0))),
-  abm_rules(wealth ~ if_else(wealth > NISAB, wealth * 0.975, wealth)),
-  abm_rules(wealth ~ if_else(wealth < poverty_line,
-                             wealth + zakah_pool / sum(wealth < poverty_line),
-                             wealth))
+  abm_global(zakah_pool ~ sum(if_else(wealth > nisab, wealth * 0.025, 0))),
+  abm_rules(wealth ~ wealth * 0.975, when = wealth > nisab),
+  abm_rules(wealth ~ wealth + zakah_pool / n(), when = wealth < poverty_line)
 )
 
 result <- abm_run(zakah, go, ticks = 50, seed = 12)
@@ -32,7 +28,7 @@ gini <- function(x) {
 }
 series <- data.frame(
   tick = sort(unique(result$tick)),
-  poor = as.numeric(tapply(result$wealth < poverty_line, result$tick, sum)),
+  poor = as.numeric(tapply(result$wealth < zakah$globals$poverty_line, result$tick, sum)),
   med  = as.numeric(tapply(result$wealth, result$tick, median)),
   gini = as.numeric(tapply(result$wealth, result$tick, gini)))
 
@@ -50,12 +46,8 @@ cat("recipients and the model has nothing left to say\n")
 # --- figure ---------------------------------------------------------------
 library(ggplot2)
 
-fig_file <- function(name) {
-  a <- grep("^--file=", commandArgs(), value = TRUE)
-  d <- if (length(a)) dirname(sub("^--file=", "", a[1])) else "."
-  dir.create(file.path(d, "..", "figures"), showWarnings = FALSE)
-  file.path(d, "..", "figures", name)
-}
+.file <- grep("^--file=", commandArgs(), value = TRUE)
+source(file.path(dirname(sub("^--file=", "", c(.file, "x")[1])), "../../fig_file.R"))
 
 p <- ggplot(series, aes(tick, poor)) +
   geom_line() +

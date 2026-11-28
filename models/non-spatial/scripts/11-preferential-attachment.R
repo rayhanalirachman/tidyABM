@@ -37,12 +37,8 @@ for (k in names(tab)) cat(sprintf("%-8s %8d\n", k, as.integer(tab[[k]])))
 # supposed to look like a line.
 library(ggplot2)
 
-fig_file <- function(name) {
-  a <- grep("^--file=", commandArgs(), value = TRUE)
-  d <- if (length(a)) dirname(sub("^--file=", "", a[1])) else "."
-  dir.create(file.path(d, "..", "figures"), showWarnings = FALSE)
-  file.path(d, "..", "figures", name)
-}
+.file <- grep("^--file=", commandArgs(), value = TRUE)
+source(file.path(dirname(sub("^--file=", "", c(.file, "x")[1])), "../../fig_file.R"))
 
 d <- data.frame(degree = as.integer(names(tab)), agents = as.integer(tab))
 

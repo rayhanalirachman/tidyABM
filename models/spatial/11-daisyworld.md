@@ -13,38 +13,43 @@
 **Package**
 
 ```r
-daisy <- abm_setup(
-  agents = abm_agents(
-    kind = ~sample(c("white", "black", "none"), n, TRUE, c(0.2, 0.2, 0.6)),
-    age  = 0L),
-  space = abm_space(type = "grid", dims = c(40, 40),
-                    diagonals = TRUE, torus = TRUE),
-  globals = list(luminosity = 1.0, global_temp = 0), seed = 1)
+run_one <- function(lum, w = 40, ticks = 300, seed = 1) {
+  d <- abm_setup(
+    agents = abm_agents(
+      kind = ~sample(c("white", "black", "none"), n, TRUE, c(0.2, 0.2, 0.6)),
+      age  = 0L),
+    space = abm_space(type = "grid", dims = c(w, w),
+                      diagonals = TRUE, torus = TRUE),
+    globals = list(luminosity = lum, global_temp = 0), seed = seed)
 
-go <- abm_go(
-  abm_rules(albedo ~ case_when(kind == "white" ~ 0.75,
-                               kind == "black" ~ 0.25,
-                               TRUE            ~ 0.40), .scope = "population"),
-  abm_rules(local_t ~ luminosity * (1 - albedo) * 40 - 5, .scope = "population"),
-  abm_neighbours(t_in ~ mean(local_t)),
-  abm_rules(temperature ~ 0.5 * local_t + 0.5 * t_in),
+  go <- abm_go(
+    abm_rules(albedo ~ case_when(kind == "white" ~ 0.75,
+                                 kind == "black" ~ 0.25,
+                                 TRUE            ~ 0.40)),
+    abm_rules(local_t ~ luminosity * (1 - albedo) * 40 - 5),
+    abm_neighbours(t_in ~ mean(local_t)),
+    abm_rules(temperature ~ 0.5 * local_t + 0.5 * t_in),
 
-  abm_rules(age  ~ if_else(kind != "none", age + 1L, 0L),
-            kind ~ if_else(age > 25L, "none", kind), .scope = "population"),
+    abm_rules(age  ~ if_else(kind != "none", age + 1L, 0L),
+              kind ~ if_else(age > 25L, "none", kind)),
 
-  abm_match(pair = "network", eligible = kind == "none"),
-  abm_rules(kind ~ if_else(
-    !is.na(partner_kind) & partner_kind != "none" &
-      runif(n()) < pmax(0, 1 - ((temperature - 22.5) / 17.5)^2),
-    partner_kind, kind)),
+    abm_match(pair = "network", eligible = kind == "none"),
+    abm_rules(kind ~ if_else(
+      !is.na(partner_kind) & partner_kind != "none" &
+        runif(n()) < pmax(0, 1 - ((temperature - 22.5) / 17.5)^2),
+      partner_kind, kind)),
 
-  abm_global(global_temp ~ mean(temperature),
-             white_f ~ mean(kind == "white"),
-             black_f ~ mean(kind == "black"),
-             bare_t  ~ mean(luminosity * (1 - 0.40) * 40 - 5))
-)
+    abm_global(global_temp ~ mean(temperature),
+               white_f ~ mean(kind == "white"),
+               black_f ~ mean(kind == "black"),
+               bare_t  ~ mean(luminosity * (1 - 0.40) * 40 - 5)))
 
-result <- abm_run(daisy, go, ticks = 300, seed = 1, record = "globals")
+  g <- abm_globals(abm_run(d, go, ticks = ticks, seed = seed,
+                           record = "globals", progress = FALSE))
+  tail(g, 1)
+}
+
+result <- run_one(1.0)
 ```
 
 *L0, and it needs nothing past the lattice constructor — which is the useful

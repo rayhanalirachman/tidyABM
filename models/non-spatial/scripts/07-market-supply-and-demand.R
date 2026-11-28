@@ -18,26 +18,18 @@ go <- abm_go(
 
   abm_match(pair = "opposite_group", sides = .group),
 
-  abm_rules(
-    transacted ~ case_when(
-      .group == "seller" & partner_expected_price >= expected_price ~ TRUE,
-      .group == "buyer"  & expected_price >= partner_expected_price ~ TRUE,
-      TRUE ~ FALSE
-    ),
-    deal_price ~ if_else(
-      (.group == "seller" & partner_expected_price >= expected_price) |
-      (.group == "buyer"  & expected_price >= partner_expected_price),
-      (expected_price + partner_expected_price) / 2, NA_real_
-    )
-  ),
+  abm_rules(transacted ~ if_else(.group == "seller",
+                                 partner_expected_price >= expected_price,
+                                 expected_price >= partner_expected_price)),
+  abm_rules(deal_price ~ if_else(
+    transacted, (expected_price + partner_expected_price) / 2, NA_real_)),
 
   abm_rules(
     expected_price ~ case_when(
       .group == "seller" &  transacted ~ expected_price + 2,
       .group == "seller" & !transacted ~ pmax(expected_price - 1, limit_price),
       .group == "buyer"  &  transacted ~ expected_price - 1,
-      .group == "buyer"  & !transacted ~ pmin(expected_price + 1, limit_price),
-      TRUE ~ expected_price
+      .group == "buyer"  & !transacted ~ pmin(expected_price + 1, limit_price)
     ),
     .scope = "population"
   )
@@ -67,12 +59,8 @@ cat(sprintf("seller's ask %.1f -> %.1f, against a limit of 20\n",
 # --- figure ---------------------------------------------------------------
 library(ggplot2)
 
-fig_file <- function(name) {
-  a <- grep("^--file=", commandArgs(), value = TRUE)
-  d <- if (length(a)) dirname(sub("^--file=", "", a[1])) else "."
-  dir.create(file.path(d, "..", "figures"), showWarnings = FALSE)
-  file.path(d, "..", "figures", name)
-}
+.file <- grep("^--file=", commandArgs(), value = TRUE)
+source(file.path(dirname(sub("^--file=", "", c(.file, "x")[1])), "../../fig_file.R"))
 
 p <- ggplot(sell, aes(tick, deal_price)) +
   geom_point(size = 1.2, na.rm = TRUE) +

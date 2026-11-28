@@ -12,8 +12,8 @@ directory:
 Rscript models/spatial/scripts/01-life.R
 ```
 
-Every script is self-contained: its own `library(tidyABM)`, its own parameters,
-no shared setup file. They need `tidyABM` and `ggplot2` installed.
+Every script carries its own `library(tidyABM)` and model. The one shared file
+is [`../../fig_file.R`](../../fig_file.R), which says where a figure goes. They need `tidyABM` and `ggplot2` installed.
 
 The `testthat` cases in
 [`../../../tests/testthat/test-spatial.R`](../../../tests/testthat/test-spatial.R)

@@ -14,27 +14,39 @@
 **Package**
 
 ```r
-n <- 200; liquid <- 0.5; r1 <- 1.2; memory <- 0.5; impatient <- 0.1
+bankrun <- function(n = 1000, days = 200, impatient = 0.1, r1 = 1.2,
+                    liquid = 0.5, memory = 0.9, ordered = TRUE, seed = 1) {
+  m <- abm_setup(
+    agents = abm_agents(n = n, pos = ~sample(n), theta = ~runif(n),
+                        belief = 0, ran = FALSE, paid = 0, dry = FALSE),
+    globals = list(till = liquid * n, empty = 0),
+    seed = seed
+  )
+  serve <- if (ordered) {
+    abm_sequential(
+      ran    ~ runif(1) < impatient | belief > theta,
+      paid   ~ if_else(ran, pmin(r1, till), 0),
+      till   ~ till - paid,
+      dry    ~ till < r1,
+      belief ~ memory * belief + (1 - memory) * as.numeric(dry),
+      .order = pos)
+  } else {
+    abm_sequential(
+      ran    ~ runif(1) < impatient | belief > theta,
+      paid   ~ if_else(ran, pmin(r1, till), 0),
+      till   ~ till - paid,
+      dry    ~ till < r1,
+      belief ~ memory * belief + (1 - memory) * as.numeric(dry))
+  }
+  go <- abm_go(
+    abm_global(till ~ liquid * n()),
+    serve,
+    abm_global(empty ~ mean(ran))
+  )
+  abm_run(m, go, ticks = days, seed = seed)
+}
 
-m <- abm_setup(
-  agents  = abm_agents(n = n, pos = ~sample(n), theta = ~runif(n),
-                       belief = 0, ran = FALSE, paid = 0, dry = FALSE),
-  globals = list(till = liquid * n, empty = 0),
-  seed    = 1)
-
-go <- abm_go(
-  abm_global(till ~ liquid * n()),
-  abm_sequential(
-    ran    ~ runif(1) < impatient | belief > theta,
-    paid   ~ if_else(ran, pmin(r1, till), 0),
-    till   ~ till - paid,
-    dry    ~ till < r1,
-    belief ~ memory * belief + (1 - memory) * as.numeric(dry),
-    .order = pos),
-  abm_global(empty ~ mean(ran))
-)
-
-result <- abm_run(m, go, ticks = 50, seed = 1)
+result <- bankrun(n = 200, days = 50, memory = 0.5)
 ```
 
 **Result** (200 depositors, 50 days, till = 0.5 N, r₁ = 1.2, 5 seeds)

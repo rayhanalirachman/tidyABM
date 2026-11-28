@@ -11,13 +11,11 @@
 
 library(tidyABM)
 
-w <- h <- 121
-start <- 61 + (61 - 1) * w
-
 langton <- abm_setup(
   agents = list(patches = abm_agents(white = TRUE),
-                ant     = abm_agents(n = 1, heading = 0L, at = ~start)),
-  space  = abm_space(type = "grid", dims = c(w, h), on = "patches",
+                # the centre cell: x = 61, y = 61
+                ant     = abm_agents(n = 1, heading = 0L, at = ~61 + 60 * 121)),
+  space  = abm_space(type = "grid", dims = c(121, 121), on = "patches",
                      diagonals = FALSE, torus = TRUE))
 
 go <- abm_go(
@@ -26,7 +24,7 @@ go <- abm_go(
   abm_move(who = "ant", direction = heading)
 )
 
-reference <- function(n_steps) {
+reference <- function(n_steps, w = 121, h = 121, start = 61 + 60 * 121) {
   white <- rep(TRUE, w * h); cell <- start; hd <- 0L
   for (i in seq_len(n_steps)) {
     hw <- white[cell]
@@ -64,12 +62,8 @@ cat("  to 11,500 steps to show it.\n")
 # is checking.
 library(ggplot2)
 
-fig_file <- function(name) {
-  a <- grep("^--file=", commandArgs(), value = TRUE)
-  d <- if (length(a)) dirname(sub("^--file=", "", a[1])) else "."
-  dir.create(file.path(d, "..", "figures"), showWarnings = FALSE)
-  file.path(d, "..", "figures", name)
-}
+.file <- grep("^--file=", commandArgs(), value = TRUE)
+source(file.path(dirname(sub("^--file=", "", c(.file, "x")[1])), "../../fig_file.R"))
 
 N <- 11500
 r_fig <- abm_run(langton, go, ticks = N, seed = 1, record = "final",

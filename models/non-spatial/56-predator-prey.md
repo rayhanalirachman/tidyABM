@@ -13,42 +13,54 @@
 **Package**
 
 ```r
-response <- "mass_action"
-n_sheep <- 250; n_wolves <- 175; area <- 300; K <- 1250
-sheep_rep <- 0.03; wolf_rep <- 0.02; catch <- 0.04; gain <- 30
-
-m <- abm_setup(
-  agents  = list(
-    sheep  = abm_agents(n = n_sheep,  energy = 0),
-    wolves = abm_agents(n = n_wolves, energy = ~runif(n, 1, gain))),
-  globals = list(n_sheep = n_sheep, n_wolves = n_wolves),
-  seed    = 1)
-
-# The pairing mode *is* the functional response. "opposite_group" makes
-# min(S, W) encounters, which is ratio-dependent; filtering the hunters by
-# sheep density first makes S*W/area of them, which is mass action.
-hunt <- if (response == "mass_action") {
-  abm_match(pair = "opposite_group", sides = .group,
-            eligible = .group == "sheep" | runif(n()) < n_sheep / area)
-} else {
-  abm_match(pair = "opposite_group", sides = .group)
+wolfsheep <- function(response = c("mass_action", "ratio"),
+                      n_sheep = 1000, n_wolves = 700, ticks = 600,
+                      sheep_rep = 0.03, wolf_rep = 0.02, catch = 0.04,
+                      gain = 30, K = 5000, area = 1200, seed = 1,
+                      record = "globals") {
+  response <- match.arg(response)
+  m <- abm_setup(
+    agents = list(
+      sheep  = abm_agents(n = n_sheep,  energy = 0),
+      wolves = abm_agents(n = n_wolves, energy = ~runif(n, 1, gain))
+    ),
+    globals = list(n_sheep = n_sheep, n_wolves = n_wolves),
+    seed = seed
+  )
+  # The pairing mode *is* the functional response. "opposite_group" makes
+  # min(S, W) encounters, which is ratio-dependent; filtering the hunters by
+  # sheep density first makes S*W/area of them, which is mass action.
+  hunt <- if (response == "mass_action") {
+    abm_match(pair = "opposite_group", sides = .group,
+              eligible = .group == "sheep" | runif(n()) < n_sheep / area)
+  } else {
+    abm_match(pair = "opposite_group", sides = .group)
+  }
+  go <- abm_go(
+    abm_global(n_sheep  ~ sum(.group == "sheep"),
+               n_wolves ~ sum(.group == "wolves")),
+    abm_rules(caught ~ FALSE),
+    hunt,
+    abm_rules(caught ~ runif(1) < catch),
+    abm_rules(energy ~ if_else(.group == "wolves" & caught, energy + gain,
+                               energy - (.group == "wolves")),
+              .scope = "population"),
+    abm_death(when = (.group == "sheep" & caught) |
+                     (.group == "wolves" & energy <= 0)),
+    abm_birth(when = .group == "sheep" &
+                     runif(n()) < sheep_rep * (1 - n_sheep / K)),
+    abm_birth(when = .group == "wolves" & runif(n()) < wolf_rep,
+              cost = energy ~ energy / 2)
+  )
+  # everything this model reports is a count per tick, and the population it
+  # is counting can reach tens of thousands. `record = "globals"` keeps the two
+  # counts and none of the agents, which is the difference between a run that
+  # finishes and one the kernel stops.
+  abm_run(m, go, ticks = ticks, seed = seed, record = record)
 }
 
-go <- abm_go(
-  abm_global(n_sheep ~ sum(.group == "sheep"), n_wolves ~ sum(.group == "wolves")),
-  abm_rules(caught ~ FALSE, .scope = "population"),
-  hunt,
-  abm_rules(caught ~ runif(1) < catch),
-  abm_rules(energy ~ if_else(.group == "wolves" & caught, energy + gain,
-                             energy - (.group == "wolves")), .scope = "population"),
-  abm_death(when = (.group == "sheep" & caught) | (.group == "wolves" & energy <= 0)),
-  abm_birth(when = .group == "sheep" & runif(n()) < sheep_rep * (1 - n_sheep / K)),
-  abm_birth(when = .group == "wolves" & runif(n()) < wolf_rep, cost = energy ~ energy / 2)
-)
-
-# `record = "globals"` keeps the two counts and none of the agents, which is the
-# difference between a run that finishes and one the kernel stops.
-result <- abm_run(m, go, ticks = 2000, seed = 1, record = "globals")
+result <- wolfsheep(n_sheep = 250, n_wolves = 175, K = 1250,
+                    area = 300, ticks = 2000)
 ```
 
 **Result** (mass action. Catch 0.04, gain 30, r 0.03, K 1250, area 300, 2000 ticks)

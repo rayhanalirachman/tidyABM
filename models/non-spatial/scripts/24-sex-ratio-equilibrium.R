@@ -10,23 +10,23 @@
 # scarce each male fathers more children.
 library(tidyABM)
 
-LONGEVITY <- 8; MATURITY <- 2; MATING <- 0.6; CAP <- 1500
-
 fisher_run <- function(p_male, ticks = 1200, seed = 2) {
-  pop <- abm_setup(agents = abm_agents(
-    n   = 1000,
-    sex = ~sample(c("male", "female"), n, replace = TRUE,
-                  prob = c(p_male, 1 - p_male)),
-    mcc = ~pmin(0.95, pmax(0.05, rnorm(n, p_male, 0.08))),
-    age = ~sample(0:LONGEVITY, n, replace = TRUE)))
+  pop <- abm_setup(
+    agents  = abm_agents(
+      n   = 1000,
+      sex = ~sample(c("male", "female"), n, replace = TRUE,
+                    prob = c(p_male, 1 - p_male)),
+      mcc = ~pmin(0.95, pmax(0.05, rnorm(n, p_male, 0.08))),
+      age = ~sample(0:longevity, n, replace = TRUE)),
+    globals = list(longevity = 8, maturity = 2, mating = 0.6, cap = 1500))
 
   go <- abm_go(
     abm_rules(age ~ age + 1),
-    abm_death(when = age > LONGEVITY),
-    abm_death(when = runif(n()) < pmax(0, (n() - CAP) / n())),
-    abm_match(pair = "opposite_group", sides = sex, eligible = age >= MATURITY),
+    abm_death(when = age > longevity),
+    abm_death(when = runif(n()) < pmax(0, (n() - cap) / n())),
+    abm_match(pair = "opposite_group", sides = sex, eligible = age >= maturity),
     abm_birth(
-      when = sex == "female" & !is.na(.partner) & runif(n()) < MATING,
+      when = sex == "female" & !is.na(.partner) & runif(n()) < mating,
       inherit = list(
         age ~ 0,
         mcc ~ pmin(0.95, pmax(0.05, (mcc + partner_mcc) / 2 + rnorm(n(), 0, 0.05))),
@@ -60,12 +60,8 @@ cat("male-child probability follows it: Fisher's principle\n")
 # --- figure ---------------------------------------------------------------
 library(ggplot2)
 
-fig_file <- function(name) {
-  a <- grep("^--file=", commandArgs(), value = TRUE)
-  d <- if (length(a)) dirname(sub("^--file=", "", a[1])) else "."
-  dir.create(file.path(d, "..", "figures"), showWarnings = FALSE)
-  file.path(d, "..", "figures", name)
-}
+.file <- grep("^--file=", commandArgs(), value = TRUE)
+source(file.path(dirname(sub("^--file=", "", c(.file, "x")[1])), "../../fig_file.R"))
 
 d <- do.call(rbind, runs)
 

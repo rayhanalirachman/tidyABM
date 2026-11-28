@@ -14,28 +14,52 @@
 **Package**
 
 ```r
-N <- 10; jump <- 0.1                       # 10 bits, occasional long jump
+make_nk <- function(N = 10, K = 0, seed = 1) {
+  set.seed(seed)
+  # for each locus, which loci it depends on, and a table of 2^(K+1) draws
+  deps <- lapply(seq_len(N), function(i) ((i - 1 + 0:K) %% N) + 1L)
+  tbl  <- matrix(runif(N * 2^(K + 1)), nrow = N)
+  list(N = N, K = K, deps = deps, tbl = tbl)
+}
 
-m <- abm_setup(
-  agents = abm_agents(
-    n    = 100,
-    form = ~lapply(seq_len(n), function(i) as.integer(runif(N) < 0.5))),
-  seed   = 1)
+fitness <- function(x, nk) {
+  # x is a matrix, one row per organisation, one column per locus
+  out <- matrix(0, nrow = nrow(x), ncol = nk$N)
+  for (i in seq_len(nk$N)) {
+    idx <- 1L + as.integer(x[, nk$deps[[i]], drop = FALSE] %*% 2^(0:nk$K))
+    out[, i] <- nk$tbl[i, idx]
+  }
+  rowMeans(out)
+}
 
-go <- abm_go(
-  abm_rules(
-    trial ~ lapply(form, function(v) {
-      if (runif(1) < jump) as.integer(runif(N) < 0.5)
-      else { i <- sample(N, 1); v[i] <- 1L - v[i]; v }
-    }),
-    .scope = "population"),
-  abm_rules(
-    form ~ Map(function(a, b) if (fit1(b, nk) > fit1(a, nk)) b else a,
-               form, trial),
-    .scope = "population")
-)
+fit1 <- function(v, nk) fitness(matrix(v, nrow = 1), nk)
 
-result <- abm_run(m, go, ticks = 200, seed = 1)
+landscape_search <- function(n_firms = 100, N = 10, K = 0, ticks = 200,
+                             jump = 0, seed = 1) {
+  nk <- make_nk(N = N, K = K, seed = seed)
+  m <- abm_setup(
+    agents = abm_agents(
+      n = n_firms,
+      form = ~lapply(seq_len(n), function(i) as.integer(runif(N) < 0.5))),
+    seed = seed
+  )
+  go <- abm_go(
+    abm_rules(
+      trial ~ lapply(form, function(v) {
+        if (runif(1) < jump) as.integer(runif(N) < 0.5)
+        else { i <- sample(N, 1); v[i] <- 1L - v[i]; v }
+      })),
+    abm_rules(
+      form ~ Map(function(a, b) if (fit1(b, nk) > fit1(a, nk)) b else a,
+                 form, trial))
+  )
+  r <- abm_run(m, go, ticks = ticks, seed = seed)
+  f <- r[r$tick == ticks, ]
+  list(fit   = mean(vapply(f$form, fit1, numeric(1), nk = nk)),
+       forms = length(unique(vapply(f$form, paste, character(1), collapse = ""))))
+}
+
+result <- landscape_search(K = 3, jump = 0.1)
 ```
 
 **Result** (N = 10, 100 organisations, 200 periods of search, 5 seeds)

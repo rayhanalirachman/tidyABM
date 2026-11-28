@@ -13,36 +13,51 @@
 **Package**
 
 ```r
-n <- 100; delta <- 1; alpha <- 3; p <- 0.2
-j <- 1:2                                   # two tasks
-sym_th <- lapply(j, function(k) rlang::sym(paste0("theta_", k)))
-sym_f  <- lapply(j, function(k) rlang::sym(paste0("fire_", k)))
+# among the tasks whose threshold fired, take one at random
+choose_task <- function(...) {
+  f <- cbind(...)
+  vapply(seq_len(nrow(f)), function(i) {
+    w <- which(f[i, ])
+    if (length(w) == 0L) 0L else if (length(w) == 1L) w else sample(w, 1L)
+  }, integer(1))
+}
 
-# the stimuli are one global: a named vector with a key per task
-pop <- abm_setup(
-  agents  = do.call(abm_agents, c(
-    list(n = n, task = 0L),
-    setNames(lapply(j, function(k) ~sample(c(500, 500), n, replace = TRUE)),
-             paste0("theta_", j)))),
-  globals = list(s = c("1" = 0, "2" = 0)),
-  seed    = 1)
+dol <- function(n = 100, castes = c(500, 500), n_tasks = 2, delta = 1,
+                alpha = 3, p = 0.2, ticks = 2000, seed = 1) {
+  j <- seq_len(n_tasks)
+  sym_th <- lapply(j, function(k) rlang::sym(paste0("theta_", k)))
+  sym_f  <- lapply(j, function(k) rlang::sym(paste0("fire_", k)))
 
-# a worker carries one threshold per task, so the take-up rules are still
-# assembled rather than written out
-fire <- lapply(j, function(k) rlang::new_formula(sym_f[[k]], rlang::expr(
-  task == 0L & runif(n()) < s[[!!as.character(k)]]^2 /
-    (s[[!!as.character(k)]]^2 + (!!sym_th[[k]])^2))))
+  m <- abm_setup(
+    agents = do.call(abm_agents, c(
+      list(n = n, task = 0L),
+      stats::setNames(lapply(j, function(k) {
+        rlang::new_formula(NULL, rlang::expr(sample(!!castes, n, replace = TRUE)))
+      }), paste0("theta_", j)))),
+    globals = list(s = stats::setNames(rep(0, n_tasks), j)),
+    seed = seed
+  )
 
-go <- abm_go(
-  abm_rules(task ~ if_else(task > 0L & runif(n()) < p, 0L, task)),
-  do.call(abm_rules, fire),
-  abm_rules(rlang::new_formula(rlang::sym("task"), rlang::expr(
-    if_else(task == 0L, choose_task(!!!sym_f), task)))),
-  # one rule, whatever K is
-  abm_global(s ~ max(0, s + delta - alpha * sum(task == .key) / n()), .by = j)
-)
+  fire <- lapply(j, function(k) {
+    key <- as.character(k)
+    rlang::new_formula(sym_f[[k]], rlang::expr(
+      task == 0L & runif(n()) < s[[!!key]]^2 /
+        (s[[!!key]]^2 + (!!sym_th[[k]])^2)))
+  })
 
-result <- abm_run(pop, go, ticks = 2000, seed = 1)
+  go <- abm_go(
+    abm_rules(task ~ 0L, when = task > 0L & runif(n()) < p),
+    do.call(abm_rules, fire),
+    abm_rules(rlang::new_formula(rlang::sym("task"), rlang::expr(
+      if_else(task == 0L, choose_task(!!!sym_f), task)))),
+    # one rule, whatever K is: the stimulus of every task, in one place
+    abm_global(s ~ max(0, s + delta - alpha * sum(task == .key) / n()),
+               .by = j)
+  )
+  abm_run(m, go, ticks = ticks, seed = seed)
+}
+
+result <- dol()
 ```
 
 **Result** (δ = 1, α = 3, p = 0.2, N = 100, two tasks, 2000 ticks, 5 seeds)

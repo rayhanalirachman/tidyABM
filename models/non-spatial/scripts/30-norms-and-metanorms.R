@@ -13,8 +13,6 @@ library(tidyABM)
 # numbers. `saw`/`zeal` are the focal agent's own; `saw_back`/`zeal_back` are
 # its neighbour's.
 
-T_ <- 3; H_ <- -1; P_ <- -9; E_ <- -2
-
 mutate3 <- function(x, rate = 0.01) {
   for (b in 0:2) {
     flip <- runif(length(x)) < rate
@@ -36,15 +34,15 @@ opportunity <- function(metanorms) {
     # what I saw, and how much of it I chose to punish
     abm_neighbours(witnessed   ~ sum(defected & saw < seen),
                    punish_acts ~ sum(defected & saw < seen &
-                                     zeal < own_vengefulness / 7)),
-    abm_rules(witnessed   ~ coalesce(witnessed, 0L),
-              punish_acts ~ coalesce(punish_acts, 0L)),
+                                     zeal < own_vengefulness / 7),
+                   .default = 0L),
     abm_rules(shirked ~ witnessed - punish_acts,
               payoff  ~ payoff + E_ * punish_acts),
     # how many others punished *me*: the same coins, read from the other end
     abm_neighbours(punishers ~ sum(own_defected & saw_back < own_seen &
-                                   zeal_back < vengefulness / 7)),
-    abm_rules(payoff ~ payoff + P_ * coalesce(punishers, 0L) * as.integer(defected))
+                                   zeal_back < vengefulness / 7),
+                   .default = 0L),
+    abm_rules(payoff ~ payoff + P_ * punishers * as.integer(defected))
   )
   if (!metanorms) return(steps)
   c(steps, list(
@@ -54,26 +52,12 @@ opportunity <- function(metanorms) {
     abm_neighbours(meta_hits ~ sum(own_shirked > 0 & msaw_back < own_seen &
                                    mzeal_back < vengefulness / 7),
                    meta_acts ~ sum(shirked > 0 & msaw < seen &
-                                   mzeal < own_vengefulness / 7)),
-    abm_rules(payoff ~ payoff + P_ * coalesce(meta_hits, 0L) * shirked),
-    abm_rules(payoff ~ payoff + E_ * coalesce(meta_acts, 0L))
+                                   mzeal < own_vengefulness / 7),
+                   .default = 0L),
+    abm_rules(payoff ~ payoff + P_ * meta_hits * shirked),
+    abm_rules(payoff ~ payoff + E_ * meta_acts)
   ))
 }
-
-# One generation of selection. Axelrod replicates a player twice if it scored a
-# standard deviation above the mean and not at all if it scored one below; here
-# that is written as a fixed-size resample. The index is drawn *once*, in its own
-# step, so that both traits of a surviving genome travel together.
-evolution <- list(
-  abm_global(mu_p ~ mean(payoff), sd_p ~ stats::sd(payoff)),
-  abm_rules(offspring ~ case_when(payoff > mu_p + sd_p ~ 2,
-                                  payoff < mu_p - sd_p ~ 0,
-                                  TRUE                 ~ 1)),
-  abm_rules(pick ~ sample(n(), n(), replace = TRUE, prob = offspring + 1e-9)),
-  abm_rules(boldness ~ boldness[pick], vengefulness ~ vengefulness[pick]),
-  abm_rules(boldness ~ mutate3(boldness), vengefulness ~ mutate3(vengefulness)),
-  abm_rules(payoff ~ 0)
-)
 
 axelrod <- function(metanorms, n = 20, generations = 100, seed = 1) {
   pop <- abm_setup(
@@ -82,10 +66,25 @@ axelrod <- function(metanorms, n = 20, generations = 100, seed = 1) {
                          vengefulness = ~sample(0:7, n, replace = TRUE),
                          payoff = 0),
     network = abm_network(type = "complete"),
-    globals = list(n_def = 0, mu_p = 0, sd_p = 0),
+    globals = list(n_def = 0, mu_p = 0, sd_p = 0,
+                   T_ = 3, H_ = -1, P_ = -9, E_ = -2),
     seed    = seed
   )
-  go <- do.call(abm_go, c(rep(opportunity(metanorms), 4), evolution))
+  go <- abm_go(
+    rep(opportunity(metanorms), 4),
+    # One generation of selection. Axelrod replicates a player twice if it
+    # scored a standard deviation above the mean and not at all if it scored one
+    # below; here that is written as a fixed-size resample. The index is drawn
+    # *once*, in its own step, so that both traits of a surviving genome travel
+    # together.
+    abm_global(mu_p ~ mean(payoff), sd_p ~ stats::sd(payoff)),
+    abm_rules(offspring ~ case_when(payoff > mu_p + sd_p ~ 2,
+                                    payoff < mu_p - sd_p ~ 0,
+                                    TRUE                 ~ 1)),
+    abm_rules(pick ~ sample(n(), n(), replace = TRUE, prob = offspring + 1e-9)),
+    abm_rules(boldness ~ boldness[pick], vengefulness ~ vengefulness[pick]),
+    abm_rules(boldness ~ mutate3(boldness), vengefulness ~ mutate3(vengefulness)),
+    abm_rules(payoff ~ 0))
   abm_run(pop, go, ticks = generations, seed = seed)
 }
 
@@ -117,12 +116,8 @@ cat(sprintf("metanorms  mean boldness %.2f  vengefulness %.2f  norm collapsed in
 # without the metanorm. The norm alone does not hold; the metanorm does.
 library(ggplot2)
 
-fig_file <- function(name) {
-  a <- grep("^--file=", commandArgs(), value = TRUE)
-  d <- if (length(a)) dirname(sub("^--file=", "", a[1])) else "."
-  dir.create(file.path(d, "..", "figures"), showWarnings = FALSE)
-  file.path(d, "..", "figures", name)
-}
+.file <- grep("^--file=", commandArgs(), value = TRUE)
+source(file.path(dirname(sub("^--file=", "", c(.file, "x")[1])), "../../fig_file.R"))
 
 d <- rbind(
   data.frame(game = "norms", trait = "boldness",

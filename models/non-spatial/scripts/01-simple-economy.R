@@ -37,12 +37,8 @@ cat(sprintf("agents with nothing at tick 1000: %d\n", sum(final == 0)))
 # figure shows.
 library(ggplot2)
 
-fig_file <- function(name) {
-  a <- grep("^--file=", commandArgs(), value = TRUE)
-  d <- if (length(a)) dirname(sub("^--file=", "", a[1])) else "."
-  dir.create(file.path(d, "..", "figures"), showWarnings = FALSE)
-  file.path(d, "..", "figures", name)
-}
+.file <- grep("^--file=", commandArgs(), value = TRUE)
+source(file.path(dirname(sub("^--file=", "", c(.file, "x")[1])), "../../fig_file.R"))
 
 p <- ggplot(data.frame(money = final), aes(money)) +
   geom_histogram(binwidth = 10, boundary = 0, fill = "grey30") +

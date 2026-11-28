@@ -15,53 +15,66 @@
 **Package**
 
 ```r
-demand_before <- 4; demand_after <- 8; step_week <- 5
-target <- 17; alpha <- 0.26; beta <- 0.34
+beer_game <- function(weeks = 50, demand_before = 4, demand_after = 8,
+                      step_week = 5, target = 17, alpha = 0.26, beta = 0.34,
+                      seed = 1) {
+  m <- abm_setup(
+    agents = abm_agents(
+      n         = 4,
+      idx       = 1:4,                       # 1 retailer ... 4 factory
+      up        = c(2L, 3L, 4L, NA_integer_),
+      down      = c(NA_integer_, 1L, 2L, 3L),
+      inventory = 12, backlog = 0,
+      orders_in = 4, ship_in1 = 4, ship_in2 = 4, order_sent = 4,
+      want = 0, shipped = 0, supply_line = 0
+    ),
+    globals = list(demand = demand_before),
+    seed = seed
+  )
 
-m <- abm_setup(
-  agents  = abm_agents(n = 4,
-                       idx  = 1:4,                       # 1 retailer ... 4 factory
-                       up   = c(2L, 3L, 4L, NA_integer_),
-                       down = c(NA_integer_, 1L, 2L, 3L),
-                       inventory = 12, backlog = 0,
-                       orders_in = 4, ship_in1 = 4, ship_in2 = 4, order_sent = 4,
-                       want = 0, shipped = 0, supply_line = 0),
-  globals = list(week = 0L, demand = demand_before),
-  seed    = 1)
+  go <- abm_go(
+    # one tick is one week
+    abm_global(demand ~ if (.tick >= step_week) demand_after else demand_before),
 
-go <- abm_go(
-  abm_global(week ~ week + 1L),
-  abm_global(demand ~ if (week >= step_week) demand_after else demand_before),
+    # this week's shipment lands and the pipeline shuffles up
+    abm_rules(inventory ~ inventory + ship_in1,
+              ship_in1  ~ ship_in2,
+              ship_in2  ~ 0),
 
-  # this week's shipment lands and the pipeline shuffles up
-  abm_rules(inventory ~ inventory + ship_in1,
-            ship_in1  ~ ship_in2,
-            ship_in2  ~ 0),
+    # the customer orders from the retailer
+    abm_rules(orders_in ~ demand, when = idx == 1L),
 
-  # the customer orders from the retailer
-  abm_rules(orders_in ~ if_else(idx == 1L, demand, orders_in)),
+    # fill what you can, remember what you could not
+    abm_rules(want ~ orders_in + backlog),
+    abm_rules(shipped ~ pmin(inventory, want)),
+    abm_rules(inventory ~ inventory - shipped,
+              backlog   ~ want - shipped),
 
-  # fill what you can, remember what you could not
-  abm_rules(want ~ orders_in + backlog),
-  abm_rules(shipped ~ pmin(inventory, want)),
-  abm_rules(inventory ~ inventory - shipped, backlog ~ want - shipped),
+    # ship it downstream, into the far end of that position's pipeline
+    abm_tell(ship_in2 ~ shipped, to = down, when = !is.na(down)),
 
-  # ship it downstream, into the far end of that position's pipeline
-  abm_tell(ship_in2 ~ shipped, to = down, when = !is.na(down)),
+    # anchor on demand, adjust for the stock gap, discount what is already
+    # on its way (Sterman's stock-management heuristic)
+    abm_rules(supply_line ~ ship_in1 + ship_in2 + order_sent),
+    abm_rules(order_sent ~ pmax(0, orders_in +
+                                  alpha * (target - (inventory - backlog)) -
+                                  beta * supply_line)),
 
-  # anchor on demand, adjust for the stock gap, discount what is on its way
-  abm_rules(supply_line ~ ship_in1 + ship_in2 + order_sent),
-  abm_rules(order_sent ~ pmax(0, orders_in +
-                                alpha * (target - (inventory - backlog)) -
-                                beta * supply_line)),
+    # orders are only seen next week, so clear the inbox and post them
+    abm_rules(orders_in ~ 0),
+    abm_tell(orders_in ~ order_sent, to = up, when = !is.na(up)),
+    # the factory brews its own order rather than passing it on
+    abm_rules(ship_in2 ~ ship_in2 + order_sent, when = idx == 4L),
 
-  # orders are only seen next week, so clear the inbox and post them
-  abm_rules(orders_in ~ 0),
-  abm_tell(orders_in ~ order_sent, to = up, when = !is.na(up)),
-  abm_rules(ship_in2 ~ if_else(idx == 4L, ship_in2 + order_sent, ship_in2))
-)
+    abm_global(o1 ~ order_sent[1], o2 ~ order_sent[2],
+               o3 ~ order_sent[3], o4 ~ order_sent[4],
+               i1 ~ inventory[1] - backlog[1], i4 ~ inventory[4] - backlog[4])
+  )
 
-result <- abm_run(m, go, ticks = 60, seed = 1)
+  abm_globals(abm_run(m, go, ticks = weeks, seed = seed))
+}
+
+result <- beer_game(weeks = 60)
 ```
 
 **Result** (60 weeks, α = 0.26, target stock 17)

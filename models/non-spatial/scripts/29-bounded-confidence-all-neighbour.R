@@ -34,12 +34,8 @@ sweep <- do.call(rbind, lapply(c(0.30, 0.25, 0.20, 0.15, 0.10, 0.05),
 # 1/(2 eps) rule.
 library(ggplot2)
 
-fig_file <- function(name) {
-  a <- grep("^--file=", commandArgs(), value = TRUE)
-  d <- if (length(a)) dirname(sub("^--file=", "", a[1])) else "."
-  dir.create(file.path(d, "..", "figures"), showWarnings = FALSE)
-  file.path(d, "..", "figures", name)
-}
+.file <- grep("^--file=", commandArgs(), value = TRUE)
+source(file.path(dirname(sub("^--file=", "", c(.file, "x")[1])), "../../fig_file.R"))
 
 fd <- rbind(
   data.frame(eps = sweep$eps, what = "observed",     k = sweep$clusters),

@@ -24,7 +24,7 @@ epidem <- function(infection_chance = 0.4, recovery_chance = 0.5,
     abm_match(pair = "one_of"),
     abm_rules(state ~ if_else(state == "S" & partner_state == "I" &
                               runif(n()) < inf_p, "I", state)),
-    abm_rules(sick_for ~ if_else(state == "I", sick_for + 1, sick_for)),
+    abm_rules(sick_for ~ sick_for + 1, when = state == "I"),
     abm_rules(state ~ if_else(state == "I" & sick_for > recover_after &
                               runif(n()) < rec_p, "R", state)),
     abm_global(S ~ sum(state == "S")),
@@ -49,12 +49,8 @@ sweep <- do.call(rbind, lapply(c(0.005, 0.01, 0.02, 0.05, 0.1, 0.2),
 # Kermack-McKendrick final-size relation the model is meant to recover.
 library(ggplot2)
 
-fig_file <- function(name) {
-  a <- grep("^--file=", commandArgs(), value = TRUE)
-  d <- if (length(a)) dirname(sub("^--file=", "", a[1])) else "."
-  dir.create(file.path(d, "..", "figures"), showWarnings = FALSE)
-  file.path(d, "..", "figures", name)
-}
+.file <- grep("^--file=", commandArgs(), value = TRUE)
+source(file.path(dirname(sub("^--file=", "", c(.file, "x")[1])), "../../fig_file.R"))
 
 fig <- ggplot(sweep, aes(R0, attack)) +
   geom_vline(xintercept = 1, linetype = "dashed", colour = "grey50") +

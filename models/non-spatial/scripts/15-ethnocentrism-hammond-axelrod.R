@@ -9,34 +9,32 @@
 # draws, in both conditions.
 library(tidyABM)
 
-COST <- 0.01; BENEFIT <- 0.03; BASE_PTR <- 0.12; DEATH <- 0.10; CAPACITY <- 800
-
-random_traits <- list(
-  tag      ~ sample(c("red", "blue"), n(), replace = TRUE),
-  coop_in  ~ sample(c(TRUE, FALSE),   n(), replace = TRUE),
-  coop_out ~ sample(c(TRUE, FALSE),   n(), replace = TRUE))
-
 run_one <- function(local = TRUE, seed = 1, ticks = 400) {
   pop <- abm_setup(
     agents  = abm_agents(n = 400,
                          tag      = ~sample(c("red", "blue"), n, replace = TRUE),
                          coop_in  = ~sample(c(TRUE, FALSE), n, replace = TRUE),
                          coop_out = ~sample(c(TRUE, FALSE), n, replace = TRUE),
-                         ptr      = BASE_PTR),
+                         ptr      = ~base_ptr),
     network = abm_network(type = "random", degree = 4),
+    globals = list(cost = 0.01, benefit = 0.03, base_ptr = 0.12,
+                   death_rate = 0.10, capacity = 800),
     seed    = seed)
-
-  # the only difference between the two conditions: where a newborn is put
-  birth_attach <- if (local) "parent" else "neighbour"
 
   go <- abm_go(
     abm_match(pair = "network"),
     abm_rules(give ~ if_else(partner_tag == tag, coop_in, coop_out)),
-    abm_rules(ptr ~ BASE_PTR - COST * give + BENEFIT * partner_give),
-    abm_birth(when = runif(n()) < ptr, links = 4, attach = birth_attach),
+    abm_rules(ptr ~ base_ptr - cost * give + benefit * partner_give),
+    # the only difference between the two conditions: where a newborn is put
+    abm_birth(when = runif(n()) < ptr, links = 4,
+              attach = if (local) "parent" else "neighbour"),
     abm_death(when = runif(n()) <
-                DEATH + 0.25 * pmax(0, (n() - CAPACITY) / CAPACITY)),
-    abm_birth(n = 8, links = 4, inherit = random_traits, attach = "neighbour")
+                death_rate + 0.25 * pmax(0, (n() - capacity) / capacity)),
+    # immigrants with random traits
+    abm_birth(n = 8, links = 4, attach = "neighbour", inherit = list(
+      tag      ~ sample(c("red", "blue"), n(), replace = TRUE),
+      coop_in  ~ sample(c(TRUE, FALSE),   n(), replace = TRUE),
+      coop_out ~ sample(c(TRUE, FALSE),   n(), replace = TRUE)))
   )
   abm_run(pop, go, ticks = ticks, seed = seed)
 }
@@ -83,12 +81,8 @@ cat(sprintf("mean degree at tick 400: %.2f, isolated %.0f%%, same-tag edges %.0f
 # Final-state comparison: the four strategy shares in each condition.
 library(ggplot2)
 
-fig_file <- function(name) {
-  a <- grep("^--file=", commandArgs(), value = TRUE)
-  d <- if (length(a)) dirname(sub("^--file=", "", a[1])) else "."
-  dir.create(file.path(d, "..", "figures"), showWarnings = FALSE)
-  file.path(d, "..", "figures", name)
-}
+.file <- grep("^--file=", commandArgs(), value = TRUE)
+source(file.path(dirname(sub("^--file=", "", c(.file, "x")[1])), "../../fig_file.R"))
 
 d <- data.frame(
   condition = factor(rep(tab$condition, each = 4),

@@ -12,35 +12,37 @@
 **Package**
 
 ```r
-q <- 5   # traits per feature
+axelrod_run <- function(q, n = 400, ticks = 400, seed = 3) {
+  cols <- setNames(lapply(1:5, function(i)
+    rlang::new_formula(NULL, rlang::expr(sample(1:!!q, n, replace = TRUE)))),
+    paste0("f", 1:5))
 
-cols <- setNames(lapply(1:5, function(i)
-  rlang::new_formula(NULL, rlang::expr(sample(1:!!q, n, replace = TRUE)))),
-  paste0("f", 1:5))
+  pop <- abm_setup(agents  = do.call(abm_agents, c(list(n = n), cols)),
+                   network = abm_network(type = "random", degree = 4))
 
-pop <- abm_setup(agents  = do.call(abm_agents, c(list(n = 400), cols)),
-                 network = abm_network(type = "random", degree = 4))
+  go <- abm_go(
+    abm_match(pair = "network"),
+    abm_rules(similarity ~ ((f1 == partner_f1) + (f2 == partner_f2) +
+                            (f3 == partner_f3) + (f4 == partner_f4) +
+                            (f5 == partner_f5)) / 5),
+    abm_rules(interact ~ similarity < 1 & runif(n()) < similarity),
+    # choose uniformly among the features they differ on, by random key
+    abm_rules(k1 ~ if_else(f1 != partner_f1, runif(n()), -1),
+              k2 ~ if_else(f2 != partner_f2, runif(n()), -1),
+              k3 ~ if_else(f3 != partner_f3, runif(n()), -1),
+              k4 ~ if_else(f4 != partner_f4, runif(n()), -1),
+              k5 ~ if_else(f5 != partner_f5, runif(n()), -1)),
+    abm_rules(best ~ pmax(k1, k2, k3, k4, k5)),
+    abm_rules(f1 ~ if_else(interact & k1 == best, partner_f1, f1),
+              f2 ~ if_else(interact & k2 == best, partner_f2, f2),
+              f3 ~ if_else(interact & k3 == best, partner_f3, f3),
+              f4 ~ if_else(interact & k4 == best, partner_f4, f4),
+              f5 ~ if_else(interact & k5 == best, partner_f5, f5))
+  )
+  abm_run(pop, go, ticks = ticks, seed = seed)
+}
 
-go <- abm_go(
-  abm_match(pair = "network"),
-  abm_rules(similarity ~ ((f1 == partner_f1) + (f2 == partner_f2) + (f3 == partner_f3) +
-                          (f4 == partner_f4) + (f5 == partner_f5)) / 5),
-  abm_rules(interact ~ similarity < 1 & runif(n()) < similarity),
-  # choose uniformly among the features they differ on, by random key
-  abm_rules(k1 ~ if_else(f1 != partner_f1, runif(n()), -1),
-            k2 ~ if_else(f2 != partner_f2, runif(n()), -1),
-            k3 ~ if_else(f3 != partner_f3, runif(n()), -1),
-            k4 ~ if_else(f4 != partner_f4, runif(n()), -1),
-            k5 ~ if_else(f5 != partner_f5, runif(n()), -1)),
-  abm_rules(best ~ pmax(k1, k2, k3, k4, k5)),
-  abm_rules(f1 ~ if_else(interact & k1 == best, partner_f1, f1),
-            f2 ~ if_else(interact & k2 == best, partner_f2, f2),
-            f3 ~ if_else(interact & k3 == best, partner_f3, f3),
-            f4 ~ if_else(interact & k4 == best, partner_f4, f4),
-            f5 ~ if_else(interact & k5 == best, partner_f5, f5))
-)
-
-result <- abm_run(pop, go, ticks = 400, seed = 3)
+result <- axelrod_run(q = 5)
 ```
 
 **Result.** After 400 ticks: q = 2 → 30 distinct cultures; q = 5 → 157;

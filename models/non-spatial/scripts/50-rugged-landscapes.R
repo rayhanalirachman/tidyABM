@@ -33,12 +33,10 @@ landscape_search <- function(n_firms = 100, N = 10, K = 0, ticks = 200,
       trial ~ lapply(form, function(v) {
         if (runif(1) < jump) as.integer(runif(N) < 0.5)
         else { i <- sample(N, 1); v[i] <- 1L - v[i]; v }
-      }),
-      .scope = "population"),
+      })),
     abm_rules(
       form ~ Map(function(a, b) if (fit1(b, nk) > fit1(a, nk)) b else a,
-                 form, trial),
-      .scope = "population")
+                 form, trial))
   )
   r <- abm_run(m, go, ticks = ticks, seed = seed)
   f <- r[r$tick == ticks, ]
@@ -71,12 +69,8 @@ if (sys.nframe() == 0L) {
   # one, which is the Levinthal result.
   library(ggplot2)
 
-  fig_file <- function(name) {
-    a <- grep("^--file=", commandArgs(), value = TRUE)
-    d <- if (length(a)) dirname(sub("^--file=", "", a[1])) else "."
-    dir.create(file.path(d, "..", "figures"), showWarnings = FALSE)
-    file.path(d, "..", "figures", name)
-  }
+  .file <- grep("^--file=", commandArgs(), value = TRUE)
+  source(file.path(dirname(sub("^--file=", "", c(.file, "x")[1])), "../../fig_file.R"))
 
   d <- rbind(
     data.frame(K = sweep$K, search = "local search only", fit = sweep$local),

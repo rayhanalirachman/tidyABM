@@ -39,7 +39,7 @@ end
 **Package**
 
 ```r
-virus_run <- function(gain_resistance, ticks = 2000, seed = 1,
+virus_run <- function(gain_resistance, ticks = 500, seed = 1,
                       n = 150, degree = 6, outbreak = 3,
                       spread = 0.025, check_freq = 20, recovery = 0.05) {
   m <- abm_setup(
@@ -53,23 +53,31 @@ virus_run <- function(gain_resistance, ticks = 2000, seed = 1,
   )
 
   go <- abm_go(
+    # every node advances its own check clock, which wraps at check_freq
     abm_rules(timer ~ (timer + 1L) %% check_freq),
+
+    # how many of my neighbours are infected, counted before anyone moves
     abm_neighbours(exposure ~ sum(state == "infected")),
-    abm_rules(state ~ if_else(
-      state == "susceptible" & runif(n()) < 1 - (1 - spread)^coalesce(exposure, 0L),
-      "infected", state
-    )),
+
+    # k independent Bernoulli(spread) draws, one per infected neighbour
+    abm_rules(state ~ "infected", when = state == "susceptible" &
+                runif(n()) < 1 - (1 - spread)^coalesce(exposure, 0L)),
+
+    # a check only happens on the tick the clock comes round
     abm_rules(state ~ if_else(
       state == "infected" & timer == 0L & runif(n()) < recovery,
       if_else(runif(n()) < gain_resistance, "resistant", "susceptible"),
       state
     )),
+
     abm_global(infected  ~ mean(state == "infected"),
                resistant ~ mean(state == "resistant"))
   )
 
   abm_globals(abm_run(m, go, ticks = ticks, seed = seed))
 }
+
+result <- virus_run(gain_resistance = 0, ticks = 2000)
 ```
 
 **Result** (mean over the last 200 of 2000 ticks)

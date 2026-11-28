@@ -16,34 +16,41 @@ The network is produced by running the corpus's own preferential-attachment
 model and handing its edges to the next `abm_setup()`:
 
 ```r
-seed_net <- abm_setup(
-  agents  = abm_agents(n = 2, dummy = 0),
-  network = abm_network(type = "manual", edges = data.frame(from = 1, to = 2))
-)
+# the network comes from running the package's preferential-attachment model
+pa_network <- function(n, seed = 1) {
+  seed_net <- abm_setup(
+    agents  = abm_agents(n = 2),
+    network = abm_network(type = "manual", edges = data.frame(from = 1, to = 2))
+  )
+  grow <- abm_go(abm_birth(n = 1, attach = "random_edge"))
+  grown <- abm_run(seed_net, grow, ticks = n - 2, seed = seed)
+  abm_edges(grown)
+}
 
-grow <- abm_go(
-  abm_birth(n = 1, attach = "random_edge"),
-  abm_rules(dummy ~ dummy)
-)
+language <- function(algorithm = c("threshold", "reward"), n = 200,
+                     alpha = 0.5, rate = 0.2, start = 0.3,
+                     ticks = 100, seed = 1) {
+  algorithm <- match.arg(algorithm)
+  pop <- abm_setup(
+    agents  = abm_agents(n = n, w = ~as.numeric(runif(n) < start)),
+    network = abm_network(type = "manual", edges = pa_network(n, seed)),
+    globals = list(alpha = alpha, rate = rate),
+    seed    = seed
+  )
+  update <- if (algorithm == "threshold") {
+    abm_rules(w ~ as.numeric(heard >= alpha), when = !is.na(heard))
+  } else {
+    abm_rules(w ~ (1 - rate) * w + rate * heard, when = !is.na(heard))
+  }
+  go <- abm_go(
+    abm_rules(utterance ~ as.numeric(runif(n()) < w)),   # speak
+    abm_neighbours(heard ~ mean(utterance)),             # listen
+    update
+  )
+  abm_run(pop, go, ticks = ticks, seed = seed)
+}
 
-grown <- abm_run(seed_net, grow, ticks = n - 2, seed = 1)
-
-pop <- abm_setup(
-  agents  = abm_agents(n = n, w = ~as.numeric(runif(n) < start)),
-  network = abm_network(type = "manual", edges = abm_edges(grown)),
-  globals = list(alpha = 0.5, rate = 0.2)
-)
-
-go <- abm_go(
-  abm_rules(utterance ~ as.numeric(runif(n()) < w)),   # speak
-  abm_neighbours(heard ~ mean(utterance)),             # listen
-  update                                               # threshold, or reward
-)
-
-threshold <- abm_rules(w ~ if_else(is.na(heard), w, as.numeric(heard >= alpha)))
-reward    <- abm_rules(w ~ if_else(is.na(heard), w, (1 - rate) * w + rate * heard))
-
-result <- abm_run(pop, go, ticks = 100, seed = 1)
+result <- language("threshold")
 ```
 
 **Result.** 200 users, 100 ticks, share using grammar 1:

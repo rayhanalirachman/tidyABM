@@ -29,21 +29,20 @@ ga <- function(L = 20, N = 100, mutation = 0.03, crossover = 0.7,
     )
   }
 
-  go <- do.call(abm_go, c(
-    list(fitness_rule),
+  go <- abm_go(
+    fitness_rule,
     tournament("p1"), tournament("p2"),
-    list(abm_rules(cross  ~ sample(L, n(), replace = TRUE),
-                   sexual ~ runif(n()) < xover)),
+    abm_rules(cross  ~ sample(L, n(), replace = TRUE),
+              sexual ~ runif(n()) < xover),
     # single-point crossover: the first `cross` bits from one parent, the rest
     # from the other. genome[p1] and genome[p2] are the parents' genomes, so
     # the whole generation is bred in one rule and reads the *old* one.
-    list(abm_rules(genome ~ Map(
+    abm_rules(genome ~ Map(
       function(g1, g2, s, k) if (!s) g1 else c(g1[seq_len(k)], g2[-seq_len(k)]),
-      genome[p1], genome[p2], sexual, cross))),
-    list(abm_rules(genome ~ lapply(genome, function(g)
-      if_else(runif(L) < mut, 1L - g, g)))),
-    list(fitness_rule)
-  ))
+      genome[p1], genome[p2], sexual, cross)),
+    abm_rules(genome ~ lapply(genome, function(g)
+      if_else(runif(L) < mut, 1L - g, g))),
+    fitness_rule)
 
   abm_run(pop, go, ticks = generations, seed = seed)
 }
@@ -69,12 +68,8 @@ for (mu in c(0.01, 0.03, 0.1, 0.3)) {
 # Time series: best and mean fitness by generation, against the optimum of 20.
 library(ggplot2)
 
-fig_file <- function(name) {
-  a <- grep("^--file=", commandArgs(), value = TRUE)
-  d <- if (length(a)) dirname(sub("^--file=", "", a[1])) else "."
-  dir.create(file.path(d, "..", "figures"), showWarnings = FALSE)
-  file.path(d, "..", "figures", name)
-}
+.file <- grep("^--file=", commandArgs(), value = TRUE)
+source(file.path(dirname(sub("^--file=", "", c(.file, "x")[1])), "../../fig_file.R"))
 
 d <- rbind(
   data.frame(generation = as.integer(names(best)),     what = "best",

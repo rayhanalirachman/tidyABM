@@ -30,7 +30,7 @@ deferred_acceptance <- function(n = 100, max_rounds = 5000, seed = 1) {
     seed = seed
   )
 
-  round <- abm_repeat(
+  go <- abm_go(abm_repeat(
     # every woman starts the round holding nobody and listening
     abm_rules(best ~ Inf, holder ~ NA_integer_, .scope = "population"),
     # every man proposes to the best woman who has not yet rejected him --
@@ -49,8 +49,7 @@ deferred_acceptance <- function(n = 100, max_rounds = 5000, seed = 1) {
     abm_tell(holder ~ .id, to = .partner, when = win),
     until = sum(.group == "men" & is.na(fiancee)) == 0,
     max = max_rounds
-  )
-  go <- abm_go(round)
+  ))
   abm_run(m, go, ticks = 1, seed = seed)
 }
 
@@ -83,12 +82,8 @@ if (sys.nframe() == 0L) {
   # Pittel's asymptotics. Proposing is worth a lot.
   library(ggplot2)
 
-  fig_file <- function(name) {
-    a <- grep("^--file=", commandArgs(), value = TRUE)
-    d <- if (length(a)) dirname(sub("^--file=", "", a[1])) else "."
-    dir.create(file.path(d, "..", "figures"), showWarnings = FALSE)
-    file.path(d, "..", "figures", name)
-  }
+  .file <- grep("^--file=", commandArgs(), value = TRUE)
+  source(file.path(dirname(sub("^--file=", "", c(.file, "x")[1])), "../../fig_file.R"))
 
   d <- rbind(
     data.frame(n = sweep$n, series = "men (proposing)",   rank = sweep$men),

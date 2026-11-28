@@ -11,80 +11,73 @@ settles.
 
 **Package**
 
-Each agent carries a list column of `N_STRATEGIES` candidate predictors, each a
-vector of `MEMORY + 1` random weights (a baseline plus one weight per week of
-lag). Three named functions do the arithmetic; each is a direct transcription of
-one NetLogo reporter or procedure, named the same way:
+Each agent carries a list column of `n_strat` candidate predictors, each a
+vector of `memory + 1` random weights (a baseline plus one weight per week of
+lag). Three named functions do the arithmetic, following the NetLogo reporters
+and procedures they are named after:
 
 ```r
-MEMORY <- 5; N_STRATEGIES <- 10; THRESHOLD <- 60; N_AGENTS <- 100
-
-# to-report random-strategy
-random_strategy <- function() runif(MEMORY + 1, -1, 1)
-
 # to-report predict-attendance [strategy subhistory]
 predict_attendance <- function(strategy, subhistory) {
   100 * strategy[1] + sum(strategy[-1] * subhistory)
 }
 
-# how far off would ONE strategy have been, over the last MEMORY weeks?
-score_strategy <- function(strategy, history) {
-  total_error <- 0
-  for (week in 1:MEMORY) {
-    subhistory <- history[(week + 1):(week + MEMORY)]   # what this strategy could see, as of that week
-    actual     <- history[week]                          # what really happened
-    guess      <- predict_attendance(strategy, subhistory)
-    miss       <- abs(actual - guess)
-    total_error <- total_error + miss
-  }
-  total_error
+# how far off would ONE strategy have been, over the last `memory` weeks?
+score_strategy <- function(strategy, history, memory) {
+  sum(vapply(1:memory, function(week) abs(
+    history[week] - predict_attendance(strategy, history[week + 1:memory])),
+    numeric(1)))
 }
 
-# which of an agent's strategies has been least wrong lately? (to update-strategies)
-best_strategy_of <- function(strategies, history) {
-  scores <- numeric(length(strategies))
-  for (s in seq_along(strategies)) {
-    scores[s] <- score_strategy(strategies[[s]], history)
-  }
-  best_index <- which.min(scores)
-  strategies[[best_index]]
+# the strategy that has been least wrong lately (to update-strategies)
+best_strategy_of <- function(strategies, history, memory) {
+  strategies[[which.min(vapply(strategies, score_strategy, numeric(1),
+                               history, memory))]]
 }
 
-farol <- abm_setup(
-  agents = abm_agents(
-    n = N_AGENTS,
-    strategies = ~replicate(n, replicate(N_STRATEGIES, random_strategy(), simplify = FALSE),
-                            simplify = FALSE),
-    best       = ~lapply(strategies, function(s) s[[1]]),   # placeholder; tick 1 corrects it below
-    prediction = 0,
-    attend     = FALSE
-  ),
-  globals = list(history = list(sample(0:99, MEMORY * 2, replace = TRUE)), attendance = 0),
-  seed = 1
-)
+farol <- function(n_strat = 10, setup_seed = 1, ticks = 300, memory = 5) {
+  m <- abm_setup(
+    agents = abm_agents(
+      n = 100,
+      # each strategy is a baseline plus one random weight per week of lag
+      strategies = ~replicate(n, replicate(
+        n_strat, runif(memory + 1, -1, 1), simplify = FALSE), simplify = FALSE),
+      best       = ~lapply(strategies, function(s) s[[1]]),  # replaced at tick 1
+      prediction = 0,
+      attend     = FALSE),
+    globals = list(history = list(sample(0:99, memory * 2, replace = TRUE)),
+                   attendance = 0, memory = memory, threshold = 60),
+    seed = setup_seed)
 
-go <- abm_go(
-  abm_rules(best ~ {                      # update-strategies, run first so tick 1's placeholder
-    out <- vector("list", n())            # never gets used to make a real decision
-    for (i in seq_len(n())) out[[i]] <- best_strategy_of(strategies[[i]], history[[1]])
-    out
-  }),
-  abm_rules(prediction ~ {
-    out <- numeric(n())
-    for (i in seq_len(n())) out[i] <- predict_attendance(best[[i]], history[[1]][1:MEMORY])
-    out
-  }),
-  abm_rules(attend ~ prediction <= THRESHOLD),
-  abm_global(attendance ~ sum(attend),
-             history    ~ list(c(attendance, head(history[[1]], -1))))
-)
+  go <- abm_go(
+    # update-strategies runs first, so the placeholder never decides anything
+    abm_rules(best ~ lapply(strategies, best_strategy_of, history[[1]], memory)),
+    abm_rules(prediction ~ vapply(best, predict_attendance, numeric(1),
+                                  history[[1]][1:memory])),
+    abm_rules(attend ~ prediction <= threshold),
+    abm_global(attendance ~ sum(attend),
+               history    ~ list(c(attendance, head(history[[1]], -1)))))
 
-result <- abm_run(farol, go, ticks = 300)
+  abm_run(m, go, ticks = ticks, record = "globals")
+}
+
+result <- farol(n_strat = 10)
 ```
 
-**Result.** Last 150 of 300 ticks: attendance mean 56.3, sd 7.6, range 41–71, 31
-distinct levels, no repeating period out to lag 6. Attendance hovers around the
-capacity of 60 and keeps moving rather than settling, which is Arthur's result.
+**Result.** Last 200 of 300 ticks: attendance mean 56.3, sd 7.6, range 41–71, 31
+distinct levels, and no exact repeating period, although the correlation at lag 6
+is high (+0.92). Attendance hovers around the capacity of 60 and keeps moving
+rather than settling, which is Arthur's result.
+
+| predictors per agent | draw 1 | draw 2 | draw 3 | draw 4 |
+|---|---|---|---|---|
+| 1 | 1 | 1 | 2 | 1 |
+| 3 | 6 | 1 | 1 | 4 |
+| 10 | 31 | 39 | 51 | 27 |
+
+Distinct attendance levels in the last 200 ticks, over four population draws.
+One and three predictors end in a fixed point or an exact cycle (period 10 at
+most) in every draw; ten never do.
 
 *Needed nothing new, and the entry it was filed under was wrong.* This model
 was first written as seventy scalar columns and five blocks of
@@ -93,7 +86,7 @@ hold a set. Model 41 found the list column and this one was rewritten around
 it — first onto an exponentially-decayed running error per strategy, which is
 not what NetLogo's `update-strategies` actually computes, and now onto the
 version above, which re-scores every strategy from scratch each tick against a
-fixed `MEMORY`-week backtest, with no memory of any earlier tick's scores. The
+fixed `memory`-week backtest, with no memory of any earlier tick's scores. The
 two scoring rules give quantitatively different attendance series (the decayed
 version has less variance, since it never fully forgets a strategy's older
 performance); the version above is the one that matches the source.

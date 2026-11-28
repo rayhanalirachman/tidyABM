@@ -13,39 +13,58 @@
 **Package**
 
 ```r
-n <- 200
+# my rank of agent i, from a rank vector indexed by .id.  NB: not `pick()`,
+# which dplyr 1.1 exports and the data mask would find first.
+rank_of <- function(lst, i) {
+  vapply(seq_along(i), function(k) {
+    v <- lst[[k]]
+    if (is.na(i[[k]]) || is.null(v) || length(v) < i[[k]]) NA_real_
+    else as.numeric(v[[i[[k]]]])
+  }, numeric(1))
+}
 
-m <- abm_setup(
-  agents = list(
-    men   = abm_agents(n = n, rank = ~rank_over(n, ids_w),
-                       worst = 0, fiancee = NA_integer_, win = FALSE),
-    women = abm_agents(n = n, rank = ~rank_over(n, ids_m),
-                       holder = NA_integer_, best = Inf)),
-  seed   = 1)
+deferred_acceptance <- function(n = 100, max_rounds = 5000, seed = 1) {
+  ids_w <- (n + 1L):(2L * n)
+  ids_m <- 1L:n
+  rank_over <- function(k, targets) {
+    lapply(seq_len(k), function(i) {
+      r <- rep(NA_real_, 2 * n); r[sample(targets)] <- seq_along(targets); r
+    })
+  }
+  m <- abm_setup(
+    agents = list(
+      men   = abm_agents(n = n, rank = ~rank_over(n, ids_w),
+                         worst = 0, fiancee = NA_integer_, win = FALSE),
+      women = abm_agents(n = n, rank = ~rank_over(n, ids_m),
+                         holder = NA_integer_, best = Inf)
+    ),
+    seed = seed
+  )
 
-round <- abm_repeat(
-  # every woman starts the round holding nobody and listening
-  abm_rules(best ~ Inf, holder ~ NA_integer_, .scope = "population"),
-  # every man proposes to the best woman who has not yet rejected him
-  abm_match(pair = "nearest",
-            cost = if_else(rank_of(own_rank, .id) <= own_worst,
-                           NA_real_, rank_of(own_rank, .id)),
-            eligible = .group == "men", among = .group == "women"),
-  # she hears every proposal at once and keeps the best
-  abm_tell(best ~ rank_of(partner_rank, .id), to = .partner,
-           when = .group == "men" & !is.na(.partner), .resolve = "min"),
-  abm_rules(win ~ !is.na(.partner) & rank_of(partner_rank, .id) == partner_best),
-  abm_rules(fiancee ~ if_else(win, .partner, NA_integer_),
-            worst   ~ if_else(!is.na(.partner) & !win, rank_of(rank, .partner), worst)),
-  abm_tell(holder ~ .id, to = .partner, when = win),
-  until = sum(.group == "men" & is.na(fiancee)) == 0,
-  max = 5000
-)
+  go <- abm_go(abm_repeat(
+    # every woman starts the round holding nobody and listening
+    abm_rules(best ~ Inf, holder ~ NA_integer_, .scope = "population"),
+    # every man proposes to the best woman who has not yet rejected him --
+    # including, for an engaged man, his fiancee, who is exactly that woman
+    abm_match(pair = "nearest",
+              cost = if_else(rank_of(own_rank, .id) <= own_worst,
+                             NA_real_, rank_of(own_rank, .id)),
+              eligible = .group == "men", among = .group == "women"),
+    # she hears every proposal at once and keeps the best
+    abm_tell(best ~ rank_of(partner_rank, .id), to = .partner,
+             when = .group == "men" & !is.na(.partner), .resolve = "min"),
+    abm_rules(win ~ !is.na(.partner) & rank_of(partner_rank, .id) == partner_best),
+    abm_rules(fiancee ~ if_else(win, .partner, NA_integer_),
+              worst   ~ if_else(!is.na(.partner) & !win,
+                                rank_of(rank, .partner), worst)),
+    abm_tell(holder ~ .id, to = .partner, when = win),
+    until = sum(.group == "men" & is.na(fiancee)) == 0,
+    max = max_rounds
+  ))
+  abm_run(m, go, ticks = 1, seed = seed)
+}
 
-# the whole algorithm runs to absorption inside a single tick
-go <- abm_go(round)
-
-result <- abm_run(m, go, ticks = 1, seed = 1)
+result <- deferred_acceptance(n = 200)
 ```
 
 **Result** (uniform random preferences, men proposing, 5 seeds each)

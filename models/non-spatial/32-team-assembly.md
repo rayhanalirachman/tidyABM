@@ -14,39 +14,39 @@
 **Package**
 
 ```r
-m <- 5                                     # team size
-p <- 0.5; q <- 0.5; downtime <- 20
+team_assembly <- function(p, q, m = 5, ticks = 300, downtime = 30, seed = 1) {
+  pop <- abm_setup(
+    agents  = abm_agents(n = m, collabs = 0, idle = 0, on_team = FALSE),
+    network = abm_network(type = "empty"),
+    globals = list(p = p, q = q, u_type = 0, u_q = 0),
+    seed    = seed
+  )
 
-pop <- abm_setup(
-  agents  = abm_agents(n = m, collabs = 0, idle = 0, on_team = FALSE),
-  network = abm_network(type = "empty"),
-  globals = list(p = p, q = q, u_type = 0, u_q = 0),
-  seed    = 1)
+  go <- abm_go(
+    abm_birth(n = m, inherit = list(collabs ~ 0, idle ~ 0, on_team ~ FALSE)),
+    abm_rules(on_team ~ FALSE, idle ~ idle + 1),
+    # one member joins the team, m times over
+    rep(list(
+      abm_global(u_type ~ runif(1), u_q ~ runif(1)),
+      abm_neighbours(near_team ~ any(on_team)),
+      abm_rules(score ~ (!on_team) * case_when(
+        u_type <  p & u_q < q & collabs > 0 & coalesce(near_team, FALSE) ~ 3,
+        u_type <  p & collabs > 0                                       ~ 2,
+        u_type >= p & collabs == 0                                      ~ 2,
+        collabs == 0                                                    ~ 1,
+        TRUE                                                            ~ 0)),
+      abm_rules(score   ~ score + runif(n())),
+      abm_rules(on_team ~ on_team | (score > 1 & rank(-score, ties.method = "first") == 1))
+    ), m),
+    abm_match(pair = "random", size = m, eligible = on_team),
+    abm_link(),
+    abm_rules(collabs ~ collabs + 1, idle ~ 0),
+    abm_death(when = collabs == 0 & idle > downtime))
 
-recruit <- list(
-  abm_global(u_type ~ runif(1), u_q ~ runif(1)),
-  abm_neighbours(near_team ~ any(on_team)),
-  abm_rules(score ~ (!on_team) * case_when(
-    u_type <  p & u_q < q & collabs > 0 & coalesce(near_team, FALSE) ~ 3,
-    u_type <  p & collabs > 0                                       ~ 2,
-    u_type >= p & collabs == 0                                      ~ 2,
-    collabs == 0                                                    ~ 1,
-    TRUE                                                            ~ 0)),
-  abm_rules(score   ~ score + runif(n())),
-  abm_rules(on_team ~ on_team | (score > 1 & rank(-score, ties.method = "first") == 1))
-)
+  abm_run(pop, go, ticks = ticks, seed = seed)
+}
 
-go <- do.call(abm_go, c(
-  list(abm_birth(n = m, inherit = list(collabs ~ 0, idle ~ 0, on_team ~ FALSE)),
-       abm_rules(on_team ~ FALSE, idle ~ idle + 1)),
-  rep(recruit, m),                                   # m members, one at a time
-  list(abm_match(pair = "random", size = m, eligible = on_team),
-       abm_link(),                                   # the team becomes a clique
-       abm_rules(collabs ~ collabs + 1, idle ~ 0),
-       abm_death(when = collabs == 0 & idle > downtime))
-))
-
-result <- abm_run(pop, go, ticks = 300, seed = 1)
+result <- team_assembly(p = 0.5, q = 0.5, downtime = 20)
 ```
 
 **Result.** Teams of 5, 300 ticks, share of collaborators in the giant component:
@@ -62,7 +62,7 @@ to fragment it again. That is the paper's phase diagram.
 gains an edge between every pair inside it, which is what a team, a committee or
 a coalition means once it is written as a network. The other half of this model,
 assembling the team **one member at a time**, turned out to be expressible after
-all, by repeating a five-step `recruit` block `m` times and carrying the partial
+all, by repeating a five-step recruiting block `m` times and carrying the partial
 team in an `on_team` column. That is the first model in the corpus with a
 constructive, order-dependent sub-loop inside a single tick.
 

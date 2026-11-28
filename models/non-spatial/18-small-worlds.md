@@ -23,14 +23,14 @@ end
 **Package**
 
 ```r
-ring <- do.call(rbind, lapply(1:2, function(d)
-  data.frame(from = 1:300, to = ((1:300 + d - 1) %% 300) + 1)))
+ring_edges <- function(n = 300) do.call(rbind, lapply(1:2, function(d)
+  data.frame(from = 1:n, to = ((1:n + d - 1) %% n) + 1)))
 
 sw <- abm_setup(agents = abm_agents(n = 300, rewiring = FALSE),
-                network = abm_network(type = "manual", edges = ring))
+                network = abm_network(type = "manual", edges = ring_edges()))
 
 go <- function(p) abm_go(
-  abm_rules(rewiring ~ runif(n()) < p, .scope = "population"),
+  abm_rules(rewiring ~ runif(n()) < p),
   abm_match(pair = "network", eligible = rewiring), abm_unlink(),
   abm_match(pair = "one_of",  eligible = rewiring), abm_link()
 )

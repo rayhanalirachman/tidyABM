@@ -15,11 +15,17 @@
 **Package**
 
 ```r
-w <- 50
 peak <- function(x, y, px, py) 4 * exp(-((x - px)^2 + (y - py)^2) / (2 * 9^2))
+
+gini <- function(x) {
+  x <- sort(x); n <- length(x)
+  if (n < 2 || sum(x) == 0) return(NA_real_)
+  2 * sum(x * seq_len(n)) / (n * sum(x)) - (n + 1) / n
+}
 
 sugarscape <- abm_setup(
   agents = list(
+    # two sugar mountains, capacity 4 at the summits, terraced down to 0
     patches = abm_agents(
       capacity = ~as.integer(round(pmax(peak(.x, .y, 15, 35), peak(.x, .y, 35, 15)))),
       sugar    = ~capacity),
@@ -27,10 +33,14 @@ sugarscape <- abm_setup(
                         vision     = ~sample.int(6, n, TRUE),
                         metabolism = ~sample.int(4, n, TRUE),
                         wealth     = ~sample(5:25, n, TRUE),
-                        at         = "unique")),                 # one per cell
-  space = abm_space(type = "grid", dims = c(w, w), on = "patches",
+                        at         = "unique")),                # one per cell
+  space = abm_space(type = "grid", dims = c(50, 50), on = "patches",
                     diagonals = FALSE, torus = TRUE),
-  globals = list(pop = ~sum(.group == "people")),
+  globals = list(pop    = ~sum(.group == "people"),
+                 wealth = ~mean(wealth[.group == "people"]),
+                 gini   = ~gini(wealth[.group == "people"]),
+                 vis    = ~mean(vision[.group == "people"]),
+                 met    = ~mean(metabolism[.group == "people"])),
   seed = 1)
 
 go <- abm_go(
@@ -43,7 +53,11 @@ go <- abm_go(
   abm_death(when = .group == "people" & wealth <= 0),
   # rule G1: constant growback
   abm_rules(sugar ~ pmin(capacity, sugar + 1L)),
-  abm_global(pop ~ sum(.group == "people"))
+  abm_global(pop    ~ sum(.group == "people"),
+             wealth ~ mean(wealth[.group == "people"]),
+             gini   ~ gini(wealth[.group == "people"]),
+             vis    ~ mean(vision[.group == "people"]),
+             met    ~ mean(metabolism[.group == "people"]))
 )
 
 result <- abm_run(sugarscape, go, ticks = 500, seed = 1, record = 100)

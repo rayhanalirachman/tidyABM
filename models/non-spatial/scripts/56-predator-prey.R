@@ -28,7 +28,7 @@ wolfsheep <- function(response = c("mass_action", "ratio"),
   go <- abm_go(
     abm_global(n_sheep  ~ sum(.group == "sheep"),
                n_wolves ~ sum(.group == "wolves")),
-    abm_rules(caught ~ FALSE, .scope = "population"),
+    abm_rules(caught ~ FALSE),
     hunt,
     abm_rules(caught ~ runif(1) < catch),
     abm_rules(energy ~ if_else(.group == "wolves" & caught, energy + gain,
@@ -80,12 +80,8 @@ if (sys.nframe() == 0L) {
   # whole result, and it is visible as the offset between the two curves.
   library(ggplot2)
 
-  fig_file <- function(name) {
-    a <- grep("^--file=", commandArgs(), value = TRUE)
-    d <- if (length(a)) dirname(sub("^--file=", "", a[1])) else "."
-    dir.create(file.path(d, "..", "figures"), showWarnings = FALSE)
-    file.path(d, "..", "figures", name)
-  }
+  .file <- grep("^--file=", commandArgs(), value = TRUE)
+  source(file.path(dirname(sub("^--file=", "", c(.file, "x")[1])), "../../fig_file.R"))
 
   d <- rbind(data.frame(tick = g$tick, species = "sheep",
                         n = g$n_sheep),

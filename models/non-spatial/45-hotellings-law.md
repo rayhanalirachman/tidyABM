@@ -11,35 +11,49 @@
 **Package**
 
 ```r
-step <- 1
-
-m <- abm_setup(
-  agents = list(
-    shops  = abm_agents(n = 2, x = ~runif(n, 10, 90),
-                        x_old = 0, step = step, customers = 0, base = 0),
-    buyers = abm_agents(n = 400, x = ~seq(0, 100, length.out = n))),
-  seed = 1)
-
-count_buyers <- list(
-  abm_rules(customers ~ 0, .scope = "population"),
-  abm_match(
-    pair = "nearest", coords = x,
-    eligible = .group == "buyers", among = .group == "shops",
-    abm_tell(customers ~ 1, to = .partner, when = .group == "buyers",
-             .resolve = "sum")
+hotelling <- function(n_shops = 2, n_buyers = 400, ticks = 300, step = 1,
+                      seed = 1) {
+  m <- abm_setup(
+    agents = list(
+      shops  = abm_agents(n = n_shops, x = ~runif(n, 10, 90),
+                          x_old = 0, step = step, customers = 0, base = 0),
+      buyers = abm_agents(n = n_buyers, x = ~seq(0, 100, length.out = n))
+    ),
+    seed = seed
   )
-)
 
-go <- abm_go(
-  count_buyers,
-  abm_rules(base  ~ customers),
-  abm_rules(x_old ~ x),
-  abm_rules(x ~ pmin(100, pmax(0, x + sample(c(-1, 1), n(), TRUE) * step))),
-  count_buyers,
-  abm_rules(x ~ if_else(customers > base, x, x_old))
-)
+  # every buyer walks to the nearest shop and the shop counts who turned up
+  count_buyers <- list(
+    abm_rules(customers ~ 0),
+    abm_match(
+      pair = "nearest", coords = x,
+      eligible = .group == "buyers", among = .group == "shops",
+      abm_tell(customers ~ 1, to = .partner, when = .group == "buyers",
+               .resolve = "sum")
+    )
+  )
 
-result <- abm_run(m, go, ticks = 300, seed = 1)
+  # A shop compares a step against what it is getting *now*, not against the
+  # best it ever got. The difference matters: once a rival moves in next door
+  # your old takings are unreachable, and a shop that kept comparing against
+  # them would never move again.
+  go <- abm_go(
+    count_buyers,
+    abm_rules(base ~ customers, x_old ~ x),
+    abm_rules(x ~ pmin(100, pmax(0, x + sample(c(-1, 1), n(), TRUE) * step))),
+    count_buyers,
+    abm_rules(x ~ if_else(customers > base, x, x_old))
+  )
+
+  r <- abm_run(m, go, ticks = ticks, seed = seed)
+  f <- r[r$tick == ticks, ]
+  shops <- sort(f$x[f$.group == "shops"])
+  buyers <- f$x[f$.group == "buyers"]
+  list(shops = shops,
+       walk = mean(vapply(buyers, function(b) min(abs(b - shops)), numeric(1))))
+}
+
+result <- hotelling(n_shops = 2)
 ```
 
 **Result** (5 seeds, 300 ticks)

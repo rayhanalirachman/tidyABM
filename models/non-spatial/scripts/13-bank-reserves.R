@@ -5,12 +5,11 @@
 # *depleted*, so the first borrower has to change what the second one sees.
 library(tidyABM)
 
-reserve_ratio <- 0.1
-
 bankres <- abm_setup(
   agents  = abm_agents(n = 100, wallet = ~runif(n, 0, 50), savings = 0,
                        loan = 0, draw = 0),
-  globals = list(bank_deposits = 0, bank_loans = 0, bank_reserves = 0))
+  globals = list(bank_deposits = 0, bank_loans = 0, bank_reserves = 0,
+                 reserve_ratio = 0.1))
 
 go <- abm_go(
   abm_match(pair = "random", role = list(giver = TRUE, receiver = TRUE)),
@@ -46,17 +45,14 @@ last <- g[g$tick == 100, ]
 cat(sprintf("\nmoney multiplier: deposits / (deposits - loans) = %.2f\n",
             last$bank_deposits / (last$bank_deposits - last$bank_loans)))
 cat(sprintf("the reserve ratio of %.2f caps lending at %.0f, and loans stand at %.0f\n",
-            reserve_ratio, last$bank_deposits * reserve_ratio, last$bank_loans))
+            bankres$globals$reserve_ratio,
+            last$bank_deposits * bankres$globals$reserve_ratio, last$bank_loans))
 
 # --- figure ---------------------------------------------------------------
 library(ggplot2)
 
-fig_file <- function(name) {
-  a <- grep("^--file=", commandArgs(), value = TRUE)
-  d <- if (length(a)) dirname(sub("^--file=", "", a[1])) else "."
-  dir.create(file.path(d, "..", "figures"), showWarnings = FALSE)
-  file.path(d, "..", "figures", name)
-}
+.file <- grep("^--file=", commandArgs(), value = TRUE)
+source(file.path(dirname(sub("^--file=", "", c(.file, "x")[1])), "../../fig_file.R"))
 
 d <- rbind(
   data.frame(tick = g$tick, series = "deposits", value = g$bank_deposits),

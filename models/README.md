@@ -22,6 +22,15 @@ package rather than using it. [What each stress test changed](what-changed.md)
 is the history of how the grammar got its current shape, and
 [sources](sources.md) is every citation in one table.
 
+## The rule for a model
+
+A model is its own functions plus `abm_setup()`, `abm_go()` and `abm_run()`.
+Nothing else is defined before the run: a constant goes in `globals =` (setup
+formulas and every step can read it), `n =` and `dims =` take a literal or an
+argument of the function around `abm_setup()`, and anything computed is a
+function. Tables and figures after the run are ordinary R. A test
+(`tests/testthat/test-corpus.R`) holds the scripts and these pages to this.
+
 ## How this is organised
 
 Models 1–13 are the set the grammar was designed against (12 is a custom,

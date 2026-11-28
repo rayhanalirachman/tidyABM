@@ -21,19 +21,20 @@ end
 **Package**
 
 ```r
-reserve_ratio <- 0.1
-
 bankres <- abm_setup(
   agents  = abm_agents(n = 100, wallet = ~runif(n, 0, 50), savings = 0,
                        loan = 0, draw = 0),
-  globals = list(bank_deposits = 0, bank_loans = 0, bank_reserves = 0))
+  globals = list(bank_deposits = 0, bank_loans = 0, bank_reserves = 0,
+                 reserve_ratio = 0.1))
 
 go <- abm_go(
   abm_match(pair = "random", role = list(giver = TRUE, receiver = TRUE)),
   abm_rules(gift ~ sample(c(0, 2, 5), 1)),
-  abm_rules(wallet ~ if_else(.role == "giver", wallet - gift, wallet + partner_gift)),
+  abm_rules(wallet ~ if_else(.role == "giver", wallet - gift,
+                             wallet + partner_gift)),
   abm_rules(
-    savings ~ if_else(wallet > 0, savings + wallet, savings - pmin(savings, abs(wallet))),
+    savings ~ if_else(wallet > 0, savings + wallet,
+                      savings - pmin(savings, abs(wallet))),
     wallet  ~ if_else(wallet > 0, 0, wallet + pmin(savings, abs(wallet)))),
   abm_global(bank_deposits ~ sum(savings)),
   abm_sequential(

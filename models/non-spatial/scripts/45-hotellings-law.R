@@ -32,7 +32,7 @@ hotelling <- function(n_shops = 2, n_buyers = 400, ticks = 300, step = 1,
 
   # every buyer walks to the nearest shop and the shop counts who turned up
   count_buyers <- list(
-    abm_rules(customers ~ 0, .scope = "population"),
+    abm_rules(customers ~ 0),
     abm_match(
       pair = "nearest", coords = x,
       eligible = .group == "buyers", among = .group == "shops",
@@ -47,8 +47,7 @@ hotelling <- function(n_shops = 2, n_buyers = 400, ticks = 300, step = 1,
   # them would never move again.
   go <- abm_go(
     count_buyers,
-    abm_rules(base  ~ customers),
-    abm_rules(x_old ~ x),
+    abm_rules(base ~ customers, x_old ~ x),
     abm_rules(x ~ pmin(100, pmax(0, x + sample(c(-1, 1), n(), TRUE) * step))),
     count_buyers,
     abm_rules(x ~ if_else(customers > base, x, x_old))
@@ -88,12 +87,8 @@ if (sys.nframe() == 0L) {
   # if the shops were placed to suit them. The gap is Hotelling's point.
   library(ggplot2)
 
-  fig_file <- function(name) {
-    a <- grep("^--file=", commandArgs(), value = TRUE)
-    d <- if (length(a)) dirname(sub("^--file=", "", a[1])) else "."
-    dir.create(file.path(d, "..", "figures"), showWarnings = FALSE)
-    file.path(d, "..", "figures", name)
-  }
+  .file <- grep("^--file=", commandArgs(), value = TRUE)
+  source(file.path(dirname(sub("^--file=", "", c(.file, "x")[1])), "../../fig_file.R"))
 
   d <- rbind(
     data.frame(shops = sweep$shops, placement = "where shops settle",

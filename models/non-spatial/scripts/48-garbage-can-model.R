@@ -23,53 +23,50 @@ garbage_can <- function(load = 1.1, access = c("unsegmented", "specialized"),
       dms = abm_agents(n = n_dms, power = power,
                        kind = ~rep(seq_len(n_kinds), length.out = n))
     ),
-    globals = list(now = 0),
     seed = seed
   )
-  live_choice  <- rlang::expr(.group == "choices"  & !made   & entry <= now)
-  live_problem <- rlang::expr(.group == "problems" & !solved & entry <= now)
+  live_choice  <- rlang::expr(.group == "choices"  & !made   & entry <= .tick)
+  live_problem <- rlang::expr(.group == "problems" & !solved & entry <= .tick)
 
   go <- abm_go(
-    abm_global(now ~ now + 1),
     abm_rules(n_att ~ 0L, added ~ 0, fresh ~ FALSE,
-              members ~ vector("list", n()), .scope = "population"),
+              members ~ vector("list", n())),
 
     # every live problem attaches to the accessible choice that is closest to
     # being made -- the cost is an energy deficit, not a distance
-    abm_match(pair = "nearest",
-              cost = if_else(open | kind == own_kind, deficit, NA_real_),
-              eligible = !!live_problem, among = !!live_choice),
-    abm_rules(att ~ .partner),
-    abm_tell(n_att ~ 1L, to = .partner, when = !!live_problem & !is.na(.partner),
-             .resolve = "sum"),
-    # ...and tells the choice who it is, so the choice can answer back later
-    abm_tell(members ~ .id, to = .partner,
-             when = !!live_problem & !is.na(.partner), .resolve = "collect"),
+    abm_match(
+      pair = "nearest",
+      cost = if_else(open | kind == own_kind, deficit, NA_real_),
+      eligible = !!live_problem, among = !!live_choice,
+      abm_rules(att ~ .partner),
+      abm_tell(n_att ~ 1L, to = .partner, when = !!live_problem & !is.na(.partner),
+               .resolve = "sum"),
+      # ...and tells the choice who it is, so the choice can answer back later
+      abm_tell(members ~ .id, to = .partner,
+               when = !!live_problem & !is.na(.partner), .resolve = "collect")),
 
     # every decision maker puts its energy where it will make most difference
-    abm_match(pair = "nearest",
-              cost = if_else(open | kind == own_kind, deficit, NA_real_),
-              eligible = .group == "dms", among = !!live_choice),
-    abm_tell(added ~ power, to = .partner,
-             when = .group == "dms" & !is.na(.partner), .resolve = "sum"),
-    abm_rules(energy ~ energy + added, ever ~ ever + n_att, .scope = "population"),
+    abm_match(
+      pair = "nearest",
+      cost = if_else(open | kind == own_kind, deficit, NA_real_),
+      eligible = .group == "dms", among = !!live_choice,
+      abm_tell(added ~ power, to = .partner,
+               when = .group == "dms" & !is.na(.partner), .resolve = "sum")),
+    abm_rules(energy ~ energy + added, ever ~ ever + n_att),
 
-    abm_rules(fresh ~ !made & energy >= need * (base + n_att),
-              .scope = "population"),
+    abm_rules(fresh ~ !made & energy >= need * (base + n_att)),
     abm_rules(
       made ~ made | fresh,
-      made_at ~ if_else(fresh, as.integer(now), made_at),
+      made_at ~ if_else(fresh, .tick, made_at),
       style ~ dplyr::case_when(
         !fresh      ~ style,
         n_att > 0L  ~ "resolution",
         ever > 0L   ~ "flight",
-        TRUE        ~ "oversight"),
-      .scope = "population"),
+        TRUE        ~ "oversight")),
     # a choice that has just been made solves everything still attached to it
     abm_tell(solved ~ TRUE, to = lapply(members, function(v) unlist(v)),
              when = .group == "choices" & fresh),
-    abm_rules(deficit ~ pmax(0, need * (base + n_att) - energy),
-              .scope = "population"),
+    abm_rules(deficit ~ pmax(0, need * (base + n_att) - energy)),
     abm_global(n_made ~ sum(made, na.rm = TRUE),
                n_solved ~ sum(solved, na.rm = TRUE))
   )
@@ -106,12 +103,8 @@ sweep <- do.call(rbind, sweep)
 # Cohen, March and Olsen's headline is that resolution is the minority route.
 library(ggplot2)
 
-fig_file <- function(name) {
-  a <- grep("^--file=", commandArgs(), value = TRUE)
-  d <- if (length(a)) dirname(sub("^--file=", "", a[1])) else "."
-  dir.create(file.path(d, "..", "figures"), showWarnings = FALSE)
-  file.path(d, "..", "figures", name)
-}
+.file <- grep("^--file=", commandArgs(), value = TRUE)
+source(file.path(dirname(sub("^--file=", "", c(.file, "x")[1])), "../../fig_file.R"))
 
 fig <- ggplot(sweep, aes(factor(load), n, fill = style)) +
   geom_col() +

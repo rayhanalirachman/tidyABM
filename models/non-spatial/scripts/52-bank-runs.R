@@ -69,12 +69,8 @@ if (sys.nframe() == 0L) {
   # is the whole mechanism -- shuffling the queue flattens the gradient.
   library(ggplot2)
 
-  fig_file <- function(name) {
-    a <- grep("^--file=", commandArgs(), value = TRUE)
-    d <- if (length(a)) dirname(sub("^--file=", "", a[1])) else "."
-    dir.create(file.path(d, "..", "figures"), showWarnings = FALSE)
-    file.path(d, "..", "figures", name)
-  }
+  .file <- grep("^--file=", commandArgs(), value = TRUE)
+  source(file.path(dirname(sub("^--file=", "", c(.file, "x")[1])), "../../fig_file.R"))
 
   fig <- ggplot(sweep, aes(shock, run_rate, colour = quartile)) +
     geom_line(linewidth = 0.7) + geom_point() +

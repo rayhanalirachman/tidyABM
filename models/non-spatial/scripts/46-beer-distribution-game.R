@@ -39,13 +39,13 @@ beer_game <- function(weeks = 50, demand_before = 4, demand_after = 8,
       orders_in = 4, ship_in1 = 4, ship_in2 = 4, order_sent = 4,
       want = 0, shipped = 0, supply_line = 0
     ),
-    globals = list(week = 0L, demand = demand_before),
+    globals = list(demand = demand_before),
     seed = seed
   )
 
   go <- abm_go(
-    abm_global(week ~ week + 1L),
-    abm_global(demand ~ if (week >= step_week) demand_after else demand_before),
+    # one tick is one week
+    abm_global(demand ~ if (.tick >= step_week) demand_after else demand_before),
 
     # this week's shipment lands and the pipeline shuffles up
     abm_rules(inventory ~ inventory + ship_in1,
@@ -53,7 +53,7 @@ beer_game <- function(weeks = 50, demand_before = 4, demand_after = 8,
               ship_in2  ~ 0),
 
     # the customer orders from the retailer
-    abm_rules(orders_in ~ if_else(idx == 1L, demand, orders_in)),
+    abm_rules(orders_in ~ demand, when = idx == 1L),
 
     # fill what you can, remember what you could not
     abm_rules(want ~ orders_in + backlog),
@@ -75,7 +75,7 @@ beer_game <- function(weeks = 50, demand_before = 4, demand_after = 8,
     abm_rules(orders_in ~ 0),
     abm_tell(orders_in ~ order_sent, to = up, when = !is.na(up)),
     # the factory brews its own order rather than passing it on
-    abm_rules(ship_in2 ~ if_else(idx == 4L, ship_in2 + order_sent, ship_in2)),
+    abm_rules(ship_in2 ~ ship_in2 + order_sent, when = idx == 4L),
 
     abm_global(o1 ~ order_sent[1], o2 ~ order_sent[2],
                o3 ~ order_sent[3], o4 ~ order_sent[4],
@@ -118,12 +118,8 @@ if (sys.nframe() == 0L) {
   # the growing amplitude as the signal travels upstream.
   library(ggplot2)
 
-  fig_file <- function(name) {
-    a <- grep("^--file=", commandArgs(), value = TRUE)
-    d <- if (length(a)) dirname(sub("^--file=", "", a[1])) else "."
-    dir.create(file.path(d, "..", "figures"), showWarnings = FALSE)
-    file.path(d, "..", "figures", name)
-  }
+  .file <- grep("^--file=", commandArgs(), value = TRUE)
+  source(file.path(dirname(sub("^--file=", "", c(.file, "x")[1])), "../../fig_file.R"))
 
   d <- do.call(rbind, collected)
 

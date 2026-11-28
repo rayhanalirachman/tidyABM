@@ -18,70 +18,82 @@
 **Package**
 
 ```r
-T_ <- 3; H_ <- -1; P_ <- -9; E_ <- -2
+mutate3 <- function(x, rate = 0.01) {
+  for (b in 0:2) {
+    flip <- runif(length(x)) < rate
+    x <- bitwXor(x, as.integer(flip) * bitwShiftL(1L, b))
+  }
+  as.integer(x)
+}
 
 opportunity <- function(metanorms) {
   steps <- list(
     abm_rules(seen     ~ runif(n())),
     abm_rules(defected ~ boldness / 7 > seen),
     abm_global(n_def ~ sum(defected)),
+    # temptation to the defector, hurt to every other player
     abm_rules(payoff ~ payoff + if_else(defected, T_, 0) +
                         H_ * (n_def - as.integer(defected))),
-    # one coin per (observer, observed) pair for noticing, one for acting.
-    # Both endpoints read the same numbers, so the two passes below are the
-    # same events counted from opposite ends.
+    # one coin per (observer, observed) pair for noticing, one for acting
     abm_draw(saw ~ runif(n()), zeal ~ runif(n()), .each = "endpoint"),
     # what I saw, and how much of it I chose to punish
     abm_neighbours(witnessed   ~ sum(defected & saw < seen),
                    punish_acts ~ sum(defected & saw < seen &
-                                     zeal < own_vengefulness / 7)),
-    abm_rules(witnessed   ~ coalesce(witnessed, 0L),
-              punish_acts ~ coalesce(punish_acts, 0L)),
+                                     zeal < own_vengefulness / 7),
+                   .default = 0L),
     abm_rules(shirked ~ witnessed - punish_acts,
               payoff  ~ payoff + E_ * punish_acts),
     # how many others punished *me*: the same coins, read from the other end
     abm_neighbours(punishers ~ sum(own_defected & saw_back < own_seen &
-                                   zeal_back < vengefulness / 7)),
-    abm_rules(payoff ~ payoff + P_ * coalesce(punishers, 0L) * as.integer(defected))
+                                   zeal_back < vengefulness / 7),
+                   .default = 0L),
+    abm_rules(payoff ~ payoff + P_ * punishers * as.integer(defected))
   )
   if (!metanorms) return(steps)
   c(steps, list(
-    # the metanorm: fresh coins, again read from both ends
+    # the metanorm: seeing a defection and letting it go is itself punishable.
+    # Fresh coins, and again read from both ends.
     abm_draw(msaw ~ runif(n()), mzeal ~ runif(n()), .each = "endpoint"),
     abm_neighbours(meta_hits ~ sum(own_shirked > 0 & msaw_back < own_seen &
                                    mzeal_back < vengefulness / 7),
                    meta_acts ~ sum(shirked > 0 & msaw < seen &
-                                   mzeal < own_vengefulness / 7)),
-    abm_rules(payoff ~ payoff + P_ * coalesce(meta_hits, 0L) * shirked),
-    abm_rules(payoff ~ payoff + E_ * coalesce(meta_acts, 0L))
+                                   mzeal < own_vengefulness / 7),
+                   .default = 0L),
+    abm_rules(payoff ~ payoff + P_ * meta_hits * shirked),
+    abm_rules(payoff ~ payoff + E_ * meta_acts)
   ))
 }
 
-# selection, written as a fixed-size resample. The index is drawn *once*, in its
-# own step, so that both traits of a surviving genome travel together.
-evolution <- list(
-  abm_global(mu_p ~ mean(payoff), sd_p ~ stats::sd(payoff)),
-  abm_rules(offspring ~ case_when(payoff > mu_p + sd_p ~ 2,
-                                  payoff < mu_p - sd_p ~ 0,
-                                  TRUE                 ~ 1)),
-  abm_rules(pick ~ sample(n(), n(), replace = TRUE, prob = offspring + 1e-9)),
-  abm_rules(boldness ~ boldness[pick], vengefulness ~ vengefulness[pick]),
-  abm_rules(boldness ~ mutate3(boldness), vengefulness ~ mutate3(vengefulness)),
-  abm_rules(payoff ~ 0)
-)
+axelrod <- function(metanorms, n = 20, generations = 100, seed = 1) {
+  pop <- abm_setup(
+    agents  = abm_agents(n = n,
+                         boldness     = ~sample(0:7, n, replace = TRUE),
+                         vengefulness = ~sample(0:7, n, replace = TRUE),
+                         payoff = 0),
+    network = abm_network(type = "complete"),
+    globals = list(n_def = 0, mu_p = 0, sd_p = 0,
+                   T_ = 3, H_ = -1, P_ = -9, E_ = -2),
+    seed    = seed
+  )
+  go <- abm_go(
+    rep(opportunity(metanorms), 4),
+    # One generation of selection. Axelrod replicates a player twice if it
+    # scored a standard deviation above the mean and not at all if it scored one
+    # below; here that is written as a fixed-size resample. The index is drawn
+    # *once*, in its own step, so that both traits of a surviving genome travel
+    # together.
+    abm_global(mu_p ~ mean(payoff), sd_p ~ stats::sd(payoff)),
+    abm_rules(offspring ~ case_when(payoff > mu_p + sd_p ~ 2,
+                                    payoff < mu_p - sd_p ~ 0,
+                                    TRUE                 ~ 1)),
+    abm_rules(pick ~ sample(n(), n(), replace = TRUE, prob = offspring + 1e-9)),
+    abm_rules(boldness ~ boldness[pick], vengefulness ~ vengefulness[pick]),
+    abm_rules(boldness ~ mutate3(boldness), vengefulness ~ mutate3(vengefulness)),
+    abm_rules(payoff ~ 0))
+  abm_run(pop, go, ticks = generations, seed = seed)
+}
 
-pop <- abm_setup(
-  agents  = abm_agents(n = 20,
-                       boldness     = ~sample(0:7, n, replace = TRUE),
-                       vengefulness = ~sample(0:7, n, replace = TRUE),
-                       payoff = 0),
-  network = abm_network(type = "complete"),
-  globals = list(n_def = 0, mu_p = 0, sd_p = 0),
-  seed    = 1
-)
-go <- do.call(abm_go, c(rep(opportunity(metanorms), 4), evolution))
-
-result <- abm_run(pop, go, ticks = 100, seed = 1)
+result <- axelrod(metanorms = TRUE)
 ```
 
 **Result.** 100 generations, 20 seeds, averaged over the last ten generations:

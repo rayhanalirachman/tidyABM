@@ -27,13 +27,13 @@ run_one <- function(lum, w = 40, ticks = 300, seed = 1) {
   go <- abm_go(
     abm_rules(albedo ~ case_when(kind == "white" ~ 0.75,
                                  kind == "black" ~ 0.25,
-                                 TRUE            ~ 0.40), .scope = "population"),
-    abm_rules(local_t ~ luminosity * (1 - albedo) * 40 - 5, .scope = "population"),
+                                 TRUE            ~ 0.40)),
+    abm_rules(local_t ~ luminosity * (1 - albedo) * 40 - 5),
     abm_neighbours(t_in ~ mean(local_t)),
     abm_rules(temperature ~ 0.5 * local_t + 0.5 * t_in),
 
     abm_rules(age  ~ if_else(kind != "none", age + 1L, 0L),
-              kind ~ if_else(age > 25L, "none", kind), .scope = "population"),
+              kind ~ if_else(age > 25L, "none", kind)),
 
     abm_match(pair = "network", eligible = kind == "none"),
     abm_rules(kind ~ if_else(
@@ -71,12 +71,8 @@ cat("  to white-heavy and holds `temp` far flatter than `bare_rock` moves.\n")
 # the daisies. The flat stretch is the Gaia result.
 library(ggplot2)
 
-fig_file <- function(name) {
-  a <- grep("^--file=", commandArgs(), value = TRUE)
-  d <- if (length(a)) dirname(sub("^--file=", "", a[1])) else "."
-  dir.create(file.path(d, "..", "figures"), showWarnings = FALSE)
-  file.path(d, "..", "figures", name)
-}
+.file <- grep("^--file=", commandArgs(), value = TRUE)
+source(file.path(dirname(sub("^--file=", "", c(.file, "x")[1])), "../../fig_file.R"))
 
 # Okabe-Ito, colour-blind safe; the same series colours in every script
 pal <- c("#0072B2", "#E69F00", "#009E73")

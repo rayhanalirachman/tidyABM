@@ -9,11 +9,11 @@
 # *within each pair*, which drives hawks to fixation at every C.
 library(tidyABM)
 
-V <- 50
-
 hd_run <- function(C, n = 2000, ticks = 200, seed = 4) {
-  m <- abm_setup(agents = abm_agents(
-    n = n, strategy = ~sample(c("hawk", "dove"), n, replace = TRUE), payoff = 0))
+  m <- abm_setup(
+    agents  = abm_agents(
+      n = n, strategy = ~sample(c("hawk", "dove"), n, replace = TRUE), payoff = 0),
+    globals = list(V = 50))
   go <- abm_go(
     abm_match(pair = "random"),
     abm_rules(payoff ~ case_when(
@@ -42,7 +42,7 @@ sweep  <- list()
 for (C in c(60, 75, 100, 150, 200, 500, 40)) {
   s <- hawk_share(hd_run(C))
   obs <- mean(s$p[s$tick > 150])
-  pred <- min(1, V / C)
+  pred <- min(1, 50 / C)
   cat(sprintf("%-8d %14.3f %12.3f\n", C, pred, obs))
   sweep[[length(sweep) + 1]] <- data.frame(C = C, predicted = pred,
                                            observed = obs)
@@ -60,12 +60,8 @@ cat("0.5 regardless of C.\n")
 # Parameter sweep: observed against the analytic ESS, on the identity line.
 library(ggplot2)
 
-fig_file <- function(name) {
-  a <- grep("^--file=", commandArgs(), value = TRUE)
-  d <- if (length(a)) dirname(sub("^--file=", "", a[1])) else "."
-  dir.create(file.path(d, "..", "figures"), showWarnings = FALSE)
-  file.path(d, "..", "figures", name)
-}
+.file <- grep("^--file=", commandArgs(), value = TRUE)
+source(file.path(dirname(sub("^--file=", "", c(.file, "x")[1])), "../../fig_file.R"))
 
 p <- ggplot(sweep, aes(predicted, observed)) +
   geom_abline(slope = 1, intercept = 0, linetype = "dashed", colour = "grey50") +

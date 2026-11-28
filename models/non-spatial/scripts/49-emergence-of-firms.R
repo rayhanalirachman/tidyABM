@@ -2,19 +2,16 @@
 #     (Axtell 1999, Brookings CSED WP 3; Axtell 2018, J. Econ. Dyn. Control)
 library(tidyABM)
 
-GRID <- seq(0, 1, by = 0.05)
-
 # best effort, and the utility it yields, for an agent joining a firm whose
 # other members already supply `S` effort and which will then have `k` members
-best <- function(S, k, theta) {
+best <- function(S, k, theta, grid = seq(0, 1, by = 0.05), A = 1, B = 1) {
   n <- max(length(S), length(k), length(theta))
   S <- rep_len(S, n); k <- rep_len(k, n); theta <- rep_len(theta, n)
-  o <- outer(S, GRID, function(s, e) A_ * (s + e) + B_ * (s + e)^2)
-  u <- (o / k)^theta * outer(rep(1, n), 1 - GRID)^(1 - theta)
+  o <- outer(S, grid, function(s, e) A * (s + e) + B * (s + e)^2)
+  u <- (o / k)^theta * outer(rep(1, n), 1 - grid)^(1 - theta)
   j <- max.col(u, ties.method = "first")
-  list(e = GRID[j], u = u[cbind(seq_along(j), j)])
+  list(e = grid[j], u = u[cbind(seq_along(j), j)])
 }
-A_ <- 1; B_ <- 1
 
 firms <- function(n = 500, ticks = 400, degree = 4, active = 0.1, seed = 1) {
   m <- abm_setup(
@@ -82,12 +79,8 @@ if (sys.nframe() == 0L) {
   # where Axtell's power law is supposed to show as a straight line.
   library(ggplot2)
 
-  fig_file <- function(name) {
-    a <- grep("^--file=", commandArgs(), value = TRUE)
-    d <- if (length(a)) dirname(sub("^--file=", "", a[1])) else "."
-    dir.create(file.path(d, "..", "figures"), showWarnings = FALSE)
-    file.path(d, "..", "figures", name)
-  }
+  .file <- grep("^--file=", commandArgs(), value = TRUE)
+  source(file.path(dirname(sub("^--file=", "", c(.file, "x")[1])), "../../fig_file.R"))
 
   f <- r_fig[r_fig$tick == max(r_fig$tick), ]
   sz <- sort(as.numeric(table(f$firm)), decreasing = TRUE)

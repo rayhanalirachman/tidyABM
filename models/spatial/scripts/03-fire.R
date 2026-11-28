@@ -25,7 +25,7 @@ forest <- function(density, w = 100, seed = 1) {
     seed = seed)
 }
 fire_go <- function(w = 100) abm_go(
-  abm_rules(state ~ if_else(state == "tree" & .x == 1, "burning", state)),
+  abm_rules(state ~ "burning", when = state == "tree" & .x == 1),
   abm_repeat(
     abm_neighbours(hot ~ any(state == "burning")),
     abm_rules(state ~ case_when(state == "burning"    ~ "burnt",
@@ -71,12 +71,8 @@ cat("  the transition drops to about 0.41 instead.\n")
 # itself, tick by tick: a strip of the front crossing the grid, and a viewer.
 library(ggplot2)
 
-fig_file <- function(name, dir = "figures") {
-  a <- grep("^--file=", commandArgs(), value = TRUE)
-  d <- if (length(a)) dirname(sub("^--file=", "", a[1])) else "."
-  dir.create(file.path(d, "..", dir), showWarnings = FALSE)
-  file.path(d, "..", dir, name)
-}
+.file <- grep("^--file=", commandArgs(), value = TRUE)
+source(file.path(dirname(sub("^--file=", "", c(.file, "x")[1])), "../../fig_file.R"))
 # Okabe-Ito, colour-blind safe; the same series colours in every script
 pal <- c("#0072B2", "#E69F00", "#009E73")
 fig_theme <- theme_minimal(base_size = 12) +

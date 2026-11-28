@@ -10,23 +10,24 @@
 **Package**
 
 ```r
-BETA <- 0.06; DURATION <- 8
+sir_run <- function(beta, n = 1000, ticks = 100, seed = 2) {
+  m <- abm_setup(
+    agents  = abm_agents(n = n,
+                         state = ~c("infected", rep("susceptible", n - 1)),
+                         timer = 0),
+    network = abm_network(type = "random", degree = 6),
+    globals = list(duration = 8))
+  go <- abm_go(
+    abm_neighbours(inf_nbrs ~ sum(state == "infected")),
+    abm_rules(state ~ "infected", when = state == "susceptible" &
+                runif(n()) < 1 - (1 - beta)^coalesce(inf_nbrs, 0)),
+    abm_rules(timer ~ timer + 1, when = state == "infected"),
+    abm_rules(state ~ "recovered", when = state == "infected" & timer > duration)
+  )
+  abm_run(m, go, ticks = ticks, seed = seed)
+}
 
-sir <- abm_setup(
-  agents  = abm_agents(n = 1000, state = ~c("infected", rep("susceptible", n - 1)),
-                       timer = 0),
-  network = abm_network(type = "random", degree = 6))
-
-go <- abm_go(
-  abm_neighbours(inf_nbrs ~ sum(state == "infected")),
-  abm_rules(state ~ if_else(
-    state == "susceptible" & runif(n()) < 1 - (1 - BETA)^coalesce(inf_nbrs, 0),
-    "infected", state)),
-  abm_rules(timer ~ if_else(state == "infected", timer + 1, timer)),
-  abm_rules(state ~ if_else(state == "infected" & timer > DURATION, "recovered", state))
-)
-
-result <- abm_run(sir, go, ticks = 100, seed = 2)
+result <- sir_run(beta = 0.06)
 ```
 
 **Result.** β = 0.01 (R₀ ≈ 0.5) → 0.1% infected ever. β = 0.03 (R₀ ≈ 1.4) → 0.8%.

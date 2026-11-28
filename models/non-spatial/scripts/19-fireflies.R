@@ -6,19 +6,18 @@
 # and this model needs a count over the whole neighbourhood.
 library(tidyABM)
 
-CYCLE <- 10; FLASH <- 1
-
 ff <- abm_setup(
   agents  = abm_agents(n = 600,
-                       clock = ~sample(0:(CYCLE - 1), n, replace = TRUE),
+                       clock = ~sample(0:(cycle - 1), n, replace = TRUE),
                        flashing = FALSE),
-  network = abm_network(type = "random", degree = 6))
+  network = abm_network(type = "random", degree = 6),
+  globals = list(cycle = 10, flash = 1))
 
 go <- abm_go(
   abm_neighbours(seen ~ sum(flashing)),                       # last tick's flashes
-  abm_rules(clock ~ (clock + 1) %% CYCLE),
-  abm_rules(clock ~ if_else(clock >= FLASH & coalesce(seen, 0) >= 1, FLASH, clock)),
-  abm_rules(flashing ~ clock < FLASH)                         # phase delay
+  abm_rules(clock ~ (clock + 1) %% cycle),
+  abm_rules(clock ~ flash, when = clock >= flash & seen >= 1),
+  abm_rules(flashing ~ clock < flash)                         # phase delay
 )
 
 result <- abm_run(ff, go, ticks = 120, seed = 1)
@@ -45,12 +44,8 @@ cat(sprintf("the settled pattern is a sawtooth: a burst of %d, then dark\n",
 # --- figure ---------------------------------------------------------------
 library(ggplot2)
 
-fig_file <- function(name) {
-  a <- grep("^--file=", commandArgs(), value = TRUE)
-  d <- if (length(a)) dirname(sub("^--file=", "", a[1])) else "."
-  dir.create(file.path(d, "..", "figures"), showWarnings = FALSE)
-  file.path(d, "..", "figures", name)
-}
+.file <- grep("^--file=", commandArgs(), value = TRUE)
+source(file.path(dirname(sub("^--file=", "", c(.file, "x")[1])), "../../fig_file.R"))
 
 p <- ggplot(series, aes(tick, lit)) +
   geom_line(linewidth = 0.4) +

@@ -13,7 +13,8 @@
 ```r
 langton <- abm_setup(
   agents = list(patches = abm_agents(white = TRUE),
-                ant     = abm_agents(n = 1, heading = 0L, at = ~start)),
+                # the centre cell: x = 61, y = 61
+                ant     = abm_agents(n = 1, heading = 0L, at = ~61 + 60 * 121)),
   space  = abm_space(type = "grid", dims = c(121, 121), on = "patches",
                      diagonals = FALSE, torus = TRUE))
 

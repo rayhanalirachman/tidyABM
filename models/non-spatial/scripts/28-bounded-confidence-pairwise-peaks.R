@@ -29,12 +29,8 @@ sweep <- do.call(rbind, found)
 # sized by the share of the population it holds.
 library(ggplot2)
 
-fig_file <- function(name) {
-  a <- grep("^--file=", commandArgs(), value = TRUE)
-  dd <- if (length(a)) dirname(sub("^--file=", "", a[1])) else "."
-  dir.create(file.path(dd, "..", "figures"), showWarnings = FALSE)
-  file.path(dd, "..", "figures", name)
-}
+.file <- grep("^--file=", commandArgs(), value = TRUE)
+source(file.path(dirname(sub("^--file=", "", c(.file, "x")[1])), "../../fig_file.R"))
 
 fig <- ggplot(sweep, aes(d, centre, size = share)) +
   geom_point(alpha = 0.8) +

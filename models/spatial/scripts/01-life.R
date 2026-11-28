@@ -23,8 +23,7 @@ seeded <- function(w, h, cells) {
 cid <- function(x, y, w) x + (y - 1) * w
 
 # --- the blinker ---------------------------------------------------------
-w <- h <- 12
-r <- abm_run(seeded(w, h, c(5, 6, 7) + (6 - 1) * w), life_go, ticks = 4, seed = 1)
+r <- abm_run(seeded(12, 12, c(5, 6, 7) + (6 - 1) * 12), life_go, ticks = 4, seed = 1)
 cat("Blinker\n")
 for (t in 0:4) {
   s <- r[r$tick == t & r$alive, ]
@@ -81,12 +80,8 @@ cat("  about 0.0287; a 100x100 torus is small enough that the tail is noisy.\n")
 # there. Finally a smaller, denser soup as an interactive viewer.
 library(ggplot2)
 
-fig_file <- function(name, dir = "figures") {
-  a <- grep("^--file=", commandArgs(), value = TRUE)
-  d <- if (length(a)) dirname(sub("^--file=", "", a[1])) else "."
-  dir.create(file.path(d, "..", dir), showWarnings = FALSE)
-  file.path(d, "..", dir, name)
-}
+.file <- grep("^--file=", commandArgs(), value = TRUE)
+source(file.path(dirname(sub("^--file=", "", c(.file, "x")[1])), "../../fig_file.R"))
 # Okabe-Ito, colour-blind safe; the same series colours in every script
 pal <- c("#0072B2", "#E69F00", "#009E73")
 fig_theme <- theme_minimal(base_size = 12) +

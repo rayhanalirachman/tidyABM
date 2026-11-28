@@ -62,7 +62,7 @@ dol <- function(n = 100, castes = c(500, 500), n_tasks = 2, delta = 1,
   })
 
   go <- abm_go(
-    abm_rules(task ~ if_else(task > 0L & runif(n()) < p, 0L, task)),
+    abm_rules(task ~ 0L, when = task > 0L & runif(n()) < p),
     do.call(abm_rules, fire),
     abm_rules(rlang::new_formula(rlang::sym("task"), rlang::expr(
       if_else(task == 0L, choose_task(!!!sym_f), task)))),
@@ -114,12 +114,8 @@ if (sys.nframe() == 0L) {
   # delta / alpha the colony is supposed to find without measuring it.
   library(ggplot2)
 
-  fig_file <- function(name) {
-    a <- grep("^--file=", commandArgs(), value = TRUE)
-    d <- if (length(a)) dirname(sub("^--file=", "", a[1])) else "."
-    dir.create(file.path(d, "..", "figures"), showWarnings = FALSE)
-    file.path(d, "..", "figures", name)
-  }
+  .file <- grep("^--file=", commandArgs(), value = TRUE)
+  source(file.path(dirname(sub("^--file=", "", c(.file, "x")[1])), "../../fig_file.R"))
 
   r_fig <- dol(castes = c(500, 500), seed = 1)
   d <- do.call(rbind, lapply(1:2, function(k) data.frame(

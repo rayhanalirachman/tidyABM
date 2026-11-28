@@ -1,38 +1,20 @@
 # 26. PD N-Person Iterated  (NetLogo Social Science, PD N-Person Iterated)
 #
-# Per-opponent memory, held here as one column per possible opponent: N columns
-# for N opponents, so N^2 cells. Workable at N = 24 with `do.call()` and
-# hopeless at NetLogo's default of 60. A list column would hold the same grudges
-# in one column, the way model 41 holds a strategy table; this is the N^2
-# version the page was written with.
+# Per-opponent memory is a set per agent, the `.id`s of everyone who has
+# defected on me, held in one list column and read with `.partner`.
 #
 # Reported: the three matchups, and in particular tit-for-tat's crossover
 # against defect, which is the model's signature curve.
 library(tidyABM)
 
-N <- 24
-f <- function(lhs, rhs) rlang::new_formula(str2lang(lhs), str2lang(rhs))
-
 pdn_run <- function(strategies, ticks = 400, seed = 5) {
-  hist <- setNames(rep(list(FALSE), N), paste0("h", 1:N))
-  pop <- abm_setup(agents = do.call(abm_agents, c(
-    list(n = N, strategy = strategies, score = 0, games = 0,
-         defect_now = FALSE), hist)))
-
-  recall <- f("remembered", paste0(
-    "case_when(", paste(sprintf(".partner == %d ~ h%d", 1:N, 1:N),
-                        collapse = ", "),
-    ", TRUE ~ FALSE)"))
-
-  update <- lapply(1:N, function(k) f(paste0("h", k), sprintf(
-    "case_when(.partner != %d ~ h%d,
-               strategy == 'unforgiving' ~ h%d | partner_defect_now,
-               strategy == 'tit-for-tat' ~ partner_defect_now,
-               TRUE ~ h%d)", k, k, k, k)))
+  pop <- abm_setup(agents = abm_agents(
+    n = length(strategies), strategy = strategies, score = 0, games = 0,
+    defect_now = FALSE, grudges = ~vector("list", n)))
 
   go <- abm_go(
     abm_match(pair = "random"),
-    abm_rules(recall),
+    abm_rules(remembered ~ mapply(function(g, p) p %in% g, grudges, .partner)),
     abm_rules(defect_now ~ case_when(
       strategy == "defect"    ~ TRUE,
       strategy == "cooperate" ~ FALSE,
@@ -44,12 +26,17 @@ pdn_run <- function(strategies, ticks = 400, seed = 5) {
        defect_now & !partner_defect_now ~ 5,
       TRUE                              ~ 1)),
     abm_rules(score ~ score + payoff, games ~ games + 1),
-    do.call(abm_rules, update)
+    # unforgiving latches a grudge; tit-for-tat also forgives
+    abm_rules(grudges ~ Map(function(g, p, d, s) {
+      if (s == "unforgiving")      if (d) union(g, p) else g
+      else if (s == "tit-for-tat") if (d) union(g, p) else setdiff(g, p)
+      else g
+    }, grudges, .partner, partner_defect_now, strategy))
   )
   abm_run(pop, go, ticks = ticks, seed = seed)
 }
 
-half <- function(a, b) rep(c(a, b), each = N / 2)
+half <- function(a, b) rep(c(a, b), each = 12)
 
 # average payoff = cumulative score / cumulative games
 avg <- function(r, strat, t) {
@@ -93,12 +80,8 @@ cat("implementations are answering slightly different questions.\n")
 # individual one.
 library(ggplot2)
 
-fig_file <- function(name) {
-  a <- grep("^--file=", commandArgs(), value = TRUE)
-  d <- if (length(a)) dirname(sub("^--file=", "", a[1])) else "."
-  dir.create(file.path(d, "..", "figures"), showWarnings = FALSE)
-  file.path(d, "..", "figures", name)
-}
+.file <- grep("^--file=", commandArgs(), value = TRUE)
+source(file.path(dirname(sub("^--file=", "", c(.file, "x")[1])), "../../fig_file.R"))
 
 ticks <- sort(unique(td$tick)); ticks <- ticks[ticks > 0]
 d <- do.call(rbind, lapply(c("defect", "tit-for-tat"), function(s)

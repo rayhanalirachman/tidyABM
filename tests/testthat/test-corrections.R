@@ -15,35 +15,52 @@ test_that("a single shared forecast makes El Farol degenerate", {
 
 test_that("El Farol fluctuates once agents switch between predictors", {
   skip_on_cran()
-  MEMORY <- 5; CAPACITY <- 60
+  # to-report predict-attendance [strategy subhistory]
+  predict_attendance <- function(strategy, subhistory) {
+    100 * strategy[1] + sum(strategy[-1] * subhistory)
+  }
 
-  # The predictors live in list columns: `w` is one matrix of weights per agent,
-  # `e` one score per predictor. Both seeds matter, so both are fixed.
-  farol <- function(n_strat, setup_seed) abm_setup(
-    agents = abm_agents(
-      n = 100,
-      w = ~lapply(seq_len(n), function(i)
-            matrix(stats::runif(n_strat * (MEMORY + 1), -1, 1),
-                   n_strat, MEMORY + 1)),
-      e = ~lapply(seq_len(n), function(i) numeric(n_strat)),
-      p = ~lapply(seq_len(n), function(i) numeric(n_strat)),
-      go_today = FALSE),
-    globals = as.list(stats::setNames(rep(CAPACITY, MEMORY),
-                                      paste0("att", 1:MEMORY))),
-    seed = setup_seed)
+  # how far off would ONE strategy have been, over the last `memory` weeks?
+  score_strategy <- function(strategy, history, memory) {
+    sum(vapply(1:memory, function(week) abs(
+      history[week] - predict_attendance(strategy, history[week + 1:memory])),
+      numeric(1)))
+  }
 
-  go <- abm_go(
-    abm_rules(p ~ lapply(w, function(W)
-      as.vector(W %*% c(100, att1, att2, att3, att4, att5)))),
-    abm_rules(go_today ~ mapply(function(pi, ei) pi[which.min(ei)], p, e) < CAPACITY),
-    abm_global(att5 ~ att4, att4 ~ att3, att3 ~ att2, att2 ~ att1,
-               att1 ~ sum(go_today)),
-    abm_rules(e ~ mapply(function(ei, pi) 0.8 * ei + 0.2 * abs(pi - att1),
-                         e, p, SIMPLIFY = FALSE)))
+  # the strategy that has been least wrong lately (to update-strategies)
+  best_strategy_of <- function(strategies, history, memory) {
+    strategies[[which.min(vapply(strategies, score_strategy, numeric(1),
+                                 history, memory))]]
+  }
+
+  farol <- function(n_strat = 10, setup_seed = 1, ticks = 300, memory = 5) {
+    m <- abm_setup(
+      agents = abm_agents(
+        n = 100,
+        # each strategy is a baseline plus one random weight per week of lag
+        strategies = ~replicate(n, replicate(
+          n_strat, stats::runif(memory + 1, -1, 1), simplify = FALSE), simplify = FALSE),
+        best       = ~lapply(strategies, function(s) s[[1]]),  # replaced at tick 1
+        prediction = 0,
+        attend     = FALSE),
+      globals = list(history = list(sample(0:99, memory * 2, replace = TRUE)),
+                     attendance = 0, memory = memory, threshold = 60),
+      seed = setup_seed)
+
+    go <- abm_go(
+      # update-strategies runs first, so the placeholder never decides anything
+      abm_rules(best ~ lapply(strategies, best_strategy_of, history[[1]], memory)),
+      abm_rules(prediction ~ vapply(best, predict_attendance, numeric(1),
+                                    history[[1]][1:memory])),
+      abm_rules(attend ~ prediction <= threshold),
+      abm_global(attendance ~ sum(attend),
+                 history    ~ list(c(attendance, head(history[[1]], -1)))))
+
+    abm_run(m, go, ticks = ticks, record = "globals")
+  }
 
   attendance <- function(n_strat, setup_seed)
-    abm_globals(abm_run(farol(n_strat, setup_seed), go,
-                        ticks = 300, seed = 2))$att1[-(1:101)]
+    abm_globals(farol(n_strat, setup_seed))$attendance[-(1:101)]
   settles <- function(a) {
     any(vapply(1:6, function(lag) all(utils::tail(a, 60) ==
       utils::tail(dplyr::lag(a, lag), 60)), logical(1)))
@@ -53,7 +70,7 @@ test_that("El Farol fluctuates once agents switch between predictors", {
   expect_false(settles(a))                 # no cycle to find
   expect_gt(length(unique(a)), 5)
   expect_gt(stats::sd(a), 1)               # with real amplitude
-  expect_true(abs(mean(a) - CAPACITY) < 8) # around the bar's capacity
+  expect_true(abs(mean(a) - 60) < 8)       # around the bar's capacity
 
   # a second population draw, because the mechanism is not one lucky seed
   b <- attendance(10, 2)

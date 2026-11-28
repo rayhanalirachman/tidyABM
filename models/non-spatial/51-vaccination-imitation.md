@@ -13,41 +13,47 @@
 **Package**
 
 ```r
-r <- 0.4; g <- 0.4; beta <- 10; cost <- 0.2; i0 <- 5
+vaccination <- function(n = 500, cost = 0.2, type = "random", degree = 6,
+                        r = 0.4, g = 0.4, i0 = 5, beta = 10,
+                        seasons = 300, seed = 1) {
+  m <- abm_setup(
+    agents  = abm_agents(n = n, vax = ~runif(n) < 0.5, state = "S",
+                         payoff = 0, infected = FALSE),
+    network = abm_network(type = type, degree = degree),
+    seed    = seed
+  )
+  go <- abm_go(
+    # a season starts: the vaccinated are immune, a few others are seeded
+    abm_rules(state ~ if_else(vax, "V", "S"), infected ~ FALSE),
+    abm_rules(state ~ {
+      s <- state; k <- which(s == "S")
+      if (length(k)) s[sample(k, min(i0, length(k)))] <- "I"
+      s
+    }),
+    # ...and the epidemic runs to the end before anyone reconsiders
+    abm_repeat(
+      abm_neighbours(exposure ~ sum(state == "I")),
+      abm_rules(state ~ case_when(
+        state == "S" & runif(n()) < 1 - (1 - r)^coalesce(exposure, 0L) ~ "E",
+        state == "I" & runif(n()) < g ~ "R",
+        TRUE ~ state)),
+      abm_rules(state ~ if_else(state == "E", "I", state),
+                infected ~ infected | state %in% c("I", "R")),
+      until = sum(state == "I") == 0,
+      max = 5000
+    ),
+    # payoffs, then everyone copies a neighbour with the Fermi rule
+    abm_rules(payoff ~ if_else(vax, -cost, if_else(infected, -1, 0))),
+    abm_match(pair = "network"),
+    abm_rules(vax ~ if_else(!is.na(.partner) &
+                            runif(1) < 1 / (1 + exp(-beta * (partner_payoff - payoff))),
+                            partner_vax, vax)),
+    abm_global(coverage ~ mean(vax), attack ~ mean(infected & !vax))
+  )
+  abm_run(m, go, ticks = seasons, seed = seed)
+}
 
-m <- abm_setup(
-  agents  = abm_agents(n = 500, vax = ~runif(n) < 0.5, state = "S",
-                       payoff = 0, infected = FALSE),
-  network = abm_network(type = "random", degree = 6),
-  seed    = 1)
-
-go <- abm_go(
-  abm_rules(state ~ if_else(vax, "V", "S"), infected ~ FALSE, .scope = "population"),
-  abm_rules(state ~ { s <- state; k <- which(s == "S")
-                      if (length(k)) s[sample(k, min(i0, length(k)))] <- "I"; s },
-            .scope = "population"),
-
-  # the epidemic runs to the end before anyone reconsiders
-  abm_repeat(
-    abm_neighbours(exposure ~ sum(state == "I")),
-    abm_rules(state ~ case_when(
-      state == "S" & runif(n()) < 1 - (1 - r)^coalesce(exposure, 0L) ~ "E",
-      state == "I" & runif(n()) < g ~ "R",
-      TRUE ~ state), .scope = "population"),
-    abm_rules(state ~ if_else(state == "E", "I", state),
-              infected ~ infected | state %in% c("I", "R"), .scope = "population"),
-    until = sum(state == "I") == 0,
-    max = 5000
-  ),
-
-  abm_rules(payoff ~ if_else(vax, -cost, if_else(infected, -1, 0)), .scope = "population"),
-  abm_match(pair = "network"),
-  abm_rules(vax ~ if_else(!is.na(.partner) &
-                          runif(1) < 1 / (1 + exp(-beta * (partner_payoff - payoff))),
-                          partner_vax, vax))
-)
-
-result <- abm_run(m, go, ticks = 100, seed = 1)
+result <- vaccination(seasons = 100)
 ```
 
 **Result** (N = 500, mean degree 6, r = 0.4, g = 0.4, β = 10, 2 seeds, 100 seasons)

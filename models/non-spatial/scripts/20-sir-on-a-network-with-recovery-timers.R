@@ -5,29 +5,25 @@
 # values of beta either side of R0 = 1.
 library(tidyABM)
 
-DURATION <- 8; DEGREE <- 6
-
 sir_run <- function(beta, n = 1000, ticks = 100, seed = 2) {
   m <- abm_setup(
     agents  = abm_agents(n = n,
                          state = ~c("infected", rep("susceptible", n - 1)),
                          timer = 0),
-    network = abm_network(type = "random", degree = DEGREE))
+    network = abm_network(type = "random", degree = 6),
+    globals = list(duration = 8))
   go <- abm_go(
     abm_neighbours(inf_nbrs ~ sum(state == "infected")),
-    abm_rules(state ~ if_else(
-      state == "susceptible" &
-        runif(n()) < 1 - (1 - beta)^coalesce(inf_nbrs, 0),
-      "infected", state)),
-    abm_rules(timer ~ if_else(state == "infected", timer + 1, timer)),
-    abm_rules(state ~ if_else(state == "infected" & timer > DURATION,
-                              "recovered", state))
+    abm_rules(state ~ "infected", when = state == "susceptible" &
+                runif(n()) < 1 - (1 - beta)^coalesce(inf_nbrs, 0)),
+    abm_rules(timer ~ timer + 1, when = state == "infected"),
+    abm_rules(state ~ "recovered", when = state == "infected" & timer > duration)
   )
   abm_run(m, go, ticks = ticks, seed = seed)
 }
 
 cat("1000 agents, 6-regular network, one seed case, recovery after 8 ticks\n")
-cat(sprintf("R0 = beta * degree * duration = beta * %d\n\n", DEGREE * DURATION))
+cat(sprintf("R0 = beta * degree * duration = beta * %d\n\n", 6 * 8))
 cat(sprintf("%-8s %8s %14s %12s %10s\n", "beta", "R0", "ever infected",
             "peak cases", "peak tick"))
 
@@ -39,7 +35,7 @@ for (beta in c(0.01, 0.03, 0.06)) {
     n = as.numeric(tapply(r$state == "infected", r$tick, sum)))
   final <- r[r$tick == 100, ]
   ever <- mean(final$state != "susceptible")
-  cat(sprintf("%-8.2f %8.1f %13.1f%% %12d %10d\n", beta, beta * DEGREE * DURATION,
+  cat(sprintf("%-8.2f %8.1f %13.1f%% %12d %10d\n", beta, beta * 6 * 8,
               100 * ever, max(inf$n), inf$tick[which.max(inf$n)]))
   inf$beta <- sprintf("beta = %.2f", beta)
   runs[[length(runs) + 1]] <- inf
@@ -50,12 +46,8 @@ cat("whole network\n")
 # --- figure ---------------------------------------------------------------
 library(ggplot2)
 
-fig_file <- function(name) {
-  a <- grep("^--file=", commandArgs(), value = TRUE)
-  d <- if (length(a)) dirname(sub("^--file=", "", a[1])) else "."
-  dir.create(file.path(d, "..", "figures"), showWarnings = FALSE)
-  file.path(d, "..", "figures", name)
-}
+.file <- grep("^--file=", commandArgs(), value = TRUE)
+source(file.path(dirname(sub("^--file=", "", c(.file, "x")[1])), "../../fig_file.R"))
 
 d <- do.call(rbind, runs)
 

@@ -10,10 +10,8 @@ neutral <- function(n = 500, mu = 0.01, ticks = 2000, seed = 1) {
   )
   go <- abm_go(
     abm_rules(copied   ~ sample(variant, n(), replace = TRUE),
-              innovate ~ runif(n()) < mu,
-              .scope = "population"),
-    abm_rules(variant ~ if_else(innovate, coined + cumsum(innovate), copied),
-              .scope = "population"),
+              innovate ~ runif(n()) < mu),
+    abm_rules(variant ~ if_else(innovate, coined + cumsum(innovate), copied)),
     abm_global(coined ~ coined + sum(innovate))
   )
   abm_run(m, go, ticks = ticks, seed = seed)
@@ -55,12 +53,8 @@ if (sys.nframe() == 0L) {
   # formula, which is the analytic result random copying is supposed to match.
   library(ggplot2)
 
-  fig_file <- function(name) {
-    a <- grep("^--file=", commandArgs(), value = TRUE)
-    d <- if (length(a)) dirname(sub("^--file=", "", a[1])) else "."
-    dir.create(file.path(d, "..", "figures"), showWarnings = FALSE)
-    file.path(d, "..", "figures", name)
-  }
+  .file <- grep("^--file=", commandArgs(), value = TRUE)
+  source(file.path(dirname(sub("^--file=", "", c(.file, "x")[1])), "../../fig_file.R"))
 
   fig <- ggplot(sweep, aes(ewens, observed)) +
     geom_abline(slope = 1, intercept = 0, linetype = "dashed",

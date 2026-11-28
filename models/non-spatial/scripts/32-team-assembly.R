@@ -14,33 +14,26 @@ team_assembly <- function(p, q, m = 5, ticks = 300, downtime = 30, seed = 1) {
     seed    = seed
   )
 
-  # one member joins the team
-  recruit <- list(
-    abm_global(u_type ~ runif(1), u_q ~ runif(1)),
-    abm_neighbours(near_team ~ any(on_team)),
-    abm_rules(score ~ (!on_team) * case_when(
-      u_type <  p & u_q < q & collabs > 0 & coalesce(near_team, FALSE) ~ 3,
-      u_type <  p & collabs > 0                                       ~ 2,
-      u_type >= p & collabs == 0                                      ~ 2,
-      collabs == 0                                                    ~ 1,
-      TRUE                                                            ~ 0)),
-    abm_rules(score   ~ score + runif(n())),
-    abm_rules(on_team ~ on_team | (score > 1 & rank(-score, ties.method = "first") == 1))
-  )
-
-  go <- do.call(abm_go, c(
-    list(
-      abm_birth(n = m, inherit = list(collabs ~ 0, idle ~ 0, on_team ~ FALSE)),
-      abm_rules(on_team ~ FALSE, idle ~ idle + 1)
-    ),
-    rep(recruit, m),
-    list(
-      abm_match(pair = "random", size = m, eligible = on_team),
-      abm_link(),
-      abm_rules(collabs ~ collabs + 1, idle ~ 0),
-      abm_death(when = collabs == 0 & idle > downtime)
-    )
-  ))
+  go <- abm_go(
+    abm_birth(n = m, inherit = list(collabs ~ 0, idle ~ 0, on_team ~ FALSE)),
+    abm_rules(on_team ~ FALSE, idle ~ idle + 1),
+    # one member joins the team, m times over
+    rep(list(
+      abm_global(u_type ~ runif(1), u_q ~ runif(1)),
+      abm_neighbours(near_team ~ any(on_team)),
+      abm_rules(score ~ (!on_team) * case_when(
+        u_type <  p & u_q < q & collabs > 0 & coalesce(near_team, FALSE) ~ 3,
+        u_type <  p & collabs > 0                                       ~ 2,
+        u_type >= p & collabs == 0                                      ~ 2,
+        collabs == 0                                                    ~ 1,
+        TRUE                                                            ~ 0)),
+      abm_rules(score   ~ score + runif(n())),
+      abm_rules(on_team ~ on_team | (score > 1 & rank(-score, ties.method = "first") == 1))
+    ), m),
+    abm_match(pair = "random", size = m, eligible = on_team),
+    abm_link(),
+    abm_rules(collabs ~ collabs + 1, idle ~ 0),
+    abm_death(when = collabs == 0 & idle > downtime))
 
   abm_run(pop, go, ticks = ticks, seed = seed)
 }
@@ -68,12 +61,8 @@ sweep <- do.call(rbind, lapply(
 # the transition Guimera et al. report.
 library(ggplot2)
 
-fig_file <- function(name) {
-  a <- grep("^--file=", commandArgs(), value = TRUE)
-  d <- if (length(a)) dirname(sub("^--file=", "", a[1])) else "."
-  dir.create(file.path(d, "..", "figures"), showWarnings = FALSE)
-  file.path(d, "..", "figures", name)
-}
+.file <- grep("^--file=", commandArgs(), value = TRUE)
+source(file.path(dirname(sub("^--file=", "", c(.file, "x")[1])), "../../fig_file.R"))
 
 d <- sweep[sweep$q == 0.5, ]
 

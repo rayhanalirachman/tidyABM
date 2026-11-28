@@ -13,29 +13,26 @@ vaccination <- function(n = 500, cost = 0.2, type = "random", degree = 6,
   )
   go <- abm_go(
     # a season starts: the vaccinated are immune, a few others are seeded
-    abm_rules(state ~ if_else(vax, "V", "S"), infected ~ FALSE,
-              .scope = "population"),
+    abm_rules(state ~ if_else(vax, "V", "S"), infected ~ FALSE),
     abm_rules(state ~ {
       s <- state; k <- which(s == "S")
       if (length(k)) s[sample(k, min(i0, length(k)))] <- "I"
       s
-    }, .scope = "population"),
+    }),
     # ...and the epidemic runs to the end before anyone reconsiders
     abm_repeat(
       abm_neighbours(exposure ~ sum(state == "I")),
       abm_rules(state ~ case_when(
         state == "S" & runif(n()) < 1 - (1 - r)^coalesce(exposure, 0L) ~ "E",
         state == "I" & runif(n()) < g ~ "R",
-        TRUE ~ state), .scope = "population"),
+        TRUE ~ state)),
       abm_rules(state ~ if_else(state == "E", "I", state),
-                infected ~ infected | state %in% c("I", "R"),
-                .scope = "population"),
+                infected ~ infected | state %in% c("I", "R")),
       until = sum(state == "I") == 0,
       max = 5000
     ),
     # payoffs, then everyone copies a neighbour with the Fermi rule
-    abm_rules(payoff ~ if_else(vax, -cost, if_else(infected, -1, 0)),
-              .scope = "population"),
+    abm_rules(payoff ~ if_else(vax, -cost, if_else(infected, -1, 0))),
     abm_match(pair = "network"),
     abm_rules(vax ~ if_else(!is.na(.partner) &
                             runif(1) < 1 / (1 + exp(-beta * (partner_payoff - payoff))),
@@ -69,12 +66,8 @@ if (sys.nframe() == 0L) {
   # network types. Uptake falls with cost, and the network shape matters.
   library(ggplot2)
 
-  fig_file <- function(name) {
-    a <- grep("^--file=", commandArgs(), value = TRUE)
-    d <- if (length(a)) dirname(sub("^--file=", "", a[1])) else "."
-    dir.create(file.path(d, "..", "figures"), showWarnings = FALSE)
-    file.path(d, "..", "figures", name)
-  }
+  .file <- grep("^--file=", commandArgs(), value = TRUE)
+  source(file.path(dirname(sub("^--file=", "", c(.file, "x")[1])), "../../fig_file.R"))
 
   fig <- ggplot(sweep, aes(cost, coverage, colour = network)) +
     geom_line(linewidth = 0.7) + geom_point() +
